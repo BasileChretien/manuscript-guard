@@ -187,9 +187,33 @@ def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     and the choice was asked of it at every run, since nothing it could set answered it."""
     (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
     other = action.choice.options[-1]
-    assert (other.id, other.label) == ("other", "None of these")
+    assert other.id == "other" and other.label.startswith("None of these (")
+    # Said beside it, so that an author whose study is one of them knows to choose it.
+    assert all(study in other.label for study in ("case series", "qualitative study",
+                                                   "narrative review"))
+    # A cross-sectional study is a design of the table since its first new one.
+    assert "cross-sectional" not in other.label
     assert "seven sections every plan has" in other.effect
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
+
+
+def test_each_design_is_offered_with_what_makes_a_study_that_design(project: Path) -> None:
+    """For an author who does not know a design's name: `next` says beside each one what
+    makes a study that design, from the table's `describes`, as its label in the text and
+    the JSON alike (DESIGN.md, "One set of plan questions", answer 5)."""
+    from manuscript_guard.gates.design import study_types
+    from manuscript_guard.guide.reading import described
+
+    (action,) = [a for a in decide(guide.inspect(project)) if a.rule == "choose-study-type"]
+    labels = {option.id: option.label for option in action.choice.options}
+    for key, kind in study_types().items():
+        assert labels[key] == described(kind["label"], kind["describes"]), key
+        assert " ".join(kind["describes"].split()) in labels[key] and labels[key].count("(") == 1
+    # A label with brackets of its own takes the words inside them.
+    assert described("self-controlled design (case series)", "each person") == (
+        "self-controlled design (case series; each person)")
+    assert described("cohort study", "people followed") == "cohort study (people followed)"
+    assert described("cohort study", None) == "cohort study"
 
 
 def test_none_of_the_designs_is_offered_to_the_agent(tmp_path: Path) -> None:

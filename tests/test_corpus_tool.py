@@ -463,8 +463,10 @@ def test_a_rejudge_by_matcher_changes_the_verdict_and_a_successor_asks(corpus: P
     assert rows[("paper-b", 0)]["state"] == "asked"
     assert rows[("paper-b", 0)]["successor_by"] == "abstract-questions"
     assert result["decisions"] == [
-        {"id": "marker", "matched": 1, "changed": 1, "successor": 0},
-        {"id": "abstract-questions", "matched": 0, "changed": 0, "successor": 1}]
+        {"id": "marker", "kind": "rejudge", "matched": 1, "changed": 1, "successor": 0,
+         "moved": 0},
+        {"id": "abstract-questions", "kind": "successor", "matched": 0, "changed": 0,
+         "successor": 1, "moved": 0}]
     assert "2 decisions, 1 findings re-judged, 1 kept by a successor" in tool.render_measure(
         result)
 
@@ -488,7 +490,7 @@ def test_a_successor_needs_its_code_in_the_same_report_of_the_same_paper(corpus:
 @pytest.mark.parametrize(("broken", "says"), [
     ({"decisions": {"id": "x"}}, "a list under `decisions`"),
     ({"decisions": [{"id": "x", "date": "d", "by": "b", "what": "w", "source": "s"}]},
-     "one of rejudge or successor"),
+     "one of rejudge, successor, accepted or moved"),
     ({"decisions": [{"id": "x", "date": "d", "by": "b", "what": "w",
                      "rejudge": {"verdict": "false", "findings": []}}]}, "`source` is missing"),
     ({"decisions": [{"id": "x", "date": "d", "by": "b", "what": "w", "source": "s",

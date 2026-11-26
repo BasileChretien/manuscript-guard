@@ -1731,3 +1731,71 @@ def test_a_pandoc_template_leaves_aside_what_another_paper_s_folder_sets_aside(
     assert notes["audit|passed-over|paper.md|-"].endswith(
         "it is in the folder of the LaTeX paper cover.tex, so it was not read as a paper; "
         "name it to audit it")
+
+
+@pytest.mark.parametrize(
+    ("entry", "held"),
+    [
+        # Numbered with a stop and no entry's shape: a numbered section's title is so.
+        ("3. A tiny network for masks - https://example.org/tiny", 2),
+        # Its author and year, with no shape the audit reads as an entry's.
+        ("Brown, L. A tiny network for masks. Online, 2021.", 2),
+    ],
+)
+def test_an_entry_styled_as_a_heading_with_no_shape_told_ends_a_word_list(
+    tmp_path: Path, entry: str, held: int
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A Word paper's reference entry styled as a
+    heading goes on with the list only where it is numbered in brackets or shaped as an
+    entry."): an entry in a heading style that is numbered "3." with no entry's shape, or
+    that gives its author and year with no shape the audit reads, ends the list, and the
+    entries after it are read as text."""
+    numbered = ["1. Dataset - https://example.org/data", "2. A review - https://example.org/r"]
+    named = ["Smith, J. A dataset. Online, 2019.", "Jones, K. A review. Online, 2020."]
+    above = numbered if entry[:1].isdigit() else named
+    paper = make_docx(tmp_path / "paper.docx", ["Results", "The rate rose.", "REFERENCES",
+                                                *above, entry, "Green, M. A note. Online, 2022."],
+                      heading=entry)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert len(census.entries) == held, [e.label for e in census.entries]
+
+
+def test_an_entry_typed_as_a_markdown_heading_ends_the_list(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, as above): in Markdown, as `init --from` writes a
+    Word paper's entry in a heading style, `# \\[2\\] ...` ends the list, in the audit and
+    in `check`'s reading of it (`text.reference_lists`)."""
+    from manuscript_guard.text.reference_lists import reference_lists
+
+    text = ("# Results\n\nThe rate rose [1-3].\n\n**REFERENCES**\n\n"
+            "\\[1\\] Dataset - <https://example.org/data>\n\n"
+            "# \\[2\\] A review - <https://example.org/review>\n\n"
+            "\\[3\\] A note - <https://example.org/note>\n")  # fmt: skip
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    [census] = audit([paper], None).references
+    assert len(census.entries) == 1, [e.label for e in census.entries]
+    [(start, end)] = reference_lists(text)
+    assert text[start:end].count("Dataset") == 1 and "A review" not in text[start:end]
+
+
+def test_an_entry_word_numbers_styled_as_a_heading_ends_the_list(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, as above): an entry Word numbers itself, "[%1]",
+    keeps its number out of the text, which gives it a mark only (`text.docx._line_start`),
+    so one in a heading style with no entry's shape ends the list, as before (round 2 of
+    #782)."""
+    numberings = (
+        f"<w:numbering {NS}>"
+        "<w:abstractNum w:abstractNumId='0'><w:lvl w:ilvl='0'><w:start w:val='1'/>"
+        "<w:numFmt w:val='decimal'/><w:lvlText w:val='[%1]'/></w:lvl></w:abstractNum>"
+        "<w:num w:numId='1'><w:abstractNumId w:val='0'/></w:num>"
+        "</w:numbering>"
+    )
+    entries = ["Dataset - https://example.org/data",
+               "Face detection: a review - https://example.org/review",
+               "A note - https://example.org/note"]  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", ["Results", "The rate rose.", "REFERENCES",
+                                                *entries],
+                      heading=entries[1], numbered=dict.fromkeys(entries, "1"),
+                      numberings=numberings)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert len(census.entries) == 1, [e.label for e in census.entries]

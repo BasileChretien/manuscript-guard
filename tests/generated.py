@@ -1129,6 +1129,91 @@ def apart_forms(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
                                     ("abbreviation-undefined", wins, "")]  # fmt: skip
 
 
+# ------------------------------------------- G14: a word broken at a line's end in a PDF
+
+#: What `line_broken` plants, each kind with its own short form and long form (the real-paper
+#: corpus, row 7 of window C): a definition given again with a word of its long form broken
+#: at a line's end, as pdftotext prints a page's text, "inter-\nquartile range"; with a
+#: compound broken at its own hyphen, which pdftotext prints the same way, "self-\nreported";
+#: a definition with another meaning, broken at a line's end too; and the same meaning
+#: given again with a hyphen and a space typed inside a word, "inter- quartile", which is no
+#: line's end.
+BROKEN_SOFT = (("interquartile range", "IQR"), ("standardised mortality ratio", "SMR"),
+               ("generalised estimating equations", "GEE"))  # fmt: skip
+#: The hyphens a PDF breaks a word at a line's end with, each of which every example of
+#: `line_broken` breaks one of `BROKEN_SOFT` at (round 2 of #784).
+SOFT_HYPHENS = ("-", "\N{HYPHEN}", "\N{SOFT HYPHEN}")
+BROKEN_COMPOUND = (("self-reported fatigue scale", "SFS"), ("cross-sectional health survey",
+                   "CHS"), ("long-term care facility", "LCF"))  # fmt: skip
+#: A long form and another meaning of its short form, which differ by more than a break.
+BROKEN_OTHER = (("brisk walking test", "BWT", "brisk walking time"),
+                ("quiet play scale", "QPS", "quiet playing score"))  # fmt: skip
+BROKEN_TYPED = (("hospital anxiety scale", "HAS"), ("lean muscle volume", "LMV"))
+#: A compound typed with a hyphen proper or a non-breaking hyphen, `{}` where it stands,
+#: given again with a hyphen of either kind there and a line's end after it (round 1 of
+#: #784): the same meaning in text from any format.
+BROKEN_PROPER = (("self{}rated sleep scale", "SRS"), ("long{}stay care unit", "LCU"))
+PROPER_HYPHENS = ("\N{HYPHEN}", "\N{NON-BREAKING HYPHEN}")
+
+
+def _break_a_word(
+    draw: st.DrawFn, long: str, at_hyphen: bool, joint: str, hyphen: str = "-"
+) -> str:
+    """`long` with one of its words broken by a hyphen and `joint`: inside a word of five
+    letters or more, at a place drawn, by `hyphen`, or where `at_hyphen`, at a compound's
+    own hyphen."""
+    words = long.split()
+    if at_hyphen:
+        which = draw(st.sampled_from([at for at, word in enumerate(words) if "-" in word]))
+        head, tail = words[which].split("-", 1)
+        words[which] = f"{head}-{joint}{tail}"
+        return " ".join(words)
+    # Not the first word: a half after the break that opened on the short form's first
+    # letter would start the long form there (a Known gap).
+    which = draw(st.sampled_from([at for at, word in enumerate(words) if at and len(word) >= 5]))
+    word = words[which]
+    cut = draw(st.integers(2, len(word) - 2))
+    words[which] = f"{word[:cut]}{hyphen}{joint}{word[cut:]}"
+    return " ".join(words)
+
+
+@st.composite
+def line_broken(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, str]], list[tuple[str, str]]]:
+    """A Methods section with one piece of each kind `BROKEN_COMPOUND`, `BROKEN_OTHER`,
+    `BROKEN_TYPED` and `BROKEN_PROPER` describe, and one of `BROKEN_SOFT` for each of
+    `SOFT_HYPHENS`, in an order drawn, among words; and what G14 says of each short form's
+    second definition, where the text was read from a PDF and where it was not, in order of
+    the alphabet: `again` where it gives the first's meaning again, `another` where it gives
+    another."""
+    softs = list(zip(draw(st.permutations(BROKEN_SOFT)), SOFT_HYPHENS, strict=True))
+    compound_long, compound = draw(st.sampled_from(BROKEN_COMPOUND))
+    other_long, other, meaning = draw(st.sampled_from(BROKEN_OTHER))
+    typed_long, typed = draw(st.sampled_from(BROKEN_TYPED))
+    proper_long, proper = draw(st.sampled_from(BROKEN_PROPER))
+    proper_typed = proper_long.format(draw(st.sampled_from(PROPER_HYPHENS)))
+    proper_again = proper_long.format(draw(st.sampled_from(("-", *PROPER_HYPHENS))) + "\n")
+
+    def piece(long: str, short: str, again: str) -> str:
+        return f"The {long} ({short}) was read. The {again} ({short}) was read again."
+
+    pieces = [
+        *(piece(soft_long, soft, _break_a_word(draw, soft_long, False, "\n", hyphen))
+          for (soft_long, soft), hyphen in softs),
+        piece(compound_long, compound, _break_a_word(draw, compound_long, True, "\n")),
+        piece(other_long, other, _break_a_word(draw, meaning, False, "\n")),
+        piece(typed_long, typed, _break_a_word(draw, typed_long, False, " ")),
+        piece(proper_typed, proper, proper_again),
+    ]
+    text, _starts = _paragraphs(draw, draw(st.permutations(pieces)))
+    said = {compound: "again", other: "another", typed: "another", proper: "again"}
+    shorts = [soft for (_long, soft), _hyphen in softs]
+    return ("# Methods\n\n" + text,
+            sorted({**said, **dict.fromkeys(shorts, "again")}.items()),
+            sorted({**said, **dict.fromkeys(shorts, "another")}.items()))  # fmt: skip
+
+
 @st.composite
 def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
@@ -7123,6 +7208,120 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+#: How a section of a plan stands in a drawn plan: headed by its id as `study_types.yaml`
+#: names it (capitalised, which `tests/test_study_types.py` holds its pattern finds), headed
+#: another way, left out, or headed with nothing under it.
+PLAN_KINDS = ("as named", "reworded", "missing", "empty")
+#: Other headings for each section of every plan and of each design: the other words of its
+#: pattern, and a near miss or two, which name another section or none ("Standard deviation
+#: of the dose" is a statistic, "Case-control design" no case definition). A design added to
+#: the table adds its sections here (`tests/test_differential.py` holds that every one has
+#: some), or a pattern of it narrowed would be read the same on both sides.
+PLAN_HEADINGS = {
+    "question": ("Research question", "Objectives", "Aims"),
+    "design": ("Study design", "Questionnaire design"),
+    "population": ("Participants", "Population and data source", "Data sources"),
+    "exposure": ("Intervention", "Predictor", "Exposures"),
+    "outcome": ("Endpoint", "Primary outcomes", "Outcome measures"),
+    "analysis": ("Statistical methods", "Statistical analysis", "Analyses"),
+    "deviations": ("Deviations from the plan", "Changes to the plan", "Amendments",
+                   "Standard deviation of the dose"),
+    "estimand": ("Estimands", "The estimand"),
+    "sample size": ("Power", "Sample size calculation"),
+    "randomisation": ("Randomization", "Allocation concealment", "Blinding", "Masking"),
+    "missing data": ("Missing values", "Handling missingness"),
+    "sensitivity analyses": ("Subgroups", "Sensitivity analysis"),
+    "interim analyses": ("Stopping rules", "Data monitoring", "Monitoring"),
+    "time zero and follow-up": ("Index date", "Follow up", "At-risk window", "Censoring"),
+    "confounding": ("Confounders", "Adjustment set"),
+    "sampling": ("Recruitment", "Study sample", "Survey weighting", "Sample size",
+                 "Response rate"),
+    "measurement": ("Questionnaire", "Measures", "Exposure assessment", "Outcome measures"),
+    "bias": ("Selection bias", "Non-response", "Biases"),
+    "cases": ("Case ascertainment", "Case", "Case-control design"),
+    "controls": ("Control selection", "Controls", "Case-control design"),
+    "matching": ("Matched sets",),
+    "observation period": ("Observation window",),
+    "risk windows": ("Exposure windows", "Control periods", "Focal window"),
+    "washout": ("Wash-out", "Pre-exposure period", "Induction and lag"),
+    "time-varying adjustment": ("Age and season", "Calendar time", "Time-varying covariates"),
+    "assumptions": ("Event-dependent exposure", "Assumption checks"),
+    "deduplication": ("Duplicates", "Preprocessing", "Data cleaning"),
+    "case definition": ("Case selection", "Drugs and events", "Event selection"),
+    "comparator": ("Reference group", "Comparison group"),
+    "measure": ("Measures of disproportionality", "Signal threshold", "Measure of outcome"),
+    "eligibility": ("Inclusion criteria", "Exclusion"),
+    "search": ("Information sources", "Databases searched"),
+    "selection and extraction": ("Screening", "Data extraction"),
+    "risk of bias": ("Quality assessment", "Critical appraisal"),
+    "synthesis": ("Meta-analysis", "Data synthesis"),
+    "certainty": ("GRADE", "Publication bias", "Confidence in the evidence"),
+    "predictors": ("Candidate variables", "Features"),
+    "model development": ("Tuning", "Internal validation"),
+    "performance": ("Calibration", "Discrimination", "External validation"),
+    "fairness": ("Equity",),
+}  # fmt: skip
+#: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
+_SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
+#: Headings of no section, between the plan's own.
+_PLAN_OTHER = ("Background", "Timeline", "Ethics", "References")
+#: How a plan is laid out: its title, then the level of its sections' headings.
+_PLAN_LAYOUTS = (("# Analysis plan\n\n", 2), ("", 2), ("", 1))
+
+
+@st.composite
+def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    """A plan and the `paper.yaml` naming its design, as the reading "plan sections asked" takes
+    them, and each section of the design with how it stands in the plan.
+
+    The design is drawn from the table, `other` or none. Every section of every plan and of
+    the design is given a kind of `PLAN_KINDS` by its place in a drawn order, so each kind
+    stands in every example; then the sections are written in another drawn order, with a
+    heading of no section among them. A section is said in a sentence, in a list, or under a
+    subsection; one with nothing to say holds one of `_SAYS_NOTHING`, or empty subsections."""
+    from manuscript_guard.gates.design import REQUIRED, study_types
+
+    design = draw(st.sampled_from((None, "other", *sorted(study_types()))))
+    ids = [name for name, _pattern, _says in REQUIRED] + [
+        section["id"] for section in study_types().get(design or "", {}).get("sections", ())]
+    title, level = draw(st.sampled_from(_PLAN_LAYOUTS))
+    mark, under = "#" * level, "#" * (level + 1)
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=8).map(
+        lambda words: " ".join(words).capitalize() + ".")
+    said = st.one_of(sentence, sentence.map(lambda s: f"- {s}"),
+                     sentence.map(lambda s: f"{under} Inclusion\n\n{s}"))  # fmt: skip
+    nothing = st.one_of(st.sampled_from(_SAYS_NOTHING),
+                        st.just(f"{under} Inclusion\n\n{under} Exclusion"))  # fmt: skip
+
+    def reworded(name: str) -> str:
+        named = name.capitalize()
+        return draw(st.sampled_from((*PLAN_HEADINGS[name], f"3. {named}", named.upper(),
+                                     f"{named}:")))  # fmt: skip
+
+    order = draw(st.permutations(range(len(ids))))
+    kinds = {ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    parts = []
+    for name in ids:
+        kind = kinds[name]
+        if kind == "missing":
+            continue
+        if kind == "as named":
+            heading = name.capitalize()
+        elif kind == "reworded":
+            heading = reworded(name)
+        else:
+            heading = draw(st.sampled_from((name.capitalize(), reworded(name))))
+        parts.append(f"{mark} {heading}\n\n{draw(nothing if kind == 'empty' else said)}\n")
+    parts += [f"{mark} {other}\n\n{draw(sentence)}\n"
+              for other in draw(st.lists(st.sampled_from(_PLAN_OTHER), max_size=2, unique=True))]
+    written = draw(st.permutations(parts))
+    paper = 'schema: manuscript-guard/paper/1\ntitle: "A study"\n' + (
+        f"study_type: {design}\n" if design else "")
+    stage = draw(st.sampled_from(("design", "analysis", "drafting", "submission")))
+    given = {"paper": paper, "plan": title + "\n".join(written), "stage": stage}
+    return given, [(name, kinds[name]) for name in ids]
+
+
 #: How a fenced `yaml` block opens and closes, each a way pandoc reads one (items 5 and 11).
 _YAML_FENCES = (("```yaml", "```"), ("~~~yaml", "~~~"), ("```` yaml", "````"),
                 ("``` {.yaml}", "```"), ("```YAML", "```"), ("```yml", "```"))  # fmt: skip
@@ -11853,6 +12052,214 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
     return "\n".join(lines) + "\n", expected
 
 
+#: The kinds of paper each draw of `uncited_lists` holds, one of each in an order drawn:
+#: each holds a numbered reference list and no citation in brackets, and its text holds one
+#: thing that may cite, or nothing. A digit raised as superscript as typed text writes one,
+#: in Unicode, as pandoc does, `^3^`, and as HTML does; a number in parentheses, or a list or
+#: a range of them, and with words, "(refs 1-3)", "(1 and 2)"; digits right after a word's
+#: stop; a Markdown link whose text is a number; in Word, a run raised as superscript by its
+#: own properties or by its character style, after a space, where its digits read as a
+#: number alone, and a note's reference mark; a citation field read by its code, and one
+#: known by its name (`UNCITED_FIELDS`); an author of the list cited with a year, in
+#: parentheses, in square brackets and in a sentence, and one the list
+#: gives in capitals; and nothing, in Markdown and in Word, where every entry is never cited
+#: although the list holds a number in parentheses and, in Word, a digit raised, and the
+#: text holds digits run straight on into letters and after a hyphen, authors the list does
+#: not name cited with a year, in parentheses and in a sentence, a word of the list before
+#: a year in no citation's shape, and in Word a digit in a superscript style its run sets on
+#: the baseline (`UNCITED_NOTHING`; round 1 of #790).
+UNCITED_KINDS = (
+    "superscript digit", "carets", "sup", "parenthesised", "parenthesised words",
+    "after a stop", "numbered link", "raised", "raised by style", "note", "field",
+    "field by name",
+    "author in parentheses", "author in brackets", "author in a sentence",
+    "author in capitals", "author with a page", "author, et al.", "author's",
+    "author wrapped", "author in a link", "author with an apostrophe",
+    "nothing in Markdown", "nothing in Word",
+)  # fmt: skip
+#: What of each kind a paper may hold, with what comes before it: a word it runs on from
+#: (""), or a space (" "). An author's `{}` is the name of one of the list's entries.
+UNCITED_SHAPES = {
+    "superscript digit": [("", f) for f in ("\N{SUPERSCRIPT ONE}", "\N{SUPERSCRIPT TWO}",
+                                            "\N{SUPERSCRIPT THREE}", "\N{SUPERSCRIPT FOUR}",
+                                            "\N{SUPERSCRIPT NINE}\N{SUPERSCRIPT ZERO}")],
+    "carets": [("", f) for f in ("^3^", "^1,2^", "^4-6^")],
+    "sup": [("", f) for f in ("<sup>3</sup>", "<sup>1,2</sup>", '<SUP class="c">4-6</SUP>')],
+    "parenthesised": [(" ", f) for f in ("(3)", "(3, 5)", "(3-5)", "(3\N{EN DASH}5)",
+                                         "(2,4-6)", "( 7 )")],
+    "after a stop": [("", f) for f in (".12", ",3-5", ";4", ":2", ")5", ");4")],
+    "raised": [(" ", f) for f in ("3", "1,2", "4-6")],
+    "raised by style": [(" ", f) for f in ("3", "1,2", "4-6")],
+    "author in parentheses": [(" ", f) for f in ("({}, 2019)", "({} et al., 2019a)",
+                                                 "(Adams and {} 2020; Baker, 2018)",
+                                                 "(see {}, 2019, p. 4)")],
+    "author in a sentence": [(" ", f) for f in ("that {} (2019) found", "that {} et al. (2020a)",
+                                                "that Adams and {} (2021, p. 4)")],
+    "parenthesised words": [(" ", f) for f in ("(ref. 3)", "(refs 1-3)", "(refs. 1, 2)",
+                                               "(1 and 2)", "(1, 2 and 5)", "(Ref. 4)")],
+    "numbered link": [(" ", f) for f in ("[1](#B1)", "[[1](#B1)]", "[[2](#B2), [3](#B3)]",
+                                         "[1-3](https://example.org/a)", "[4, 5](#B4)")],
+    "author in brackets": [(" ", f) for f in ("[{}, 2019]", "[{} et al., 2019a]",
+                                              "[Adams, 2020; {}, 2018]",
+                                              "[see {} and Adams 2021, p. 4]")],
+}  # fmt: skip
+#: An author the list gives in capitals is cited as any author is (`UNCITED_SHAPES`).
+UNCITED_SHAPES["author in capitals"] = [
+    *UNCITED_SHAPES["author in parentheses"], *UNCITED_SHAPES["author in brackets"],
+    *UNCITED_SHAPES["author in a sentence"],
+]
+#: And as review round 2 of #790 found them unread: a page after the year, a comma before
+#: "et al.", a possessive, a group Markdown wraps over two lines, and a link whose text is
+#: the citation, as a conversion from PMC writes one.
+UNCITED_SHAPES |= {
+    "author with a page": [(" ", f) for f in ("({} 2019: 45)", "({}, 2019 p. 4)",
+                                              "({} et al., 2020 pp. 4-5)")],
+    "author, et al.": [(" ", f) for f in ("({}, et al., 2019)", "[{}, et al. 2020]",
+                                          "that {}, et al. (2021) found")],
+    "author's": [(" ", f) for f in ("as {} et al.'s (2019) work", "as {}'s (2020) work",
+                                    "as {} et al.\N{RIGHT SINGLE QUOTATION MARK}s (2021) work")],
+    "author wrapped": [(" ", f) for f in ("({} et al.,\n2019)", "({},\n2020; Adams, 2018)",
+                                          "[{} and Adams\n2021]")],
+    "author in a link": [(" ", f) for f in ("([{} et al., 2019](#B12); [Adams, 2020](#B2))",
+                                            "[{}, 2019](#B3)", "([Adams and {} 2021](#B4))")],
+}
+#: An author the list names with an apostrophe, cited with another: the list's names, and
+#: what each is cited as (`UNCITED_SHAPES`, "author in parentheses").
+UNCITED_APOSTROPHES = {
+    "O\N{RIGHT SINGLE QUOTATION MARK}Brien": "O'Brien",
+    "O'Neill": "O\N{RIGHT SINGLE QUOTATION MARK}Neill",
+    "D\N{MODIFIER LETTER APOSTROPHE}Angelo": "D'Angelo",
+    "N\N{LEFT SINGLE QUOTATION MARK}Dour": "N\N{RIGHT SINGLE QUOTATION MARK}Dour",
+}
+UNCITED_SHAPES["author with an apostrophe"] = UNCITED_SHAPES["author in parentheses"]
+#: What a paper of nothing holds, one of each: digits run straight on into letters, digits
+#: after a hyphen, authors the list does not name, cited with a year in parentheses and in a
+#: sentence, whose year in parentheses is a number of four digits, and a word of the list,
+#: "Study", "A", before a year in no citation's shape (round 1 of #790).
+UNCITED_NOTHING = (
+    ("s12", " with VGG16", " of CD4", " with 3x3"),
+    (" of COVID-19", " of IL-6", " of type-2"),
+    (" (Adams et al., 2019)", " (Clark, 2020; Dunn 2018)", " (WHO, 2021)"),
+    (" that Baker (2020) found", " that Clark and Dunn (2019)"),
+    (" (Study 2019 data)", " (Study = 2019)", " (A study 2019 was)"),
+    # An image whose text is a number, which is no citation (round 2 of #790).
+    (" ![1](fig1.png)", " ![2, 3](img/2.png)"),
+)
+#: The citation fields a Word paper may cite through, by their codes, by kind: those
+#: `citationfields.inserted` reads, Zotero's, EndNote's and Mendeley's, a content control's
+#: tag; and those known by their names alone, Word's own, Citavi's and Papers'
+#: (`citationfields.is_citation_field`). Apart, so that each kind is in every draw.
+UNCITED_FIELDS = {
+    "field": (
+        'ADDIN ZOTERO_ITEM CSL_CITATION {"citationItems":[{"uris":["http://zotero.org/users/'
+        '1/items/ABCD1234"]}]}',
+        "ADDIN EN.CITE <EndNote><Cite><Author>Smith</Author></Cite></EndNote>",
+        "MENDELEY_CITATION_v3_eyJ9",
+    ),
+    "field by name": (
+        "CITATION Smi19 \\l 1033",
+        "ADDIN CITAVI.PLACEHOLDER 0a1b2c",
+        "ADDIN PAPERS2_CITATIONS <citation><uuid>A1</uuid></citation>",
+    ),
+}
+#: A run of a paper's paragraph: plain text, a run raised as superscript by its own
+#: properties ("raised") or by a character style's ("raised by style"), or a citation, by
+#: its code: a field whose code is split over two runs ("field"), a simple field ("simple
+#: field") or a content control's tag ("tag").
+UncitedRun = tuple[str, str]
+
+
+class UncitedPaper(NamedTuple):
+    """One paper of `uncited_lists`: its kind, "md" or "docx", its paragraphs of text, each
+    its runs, the runs its list's first entry ends with, its entries as typed, and what G7
+    reports: every entry's label, never cited, or nothing."""
+
+    kind: str
+    form: str
+    paragraphs: list[list[UncitedRun]]
+    listed: list[UncitedRun]
+    entries: list[str]
+    expected: list[str]
+
+
+@st.composite
+def uncited_lists(draw: st.DrawFn) -> list[UncitedPaper]:
+    """A paper of each kind of `UNCITED_KINDS`, in an order drawn: a numbered reference list
+    of two to five entries, typed "1." or "[1]", each holding a number in parentheses, and
+    paragraphs of words with no number among them, one of which holds the kind's one shape
+    of `UNCITED_SHAPES`, a note's mark or a field of `UNCITED_FIELDS`, after a word drawn;
+    or, for a paper of nothing, one of each of `UNCITED_NOTHING`, each in a paragraph drawn,
+    and in Word a digit its run sets on the baseline in a superscript style. A paper holding
+    a shape is in Markdown or in Word, drawn, as typed text holds it; one raised, a note's
+    mark or a field is in Word, and a group wrapped over two lines in Markdown, where a line
+    break inside a paragraph is one. A list cited by an author it gives in capitals gives
+    every author so, and one cited by an author it names with an apostrophe names each with
+    one, cited with another (`UNCITED_APOSTROPHES`)."""
+    papers = []
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    for kind in draw(st.permutations(UNCITED_KINDS)):
+        count = draw(st.integers(2, 5))
+        bracketed = draw(st.booleans())
+        names = [draw(st.sampled_from(sorted(UNCITED_APOSTROPHES)))
+                 if kind == "author with an apostrophe" else draw(word_names())
+                 for _ in range(count)]  # fmt: skip
+        # The names its text cites the list's authors by.
+        cited = [UNCITED_APOSTROPHES.get(name, name) for name in names]
+        entries = [f"{f'[{n}]' if bracketed else f'{n}.'} "
+                   f"{name.upper() if kind == 'author in capitals' else name} A. A study. "
+                   f"J Ex. 2019;{n}({n + 1}):1-2."
+                   for n, name in enumerate(names, 1)]  # fmt: skip
+        paragraphs: list[list[UncitedRun]] = [
+            [("text", draw(sentence).capitalize() + ".")]
+            for _ in range(draw(st.integers(1, 3)))
+        ]
+        listed: list[UncitedRun] = []
+        if kind.startswith("nothing"):
+            form = "md" if kind == "nothing in Markdown" else "docx"
+            if form == "docx":
+                listed = [("raised", draw(st.sampled_from(("2", "1,2"))))]
+                paragraphs.insert(draw(st.integers(0, len(paragraphs))), [
+                    ("text", draw(sentence).capitalize() + " "),
+                    (draw(st.sampled_from(("on the baseline", "subscript"))), "3"),
+                    ("text", ".")])  # fmt: skip
+            for shapes in UNCITED_NOTHING:
+                at = draw(st.integers(0, len(paragraphs)))
+                shape = draw(st.sampled_from(shapes))
+                paragraphs.insert(at, [("text", f"{draw(sentence).capitalize()}{shape}.")])
+            expected = [f"entry {n}" for n in range(1, count + 1)]
+        else:
+            form = ("docx" if kind in ("raised", "raised by style", "note", *UNCITED_FIELDS)
+                    else "md" if kind == "author wrapped"
+                    else draw(st.sampled_from(("md", "docx"))))  # fmt: skip
+            at = draw(st.integers(0, len(paragraphs) - 1))
+            paragraphs.insert(at, draw(_uncited_runs(kind, cited)))
+            expected = []
+        papers.append(UncitedPaper(kind, form, paragraphs, listed, entries, expected))
+    return papers
+
+
+@st.composite
+def _uncited_runs(draw: st.DrawFn, kind: str, names: list[str]) -> list[UncitedRun]:
+    """The runs of a paragraph of `uncited_lists` that holds what a paper of `kind` may cite
+    by, after words drawn: a field, a note's mark, or a shape of `UNCITED_SHAPES`, an
+    author's a name of `names`."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join))
+    words = words.capitalize()
+    if kind in UNCITED_FIELDS:
+        code = draw(st.sampled_from(UNCITED_FIELDS[kind]))
+        held = ("tag" if code.startswith("MENDELEY")
+                else draw(st.sampled_from(("field", "simple field"))))  # fmt: skip
+        return [("text", words + " "), (held, code), ("text", ".")]
+    if kind == "note":
+        return [("text", words), (draw(st.sampled_from(("footnote", "endnote"))), ""),
+                ("text", ".")]  # fmt: skip
+    before, shape = draw(st.sampled_from(UNCITED_SHAPES[kind]))
+    shape = shape.format(draw(st.sampled_from(names)))
+    if kind in ("raised", "raised by style"):
+        return [("text", words + before), (kind, shape), ("text", ".")]
+    return [("text", f"{words}{before}{shape}.")]
+
+
 #: The thematic breaks a Markdown reference list can end at, as typed: each of the three
 #: characters, spaced, indented and long.
 REFERENCE_BREAKS = ("---", "***", "___", "- - -", "   * * *", "-----", "_ _ _ _")
@@ -11895,6 +12302,66 @@ def broken_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]
         commit = draw(st.integers(1, 99))
         lines += [rule, "", f"- Every number above is rendered from commit {commit}.", ""]
     return "\n".join(lines), spans
+
+
+#: The reference lists of a .docx each draw of `entries_styled_as_headings` holds, one of
+#: each in an order drawn: numbered in brackets, "[2]", with a stop, "2.", and not at all,
+#: each going on over its entries in a heading style; numbered in brackets with an entry in
+#: a heading style out of sequence, "[9]" after "[2]"; and one whose first entry, with an
+#: entry's shape, is in a heading style (round 1 of #782). The last two end there.
+STYLED_LISTS = ("bracketed", "stopped", "unnumbered", "out of sequence", "first styled")
+#: The titles of sections after a reference list.
+_AFTER_A_LIST = ("Appendix", "Supplementary material", "Discussion", "Figure legends")
+
+
+def _styled_entry(kind: str, number: int, name: str) -> str:
+    """An entry of a list of `STYLED_LISTS`: in brackets with a title and an address, as
+    Word papers type them (window C of the real-paper corpus), or with an entry's shape."""
+    if kind in ("bracketed", "out of sequence"):
+        return f"[{number}] A study of {name} - https://example.org/{number}"
+    if kind in ("stopped", "first styled"):
+        return f"{number}. {name} A. A study. J Ex. 2019;{number}:1-2."
+    return f"{name} A. A study. J Ex. 20{10 + number};{number}:1-2."
+
+
+@st.composite
+def entries_styled_as_headings(
+    draw: st.DrawFn,
+) -> tuple[list[tuple[str, bool]], list[list[str]]]:
+    """A .docx's paragraphs, each with whether it is in a heading style, and each reference
+    list's paragraphs as `audit.docx_bibliography_spans` is to read them. A list of each kind
+    of `STYLED_LISTS`, each under a "References" in a heading style or not, and ended by a
+    section's title in a heading style with a sentence under it. In the first three, one to
+    three entries after the first are in a heading style, as Word papers style them by
+    mistake, and the list goes on over them; the title after the stopped list is numbered as
+    its next entry would be, "5. Discussion", as a numbered section's title is, and ends it.
+    The list out of sequence goes on over those too, and ends at an entry in a heading style
+    numbered two to six past the entry above it, the entries after it being text; the list
+    whose first entry is in a heading style ends there, holding nothing. Every kind in every
+    example."""
+    paragraphs: list[tuple[str, bool]] = []
+    expected: list[list[str]] = []
+    for kind in draw(st.permutations(STYLED_LISTS)):
+        count = draw(st.integers(3, 7))
+        styled = {1} if kind == "first styled" else draw(
+            st.sets(st.integers(2, count), min_size=1, max_size=3))
+        paragraphs.append(("References", draw(st.booleans())))
+        held = ["References"]
+        expected.append(held)
+        for number in range(1, count + 1):
+            entry = _styled_entry(kind, number, draw(word_names()))
+            paragraphs.append((entry, number in styled))
+            if kind != "first styled":
+                held.append(entry)
+        if kind == "out of sequence":
+            stray = count + draw(st.integers(2, 6))
+            paragraphs.append((_styled_entry(kind, stray, draw(word_names())), True))
+            paragraphs.append((_styled_entry(kind, stray + 1, draw(word_names())), False))
+        title = draw(st.sampled_from(_AFTER_A_LIST))
+        paragraphs.append((f"{count + 1}. {title}" if kind == "stopped" else title, True))
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6))
+        paragraphs.append((" ".join(words).capitalize() + ".", False))
+    return paragraphs, expected
 
 
 def word_names() -> st.SearchStrategy[str]:
@@ -17276,11 +17743,12 @@ def pdf_heading_papers(
     number of each kind of `PDF_STUDY_NUMBERS` among them, with names of `PDF_STUDY_NAMES`
     under it, one of them under each, and every kind of `PDF_STUDY_PROSE` among their lines;
     the back matter after the last, a reference that opens on the label and one that opens
-    on a study's number and a colon; the count before the label in the first. And five
+    on a study's number and a colon; the count before the label in the first. And six
     papers made from them: with a line that names the Abstract alone after the label, which
     is then text; with a study's line in the Abstract, which is no heading; with a name twice
     under one study, where no study's line is a heading and nothing is placed; with no
-    heading over the Introduction, where the Abstract ends at the first study's line; and
+    heading over the Introduction, where the Abstract ends at its run-in "Keywords:", then a
+    heading, and with no keywords either, where it ends at the first study's line; and
     with its studies under a structured Abstract, whose parts that line ends. Each
     with its headings `(line, title)`, the run-in label's line, and the levels
     `PdfText.placed` gives them."""
@@ -17357,13 +17825,25 @@ def pdf_heading_papers(
              if title.split()[0] not in {study.split()[0] for study in PDF_STUDIES}]
     out.append((twice[0], names, run_in, None))
     # The third paper with no heading over its Introduction, as APA's papers have none: the
-    # Abstract ends at the first study's line (round 2 of #686).
+    # Abstract ends at its run-in "Keywords:", which words now follow, a heading of its own,
+    # as a Word paper's does (window C of the real-paper corpus, row 8); before that rule it
+    # ended at the first study's line (round 2 of #686).
     lines, headings, run_in, levels = out[2]
     gone = next(at for at, (_line, title) in enumerate(headings) if title == "Introduction")
     line = headings[gone][0]
+    keywords = lines.index("Keywords: falls; records") + 1
+    kept = [(at - (at > line), title) for at, title in headings if at != line]
     out.append(([*lines[: line - 1], *lines[line:]],
-                [(at - (at > line), title) for at, title in headings if at != line],
-                {at - (at > line) for at in run_in}, (*levels[:gone], *levels[gone + 1 :])))
+                sorted([*kept, (keywords, "Keywords")]),
+                {at - (at > line) for at in run_in} | {keywords},
+                (*levels[:gone], 1, *levels[gone + 1 :])))
+    # And with no keywords either: the Abstract ends at the first study's line.
+    cut = sorted({line, keywords})
+    out.append(([one for at, one in enumerate(lines, 1) if at not in cut],
+                [(at - sum(at > one for one in cut), title) for at, title in headings
+                 if at != line],
+                {at - sum(at > one for one in cut) for at in run_in},
+                (*levels[:gone], *levels[gone + 1 :])))
     # The fourth paper's studies under a structured Abstract with no Introduction after it:
     # its first study's line ends the Abstract's parts (round 3 of #686).
     lines, headings, _run_in, levels = out[3]
@@ -17835,6 +18315,24 @@ def keywords_papers(draw: st.DrawFn) -> list[tuple[str, list[tuple[int, str]]]]:
                        if how == "cell" else _w_para(text, how == "bold")
                        for how, text in paragraphs)  # fmt: skip
         out.append((body, headings))
+    return out
+
+
+#: The kinds of `KEYWORDS_PAPERS` a PDF's text can hold: a PDF has no table's cell, so a
+#: label in one is a line like any other and ends the Abstract (DESIGN.md, Known gaps).
+PDF_KEYWORDS_KINDS = tuple(kind for kind in KEYWORDS_PAPERS if kind != "in a cell")
+
+
+@st.composite
+def pdf_keywords_papers(draw: st.DrawFn) -> list[tuple[list[str], list[tuple[int, str]]]]:
+    """A PDF's lines for every kind of `PDF_KEYWORDS_KINDS`, in an order drawn, each
+    paragraph of the Word paper a line, bold or not; and the headings the audit places the
+    Word paper by, which it places the PDF by too: a run-in "Keywords:" ends a PDF's
+    Abstract by the Word paper's rule (window C of the real-paper corpus, row 8)."""
+    out = []
+    for kind in draw(st.permutations(list(PDF_KEYWORDS_KINDS))):
+        paragraphs, headings = _keywords_drawn(draw, kind)
+        out.append(([text for _how, text in paragraphs], headings))
     return out
 
 
@@ -19252,7 +19750,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "pdf headings": st.one_of(
         pdf_heading_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
-        placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn]))),
+        placed_papers().flatmap(lambda drawn: st.sampled_from([one[0] for one in drawn])),
+        pdf_keywords_papers().flatmap(
+            lambda drawn: st.sampled_from([lines for lines, _headings in drawn]))),
     "word abstract": st.one_of(
         st.one_of(word_abstract_papers(), keywords_papers()).flatmap(
             lambda drawn: st.sampled_from([body for body, _titles in drawn])),
@@ -19360,6 +19860,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
     "plan declarations": declared_plans().map(lambda drawn: drawn["plan"]),
+    "plan sections asked": sectioned_plans().map(lambda drawn: drawn[0]),
     "registration named": st.fixed_dictionaries(
         {
             "text": texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
@@ -19528,6 +20029,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "weak sources": weak_source_papers().map(lambda drawn: drawn[1]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": commented_numbered_citations().map(lambda drawn: drawn[0]),
+    "word reference lists": entries_styled_as_headings().map(lambda drawn: drawn[0]),
     "reference sorting": unidentified_entries().map(lambda drawn: [one[0] for one in drawn]),
     "audit references not sorted": unsorted_references().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(
@@ -19575,6 +20077,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations of a PDF's text": st.one_of(
         pdf_displays().map(lambda drawn: drawn["text"]),
+        line_broken().map(lambda drawn: drawn[0]),
         texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS, *UNDUE_BLOCKS)),
     ),
     "tex outside maths": lines(),

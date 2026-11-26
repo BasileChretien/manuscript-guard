@@ -121,8 +121,8 @@ section in full and every finding with its place, its context and its hint, as o
 | Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
 | Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
-`--journal`, `--authors`, `--design` and `--cited` are for an editor or a referee, reading a
-paper someone else wrote: [For editors and reviewers](refereeing.md).
+`--journal`, `--authors`, `--design`, `--cited` and `--editor` are for an editor or a
+referee, reading a paper someone else wrote: [For editors and reviewers](refereeing.md).
 
 **Questions for the author.** Where no exact rule can decide, the audit asks. A question
 says what the audit saw, asks one question and names the answer that ends it. It is a
@@ -256,7 +256,8 @@ any is asked, and neither is a number that does not fit:
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests
 on reading a sentence or rounding (the author, 2026-10-28). `--json` prints the report in the shape `check --json` gives,
 each finding with its section and whether `--strict` counts it; `ok` is what `--strict`
-would say.
+would say. The report and `--json` name a file with forward slashes on every system,
+`journals/examples.yaml` on Windows too, as the [audit page](audit-page.md) does.
 
 **Keys.** Each finding `check --json`, `audit --json` and `compare --json` print has a
 `key`, `gate|code|subject|digest`, by which the findings of two runs can be paired. The
@@ -352,9 +353,10 @@ not read at all, in the audit or in `check`, which still gives one warning for e
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
 `check` does at the submission stage. Neither gate is counted by `--strict`.
 Two of their findings are notes in an audit, and in `compare`, where `check` warns on them
-or fails them: the names from the code, and a bare placeholder ("xxxx", "[url]", "TBD").
-On real papers each was right less than half the time; a journal template's instruction
-left in the text, "Click or tap here to enter text." among them, still fails
+or fails them: the names from the code, and text a model or a template left behind ("xxxx",
+"[url]", "TBD", "TODO", a journal template's instruction to its authors, Word's "Click or tap
+here to enter text." in a field left empty). On real papers each was right less than half
+the time, the second 1 time in 30
 ([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
 right"). A short form used before its definition is a note too where the audit read the text
 from a PDF, a LaTeX or Word paper's own PDF among them: a PDF's paragraphs are gone, so a
@@ -609,8 +611,11 @@ text's, a "Results" among them the paper's own and not the Abstract's part, and 
 stand after it before the next heading it is read as a heading "Keywords" at the
 Abstract's level, under which nothing is searched, an Introduction with no heading of its
 own. One between the Abstract's title and its first part titled on a line of its own ends
-nothing, and nor does one after the parts, nor "Keywords" in a sentence; a PDF's keywords
-end nothing yet. A heading over the Abstract or the Introduction, the
+nothing, and nor does one after the parts, nor "Keywords" in a sentence. A PDF's run-in
+"Keywords:" ends its Abstract by the same rule: only the label followed by a colon and words
+on its line. "Keywords" alone on its line, "Keywords:" with nothing after it, a letter-spaced
+"K E Y W O R D S", Springer's "Keywords Pharmacovigilance · Disproportionality"
+with no colon and IEEE's "Index Terms—falls, records" end nothing. A heading over the Abstract or the Introduction, the
 paper's title, names no section; one over a Methods subsection does, and the words under
 it before that subsection are searched. A number reported to more places counts as matched as a
 rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart. An

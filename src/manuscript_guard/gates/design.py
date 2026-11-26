@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.dictionary import load_dictionary
@@ -42,23 +44,6 @@ from manuscript_guard.text.sections import Section, split_sections, subsections
 
 GATE = "G12"
 PLAN = Path("design") / "plan.md"
-
-# Each entry: heading pattern, and what it is for. Wording is matched loosely because an
-# author's headings are their own.
-REQUIRED = (
-    ("question", r"(?i)\b(research )?question|objective", "what is being asked"),
-    ("design", r"(?i)\bdesign\b", "the study design and why it suits the question"),
-    ("population", r"(?i)\bpopulation|participants|data source\b", "who or what is included"),
-    ("exposure", r"(?i)\bexposure|intervention|predictor\b", "what is being compared"),
-    ("outcome", r"(?i)\boutcome|endpoint\b", "what is being measured"),
-    ("analysis", r"(?i)\banalysis|statistical\b", "the estimator and the model"),
-    # Not "Standard deviation of the dose", which is a statistic, not a change to the plan.
-    (
-        "deviations",
-        r"(?i)(?<!standard\s)\bdeviation|changes? (from|to) the plan|amendments?\b",
-        "what changed after the plan was agreed, or that nothing did",
-    ),
-)
 
 #: What every key a feasibility script emits opens with: `feasibility.n_reports`.
 FEASIBILITY = "feasibility."
@@ -96,29 +81,62 @@ _EMPTY = re.compile(r"^\s*(?:tbd|todo|n/?a|-+|\.+|see below)?\s*$", re.IGNORECAS
 
 DESIGNS = Path(__file__).parent.parent / "data" / "study_types.yaml"
 #: The `study_type` of a study none of the table's designs is: a narrative review, a
-#: cross-sectional survey, a case series or report, a qualitative study. It settles the
+#: descriptive case series or a case report, a qualitative study. It settles the
 #: choice of design and asks for nothing of its own: the plan is asked for the seven
 #: sections, and G5 for no guideline, as of a paper that names no design.
 OTHER = "other"
 
 
-def study_types() -> dict:
-    """Each study design, the plan sections it needs beyond the seven, and its guidelines."""
+@lru_cache(maxsize=1)
+def _table() -> dict:
+    """`data/study_types.yaml`, read once in a process: it was read again at each call, two
+    to a `check` from `required_for` alone. Its readers only read it."""
     import yaml
 
-    return yaml.safe_load(DESIGNS.read_text(encoding="utf-8"))["types"]
+    return yaml.safe_load(DESIGNS.read_text(encoding="utf-8"))
+
+
+def study_types() -> dict:
+    """Each study design, the plan sections it needs beyond the seven, and its guidelines."""
+    return _table()["types"]
+
+
+def every_plan() -> tuple[tuple[str, str, str], ...]:
+    """The seven sections every plan has, each as its id, the pattern its heading is matched
+    by (loosely, since an author's headings are their own), and what it has to say: the
+    table's `every_plan`."""
+    return tuple((s["id"], s["heading"], s["says"]) for s in _table()["every_plan"])
+
+
+def _required() -> tuple[tuple[str, str, str], ...]:
+    """`REQUIRED`, the seven sections every plan has, taken from the table the first time it
+    is asked for. It stays a name of this module, which the functions here read when they
+    run, so that a test can put another in its place (`tests/test_properties.py`); and the
+    table is not read while the module loads, since every command that imports the gates
+    would then parse it."""
+    found = globals().get("REQUIRED")
+    if found is None:
+        found = globals()["REQUIRED"] = every_plan()
+    return found
+
+
+def __getattr__(name: str) -> Any:
+    """`REQUIRED` (see `_required`), read when it is first named."""
+    if name == "REQUIRED":
+        return _required()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def required_for(study_type: str | None) -> tuple[tuple[str, str, str], ...]:
     """The sections a plan for this design is asked for: the seven, and the design's own,
     each with where it comes from in its hint."""
     if study_type is None or study_type not in study_types():
-        return REQUIRED
+        return _required()
     own = tuple(
         (section["id"], section["heading"], f"{section['says']} ({section['source']})")
         for section in study_types()[study_type]["sections"]
     )
-    return REQUIRED + own
+    return _required() + own
 
 
 def plan_path(project: Project) -> Path:
@@ -194,7 +212,7 @@ def deviations_said(text: str) -> str:
     Deviations heading it would name there every key it declares (round 1 of #590)."""
     from manuscript_guard.gates.declarations import without_declarations
 
-    pattern = dict((name, rule) for name, rule, _purpose in REQUIRED)["deviations"]
+    pattern = dict((name, rule) for name, rule, _purpose in _required())["deviations"]
     sections = _plan_sections(without_declarations(text))
     said = [
         part.body
@@ -219,7 +237,7 @@ def planned_results(text: str) -> list[Planned] | None:
     spans = code_spans(masked)
     items = list_items(text)
     lines = text.count("\n") + 2
-    deviations = dict((name, rule) for name, rule, _purpose in REQUIRED)["deviations"]
+    deviations = dict((name, rule) for name, rule, _purpose in _required())["deviations"]
     planned: list[Planned] | None = None
     for index, section in enumerate(sections):
         # "Changes to the planned results" heads the Deviations, not the list (round 1 of

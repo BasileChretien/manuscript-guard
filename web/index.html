@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- What this page may do, enforced by the browser. It may load code and data only from
-     where it is served ('self'), and send a request only there and to the five registries
+     where it is served ('self'), and send a request only there and to the seven registries
      named, which it does only when the reader ticks the box. It may show no frame but a
      blob: address, which it uses only for the PDF of the report it made itself; it may not
      start a worker from a file, send a form, or load a frame, an image or a style from
      elsewhere. Checked by
      web/test/ in Chrome and Firefox; docs/audit-page.md says what it cannot stop. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; frame-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; frame-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov https://clinicaltrials.gov https://www.isrctn.com; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Check your paper · manuscript-guard</title>
 <meta name="description" content="A friendly check-up for a scientific paper, run in your browser: numbers, abbreviations, spelling and references. Your paper is never uploaded.">
 <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)">
@@ -128,10 +128,11 @@
               placeholder="Electron temperature relations" disabled></label>
           <label class="tick"><input id="lookup" type="checkbox" disabled>
             <span><span class="field">Check the reference list for retracted and unregistered
-              works</span>
+              works, and the trial's registration</span>
               <span class="help">This sends the DOIs and PubMed IDs the paper cites to Crossref,
-                OpenAlex, DataCite, doi.org and PubMed, and, for a reference with neither, its
-                title, first author and year to Crossref. No sentence of the paper is
+                OpenAlex, DataCite, doi.org and PubMed; for a reference with neither, its title,
+                first author and year to Crossref; and each trial registration number the paper
+                gives to ClinicalTrials.gov or ISRCTN. No sentence of the paper is
                 sent.</span></span></label>
         </div>
       </details>
@@ -323,7 +324,7 @@
         <li>Once the page says <em>Ready</em>, turn off your network, then choose your paper:
           the check still runs.</li>
         <li>The page's own rules let it send requests only to the address it came from, and to
-          the five reference registries when you tick that box. Your browser enforces them.
+          the seven registries the box names when you tick it. Your browser enforces them.
           <button id="probe" type="button" class="quiet small">Test the rules</button></li>
         <li>Every file the page loads is listed with its SHA-256 in
           <a href="files.sha256">files.sha256</a>, and its source is
@@ -341,6 +342,8 @@
           units are written, and phrasing to look at.</li>
         <li>The reference list: each entry read, and with the box ticked, each DOI and PubMed
           ID looked up for a retraction.</li>
+        <li>With the box ticked, each trial registration number the paper gives: what its
+          registry holds, and whether the trial was registered after it started.</li>
         <li>With a journal's rules typed in "For a journal": its limits, the sections and
           statements it requires, what a .docx holds besides its text, and in a blind review
           each place an author is named.</li>

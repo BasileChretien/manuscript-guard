@@ -2961,6 +2961,11 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.lookup:
         report.lookups, report.titles = look_up_all(report.references, dry_run=args.dry_run,
                                                     cache=args.lookup_cache)  # fmt: skip
+        if report.registered:
+            from manuscript_guard.auditing.registration import look_up as registration
+
+            report.registration = registration(report.registered, dry_run=args.dry_run,
+                                               cache=args.lookup_cache)  # fmt: skip
     if reader is not None:
         _read_as_reader(report, reader, args.paper[0], papers, english)
         if reader.authors is not None or args.lookup:
@@ -7087,8 +7092,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="ask Crossref and OpenAlex about each DOI of the reference list, DataCite and "
         "then doi.org about one Crossref has no record of, and PubMed about each PMID, "
         "whether the work was retracted, withdrawn or put under concern, or is not "
-        "registered, and with --cited Europe PMC about each cited work's abstract; nothing "
-        "is sent without it",
+        "registered, Crossref about the title of an entry with neither, ClinicalTrials.gov "
+        "or ISRCTN about each trial registration number the paper names, and with --cited "
+        "Europe PMC about each cited work's abstract; nothing is sent without it",
     )
     audit.add_argument(
         "--dry-run",

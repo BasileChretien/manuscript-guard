@@ -30810,6 +30810,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
   - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
+- **The audit asks about every registration number the text names, whoever's it is.** Under
+  `--lookup`, a trial the Introduction or the Discussion cites by its NCT or ISRCTN number is
+  looked up and shown, and a late registration of it said, as though it were the paper's own;
+  only a number in the reference list is passed over. Each finding gives the place the number
+  stands, which tells the reader whose it is. On 100 openly licensed papers (2026-11-26), 8
+  named a number, each only one, and none another trial's. Accepted.
+  - EU PAS and PROSPERO are not asked: their note gives the page to read the record on, as a
+    project's `lookup --registrations` reads PROSPERO by hand. Accepted.
+  - Only the registry's dates are judged, never the paper's: a paper whose primary outcome
+    is not the one registered is shown beside the record and said nowhere, and a start the
+    registry gives as expected, not actual, never makes a registration late. Pinned by
+    `tests/test_audit_registration.py::test_a_registration_not_shown_late_by_the_registry_s_own_dates_is_not_flagged`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

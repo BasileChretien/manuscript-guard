@@ -20,11 +20,13 @@ the version before it, says the same every time it runs, and the hook asks about
 What leaves the machine: nothing, unless you ask. `--lookup` asks Crossref, OpenAlex,
 DataCite, doi.org and PubMed about each DOI and PMID of the reference list, asks Crossref
 for each article, book or chapter that gives neither by the words of its title, its first
-author's family name and its year, and with `--cited` asks Europe PMC for each cited work's
-abstract by its PMID or DOI. It sends nothing else: no sentence of the paper, and nothing of
-it outside the reference list. `--lookup --dry-run` lists what it would send. Together, what
-it sends about the reference list points to the paper that cites it, and a contact address
-you set in the environment for the registries names you to them.
+author's family name and its year, asks ClinicalTrials.gov or ISRCTN for each trial
+registration number the paper names outside its reference list, and with `--cited` asks
+Europe PMC for each cited work's abstract by its PMID or DOI. It sends nothing else: no
+sentence of the paper, and nothing of it outside the reference list but those registration
+numbers. `--lookup --dry-run` lists what it would send. Together, what it sends points to
+the paper, the trial's own number most of all, and a contact address you set in the
+environment for the registries names you to them.
 
 ## A referee
 

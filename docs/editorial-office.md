@@ -11,13 +11,15 @@ editor then does with it is in [For editors and reviewers](refereeing.md).
   report every time, and no part of the check asks a model anything.
 - **The manuscript stays on the editor's computer.** There is no account, no server and no
   upload. The check runs in the editor's browser or in a terminal on the editor's computer.
-- **Only the reference list can be looked up, and only when the editor asks.** Ticking
-  *Check the reference list for retracted and unregistered works* on the page, or adding
-  `--lookup` on the command line, asks the public registries (Crossref, OpenAlex, DataCite,
-  doi.org and PubMed) whether each cited work exists and whether it was retracted. They are
-  sent each DOI and PubMed ID the list gives, and, for an article, book or chapter that gives
-  neither, the words of its title, its first author's family name and its year, which go to
-  Crossref. No sentence of the paper is sent, and nothing of it outside the reference list.
+- **Only the reference list and the trial's registration can be looked up, and only when
+  the editor asks.** Ticking *Check the reference list for retracted and unregistered works,
+  and the trial's registration* on the page, or adding `--lookup` on the command line, asks
+  the public registries (Crossref, OpenAlex, DataCite, doi.org and PubMed) whether each cited
+  work exists and whether it was retracted. They are sent each DOI and PubMed ID the list
+  gives, and, for an article, book or chapter that gives neither, the words of its title, its
+  first author's family name and its year, which go to Crossref. Each trial registration
+  number the paper names is sent to its registry, ClinicalTrials.gov or ISRCTN, to show what
+  the trial registered. No sentence of the paper is sent.
 - **Free and open source.** manuscript-guard is under the MIT licence. Nothing in it is
   paid, and it needs no subscription or key.
 
@@ -39,11 +41,11 @@ paper to the journal's rules (`--journal`), sorts what it found in an editor's f
 On the audit page, three ways, from the simplest:
 
 1. **Turn the network off.** Once the page says *Ready*, unplug the cable or turn off Wi-Fi,
-   then choose the paper: the check runs all the same. Only the reference lookups need the
+   then choose the paper: the check runs all the same. Only the lookups need the
    network, and they say they could not reach the registries.
 2. **Press *Test the rules*,** under *Is my paper uploaded?* at the foot of the page. The
    page's own rules, which the browser enforces, allow requests only to the page's address
-   and to the five registries. The button tries eight requests those rules forbid and shows
+   and to the seven registries. The button tries eight requests those rules forbid and shows
    each one refused.
 3. **Read the list.** *What did this page load and send?* lists every request the browser
    recorded, and `files.sha256` lists every file the page loads with its SHA-256. The source
@@ -75,9 +77,9 @@ bear on it:
 
 - The report quotes the manuscript, so it is as confidential as the paper: an editor should
   not paste it into a chatbot.
-- Together, what the lookups send about a reference list points to the paper that cites
-  it. An office that wants nothing at all to leave can ask its editors to leave the lookups
-  off.
+- Together, what the lookups send points to the paper, and the trial's registration
+  number most of all. An office that wants nothing at all to leave can ask its editors to
+  leave the lookups off.
 
 An office that allows it might say so in one sentence, for example: *Editors and reviewers
 may check a manuscript with manuscript-guard's audit on their own computer, with the

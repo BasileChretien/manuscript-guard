@@ -26175,9 +26175,52 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+from generated import registration_papers  # noqa: E402
+
+
+@holds(40, registration_papers())
+def test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other(
+    drawn: tuple[str, set[str]],
+) -> None:
+    """`audit --lookup` asks a registry about each registration number the paper's text
+    names: not one in a comment, and not one its reference list cites, which is another
+    study's (`auditing.registration`, Basile, 2026-11-26)."""
+    text, named = drawn
+    read = READINGS["audit registration numbers"]()
+    assert {number for number, _line in read(text)} == named, text
+
+
+def _registration_numbers_read_in_the_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+    from manuscript_guard.auditing import registration
+
+    found = registration.named_in
+
+    def whole(path: Path, hidden: str, text: str) -> list:
+        raw = Path(path).read_bytes().decode("utf-8").replace("\r\n", "\n")
+        return found(path, audit._masked(raw, printed_as_typed=False), raw)
+
+    patch.setattr(registration, "named_in", whole)
+
+
+def _a_registration_number_in_a_comment_is_taken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import registration
+
+    found = registration.named_in
+    patch.setattr(registration, "named_in", lambda path, hidden, text: found(path, text, text))
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "registration numbers are read in the reference list too": (
+        _registration_numbers_read_in_the_reference_list,
+        test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
+    ),
+    "a registration number in a comment is taken": (
+        _a_registration_number_in_a_comment_is_taken,
+        test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
+    ),
     "a run-in Keywords: in a PDF's Abstract is no heading": (
         _a_pdf_s_keywords_make_no_heading,
         test_a_run_in_keywords_ends_a_pdf_s_abstract_as_a_word_paper_s,

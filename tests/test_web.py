@@ -412,9 +412,12 @@ def test_the_pages_policy_names_the_hosts_lookup_asks_and_no_others() -> None:
     from dataclasses import fields
     from urllib.parse import urlsplit
 
+    from manuscript_guard.auditing import registration
     from manuscript_guard.lookup.run import Services
 
     asked = {f"https://{urlsplit(getattr(Services(), f.name)).hostname}" for f in fields(Services)}
+    # And the registries of the paper's own registration numbers (`auditing.registration`).
+    asked |= {f"https://{urlsplit(base).hostname}" for base in registration.asked_at()}
     page, policy = _policy()
     assert set(policy["connect-src"]) == {"'self'", *asked}
     assert policy["default-src"] == ["'none'"]

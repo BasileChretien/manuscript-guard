@@ -101,6 +101,9 @@ RAISED_FOOT = 0.15
 MARGIN = 2.0
 GUTTER = 30.0
 MARGIN_RUN = 3
+#: The fewest words a line of the text has, numbers at its ends aside, for its words to
+#: set the text's edges.
+WORDY = 3
 
 #: A display's label at the start of a legend's first line.
 LABEL = re.compile(
@@ -340,25 +343,23 @@ def _margin(page: Page) -> set[int]:
     column's own numbers, in the gutter, where `MARGIN_RUN` of those at least stand so on
     the page); and a number before a line's first word outside the text's left edge, which
     is taken off it."""
-    texty = [block for block in page.blocks if len(block.lines) >= 3
-             and not all(LONE_NUMBER.match(line.text) for line in block.lines)]  # fmt: skip
-    if not texty:
+    lines = [line for block in page.blocks for line in block.lines]
+    body = [line for line in lines if len(_words(line)) >= WORDY]
+    if not body:
         return set()
-    left = min(block.x0 for block in texty)
-    right = max(block.x1 for block in texty)
-    body = [line for block in texty for line in block.lines]
+    # The text's edges, read from its lines' words and not from poppler's blocks: a
+    # double-spaced manuscript sets each line in a block of its own, a margin's number
+    # sometimes in the same block and the same line as its line's words.
+    left = min(_words(line)[0].x0 for line in body)
+    right = max(_words(line)[-1].x1 for line in body)
     found: list[tuple[Line, Line | None, bool]] = []
-    for block in page.blocks:
-        if any(block is one for one in texty):
-            continue
-        outside = block.x1 <= left + MARGIN or block.x0 >= right - MARGIN
-        if outside and not all(LONE_NUMBER.match(line.text) for line in block.lines):
-            continue
-        for line in block.lines:
-            if LONE_NUMBER.match(line.text):
-                numbers = _beside(line, body, outside)
-                if outside or numbers is not None:
-                    found.append((line, numbers, outside))
+    worded = [line for line in lines if _words(line)]
+    for line in lines:
+        if LONE_NUMBER.match(line.text):
+            outside = line.x1 <= left + MARGIN or line.x0 >= right - MARGIN
+            numbers = _beside(line, worded, outside)
+            if outside or numbers is not None:
+                found.append((line, numbers, outside))
     gone: set[int] = set()
     inside = sum(not outside for _number, _line, outside in found)
     for number, line, outside in found:
@@ -367,11 +368,24 @@ def _margin(page: Page) -> set[int]:
             if line is not None:
                 line.number = int(number.text.strip("()"))
     for line in body:
-        first = line.words[0]
-        if len(line.words) > 1 and LONE_NUMBER.match(first.text) and first.x1 < left - 1:
+        first, last = line.words[0], line.words[-1]
+        if LONE_NUMBER.match(first.text) and first.x1 < left - 1:
             line.number = int(first.text.strip("()"))
             line.words = line.words[1:]
+        elif LONE_NUMBER.match(last.text) and last.x0 > right + 1:
+            line.number = int(last.text.strip("()"))
+            line.words = line.words[:-1]
     return gone
+
+
+def _words(line: Line) -> list[Word]:
+    """A line's words less a number alone at either end, which a margin may number it by."""
+    words = line.words
+    while words and LONE_NUMBER.match(words[0].text):
+        words = words[1:]
+    while words and LONE_NUMBER.match(words[-1].text):
+        words = words[:-1]
+    return words
 
 
 def _beside(number: Line, body: list[Line], outside: bool) -> Line | None:
@@ -505,8 +519,15 @@ def _body_height(pages: list[Page]) -> float:
 
 
 def _usual_width(pages: list[Page]) -> float:
+    """The width the text's blocks are set to most often, of the blocks of four lines or
+    more; where there are none, as a double-spaced manuscript sets each line in a block of
+    its own, of its lines of `WORDY` words or more."""
     widths = collections.Counter(round(block.x1 - block.x0, -1) for page in pages
                                  for block in page.blocks if len(block.lines) >= 4)  # fmt: skip
+    if not widths:
+        widths = collections.Counter(round(line.x1 - line.x0, -1) for page in pages
+                                     for block in page.blocks for line in block.lines
+                                     if len(line.words) >= WORDY)  # fmt: skip
     return widths.most_common(1)[0][0] if widths else 250.0
 
 
@@ -534,14 +555,37 @@ def _figure_legend(block: Block) -> bool:
     return bool(LABEL.match(first) and FIGURE.match(first))
 
 
-def _ends(block: Block) -> list[bool]:
+def _ends(block: Block, edge: float | None = None) -> list[bool]:
     """For each line of a block, whether a paragraph ends after it: a line that ends short of
-    the block's right edge on a stop, or the block's last line."""
-    width = block.x1 - block.x0
+    the block's right edge on a stop, or the block's last line. A block of one line, as a
+    double-spaced manuscript sets each, is held to `edge`, the right edge of the lines set
+    beside it on the page (`_edge`), and ends its paragraph only where it ends short of it on
+    a stop."""
+    if len(block.lines) == 1 and edge is not None:
+        return [_short(block.lines[0], block.x0, edge)]
     last = len(block.lines) - 1
-    return [at == last or (line.x1 < block.x1 - max(SHORT_SHARE * width, SHORT_END)
-                           and bool(STOP.search(line.text.strip())))
+    return [at == last or _short(line, block.x0, block.x1)
             for at, line in enumerate(block.lines)]  # fmt: skip
+
+
+def _short(line: Line, left: float, right: float) -> bool:
+    """Whether `line` ends short of `right` on a stop, the measure running from `left`."""
+    return (line.x1 < right - max(SHORT_SHARE * (right - left), SHORT_END)
+            and bool(STOP.search(line.text.strip())))  # fmt: skip
+
+
+def _edge(block: Block, blocks: list[Block]) -> float | None:
+    """For a block of one line, the right edge of the lines of the page set at its height
+    and beside it, over the same measure (more than half of either's width shared); None
+    for a block of several lines, whose own edge is its right one."""
+    if len(block.lines) != 1:
+        return None
+    line = block.lines[0]
+    edges = [other.x1 for one in blocks for other in one.lines
+             if abs(other.height - line.height) < SAME_HEIGHT
+             and min(other.x1, line.x1) - max(other.x0, line.x0)
+             > 0.5 * min(other.x1 - other.x0, line.x1 - line.x0)]  # fmt: skip
+    return max([block.x1, *edges])
 
 
 @dataclass
@@ -602,11 +646,11 @@ class _Flow:
                  and self.display_height < self.height - SMALLER)  # fmt: skip
         return kind in ("fragment", "small") or sized
 
-    def body(self, page: int, block: Block, kind: str) -> None:
+    def body(self, page: int, block: Block, kind: str, edge: float | None = None) -> None:
         """A block of the text: its lines, a paragraph ending after each line `_ends` says
         does; on the paragraph left open by the block before, where it goes on with it
         (`goes_on`); and the displays met while that paragraph was open, after the first
-        paragraph that ends."""
+        paragraph that ends. `edge` is a block of one line's measure (`_edge`)."""
         self.flush_held()
         self.display = None
         joined = self.open is not None and kind == "body" and goes_on(block)
@@ -618,8 +662,9 @@ class _Flow:
             self.paragraph += 1
             current = self.paragraph
         last = current
-        ended = STOP.search(block.lines[-1].text.strip())
-        for at, (line, end) in enumerate(zip(block.lines, _ends(block), strict=True)):
+        ends = _ends(block, edge)
+        ended = ends[-1] if edge is not None else STOP.search(block.lines[-1].text.strip())
+        for at, (line, end) in enumerate(zip(block.lines, ends, strict=True)):
             self.rows.append((line, page, current, None))
             last = current
             if end:
@@ -634,7 +679,8 @@ class _Flow:
             self.rows += self.pending
             self.pending = []
 
-    def read(self, page: int, block: Block, figure_next: bool = False) -> None:
+    def read(self, page: int, block: Block, figure_next: bool = False,
+             edge: float | None = None) -> None:
         """`block` read where it stands: a legend opens a display; a block of the display
         being read goes to it; a narrow short one is held, for the legend of a figure it may
         stand above (`figure_next`: the next block that is not one is a figure's legend);
@@ -651,7 +697,7 @@ class _Flow:
         elif kind == "fragment":
             self.held += [(page, line) for line in block.lines]
         else:
-            self.body(page, block, kind)
+            self.body(page, block, kind, edge)
 
 
 def rebuilt(text: str) -> Layout:
@@ -686,7 +732,8 @@ def rebuilt(text: str) -> Layout:
                 line.line = counted
             after = next((one for one, kind in zip(read[at + 1:], kinds[at + 1:], strict=True)
                           if kind != "fragment"), None)  # fmt: skip
-            flow.read(page.number, block, after is not None and _figure_legend(after))
+            flow.read(page.number, block, after is not None and _figure_legend(after),
+                      _edge(block, read))
     flow.flush_held()
     flow.rows += flow.pending
     rows = tuple(Row(page, line.line, line.number, " ".join(line.text.split()),

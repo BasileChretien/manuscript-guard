@@ -14,7 +14,10 @@ dependency of the tool, and a PDF read some other way would not be read as descr
 What is kept is the text, a line of the PDF to a line, and where each line stands: its page,
 its line counted down that page's text as read (the running head and the page's number left
 out), and the number the PDF prints beside it, where it prints one. Every place the audit
-and `compare` give in a PDF is that page and line.
+and `compare` give in a PDF is that page and line. For G6 and G14 of `audit` alone, the
+lines are rebuilt into paragraphs from where poppler sets each word (`read_paragraphs`,
+`auditing.pdf_layout`), and their findings' lines are counted down the page in reading
+order, left column first.
 
 A PDF marks no heading. A line is read as one only where it holds a section's name and
 nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"), from the closed list

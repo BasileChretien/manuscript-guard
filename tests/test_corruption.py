@@ -3609,6 +3609,41 @@ def test_a_pdf_s_heading_with_a_format_character_ends_its_abstract(tmp_path: Pat
     assert _rebuilt_said(run, "BMD") == [], run.language
 
 
+def test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs(tmp_path: Path) -> None:
+    """pdf-educ-B2 of the real-paper corpus, a preprint set double-spaced with its lines
+    numbered in the margin: poppler gives each line a block of its own, and the first
+    rebuild kept the numbers as lines of the text between them, so a definition broken at a
+    line's end was broken by a number too, "decision-making" then "65" then "(SIDM)", and
+    its long form read with a number in it. The numbers are taken out, each given to its
+    line as the number the PDF prints, and the lines are one paragraph again."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import Piece, knows_word_places, pdf
+
+    from manuscript_guard.auditing import pdf as pdf_module
+    from manuscript_guard.auditing.gates import run_gates
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    texts = ["Methods", "We read the records of each of the schools of the state and",
+             "the school-based intervention decision-making", "(SIDM) model was read in each.",
+             "We kept the records of each of the schools and their staff, and the SIDM held.",
+             "Results", "The records were kept in each of the sites, and the SIDM held there."]
+    pieces = []
+    for number, text in enumerate(texts, 61):
+        y = 760.0 - 27.0 * (number - 61)
+        pieces += [Piece(34.0, y, str(number), size=9.0), Piece(72.0, y, text, size=11.0)]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf([pieces]))
+    pdf_module._REBUILT.clear()
+    run = run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    assert [f for f in run.language if "SIDM" in f.message] == [], run.language
+    printed = [place.printed for place in run.places.places]
+    assert printed == list(range(61, 61 + len(texts))), printed
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

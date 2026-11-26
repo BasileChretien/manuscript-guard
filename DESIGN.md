@@ -28802,9 +28802,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     a page of three columns, or a block set across one column and part of the next, is read
     in that order. Accepted.
   - A margin's numbers are taken out, and given to the line on their baseline as its printed
-    number, where they stand outside the text's left or right edge, or just before a column's
-    line, in the gutter, where three stand so on the page. A number in the gutter on a page
-    with fewer is read as the text's. Accepted.
+    number, where they stand alone outside the text's left or right edge (read from the
+    lines of three words or more), or just before a column's line, in the gutter, where three
+    stand so on the page. A number in the gutter on a page with fewer is read as the text's.
+    A line of a block of one line, as a double-spaced manuscript sets each, ends its
+    paragraph only where it ends short of the lines beside it on a stop.
+    Pinned by `tests/test_corruption.py::test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs`.
   - A line drawn twice is read once only where it repeats word for word, at the same place.
     Pinned by `tests/test_corruption.py::test_a_line_a_pdf_draws_twice_is_read_once`.
   - A short form broken at a line's end is joined only where its two parts hold two capitals

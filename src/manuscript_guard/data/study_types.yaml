@@ -297,6 +297,110 @@ types:
         url: https://www.strobe-statement.org/download/strobe-checklist-case-control-studies-pdf
         read_on: 2026-10-15
 
+  cross-sectional:
+    label: cross-sectional study
+    describes: >-
+      people are studied at one point in time, with the exposure and the outcome measured
+      together
+    guidelines: [STROBE, RECORD]
+    sections:
+      - id: sampling
+        heading: '(?i)\bsampling\b(?!\s+bias)|\brecruit|\bselection of participants|\bparticipant selection|\bsurvey weight'
+        says: >-
+          how participants are sampled and recruited, and how the analysis takes the sampling
+          into account (weights, clusters, strata)
+        ask: >-
+          How will participants be chosen and recruited, and will the analysis need to allow
+          for how they were sampled (weights, clusters or strata)?
+        explain: >-
+          A sample stands for its population only as far as the way it was drawn allows. A
+          survey that reached some groups more than others gives the wrong prevalence unless
+          the analysis weights for it.
+        source: STROBE, items 6a and 12d (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: measurement
+        heading: '(?i)\bmeasurements?\b(?!\s+bias)|\binstruments?\b|\bquestionnaires?\b|\bdata collection'
+        says: >-
+          how each variable is measured, with the instrument used, and whether it is measured
+          the same way in every group
+        ask: >-
+          How will each variable be measured, with which questionnaire or instrument, and is
+          it measured the same way in every group?
+        explain: >-
+          An instrument not shown to measure what it claims, or one used differently from
+          group to group, can make a difference where there is none.
+        source: STROBE, item 8 (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: bias
+        heading: '(?i)\bbias|\bnon-?response'
+        says: >-
+          the sources of bias expected, such as who declines to take part, and how each is
+          addressed
+        ask: >-
+          Which sources of bias do you expect, such as people who decline to take part, and
+          what will you do about each?
+        explain: >-
+          Who agrees to take part, and how people recall what they were exposed to, can shift
+          the result. Naming each bias beforehand shows what was done about it.
+        source: STROBE, item 9 (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: sample size
+        heading: '(?i)\bsample size|\bstudy size|\bpower\b'
+        says: >-
+          how the study size was arrived at, with every assumption it rests on
+        ask: >-
+          How many participants are needed, and how did you arrive at that number?
+        explain: >-
+          Too small a sample gives an estimate too imprecise to answer the question. The
+          calculation and its assumptions let a reader judge whether the study could answer
+          it.
+        source: STROBE, item 10 (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: confounding
+        heading: '(?i)\bconfound|\badjust'
+        says: >-
+          the confounders and effect modifiers, the adjustment set with the reason for each,
+          and how confounding is controlled
+        ask: >-
+          Which other factors could explain a link between the exposure and the outcome, and
+          how will you take each into account?
+        explain: >-
+          People with and without the exposure differ in more than the exposure. Which factors
+          are adjusted for, and why each, decides what the result can be taken to mean;
+          measured at one time, the result cannot say which came first.
+        source: STROBE, items 7 and 12a (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: >-
+          how missing data will be handled
+        ask: >-
+          What will you do about people with missing values?
+        explain: >-
+          Leaving out everyone with a missing value can bias the result when those people
+          differ from the rest, so how they are handled is decided before the result is known.
+        source: STROBE, item 12c (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+      - id: sensitivity analyses
+        heading: '(?i)\bsensitivity|\bsubgroup'
+        says: >-
+          the subgroup, interaction and sensitivity analyses
+        ask: >-
+          Which other analyses will check that the result holds, and which subgroups will you
+          compare?
+        explain: >-
+          Planned in advance, they show how much the result depends on the choices made; added
+          afterwards, they read as a search for a better result.
+        source: STROBE, items 12b and 12e (cross-sectional)
+        url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
+        read_on: 2026-11-26
+
   self-controlled:
     label: self-controlled design (case series or case-crossover)
     describes: >-

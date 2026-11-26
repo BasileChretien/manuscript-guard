@@ -218,6 +218,15 @@ CHANGED = {
         "    heading: '(?i)\\bpopulation'\n",
         "plan sections asked",
     ),
+    # A heading that names its section exactly, `{#sample-size}`, is its section's whatever
+    # its words; the drawn plans hold one in every example.
+    "a section's name on its heading is not read": (
+        "gates/design.py",
+        "                    if names_section(name, named[i]) or re.search(pattern, s.title)]"
+        "  # fmt: skip\n",
+        "                    if re.search(pattern, s.title)]  # fmt: skip\n",
+        "plan sections asked",
+    ),
     "a glossary a sentence opens is not read": (
         "gates/glossary.py",
         '    r"[ \\t]*[*_]{0,3}(?:list[ \\t\\n]+of[ \\t\\n]+)?(?:abbreviations|acronyms|glossary)'

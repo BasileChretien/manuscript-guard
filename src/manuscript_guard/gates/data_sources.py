@@ -474,7 +474,13 @@ PLAN_DATA = re.compile(
 
 def _plan(project: Project, picked: list[dict[str, Any]]) -> Report:
     """The plan's Population or Data source section names each chosen source."""
-    from manuscript_guard.gates.design import _plan_sections, _read_plan, plan_path
+    from manuscript_guard.gates.design import (
+        _plan_sections,
+        _read_plan,
+        heading_identifiers,
+        names_section,
+        plan_path,
+    )
     from manuscript_guard.text.sections import subsections
 
     plan = plan_path(project)
@@ -482,10 +488,13 @@ def _plan(project: Project, picked: list[dict[str, Any]]) -> Report:
         return Report()
     text, _unreadable = _read_plan(plan)
     sections = _plan_sections(text)
+    # A heading named `{#population}` is the Population whatever its words, as G12's check
+    # of the plan's sections reads it (round 1 of #824).
+    identifiers = heading_identifiers(text, sections)
     said = [
         "\n".join(part.body for part in subsections(sections, index))
         for index, section in enumerate(sections)
-        if PLAN_DATA.search(section.title)
+        if PLAN_DATA.search(section.title) or names_section("population", identifiers[index])
     ]
     if not said:
         return Report()  # plan-section-missing says so

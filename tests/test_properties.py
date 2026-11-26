@@ -191,6 +191,7 @@ from generated import (
     results_named_papers,
     revisions,
     saved_pages,
+    sectioned_plans,
     set_hazards,
     share_tables,
     signed_ticks,
@@ -6185,6 +6186,29 @@ def _a_standard_deviation_is_a_deviation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(design, "REQUIRED", tuple(
         (name, rule.replace(r"(?<!standard\s)", ""), why) for name, rule, why in design.REQUIRED
     ))  # fmt: skip
+
+
+@holds(50, sectioned_plans())
+def test_a_plan_section_named_on_its_heading_is_found_whatever_its_words(
+    drawn: tuple[dict[str, str], list[tuple[str, str]]],
+) -> None:
+    """A heading may name its section exactly, `## Part 3 {#sample-size}`, which answers a
+    false alarm of the words (DESIGN.md, Known gaps, "A design's sections are found by the
+    words of their headings"): a section so named is never said to be missing, whatever the
+    heading's words, in a plan of any design."""
+    given, kinds = drawn
+    said = READINGS["plan sections asked"]()(given)
+    missing = {f["message"] for f in said["findings"] if f["code"] == "plan-section-missing"}
+    named = [name for name, kind in kinds if kind == "named exactly"]
+    assert named, kinds
+    for name in named:
+        assert f"the plan says nothing about {name}" not in missing, given["plan"]
+
+
+def _a_section_s_name_on_its_heading_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "section_identifier", lambda name: "\0")
 
 
 # ------------------------------------------------------------- the results a plan promises
@@ -28441,6 +28465,10 @@ BROKEN = {
     "a standard deviation is a deviation": (
         _a_standard_deviation_is_a_deviation,
         test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not,
+    ),
+    "a section's name on its heading is not read": (
+        _a_section_s_name_on_its_heading_is_not_read,
+        test_a_plan_section_named_on_its_heading_is_found_whatever_its_words,
     ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,

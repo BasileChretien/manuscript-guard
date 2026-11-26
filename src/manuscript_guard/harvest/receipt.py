@@ -127,11 +127,37 @@ def _counts_held(project, entry: Entry, output: Path) -> tuple[list[str], list[s
     return refused, [f.message for f in found.findings if f.severity != FAIL]
 
 
-def make_receipt(project, site: str) -> tuple[Path, list[str], list[str]]:
+def make_receipt(project, site: str, *, rscript: str | None = None, timeout: int | None = None
+                 ) -> tuple[Path, list[str], list[str]]:  # fmt: skip
     """Run each entry naming `site` in a scratch copy and write the receipt; return its path,
     what was written and the custodian's warnings. Refused, with nothing written, where a run
-    fails, writes no output, or writes one the custodian forbids."""
-    from manuscript_guard.verify import _run, _skip, runner_for
+    fails, writes no output, or writes one the custodian forbids. An R script runs with
+    `rscript`, and each for `timeout` seconds, as `verify` chooses them."""
+    from manuscript_guard.verify import (
+        VerifyError,
+        _named_r,
+        _run,
+        _skip,
+        runner_for,
+        time_limit,
+        timed_out,
+    )
+
+    try:
+        _named_r(rscript)
+        limit, limit_from = time_limit(project, timeout)
+    except VerifyError as exc:
+        raise HarvestError(str(exc)) from exc
+
+    def chosen(script: Path) -> list[str] | None:
+        return runner_for(script, rscript)
+
+    def run_script(script: Path, cwd: Path, env):
+        try:
+            return _run(script, cwd, env, timeout=limit, runner=chosen(script))
+        except subprocess.TimeoutExpired:
+            raise HarvestError(timed_out(script.relative_to(cwd).as_posix(), limit,
+                                         limit_from)) from None  # fmt: skip
 
     root = Path(project.root)
     entries = [entry for entry in load_entries(root) if entry.receipt == site]
@@ -145,7 +171,7 @@ def make_receipt(project, site: str) -> tuple[Path, list[str], list[str]]:
         except (OSError, shutil.Error) as exc:
             raise HarvestError(f"could not stage a copy of the project: {exc}") from exc
         for entry in entries:
-            run, warnings = _run_entry(project, root, work, entry, _run, runner_for)
+            run, warnings = _run_entry(project, root, work, entry, run_script, chosen)
             runs.append(run)
             warned += [f"{entry.output}: {said}" for said in warnings]
             outputs.append((work / entry.output, root / entry.output))

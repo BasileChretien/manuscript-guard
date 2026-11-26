@@ -48,12 +48,15 @@ from __future__ import annotations
 import json
 import math
 import os
+import platform
+import re
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
@@ -69,7 +72,19 @@ RUNNERS: dict[str, list[str]] = {
     ".qmd": ["quarto", "render"],
 }
 
+#: The suffixes Rscript runs: what `--rscript` and `RSCRIPT_VARIABLE` choose the R for.
+R_SUFFIXES = frozenset({".r", ".rmd"})
+#: The variable naming the Rscript this machine runs an R script with, where the first on
+#: PATH is not the R the analysis needs (a real paper's cohort script needed R 4.6.1 and PATH
+#: gave 4.3.3). A machine's, so not in paper.yaml. The analysis inherits it as it inherits the
+#: rest of the environment: set for good, it is there in an ordinary run as in this one, and
+#: `--rscript` names an R for one run without the analysis seeing it.
+RSCRIPT_VARIABLE = "MANUSCRIPT_GUARD_RSCRIPT"
+
+#: Seconds one script may run, where `--timeout`, `TIMEOUT_VARIABLE` and paper.yaml's
+#: `verify: {timeout: N}` say nothing, in that order.
 TIMEOUT = 1800
+TIMEOUT_VARIABLE = "MANUSCRIPT_GUARD_VERIFY_TIMEOUT"
 
 
 class VerifyError(Exception):
@@ -92,6 +107,12 @@ class Comparison:
     environment: tuple[tuple[str, object, object], ...] = ()
     # The parameters the analysis declares whose names say they seed a random draw.
     seeds: tuple[str, ...] = ()
+    # What ran the script: its language, its version (None where it did not say) and the
+    # program, as given or as PATH gave it. None where nothing ran it.
+    interpreter: tuple[str, str | None, str] | None = None
+    # The language and version the fragment on disk was written with, and the re-run's,
+    # where the two differ (`provenance.session`): the environment, as `environment` is.
+    session: tuple[str, str, str] | None = None
 
     @property
     def ok(self) -> bool:
@@ -102,6 +123,8 @@ class Comparison:
 class VerifyReport:
     comparisons: list[Comparison] = field(default_factory=list)
     skipped: list[tuple[str, str]] = field(default_factory=list)
+    # The R version renv.lock pins (`R$Version`), where the project has one.
+    r_pinned: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -120,14 +143,97 @@ class VerifyReport:
         return not self.comparisons
 
 
-def runner_for(script: Path) -> list[str] | None:
-    """The command that runs this script, or None when nothing here knows how."""
+def runner_for(script: Path, rscript: str | None = None) -> list[str] | None:
+    """The command that runs this script, or None when nothing here knows how. An R script
+    runs with `rscript` where it is given, else with the Rscript `RSCRIPT_VARIABLE` names,
+    else with the first on PATH."""
     template = RUNNERS.get(script.suffix.lower())
     if template is None:
         return None
+    chosen = rscript or os.environ.get(RSCRIPT_VARIABLE)
+    if chosen and script.suffix.lower() in R_SUFFIXES:
+        template = [chosen, *template[1:]]
     if shutil.which(template[0]) is None and template[0] != sys.executable:
         return None
     return template
+
+
+def _named_r(rscript: str | None) -> None:
+    """Refuse an R named that is not a program here, by what named it. Otherwise each R
+    script was skipped as having no runner on this machine, which is not what is wrong."""
+    for given, by in ((rscript, "--rscript"), (os.environ.get(RSCRIPT_VARIABLE), RSCRIPT_VARIABLE)):
+        if given:
+            if shutil.which(given) is None:
+                raise VerifyError(f"{by} names {given}, which is not a program on this machine")
+            return
+
+
+def time_limit(project, given: int | None = None) -> tuple[int, str]:
+    """The seconds one script may run, and what set them: `given` (`--timeout`), else
+    `TIMEOUT_VARIABLE`, else paper.yaml's `verify: {timeout: N}`, else `TIMEOUT`. A
+    variable that is no whole number of seconds is refused, as the schema refuses one in
+    paper.yaml."""
+    if given is not None:
+        return given, "--timeout"
+    said = os.environ.get(TIMEOUT_VARIABLE)
+    if said is not None:
+        said = said.strip()
+        if not said.isdigit() or int(said) < 1:
+            raise VerifyError(f"{TIMEOUT_VARIABLE} is {said!r}: give it a whole number of "
+                              "seconds, 1 or more")  # fmt: skip
+        return int(said), TIMEOUT_VARIABLE
+    setting = (project.setting("verify") or {}).get("timeout")
+    if isinstance(setting, int) and not isinstance(setting, bool) and setting >= 1:
+        return setting, "paper.yaml"
+    return TIMEOUT, "the default"
+
+
+def timed_out(script: str, limit: int, source: str) -> str:
+    """What a script stopped at the limit says: the limit, what set it, how to raise it."""
+    return (f"{script} did not finish within {limit} s ({source}) and was stopped. Raise "
+            f"the limit for this run with --timeout SECONDS, on this machine with "
+            f"{TIMEOUT_VARIABLE}, or for the project with `verify: {{timeout: SECONDS}}` in "
+            "paper.yaml")  # fmt: skip
+
+
+#: The version each program said, by program: asked once in a process.
+_VERSIONS: dict[str, str | None] = {}
+_VERSION = re.compile(r"\d+\.\d+\.\d+")
+
+
+def interpreter_of(runner: list[str], script: Path) -> tuple[str, str | None, str]:
+    """The language, the version and the program that run `script` with `runner`. Python is
+    this one; an R is asked (`Rscript --version`), and a version it does not say is None."""
+    if runner[0] == sys.executable:
+        return "Python", platform.python_version(), sys.executable
+    if script.suffix.lower() not in R_SUFFIXES:
+        return Path(runner[0]).stem, None, runner[0]
+    program = shutil.which(runner[0]) or runner[0]
+    if program not in _VERSIONS:
+        try:
+            said = subprocess.run([program, "--version"], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=60, check=False)
+            found = _VERSION.search(f"{said.stdout}\n{said.stderr}")
+            _VERSIONS[program] = found.group(0) if found else None
+        except (OSError, subprocess.SubprocessError):
+            _VERSIONS[program] = None
+    # As given, so that the path printed is the one the author named or PATH holds.
+    return "R", _VERSIONS[program], runner[0]
+
+
+def renv_r_version(root: Path) -> str | None:
+    """The R version `renv.lock` pins (`R$Version`), or None where there is none to read."""
+    try:
+        document = json.loads((Path(root) / "renv.lock").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    pinned = document.get("R") if isinstance(document, dict) else None
+    version = pinned.get("Version") if isinstance(pinned, dict) else None
+    return version if isinstance(version, str) and _VERSION.fullmatch(version) else None
+
+
+def _major_minor(version: str) -> str:
+    return ".".join(version.split(".")[:2])
 
 
 #: Significant digits two floats must share to be the same result. An iterative fit's last
@@ -242,15 +348,17 @@ def _kill_tree(process: subprocess.Popen) -> None:
         process.kill()
 
 
-def _run(script: Path, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
-    """Run one analysis, with its output on disk and its children accounted for.
+def _run(script: Path, cwd: Path, env: dict[str, str] | None, *, timeout: int = TIMEOUT,
+         runner: list[str] | None = None) -> subprocess.CompletedProcess:
+    """Run one analysis with `runner` (`runner_for`'s where none is given), with its output
+    on disk and its children accounted for, stopped past `timeout` seconds.
 
     Pipes rather than files meant the reader was this process: a script printing steadily
     filled memory here, and a grandchild holding the pipe open kept `communicate()` waiting
     past the timeout it was supposed to enforce. Files have neither problem, and the cap is
     applied on the way back in.
     """
-    command = [*runner_for(script), str(script)]  # type: ignore[misc]
+    command = [*(runner or runner_for(script)), str(script)]  # type: ignore[misc]
     group: dict = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
         if sys.platform == "win32"
@@ -259,14 +367,14 @@ def _run(script: Path, cwd: Path, env: dict[str, str]) -> subprocess.CompletedPr
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         process = subprocess.Popen(command, cwd=cwd, stdout=out, stderr=err, env=env, **group)
         try:
-            code = process.wait(timeout=TIMEOUT)
+            code = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             _kill_tree(process)
             out.seek(0)
             err.seek(0)
             raise subprocess.TimeoutExpired(
                 command,
-                TIMEOUT,
+                timeout,
                 output=out.read(OUTPUT_CAP).decode("utf-8", "replace"),
                 stderr=err.read(OUTPUT_CAP).decode("utf-8", "replace"),
             ) from None
@@ -280,20 +388,27 @@ def _run(script: Path, cwd: Path, env: dict[str, str]) -> subprocess.CompletedPr
         )
 
 
-def verify(project, *, only: list[str] | None = None) -> VerifyReport:
+def verify(project, *, only: list[str] | None = None, rscript: str | None = None,
+           timeout: int | None = None) -> VerifyReport:
     """Re-run each analysis into a copy of the project and compare the fragments.
 
     The copy is what makes this safe to run on a project you care about: the analysis writes
     into the scratch tree, and the real `results/` is never touched. It also means an
     analysis that reads a relative path still finds its data.
+
+    An R script runs with `rscript`, else the Rscript `RSCRIPT_VARIABLE` names, else the first
+    on PATH; each script may run for `time_limit`'s seconds. Each comparison says what ran
+    its script.
     """
+    _named_r(rscript)
+    limit, limit_from = time_limit(project, timeout)
     root = Path(project.root)
     results_dir = project.path("results")
     fragments = sorted(results_dir.glob("*.json")) if results_dir.exists() else []
     if not fragments:
         raise VerifyError(f"no results fragments in {results_dir}")
 
-    report = VerifyReport()
+    report = VerifyReport(r_pinned=renv_r_version(project.root))
     if only:
         unknown = sorted(set(only) - {f.stem for f in fragments})
         if unknown:
@@ -358,26 +473,31 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
                     Comparison(fragment.name, ran=False, error=f"{named} does not exist")
                 )
                 continue
-            if runner_for(script) is None:
+            runner = runner_for(script, rscript)
+            if runner is None:
                 report.skipped.append(
                     (fragment.name, f"no runner for {script.suffix} on this machine")
                 )
                 continue
+            ran_with = interpreter_of(runner, script)
 
             if harvested is not None:
                 # Deleted first, so that the output compared is the one this run wrote and
                 # not the copy of the one harvested.
                 (work / str(harvested.get("output", ""))).unlink(missing_ok=True)
+            ran = partial(_with_interpreter, report, ran_with)
             try:
-                finished = _run(script, work, env)
+                finished = _run(script, work, env, timeout=limit, runner=runner)
+            except subprocess.TimeoutExpired:
+                ran(Comparison(fragment.name, ran=False,
+                               error=timed_out(named, limit, limit_from)))  # fmt: skip
+                continue
             except (OSError, subprocess.SubprocessError) as exc:
-                report.comparisons.append(
-                    Comparison(fragment.name, ran=False, error=f"{named} could not run: {exc}")
-                )
+                ran(Comparison(fragment.name, ran=False, error=f"{named} could not run: {exc}"))
                 continue
             if finished.returncode != 0:
                 tail = (finished.stderr or finished.stdout or "").strip()[-400:]
-                report.comparisons.append(
+                ran(
                     Comparison(
                         fragment.name,
                         ran=False,
@@ -387,12 +507,11 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
                 continue
 
             if harvested is not None:
-                report.comparisons.append(_reharvested(fragment.name, named, on_disk, work,
-                                                       harvested))  # fmt: skip
+                ran(_reharvested(fragment.name, named, on_disk, work, harvested))
                 continue
             produced = work / fragment.relative_to(root)
             if not produced.exists():
-                report.comparisons.append(
+                ran(
                     Comparison(
                         fragment.name,
                         ran=False,
@@ -401,11 +520,38 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
                 )
                 continue
 
-            report.comparisons.append(
-                _compare(fragment.name, on_disk, json.loads(produced.read_text(encoding="utf-8")))
-            )
+            rerun = json.loads(produced.read_text(encoding="utf-8"))
+            compared = _compare(fragment.name, on_disk, rerun)
+            compared.session = _other_session(on_disk, rerun)
+            ran(compared)
 
     return report
+
+
+def _with_interpreter(report: VerifyReport, interpreter: tuple[str, str | None, str],
+                      comparison: Comparison) -> None:  # fmt: skip
+    """`comparison`, said to have been run with `interpreter`, added to the report."""
+    comparison.interpreter = interpreter
+    report.comparisons.append(comparison)
+
+
+def _other_session(on_disk: dict, rerun: dict) -> tuple[str, str, str] | None:
+    """The language, the version the fragment on disk was written with and the re-run's,
+    where the emitter recorded both (`provenance.session`) and they differ."""
+
+    def said(document: dict) -> tuple[str, str] | None:
+        session = (document.get("provenance") or {}).get("session")
+        if not isinstance(session, dict):
+            return None
+        language, version = session.get("language"), session.get("version")
+        if isinstance(language, str) and isinstance(version, str):
+            return language, version
+        return None
+
+    was, now = said(on_disk), said(rerun)
+    if was is None or now is None or was == now:
+        return None
+    return now[0], was[1], now[1]
 
 
 def _reharvested(name: str, script: str, on_disk: dict, work: Path, harvested: dict
@@ -501,6 +647,18 @@ def to_report(result: VerifyReport) -> Report:
                     "on disk, so re-run the analysis where the paper's results are made",
                 )
             )
+        if comparison.session is not None:
+            language, was, now = comparison.session
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="rerun-other-interpreter",
+                    severity=WARN,
+                    message=f"{comparison.fragment}: the re-run used {language} {now}, and the "
+                    f"results on disk were written with {language} {was}",
+                    hint=_other_interpreter_hint(language),
+                )
+            )
         for key in comparison.only_on_disk:
             report = report.with_findings(
                 Finding(
@@ -522,6 +680,7 @@ def to_report(result: VerifyReport) -> Report:
                     hint="the fragment on disk is older than the analysis; re-run it",
                 )
             )
+    report = report.with_findings(*_not_locked(result))
     return report.with_counts(
         fragments_rerun=len(result.comparisons),
         values_reproduced=sum(len(c.agreed) for c in result.comparisons),
@@ -544,8 +703,52 @@ def _unseeded(seeds: tuple[str, ...]) -> str:
     )
 
 
+def _other_interpreter_hint(language: str) -> str:
+    """How to re-run with the interpreter the results were written with."""
+    if language == "R":
+        return (f"the values agree or are reported above; name the R the results were written "
+                f"with by --rscript PATH or {RSCRIPT_VARIABLE}, and run verify again")
+    return ("the values agree or are reported above; run verify with the interpreter the "
+            "results were written with")
+
+
+def _not_locked(result: VerifyReport) -> list[Finding]:
+    """A warning for each R that ran other, by major and minor version, than the one
+    renv.lock pins: renv keeps its library by R's major and minor version, so the packages
+    the lockfile records are not the ones that R loads."""
+    if result.r_pinned is None:
+        return []
+    pinned = _major_minor(result.r_pinned)
+    others = sorted({(c.interpreter[1], c.interpreter[2]) for c in result.comparisons
+                     if c.interpreter and c.interpreter[0] == "R" and c.interpreter[1]
+                     and _major_minor(c.interpreter[1]) != pinned})  # fmt: skip
+    return [
+        Finding(
+            gate=GATE,
+            code="rerun-r-not-locked",
+            severity=WARN,
+            message=f"renv.lock pins R {result.r_pinned}, and the re-run used R {version} "
+            f"({program})",
+            hint=f"renv's library is kept by R's major and minor version, so this R did not "
+            f"load the packages renv.lock records; name an R {pinned} by --rscript PATH or "
+            f"{RSCRIPT_VARIABLE}",
+        )
+        for version, program in others
+    ]
+
+
+def _ran_with(comparison: Comparison) -> str:
+    """What ran a comparison's script, as the report prints it: "R 4.6.1 (Rscript)"."""
+    language, version, program = comparison.interpreter  # type: ignore[misc]
+    named = f"{language} {version}" if version else f"{language}, version unknown"
+    return f"{named} ({program})"
+
+
 def render(result: VerifyReport, root: Path) -> str:
     lines = [to_report(result).render(root)]
+    for comparison in result.comparisons:
+        if comparison.interpreter is not None:
+            lines.append(f"  [RAN] {comparison.fragment}: with {_ran_with(comparison)}")
     for name, why in result.skipped:
         lines.append(f"  [SKIP] {name}: {why}")
     reproduced = sum(len(c.agreed) for c in result.comparisons)

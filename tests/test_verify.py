@@ -460,3 +460,226 @@ def test_the_scratch_copy_has_no_git_a_limit_known_gaps_names(project: Path,
     shutil.copytree(project, copy, symlinks=True, ignore=_skip)
     assert ".git" in IGNORED_DIRS
     assert not (copy / ".git").exists() and (copy / "analysis").is_dir()
+
+
+# ------------------------------------------------------- which R, and for how long (item 9)
+#
+# Found writing a real paper (2026-11-26): `verify` ran whatever Rscript came first on PATH,
+# R 4.3.3, while the analysis needed 4.6.1, and said nothing of which R it was; and the cohort
+# script, slowed by a virus scanner reading the scratch copy, ran past a limit of 1800 s that
+# nothing could raise.
+
+
+def _limit(project: Path, given: int | None = None) -> int:
+    from manuscript_guard.verify import time_limit
+
+    loaded, _ = load_project(project)
+    return time_limit(loaded, given)[0]
+
+
+def _with_verify_setting(project: Path, block: str) -> None:
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + f"\nverify: {block}\n",
+                     encoding="utf-8")  # fmt: skip
+
+
+def test_the_rscript_named_runs_an_r_script_the_flag_over_the_variable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sys
+
+    from manuscript_guard.verify import RSCRIPT_VARIABLE, runner_for
+
+    script = tmp_path / "01_model.R"
+    other = shutil.which("git") or sys.executable
+    monkeypatch.setenv(RSCRIPT_VARIABLE, other)
+    assert runner_for(script)[0] == other
+    assert runner_for(script, rscript=sys.executable)[0] == sys.executable
+    assert runner_for(tmp_path / "report.Rmd", rscript=sys.executable)[0] == sys.executable
+    # A Python script is run with this Python whatever names an R.
+    assert runner_for(tmp_path / "01.py", rscript=other)[0] == sys.executable
+
+
+def test_a_variable_naming_no_program_stops_verify_and_names_it(
+    project: Path, tmp_path: Path, monkeypatch
+) -> None:
+    from manuscript_guard.verify import RSCRIPT_VARIABLE
+
+    monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
+    with pytest.raises(VerifyError, match=RSCRIPT_VARIABLE):
+        run(project)
+
+
+def test_an_rscript_given_that_is_not_there_stops_verify(project: Path, tmp_path: Path) -> None:
+    loaded, _ = load_project(project)
+    with pytest.raises(VerifyError, match="--rscript"):
+        verify(loaded, rscript=str(tmp_path / "Rscript.exe"))
+
+
+def test_the_limit_is_the_flag_then_the_variable_then_paper_yaml_then_1800(
+    project: Path, monkeypatch
+) -> None:
+    from manuscript_guard.verify import TIMEOUT, TIMEOUT_VARIABLE
+
+    monkeypatch.delenv(TIMEOUT_VARIABLE, raising=False)
+    assert _limit(project) == TIMEOUT == 1800
+    _with_verify_setting(project, "{timeout: 5400}")
+    assert _limit(project) == 5400
+    monkeypatch.setenv(TIMEOUT_VARIABLE, "3600")
+    assert _limit(project) == 3600
+    assert _limit(project, 60) == 60
+
+
+@pytest.mark.parametrize("given", ["soon", "0", "-5", "1.5"])
+def test_a_limit_in_the_variable_that_is_no_whole_number_of_seconds_is_refused(
+    project: Path, monkeypatch, given: str
+) -> None:
+    from manuscript_guard.verify import TIMEOUT_VARIABLE
+
+    monkeypatch.setenv(TIMEOUT_VARIABLE, given)
+    with pytest.raises(VerifyError, match=TIMEOUT_VARIABLE):
+        _limit(project)
+
+
+@pytest.mark.parametrize("block", ["{timeout: 0}", "{timeout: soon}", "{limit: 60}"])
+def test_paper_yaml_refuses_a_verify_setting_it_cannot_read(project: Path, block: str) -> None:
+    _with_verify_setting(project, block)
+    _loaded, report = load_project(project)
+    assert not report.ok
+    assert any("verify" in f.message for f in report.failures), report.render(project)
+
+
+def test_a_script_past_the_limit_is_stopped_and_says_how_to_raise_it(
+    project: Path, monkeypatch
+) -> None:
+    from manuscript_guard.verify import TIMEOUT_VARIABLE
+
+    monkeypatch.delenv(TIMEOUT_VARIABLE, raising=False)
+    (project / "analysis" / "01_disproportionality.py").write_text(
+        "import time\ntime.sleep(60)\n", encoding="utf-8"
+    )
+    loaded, _ = load_project(project)
+    result = verify(loaded, timeout=1)
+    [comparison] = result.comparisons
+    assert not comparison.ran
+    assert "1 s" in comparison.error and "--timeout" in comparison.error
+    assert TIMEOUT_VARIABLE in comparison.error and "paper.yaml" in comparison.error
+
+
+def test_verify_says_which_interpreter_ran_each_script(project: Path) -> None:
+    import platform
+    import sys
+
+    from manuscript_guard.verify import render
+
+    result = run(project)
+    [comparison] = result.comparisons
+    assert comparison.interpreter == ("Python", platform.python_version(), sys.executable)
+    assert f"with Python {platform.python_version()}" in render(result, project)
+
+
+def test_results_written_with_another_interpreter_are_said_beside_the_comparison(
+    project: Path,
+) -> None:
+    """The values agree, and the run is said to be another environment's, as a version of
+    software found other is (`rerun-other-software`)."""
+    path = fragment_of(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["provenance"]["session"]["version"] = "3.0.0"
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+
+    result = run(project)
+    assert result.ok, to_report(result).render(project)
+    [found] = [f for f in to_report(result).warnings if f.code == "rerun-other-interpreter"]
+    assert "Python 3.0.0" in found.message
+
+
+def _r_project(tmp_path: Path, rscript: str, renv_r: str | None = None) -> Path:
+    import subprocess
+
+    from test_r_emitter import EMIT_R
+
+    root = tmp_path / "rpaper"
+    for sub in ("analysis", "results", "manuscript"):
+        (root / sub).mkdir(parents=True)
+    (root / "paper.yaml").write_text(
+        'schema: manuscript-guard/paper/1\ntitle: "R"\nenglish_variant: en-GB\n', encoding="utf-8"
+    )
+    if renv_r is not None:
+        (root / "renv.lock").write_text(
+            json.dumps({"R": {"Version": renv_r, "Repositories": []}, "Packages": {}}),
+            encoding="utf-8",
+        )
+    script = root / "analysis" / "01_r.R"
+    script.write_text(
+        'if (!requireNamespace("jsonlite", quietly = TRUE) || '
+        '!requireNamespace("digest", quietly = TRUE)) {\n'
+        '  cat("MISSING_DEPS\\n"); quit(status = 3)\n}\n'
+        f'source("{EMIT_R.as_posix()}")\n'
+        'em <- mg_emitter("analysis/01_r.R")\n'
+        'em$value("cohort.n", 412L)\n'
+        "em$write()\n",
+        encoding="utf-8",
+    )
+    out = subprocess.run([rscript, "--vanilla", str(script)], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", cwd=root)  # fmt: skip
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    assert out.returncode == 0, out.stderr
+    return root
+
+
+def test_verify_runs_r_with_the_rscript_named_and_says_which(tmp_path: Path) -> None:
+    import re
+
+    from test_r_emitter import RSCRIPT
+
+    from manuscript_guard.verify import render
+
+    if RSCRIPT is None:
+        pytest.skip("R is not installed")
+    root = _r_project(tmp_path, RSCRIPT)
+    loaded, _ = load_project(root)
+    result = verify(loaded, rscript=RSCRIPT)
+    assert result.ok, to_report(result).render(root)
+    [comparison] = result.comparisons
+    language, version, path = comparison.interpreter
+    assert (language, path) == ("R", RSCRIPT)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version)
+    assert f"with R {version} ({RSCRIPT})" in render(result, root)
+    assert not to_report(result).warnings
+
+
+def test_an_r_other_than_the_one_renv_lock_pins_is_warned_of(tmp_path: Path) -> None:
+    from test_r_emitter import RSCRIPT
+
+    if RSCRIPT is None:
+        pytest.skip("R is not installed")
+    root = _r_project(tmp_path, RSCRIPT, renv_r="3.1.0")
+    loaded, _ = load_project(root)
+    result = verify(loaded, rscript=RSCRIPT)
+    [found] = [f for f in to_report(result).warnings if f.code == "rerun-r-not-locked"]
+    assert "3.1" in found.message and "renv.lock" in found.message
+
+
+def test_an_r_of_the_major_and_minor_renv_lock_pins_is_not_warned_of() -> None:
+    from manuscript_guard.verify import Comparison, VerifyReport
+
+    ran = Comparison("01_r.json", agreed=("cohort.n",), interpreter=("R", "4.6.1", "Rscript"))
+    for pinned, warned in (("4.6.0", False), ("4.6.1", False), ("4.5.2", True)):
+        report = VerifyReport(comparisons=[ran], r_pinned=pinned)
+        codes = {f.code for f in to_report(report).warnings}
+        assert ("rerun-r-not-locked" in codes) is warned, pinned
+
+
+def test_the_command_refuses_a_limit_that_is_no_number_and_an_r_that_is_not_there(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    from manuscript_guard.cli import main
+
+    with pytest.raises(SystemExit) as stopped:
+        main(["verify", str(project), "--timeout", "0"])
+    assert stopped.value.code == 2
+    assert main(["verify", str(project), "--rscript", str(tmp_path / "Rscript.exe")]) == 2
+    assert "--rscript names" in capsys.readouterr().err

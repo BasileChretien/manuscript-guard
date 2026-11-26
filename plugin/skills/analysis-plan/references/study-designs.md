@@ -8,6 +8,13 @@ page on 2026-10-15. Write the answer before the analysis exists, so that a chang
 deviation. A study that is none of the designs below has `study_type: other`, and its plan
 the seven sections only.
 
+G12 finds a section by the words of its heading. Where the plan answers it under a heading of
+the author's own words and G12 says the plan says nothing about it, name the section on that
+heading with the identifier the warning gives, the section's name with a hyphen for each
+space: `## Study sample {#sampling}`, `## Power {#sample-size}`. Keep the author's words, and
+do not rename a heading to fit the check. The Deviations cannot be named so: every other
+check reads it by its words, so keep a heading such as "Deviations from the plan".
+
 ## trial
 
 The paper follows CONSORT, the protocol SPIRIT 2025.

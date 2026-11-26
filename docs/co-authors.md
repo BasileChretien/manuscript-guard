@@ -105,9 +105,10 @@ each value quoted from it says so on its own item, and says whether any of the w
 shown: a co-author shown none of them has to find the work to answer. A copy counts where it is
 under `literature/sources/` by the work's citation key, where a ledger entry citing the work
 names it as its `source_file`, or where `literature/sources.yaml` records it as the work's. In
-each of these places it counts in any kind `check` holds a quote to (text, Markdown, XML, a file
-with no suffix, HTML, a PDF), and never as a table or a citation file (`.csv`, `.bib`, `.nbib`,
-`.ris`) or a Word document. A file every ledger entry naming it reads at
+each of these places it counts in any kind `check` holds a quote to (text, Markdown, XML, JSON,
+a file with no suffix, HTML, a PDF), and never as a table or a citation file (`.csv`, `.bib`,
+`.nbib`, `.ris`) or a Word document. A `.json` file counts, a CSL-JSON record among them, since
+`check` reads it and holds a quote to it. A file every ledger entry naming it reads at
 `depth: abstract-only` is the work's abstract, whatever its name and whatever it now holds:
 the depth is the ledger's.
 `build` lists the works with none by group and citation key, with how many items cite each and

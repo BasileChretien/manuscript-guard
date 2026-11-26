@@ -803,6 +803,17 @@ def test_a_copy_away_the_ledger_reads_as_an_abstract_is_only_the_abstract(projec
     assert "not on the computer that built this page" in entries[0]["says"]
 
 
+def test_a_table_recorded_away_is_no_copy_kept_elsewhere(project: Path) -> None:
+    """Round 4 of #810: the kind rule holds of a copy recorded away too. The record listing a
+    `<key>.csv` kept out of git, and nothing else of the work, is no copy on another computer."""
+    from kept_away import keep_away
+
+    (_sources(project) / f"{COHORT}.txt").unlink()
+    keep_away(project, f"{COHORT}.csv", COHORT)
+    entries = _unstored_of(only(produced(project), "claim"), COHORT)
+    assert entries and all(entry["state"] == "nothing stored" for entry in entries)
+
+
 def test_the_depth_is_the_ledgers_and_not_the_files(project: Path) -> None:
     """Known gaps: a full text saved over the file the ledger still reads at `depth:
     abstract-only` is said to be only its abstract, until the entry's depth is changed."""

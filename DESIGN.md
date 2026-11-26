@@ -28668,9 +28668,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   first line leaves that line unread, and a leading space makes ` build/` count, where git
   does the opposite (finding 4). In `.gitattributes` only a `*` line with both
   `text=auto` and `eol=lf` counts, so `* text eol=lf`, or the two on separate lines, both of
-  which check out LF, are asked for again (finding 5); and only a line whose pattern is
-  `*.svg` counts as the file's rule for SVG figures, so `figures/*.svg binary` or
-  `*.SVG binary` is answered with `*.svg binary` again. The folders are `build/` and
+  which check out LF, are asked for again (finding 5). The file's rule for SVG figures is a
+  line whose pattern is `*.svg` and which sets `text`, `-text`, `binary` or `eol`, with no
+  `*` line below it that sets `text`, since git reads a later line over an earlier one
+  attribute by attribute (round 1 of #815); only `*` and `*.svg` are read. So
+  `figures/*.svg binary` or `*.SVG binary` is answered with `*.svg binary` again, a false
+  alarm, and a later line for another pattern that holds SVGs (`figures/* text`) undoes the
+  `*.svg` line unread, a false pass. The folders are `build/` and
   `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
   reason printed for `.gitignore` is one sentence that names both lines whichever is
   missing, so it can say the file does not leave out `build/` when `/build` does, or warn

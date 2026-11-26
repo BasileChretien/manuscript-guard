@@ -745,11 +745,25 @@ def test_init_s_git_advice_reads_spellings_and_not_git_s_rules(
     ("* text=auto eol=lf\n*.svg -text\n", []),
     ("* text=auto eol=lf\n*.svg   binary\n", []),
     ("* text=auto eol=lf\n*.svg text eol=lf\n", []),
+    ("* text=auto eol=lf\n*.svg eol=crlf\n", []),
+    # A line that sets nothing of an SVG's bytes is no rule for them (round 1 of #815).
+    ("* text=auto eol=lf\n*.svg diff=xml\n", ["*.svg binary"]),
+    ("* text=auto eol=lf\n*.svg linguist-generated\n", ["*.svg binary"]),
+    ("* text=auto eol=lf\n*.svg\n", ["*.svg binary"]),
+    # Git reads a later line over an earlier one, attribute by attribute: a `*` line that sets
+    # text below the `*.svg` line undoes it (round 1 of #815).
+    ("*.svg binary\n* text=auto eol=lf\n", ["*.svg binary"]),
+    ("*.svg binary\n* eol=lf\n* text=auto\n", ["* text=auto eol=lf", "*.svg binary"]),
+    ("*.svg binary\n* binary\n* text=auto eol=lf\n*.svg -text\n", []),
     # Another pattern that holds SVGs is not read as one: asked again, a false alarm.
     ("* text=auto eol=lf\nfigures/*.svg binary\n", ["*.svg binary"]),
     ("* text=auto eol=lf\n*.SVG binary\n", ["*.svg binary"]),
+    # Nor is a later line for another pattern that sets text: a false pass.
+    ("* text=auto eol=lf\n*.svg binary\nfigures/* text\n", []),
 ], ids=["normalised, no svg rule", "neither", "-text", "spaced", "the author's own",
-        "a folder's svgs", "in capitals"])  # fmt: skip
+        "the author's eol", "diff=xml", "linguist-generated", "bare", "undone below",
+        "undone in two lines", "set again below", "a folder's svgs", "in capitals",
+        "undone by a folder's line"])  # fmt: skip
 def test_init_asks_for_svgs_byte_for_byte_where_the_file_has_no_rule_for_them(
     tmp_path: Path, attributes: str, wanted: list[str]
 ) -> None:
@@ -765,26 +779,100 @@ def test_init_asks_for_svgs_byte_for_byte_where_the_file_has_no_rule_for_them(
     assert git_lines_to_add(tmp_path) == ({".gitattributes": wanted} if wanted else {})
 
 
+def _git_text(root: Path, path: str) -> str:
+    """What git makes of `path`'s `text` attribute in the repository at `root`: set, unset,
+    auto or unspecified."""
+    import subprocess
+
+    said = subprocess.run(["git", "-C", str(root), "check-attr", "text", "--", path],
+                          check=True, capture_output=True, text=True).stdout  # fmt: skip
+    return said.strip().rsplit(": ", 1)[-1]
+
+
+@pytest.mark.parametrize("attributes", [
+    "*.svg binary\n* text=auto eol=lf\n",
+    "* text eol=lf\n*.svg binary\n",
+    "*.docx binary\n*.svg binary\n",
+    "*.R text\n",
+    "* text=auto eol=lf\n*.svg diff=xml\n",
+    "* text=auto eol=lf\n",
+], ids=["svg above the * line", "the eol line asked above an svg line", "binary lines only",
+        "neither", "an svg line that sets nothing", "no svg line"])  # fmt: skip
+def test_init_s_gitattributes_advice_followed_as_it_says_keeps_svgs_as_bytes(
+    tmp_path: Path, attributes: str
+) -> None:
+    """Round 1 of #815: `* text=auto eol=lf` added at the end of a file cancels every
+    `*.svg binary` and `*.docx binary` above it, since git reads a later line over an earlier
+    one, attribute by attribute. `init` asks for `*.svg binary` exactly where git normalises
+    the SVG, and its advice taken as it says, the eol line at the top of the file and the
+    others at its end, leaves the SVG and each binary file unnormalised, a script normalised,
+    and nothing more to ask."""
+    import shutil
+    import subprocess
+
+    from manuscript_guard.scaffold import EOL_LINE, git_lines_to_add
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    (root / ".gitattributes").write_bytes(attributes.encode("utf-8"))
+    wanted = git_lines_to_add(root).get(".gitattributes", [])
+    assert ("*.svg binary" in wanted) == (_git_text(root, "figures/forest.svg") != "unset")
+    first = [line for line in wanted if line == EOL_LINE]
+    last = [line for line in wanted if line != EOL_LINE]
+    followed = "\n".join([*first, *attributes.splitlines(), *last]) + "\n"
+    (root / ".gitattributes").write_bytes(followed.encode("utf-8"))
+    assert _git_text(root, "figures/forest.svg") == "unset", followed
+    docx = _git_text(root, "build/manuscript.docx")
+    assert (docx == "unset") == ("*.docx binary" in attributes), followed
+    assert _git_text(root, "analysis/01.py") in ("auto", "set"), followed
+    assert git_lines_to_add(root) == {}, followed
+
+
+def _said_of_gitattributes(out: str) -> tuple[str, list[str]]:
+    """What `init` printed of `.gitattributes`: its sentence, and the lines it asks for."""
+    said = out.split("\n.gitattributes was already there", 1)[1]
+    sentence, lines = said.split("\n\n", 2)[:2]
+    return sentence, lines.splitlines()
+
+
 def test_init_says_why_each_gitattributes_line_is_asked_for(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The reason printed for `.gitattributes` is the one for the lines it lacks: a file that
-    checks text out as LF and has no rule for SVGs is not told it does not."""
+    checks text out as LF and has no rule for SVGs is not told it does not. Where the lines
+    go is said where it matters (round 1 of #815): the eol line above the lines for patterns
+    of their own, which a `*` line below them undoes, and an `*.svg` line a `*` line below
+    it undoes is said to be undone."""
     from manuscript_guard.cli import main
 
     root = tmp_path / "analysis-repo"
     root.mkdir()
     (root / ".gitattributes").write_text("* text=auto eol=lf\n", encoding="utf-8")
     assert main(["init", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert ".gitattributes was already there" in out
-    assert "LF line endings" not in out
-    assert "svglite" in out and "\n*.svg binary" in out
+    sentence, lines = _said_of_gitattributes(capsys.readouterr().out)
+    assert "LF line endings" not in sentence and "svglite" in sentence
+    assert "at the top" not in sentence and "undoes it" not in sentence
+    assert lines == ["*.svg binary"]
     (root / ".gitattributes").write_text("*.R text\n", encoding="utf-8")
     assert main(["init", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert "LF line endings" in out and "svglite" in out
-    assert "\n* text=auto eol=lf\n*.svg binary" in out
+    sentence, lines = _said_of_gitattributes(capsys.readouterr().out)
+    assert "LF line endings" in sentence and "svglite" in sentence
+    assert "Add `* text=auto eol=lf` at the top of the file" in sentence
+    assert "and the others at its end" in sentence
+    assert lines == ["* text=auto eol=lf", "*.svg binary"]
+    (root / ".gitattributes").write_text("*.svg binary\n* text=auto eol=lf\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    sentence, lines = _said_of_gitattributes(capsys.readouterr().out)
+    assert "a `*` line below it that sets `text` undoes it" in sentence
+    assert "at the top" not in sentence and lines == ["*.svg binary"]
+    (root / ".gitattributes").write_text("*.docx binary\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    sentence, lines = _said_of_gitattributes(capsys.readouterr().out)
+    assert "at the top of the file" in sentence
+    assert lines == ["* text=auto eol=lf", "*.svg binary"]
 
 
 def test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing(

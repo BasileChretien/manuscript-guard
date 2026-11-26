@@ -525,7 +525,7 @@ _IGNORED = {
                              "/literature/sources/", "/literature/sources/*"},
 }  # fmt: skip
 #: The line of `.gitattributes` the digests need, as its words.
-_EOL = "* text=auto eol=lf"
+EOL_LINE = "* text=auto eol=lf"
 #: The line that keeps an SVG figure's bytes as its script wrote them.
 SVG_BINARY = "*.svg binary"
 
@@ -537,9 +537,10 @@ def git_lines_to_add(root: Path) -> dict[str, list[str]]:
     without `build/` commits what the build writes, one without `literature/sources/*` the
     stored copies of cited works, paywalled papers among them, and a `.gitattributes`
     without `* text=auto eol=lf` checks text out with each machine's line endings, which
-    the byte-exact digests then read as edits. One with no line for `*.svg` normalises an
-    SVG figure, or is told to, and svglite's CRLF on Windows is then no longer the file the
-    render record and the review hold. A private repository whose paper.yaml says
+    the byte-exact digests then read as edits. One with no line for `*.svg` that sets its
+    `text`, `binary` or `eol`, or one a `*` line below it undoes, normalises an SVG figure,
+    or is told to, and svglite's CRLF on Windows is then no longer the file the render
+    record and the review hold. A private repository whose paper.yaml says
     `sources_in_git: true` commits the copies, and is not asked to leave them out."""
     root = Path(root).resolve()
     wanted: dict[str, list[str]] = {}
@@ -553,13 +554,58 @@ def git_lines_to_add(root: Path) -> dict[str, list[str]]:
             wanted[".gitignore"] = missing
     attributes = _lines(root / ".gitattributes")
     if attributes is not None:
-        missing = [] if any(_is_eol(line) for line in attributes) else [_EOL]
-        # Any rule of the file's own for `*.svg` is the author's choice, binary or not.
-        if not any(line.split()[:1] == ["*.svg"] for line in attributes):
+        missing = [] if any(_is_eol(line) for line in attributes) else [EOL_LINE]
+        if _svg_rule(attributes) != KEPT:
             missing.append(SVG_BINARY)
         if missing:
             wanted[".gitattributes"] = missing
     return wanted
+
+
+#: What an existing `.gitattributes` decides of an SVG's bytes (`_svg_rule`): its own rule
+#: holds; it has one, and a `*` line below it that sets `text` undoes it; it has none.
+KEPT, UNDONE, NONE = "kept", "undone", "none"
+
+
+def _sets_text(words: list[str]) -> bool:
+    """Whether a line's attributes set `text`, in any of its states: `binary` is `-text`."""
+    return any(word in ("text", "-text", "!text", "binary") or word.startswith("text=")
+               for word in words[1:])  # fmt: skip
+
+
+def _decides_bytes(words: list[str]) -> bool:
+    """Whether a line sets `text`, `-text`, `binary` or `eol`: what decides whether git
+    normalises a file's line endings. `diff=xml` or `linguist-generated` does not."""
+    return _sets_text(words) or any(word in ("eol", "-eol", "!eol") or word.startswith("eol=")
+                                    for word in words[1:])  # fmt: skip
+
+
+def _svg_rule(attributes: list[str]) -> str:
+    """Whether the file's own rule for `*.svg` decides an SVG's bytes, as git reads it: a later
+    line overrides an earlier one attribute by attribute, so a `*.svg binary` above a `*` line
+    that sets `text` is undone by it (round 1 of #815). Only the patterns `*` and `*.svg` are
+    read; a line for another that holds SVGs (`figures/* text`) is not (Known gaps)."""
+    rule = NONE
+    for line in attributes:
+        words = line.split()
+        if not words or words[0].startswith("#"):
+            continue
+        if words[0] == "*.svg" and _decides_bytes(words):
+            rule = KEPT
+        elif words[0] == "*" and _sets_text(words) and rule == KEPT:
+            rule = UNDONE
+    return rule
+
+
+def attributes_order(root: Path) -> tuple[bool, bool]:
+    """Where the lines `git_lines_to_add` asks of an existing `.gitattributes` go, as git
+    reads the file: whether it has lines for patterns of their own (`*.docx binary`, an
+    `*.svg` line), above which the eol line goes, since a `*` line below them undoes them;
+    and whether its `*.svg` rule is undone by a `*` line below it."""
+    attributes = _lines(Path(root).resolve() / ".gitattributes") or []
+    own = any(line.split()[0] != "*" for line in attributes
+              if line.split() and not line.startswith("#"))  # fmt: skip
+    return own, _svg_rule(attributes) == UNDONE
 
 
 def _lines(path: Path) -> list[str] | None:

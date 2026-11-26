@@ -6794,13 +6794,28 @@ _ATTRIBUTE_LINES = {
 }  # fmt: skip
 
 
-def _say_git_lines(wanted: dict[str, list[str]]) -> None:
+def _say_git_lines(wanted: dict[str, list[str]], root: Path) -> None:
     """What `init` says of an existing .gitignore or .gitattributes that lacks a line the
-    project needs: it never writes over them, so it prints the lines, as for AGENTS.md."""
+    project needs: it never writes over them, so it prints the lines, as for AGENTS.md.
+    Git reads a later line of `.gitattributes` over an earlier one, attribute by attribute,
+    so it says where they go: the eol line above the lines for patterns of their own, which
+    a `*` line after them would undo (round 1 of #815)."""
+    from manuscript_guard.scaffold import EOL_LINE, SVG_BINARY, attributes_order
+
     for name, lines in wanted.items():
         why = _GIT_LINES.get(name) or ", and ".join(_ATTRIBUTE_LINES[line] for line in lines)
+        where = "Add these lines to it"
+        if name == ".gitattributes":
+            own, undone = attributes_order(root)
+            if undone and SVG_BINARY in lines:
+                why += ("; its own `*.svg` line stands above, and a `*` line below it that "
+                        "sets `text` undoes it")
+            if own and EOL_LINE in lines:
+                where = (f"Add `{EOL_LINE}` at the top of the file, above its lines for "
+                         "patterns of their own, which a `*` line below them undoes"
+                         + (", and the others at its end" if len(lines) > 1 else ""))
         print(f"\n{name} was already there and was left as it was, and {why}. "
-              "Add these lines to it:\n\n" + "\n".join(lines))
+              f"{where}:\n\n" + "\n".join(lines))
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -6855,7 +6870,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
-    _say_git_lines(git_lines_to_add(args.path))
+    _say_git_lines(git_lines_to_add(args.path), Path(args.path))
     if under_way:
         made = [path for path in missing if path.exists()]
         for path in made:

@@ -172,7 +172,9 @@ def _same_software(key: str, first: dict, spec: dict) -> bool:
     """Whether a second fragment's `spec` for `key` is the record the first fragment wrote,
     `first`: a software record in both, the same in every field, so that nothing of the
     second is dropped unsaid (round 1 of #821). Every script that ran R may say which R it
-    ran; one version is one record."""
+    ran; one version is one record. A field left to its default differs from the default
+    written out (`quoted` absent and `quoted: true`), deliberately: two records count as one
+    only when they are written alike, as both emitters' `software()` writes them (round 2)."""
     return (_is_software(key, first.get("role")) and _is_software(key, spec.get("role"))
             and spec == first)  # fmt: skip
 

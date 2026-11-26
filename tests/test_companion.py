@@ -565,6 +565,39 @@ def test_a_software_record_two_fragments_share_is_shown_from_one_the_package_hol
     assert source(set()) == first
 
 
+def test_the_page_prints_a_shared_software_version_from_the_fragment_it_holds(
+    project: Path,
+) -> None:
+    """Round 2 of #821: the page itself, made from two fragments that both record
+    `software.python` by a package that withholds the first. The evidence map prints the
+    version, read from the second, and the first fragment's own results stay withheld."""
+    from manuscript_guard.deposit.companion import companion_html
+    from manuscript_guard.emit import write_digest
+
+    ready(project)
+    first = "results/01_disproportionality.json"
+    document = json.loads((project / first).read_text(encoding="utf-8"))
+    python = document["values"]["software.python"]
+    (project / "analysis" / "02_trials.py").write_bytes(b"# the trials\n")
+    second = {"schema": document["schema"], "values": {"software.python": dict(python)},
+              "provenance": {**document["provenance"], "generated_by": "analysis/02_trials.py"}}
+    path = project / "results" / "02_trials.json"
+    path.write_text(json.dumps(second, indent=2), encoding="utf-8")
+    write_digest(path)
+    loaded, results, plan = _loaded(project)
+    assert [found.name for found in results.shared["software.python"]] == ["02_trials.json"]
+    entries = [entry for entry in plan.entries if not entry.path.startswith(first)]
+    assert len(entries) < len(plan.entries)
+    page = companion_html(loaded, results, entries, list(plan.inputs))
+
+    def printed(key: str) -> str:
+        found = re.search(rf"<code>results\.{re.escape(key)}</code></td><td>([^<]*)</td>", page)
+        assert found, key
+        return found[1]
+
+    assert printed("software.python") == python["display"]
+    assert printed("ror.point") == "[withheld]"
+
 def test_a_figure_a_record_ties_to_a_withheld_file_is_not_shown(project: Path) -> None:
     from manuscript_guard.deposit.companion import companion_html
 

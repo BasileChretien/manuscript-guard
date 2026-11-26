@@ -11182,8 +11182,9 @@ and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each 
 the package has two places for a page and no more: `from_word.runner`, which runs pandoc
 another way where it is set, and `lookup.http.default_transport`, which sends one
 XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
-page's own origin, so that its Content-Security-Policy names no host but its own and the five
-registries `--lookup` asks, and a test holds that list to `lookup.run.Services`.
+page's own origin, so that its Content-Security-Policy names no host but its own and the seven
+registries `--lookup` asks, and a test holds that list to `lookup.run.Services` and
+`auditing.registration.asked_at`.
 
 The page is held to the command line, not trusted to match it: CI builds it as the Pages
 workflow does and requires each report on the worked example to be the command line's word for
@@ -29758,8 +29759,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
-    no case ticks the box. That the five registries answer a page (CORS) was tested by hand
-    on 2026-11-05; one that stops would be refused by the browser, and every lookup to it
+    no case ticks the box. That the seven registries answer a page (CORS) was tested by hand,
+    the reference list's five on 2026-11-05 and ClinicalTrials.gov and ISRCTN on 2026-11-26; one that stops would be refused by the browser, and every lookup to it
     said to have had no connection, with nothing in CI to notice. Accepted.
   - *pandoc.wasm's exit status is not read.* A failure is judged by nothing printed with
     something on stderr, where the command line reads pandoc's exit code. A failure that says

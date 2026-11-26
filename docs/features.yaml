@@ -926,9 +926,9 @@ features:
     stage: others
     title: The trial's registration
     says: >-
-      With the lookups on, asks the trial's registry about each registration number the paper
-      names, shows what was registered beside the paper, and says a trial registered after
-      it started.
+      With the lookups on, asks ClinicalTrials.gov or ISRCTN about each of their numbers the
+      paper names outside its reference list, shows what was registered beside the paper,
+      and says a trial registered after it started where ClinicalTrials.gov's dates show it.
     status: works
     commands: [audit]
     tests: [tests/test_audit_registration.py]

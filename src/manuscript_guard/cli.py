@@ -7093,7 +7093,8 @@ def build_parser() -> argparse.ArgumentParser:
         "then doi.org about one Crossref has no record of, and PubMed about each PMID, "
         "whether the work was retracted, withdrawn or put under concern, or is not "
         "registered, Crossref about the title of an entry with neither, ClinicalTrials.gov "
-        "or ISRCTN about each of their numbers the paper names, and with --cited "
+        "or ISRCTN about each of their numbers the paper names outside its reference list, "
+        "and with --cited "
         "Europe PMC about each cited work's abstract; nothing is sent without it",
     )
     audit.add_argument(

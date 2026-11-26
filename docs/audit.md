@@ -401,8 +401,9 @@ words is not looked up. Without `--lookup` the entries are sorted and listed, an
 asked.
 
 With `--lookup`, each trial registration number the paper names outside its reference list
-(an NCT, ISRCTN, EU PAS or PROSPERO number) is looked up too (Basile, 2026-11-26):
-ClinicalTrials.gov and ISRCTN are sent the number and nothing else, and what they
+(an NCT, ISRCTN, EU PAS or PROSPERO number) is found too (Basile, 2026-11-26), and each
+ClinicalTrials.gov and ISRCTN number looked up: they are sent the number and nothing else,
+and what they
 hold is shown under "Registration (G12)": the title, the date the study was registered, its
 start, and its first primary outcome, for a reader to set beside the paper's
 (`registration-record`). Nothing of the paper's own outcomes or dates is read. What is judged

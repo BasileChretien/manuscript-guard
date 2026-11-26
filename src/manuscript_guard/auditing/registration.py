@@ -1,7 +1,7 @@
 """The paper's own registration under `audit --lookup` (Basile, 2026-11-26, item 7a of the
 editor's list): each NCT, ISRCTN, EU PAS or PROSPERO number the paper names outside its
-reference list, asked of its registry, and what the registry holds shown for an editor to set
-beside the paper.
+reference list found, each ClinicalTrials.gov and ISRCTN number asked of its registry, and
+what the registry holds shown for an editor to set beside the paper.
 
 Nothing here reads the paper's outcomes or dates: the registry's primary outcome, its title
 and its dates are shown, and whether the paper reports that outcome is the editor's to judge.

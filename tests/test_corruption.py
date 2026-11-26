@@ -39680,6 +39680,42 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+def test_a_heading_names_its_section_exactly_whatever_its_words(project: Path) -> None:
+    """A section is found by the words of its heading (DESIGN.md, Known gaps), and a heading
+    in other words was a false alarm the author could answer only by renaming it. The
+    identifier its attribute block gives names the section exactly, `{#time-zero-and-
+    follow-up}`, and the warning says which identifier names it."""
+    from manuscript_guard.gates import check_design
+    from manuscript_guard.text.attributes import heading_identifier
+
+    assert heading_identifier("## Study sample {#sampling}") == "sampling"
+    assert heading_identifier("## Study sample {.unnumbered #sampling}") == "sampling"
+    assert heading_identifier("## Results {-}") is None
+    assert heading_identifier("## Notes {and more}") is None  # pandoc prints the braces
+    assert heading_identifier("# [Ref]{#a}") is None  # a span's block, not the heading's
+
+    _paper_has(project, study_type="cohort")
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8")
+                    + "\n## When people enter the study\n\nAt the first report.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert "time zero and follow-up" in _plan_asked(project)
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert hints["the plan says nothing about time zero and follow-up"].endswith(
+        "name the section on that heading: {#time-zero-and-follow-up}")
+    text = plan.read_text(encoding="utf-8")
+    plan.write_text(text.replace("## When people enter the study\n",
+                                 "## When people enter the study {#time-zero-and-follow-up}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert "time zero and follow-up" not in _plan_asked(project)
+    # An identifier names one section: another's is no answer to it.
+    plan.write_text(text.replace("## When people enter the study\n",
+                                 "## When people enter the study {#confounding}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert "time zero and follow-up" in _plan_asked(project)
+
+
 def test_a_design_none_of_the_table_s_is_still_asked_for_the_seven(project: Path) -> None:
     """`study_type: other` settles the choice of design and asks for nothing of its own: a
     plan that lacks one of the seven sections is still told, as one that names no design."""

@@ -327,7 +327,8 @@ self-controlled design, the case definition and the comparator of a disproportio
 analysis. A study that is none of these (a narrative review, a cross-sectional survey, a case
 series or a case report, a qualitative study) takes `other`: the plan is asked for the seven
 sections, and G5 for no guideline of the design's. [references/study-designs.md](references/study-designs.md) has, for each design,
-what each section has to answer and where that comes from. Whether the design can support
+what each section has to answer, where that comes from and how to name one exactly. Whether
+the design can support
 the conclusion is the author's and the panel's to judge, not a gate's; the sections make the
 choices visible.
 

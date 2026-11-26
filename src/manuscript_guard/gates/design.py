@@ -37,6 +37,7 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.emit import FROZEN_PLAN, source_digest_matches
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.methods import analysis_digests
+from manuscript_guard.text.attributes import heading_identifier
 from manuscript_guard.text.blocks import list_items
 from manuscript_guard.text.inline import code_spans
 from manuscript_guard.text.masking import mask
@@ -137,6 +138,25 @@ def required_for(study_type: str | None) -> tuple[tuple[str, str, str], ...]:
         for section in study_types()[study_type]["sections"]
     )
     return _required() + own
+
+
+def section_identifier(name: str) -> str:
+    """The identifier that names a plan's section on a heading exactly, whatever the
+    heading's words: the section's id with a hyphen for each space, `sampling` and
+    `sample-size`, written `## Study sample {#sampling}`."""
+    return name.replace(" ", "-")
+
+
+def _heading_identifiers(text: str, sections: list[Section]) -> list[str | None]:
+    """The identifier each section's heading names, read from the heading's line of the
+    plan, in lower case; None where it names none."""
+    lines = text.split("\n")
+    found = []
+    for section in sections:
+        line = lines[section.line - 1] if 0 < section.line <= len(lines) else ""
+        named = heading_identifier(line)
+        found.append(named.lower() if named else None)
+    return found
 
 
 def plan_path(project: Project) -> Path:
@@ -544,8 +564,14 @@ def _check_plan(project: Project, results: Results | None, stage: str | None) ->
     said: set[str] = set()
 
     required = required_for(project.study_type)
+    # A heading is its section's by its words, or exactly by the identifier it names, which
+    # answers a false alarm of the words (DESIGN.md, Known gaps, "A design's sections are
+    # found by the words of their headings").
+    named = _heading_identifiers(text, sections)
     for name, pattern, purpose in required:
-        matching = [i for i, s in enumerate(sections) if re.search(pattern, s.title)]
+        exact = section_identifier(name)
+        matching = [i for i, s in enumerate(sections)
+                    if named[i] == exact or re.search(pattern, s.title)]  # fmt: skip
         if not matching:
             report = report.with_findings(
                 Finding(
@@ -554,7 +580,8 @@ def _check_plan(project: Project, results: Results | None, stage: str | None) ->
                     severity=WARN,
                     message=f"the plan says nothing about {name}",
                     path=path,
-                    hint=purpose,
+                    hint=f"{purpose}; where a heading of the plan says it in other words, name "
+                    f"the section on that heading: {{#{section_identifier(name)}}}",
                 )
             )
             continue

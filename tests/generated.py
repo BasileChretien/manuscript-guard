@@ -7210,8 +7210,12 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
 
 #: How a section of a plan stands in a drawn plan: headed by its id as `study_types.yaml`
 #: names it (capitalised, which `tests/test_study_types.py` holds its pattern finds), headed
-#: another way, left out, or headed with nothing under it.
-PLAN_KINDS = ("as named", "reworded", "missing", "empty")
+#: another way, left out, headed with nothing under it, or named exactly by the identifier
+#: its heading's attribute block gives (`{#sample-size}`) under words no pattern takes.
+PLAN_KINDS = ("as named", "reworded", "missing", "empty", "named exactly")
+#: The attribute blocks that name a section exactly, each as pandoc reads one: the
+#: identifier alone, beside a class, and in capitals, which G12 reads in lower case.
+_NAMING = ("{{#{0}}}", "{{.unnumbered #{0}}}", "{{#{1}}}")
 #: Other headings for each section of every plan and of each design: the other words of its
 #: pattern, and a near miss or two, which name another section or none ("Standard deviation
 #: of the dose" is a statistic, "Case-control design" no case definition). A design added to
@@ -7305,6 +7309,10 @@ def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, st
             heading = name.capitalize()
         elif kind == "reworded":
             heading = reworded(name)
+        elif kind == "named exactly":
+            exact = name.replace(" ", "-")
+            heading = f"Part {ids.index(name) + 1} " + draw(st.sampled_from(_NAMING)).format(
+                exact, exact.upper())
         else:
             heading = draw(st.sampled_from((name.capitalize(), reworded(name))))
         parts.append(f"{mark} {heading}\n\n{draw(nothing if kind == 'empty' else said)}\n")

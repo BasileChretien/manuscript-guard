@@ -52,17 +52,11 @@ it reads naturally. "We removed duplicate reports by matching on report identifi
 "Duplicate report removal was performed utilising identifier-based matching". The
 [manuscript-writing](../manuscript-writing/SKILL.md) skill covers the register.
 
-**Name every test the Results use, and gloss each method once.** A reader who meets a test
-in the Results looks for it here. Each test, correction, interval, resampling method and
-model the Results name is named in the Methods, with what it was used for, and given a plain
-one-sentence gloss where it first appears: "Proportions were compared with Fisher's exact
-test, a test of whether two proportions differ that holds for small counts". Say what an
-interval is an interval for where the data are a census, what "expected by chance" was
-computed from, and what each sensitivity analysis changes. G9 warns of a method from its
-list that the Results name and the Methods never do (`analysis-not-in-methods`): name it
-here, in the words the Results use, or give it one name in both. The manuscript-writing
-skill's references/clarity.md has glosses that work for a reader without statistical
-training.
+**Name every test the Results use, and gloss each method once.** Name here each test,
+correction, interval and model the Results name, what it was used for, and a plain gloss:
+"Fisher's exact test, a test of whether two proportions differ that holds for small counts".
+G9 warns of one the Methods never name (`analysis-not-in-methods`). More glosses: the
+manuscript-writing skill's references/clarity.md.
 
 ## Reconciling after a change
 
@@ -161,14 +155,9 @@ script. Name the code that did the work instead, without running it:
 em.code_step("model.stacked", "code/analysis.py", "fit_stacked", at="results-review8-v2")
 ```
 
-It is a step like any other to the anchors, G9 and the checking page. With git on PATH and a
-repository holding the file, it is refused unless the function's code at that commit or tag is
-the code in the working tree, and refused when git fails there; with git not on PATH, or no
-repository, it is recorded as unchecked. When the
-code is edited afterwards, `check` fails from `internal-review` (`method-code-changed`,
-`method-code-missing`).
 Before using it, read [references/code-steps.md](references/code-steps.md): what may be
-named, what happens without a repository, and what to do when the results are made again.
+named, how git checks it, what happens without a repository, and when `check` fails
+(`method-code-changed`, `method-code-missing`).
 
 ## Declaring the choices the code makes
 

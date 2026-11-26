@@ -11,7 +11,8 @@ put back together by position (the design of 2026-11-26 and the author's answers
   blocks of one line or of one block: a justified "Keywords:" line, a table's row;
 - a line drawn again over itself is read once (`OVERLAID`);
 - what a page repeats is taken out: the lines in the top or the bottom `BAND` of a page
-  whose words, digits read alike, stand there on `RUNNING_SHARE` of the pages; a number
+  whose words, digits read alike, stand there on `RUNNING_SHARE` of the pages, and the
+  same words standing first or last on another page; a number
   alone there, the page's; and a column of numbers alone beside the text, the margin's line
   numbers, each kept as the printed number of the line on its baseline;
 - the blocks of a page are read in bands cut by the blocks that cross its middle, and in
@@ -347,9 +348,28 @@ def _running(pages: list[Page]) -> tuple[set[int], list[tuple[int, str, str]], l
             for number, line in where[key]:
                 gone.add(id(line))
                 running.append((number, key[0], line.text))
+    running += _at_the_edges(pages, {shape for _side_, shape in (
+        key for key, seen in on.items() if len(seen) >= least)}, gone)  # fmt: skip
     said = ["page numbers"] if numbers else []
     said += list(dict.fromkeys(text for _page, _side_, text in running))
     return gone, sorted(running), said
+
+
+def _at_the_edges(pages: list[Page], shapes: set[str],
+                  gone: set[int]) -> list[tuple[int, str, str]]:  # fmt: skip
+    """Each line of a running head's or foot's words (`shapes`, digits read alike) that
+    stands first or last on another page, outside the band: a short page's foot, or a head
+    set on the other side of the page. Taken out with them (`gone`); each `(page, side,
+    text)`."""
+    out = []
+    for page in pages:
+        lines = sorted((line for block in page.blocks for line in block.lines
+                        if id(line) not in gone), key=lambda line: line.y0)  # fmt: skip
+        for side, line in (("head", lines[0]), ("foot", lines[-1])) if lines else ():
+            if _shape(line.text) in shapes and id(line) not in gone:
+                gone.add(id(line))
+                out.append((page.number, side, line.text))
+    return out
 
 
 def _margin(page: Page) -> set[int]:

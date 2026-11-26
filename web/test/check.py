@@ -5,10 +5,13 @@
 
 For each case (the .docx against the results, the .docx alone, the Markdown alone, the
 .docx against the results under names a reader may give them, outside ASCII and with
-spaces, under names that start with "-", and against two outputs whose names the page once
-made one), the command line's `audit` is run here, then the same command is run as the page
-runs it, in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its
-`--json` must be the command line's. Then the site is opened in each browser named
+spaces, under names that start with "-", against two outputs whose names the page once
+made one, with a referee's options set, and with the copy with tracked changes asked for),
+the command line's `audit` is run here, then the same command is run as the page runs it,
+in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its `--json`
+must be the command line's. Where the copy with tracked changes is asked for, the command
+line's `--tracked` says how many corrections it tracks, and the page's copy must track as
+many. Then the site is opened in each browser named
 (`browser.mjs`): the landing page must load its style and pictures and ask no other host,
 and the audit page must start under its own policy, give the same report, notes and exit
 code for each case from the files as chosen, send nothing, and refuse every request "Test the
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +43,15 @@ PAPER, OUTPUT = "Mon article (v3).docx", "résultats 結果.json"
 #: that were one file under the names made ASCII (round 2 of #527).
 DASHED_PAPER, DASHED_OUTPUT = "-paper.docx", "-results.json"
 ALIKE = ("résultats.json", "rèsultats.json")
+#: A referee's options, as the command line takes them and as the page's boxes are set for
+#: them (their ids in index.html), in the order worker.js puts them in the command.
+REFEREE = (["--design", "trial", "--whole-numbers", "Age", "--non-negative", "Reports",
+            "--minimum-cell-count", "5"],
+           {"design": "trial", "wholenumbers": "Age", "nonnegative": "Reports", "mincount": "5"})
+#: The worked example is in British English: in American, G14 has spellings to correct.
+TRACKED = (["--english", "american"], {"english": "american", "tracked": True})
+#: How many corrections `audit --tracked` says it wrote as tracked changes.
+CORRECTIONS = re.compile(r"(\d+) corrections? as tracked changes")
 
 
 def argument(name: str) -> str:
@@ -79,13 +92,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--browsers", default="chrome,firefox",
                         help="comma-separated, or none (default chrome,firefox)")  # fmt: skip
     args = parser.parse_args(argv)
+    # Each case: its name, the paper, the outputs, and where any are set, the options as
+    # the command line takes them and as the page's boxes are set.
     cases = [
-        ("the .docx against its results", "paper.docx", ["results.json"]),
-        ("the .docx alone", "paper.docx", []),
-        ("the Markdown alone", "paper.md", []),
-        ("names outside ASCII, with spaces", PAPER, [OUTPUT]),
-        ("names that start with -", DASHED_PAPER, [DASHED_OUTPUT]),
-        ("two outputs the page once named alike", "paper.docx", list(ALIKE)),
+        ("the .docx against its results", "paper.docx", ["results.json"], ([], {})),
+        ("the .docx alone", "paper.docx", [], ([], {})),
+        ("the Markdown alone", "paper.md", [], ([], {})),
+        ("names outside ASCII, with spaces", PAPER, [OUTPUT], ([], {})),
+        ("names that start with -", DASHED_PAPER, [DASHED_OUTPUT], ([], {})),
+        ("two outputs the page once named alike", "paper.docx", list(ALIKE), ([], {})),
+        ("a referee's options", "paper.docx", ["results.json"], REFEREE),
+        ("the copy with tracked changes", "paper.docx", [], TRACKED),
     ]
     failed = 0
     with tempfile.TemporaryDirectory(prefix="mg-page-") as scratch:
@@ -96,9 +113,9 @@ def main(argv: list[str] | None = None) -> int:
             for name in names:
                 shutil.copyfile(source, folder / name)
         listed = []
-        for number, (name, paper, against) in enumerate(cases):
+        for number, (name, paper, against, (options, form)) in enumerate(cases):
             arguments = ["audit", argument(paper),
-                         *(["--against", *map(argument, against)] if against else [])]
+                         *(["--against", *map(argument, against)] if against else []), *options]
             said = native(folder, arguments)
             page = args.site / AUDIT
             wrong = [*differences(said, in_node(page, folder, arguments), False),
@@ -110,7 +127,20 @@ def main(argv: list[str] | None = None) -> int:
             failed += bool(wrong)
             expect = f"expect-{number}.json"
             (folder / expect).write_text(json.dumps(said), encoding="utf-8")
-            listed.append({"name": name, "paper": paper, "against": against, "expect": expect})
+            case = {"name": name, "paper": paper, "against": against, "expect": expect,
+                    "form": form}  # fmt: skip
+            if form.get("tracked"):
+                copy = folder / f"tracked-{number}.docx"
+                done = native(folder, [*arguments, "--tracked", copy.name])
+                copy.unlink(missing_ok=True)
+                counted = CORRECTIONS.search(done["err"])
+                if done["code"] != said["code"] or not counted:
+                    print(f"{name}: the command line wrote no copy with tracked changes:\n"
+                          f"{done['err']}", flush=True)  # fmt: skip
+                    failed += 1
+                    continue
+                case["tracked"] = int(counted.group(1))
+            listed.append(case)
         (folder / "cases.json").write_text(json.dumps(listed), encoding="utf-8")
         for browser in [b for b in args.browsers.split(",") if b and b != "none"]:
             done = subprocess.run([NODE, str(TEST / "browser.mjs"), str(args.site), str(folder),

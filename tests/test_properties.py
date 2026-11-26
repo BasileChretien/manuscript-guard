@@ -26201,8 +26201,9 @@ def test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_els
     digits (`"grey50"`, `"steelblue4"`, `"C0"`), a number that is a whole subscript
     (`edges[1]`) and a zero compared with an exit status (`if (status != 0) stop()`), none of
     them a number the figure draws or data typed into it (the bisphosphonates paper,
-    2026-11-26), a status assigned in braces or straight after a block's colon (`try:`) among
-    them; and beside each what only looks like it, which G3 reports as before: a name R has no
+    2026-11-26), a status assigned in braces or straight after a block's colon (`try:`) and an
+    index of a field named by a keyword (`d$class[1]`) or of `type` among them; and beside
+    each what only looks like it, which G3 reports as before: a name R has no
     colour by, R's names in Python, a subscript with arithmetic in it or two numbers, a list
     of one number, after a keyword too (`in [3]`, `return [3]`), a zero compared
     with another name, a status compared with another number, a status assigned as a call's
@@ -26319,6 +26320,21 @@ def _any_dollar_status_is_a_status(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(code, "_status_field", lambda tokens, index, statuses: (
         code._text(tokens, index) or "").endswith(".returncode") or (
         code._text(tokens, index) == "status" and code._text(tokens, index - 1) == "$"))
+
+
+def _type_is_a_keyword(patch: pytest.MonkeyPatch) -> None:
+    """`type` put back among the keywords, as round 1 of #817 had it: `type[1]` read."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_KEYWORDS", code._KEYWORDS | {"type"})
+
+
+def _a_field_named_by_a_keyword_is_a_keyword(patch: pytest.MonkeyPatch) -> None:
+    """The `$` and `@` test of `_whole_subscript` taken out: `d$class[1]` read (round 3 of
+    #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_FIELD", ())
 
 
 def _keywords_open_subscripts(patch: pytest.MonkeyPatch) -> None:
@@ -33889,6 +33905,14 @@ BROKEN = {
     ),
     "a keyword before a bracket opens a subscript": (
         _keywords_open_subscripts,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "type is a keyword": (
+        _type_is_a_keyword,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a field named by a keyword is a keyword": (
+        _a_field_named_by_a_keyword_is_a_keyword,
         test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
     ),
     "an SVG's stylesheet is drawn text": (

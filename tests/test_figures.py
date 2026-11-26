@@ -397,7 +397,11 @@ def test_a_string_that_is_no_colour_name_is_still_read(
         ("first <- d$type[1]", ".R"),
         ("first <- type[1]", ".R"),
         ("match = re.search(p, s)\nfirst = match[1]", ".py"),
-        ("first <- d$next[1]", ".R"),
+        # Python's keywords as R's field names, after `$` or `@` (round 3 of #817).
+        ("first <- d$class[1]", ".R"),
+        ("first <- d$from[1]", ".R"),
+        ("first <- d$return[1]", ".R"),
+        ("first <- obj@class[1]", ".R"),
         # Known gaps: a soft keyword is read as a name, so `case [3]:` is taken for an index.
         ("match dose:\n    case [3]:\n        pass", ".py"),
     ],
@@ -425,9 +429,9 @@ def test_a_number_that_is_a_whole_subscript_is_an_index(
         ("if dose in [3.84]:\n    pass", ".py", ["3.84"]),
         ("def doses():\n    return [3.84]", ".py", ["3.84"]),
         # Known gaps: a slice is read, and the subscript of a name that is a keyword in either
-        # language, where it is no field's.
+        # language, where it is no field's: R's variable `from`, a keyword of Python's.
         ("some <- edges[1:3]", ".R", ["1", "3"]),
-        ("first <- next[1]", ".R", ["1"]),
+        ("first <- from[1]", ".R", ["1"]),
     ],
 )
 def test_a_number_beside_a_subscript_is_still_read(
@@ -512,6 +516,9 @@ def test_a_zero_compared_with_an_exit_status_is_no_number(
         ('job <- tryCatch(processx::run("x"))\nif (job$status != 0) stop()', ".R", ["0"]),
         ('results[[i]] <- processx::run("x")\nif (results[[i]]$status != 0) stop()', ".R",
          ["0"]),
+        # Known gaps: sys and callr's runs count only with their package written.
+        ('library(callr)\njob <- rcmd("build")\nif (job$status != 0) stop()', ".R", ["0"]),
+        ('library(sys)\njob <- exec_internal("x")\nif (job$status != 0) stop()', ".R", ["0"]),
     ],
 )
 def test_a_zero_compared_with_anything_else_is_still_read(

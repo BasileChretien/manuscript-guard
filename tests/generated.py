@@ -19846,6 +19846,14 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
         form = draw(st.sampled_from(["if {x} in [{n}]:\n    raise SystemExit",
                                      "def {x}_of():\n    return [{n}]"]))  # fmt: skip
         return form.format(x=name, n=n), [n]
+    if kind == "a field or type's subscript":
+        # Round 3 of #817: in R, a field named by a keyword of Python's, after `$` or `@`; in
+        # Python, `type`, a soft keyword, subscripted. An index in either.
+        if r:
+            field = draw(st.sampled_from(["class", "from", "return", "is", "def", "with"]))
+            sign = draw(st.sampled_from(["$", "@"]))
+            return f"{name}_one <- {name}{sign}{field}[{n}]", []
+        return f"{name}_one = type[{n}]", []
     # Not a status: another name compared with zero, a status compared with another number,
     # and a status assigned as a call's argument, which is the call's and not the script's.
     if r:
@@ -19867,7 +19875,7 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
 #: example holds one.
 FIGURE_SCRIPT_KINDS = ("colour", "not a colour", "subscript", "not a subscript", "status",
                        "not a status", "status in a body",
-                       "a column or a keyword's list")  # fmt: skip
+                       "a column or a keyword's list", "a field or type's subscript")  # fmt: skip
 
 
 @st.composite

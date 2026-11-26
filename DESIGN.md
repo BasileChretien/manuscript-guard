@@ -612,7 +612,7 @@ colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gr
 and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
 `"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
 bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and
-not after a keyword (`x in [3]`, `return [3]`), unless the word is a field's (`d$next[1]`),
+not after a keyword (`x in [3]`, `return [3]`), unless the word is a field's (`d$class[1]`),
 is an index. A zero compared by `==` or `!=` with a process's exit status is the test of
 whether it failed: a name the script assigns, at the top level or inside braces (a
 function's body, `local({ })`, `tryCatch({ })`) but not as a call's argument, from
@@ -19537,7 +19537,8 @@ Added by the adversarial review, verified and **not** fixed:
     `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
   - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
     (`edges[1:3]`) are read as numbers bound to nothing, and so is the subscript of a name
-    that is a keyword in either language and no field's (`next[1]` in R). A soft keyword
+    that is a keyword in either language and no field's (`from[1]` in R, whose `from` is
+    a keyword of Python's). A soft keyword
     of Python's is read as a name, so `case [3]:` is taken for an index and its number is
     not read: the tokens do not say whether `match` or `case` opens a statement (round 2
     of #817). Pinned by
@@ -19545,7 +19546,8 @@ Added by the adversarial review, verified and **not** fixed:
     `tests/test_figures.py::test_a_number_that_is_a_whole_subscript_is_an_index`.
   - An exit status is known by the calls that return one, by `.returncode`, and by the
     `$status` of a run (processx's `run()`, sys's `exec_internal()`, callr's `rcmd()`,
-    `rcmd_safe()` and `rscript()`): R's `system2(stdout = TRUE)` and
+    `rcmd_safe()` and `rscript()`, sys's and callr's with their package written, so
+    `library(callr)` then `rcmd()` is no run): R's `system2(stdout = TRUE)` and
     `system(intern = TRUE)`, which return the output, are taken for a status, and so is the
     `$status` of a function of the script's own called `run`; while `Popen(...).wait()`, a
     status returned by a function of the script's own, one assigned in a function's argument,

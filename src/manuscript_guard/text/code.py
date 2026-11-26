@@ -244,6 +244,8 @@ def _between_quotes(literal: str) -> str:
 #: tokens do not say which (round 2 of #817): they are read as names, so `case [3]:` is taken
 #: for an index (Known gaps).
 _KEYWORDS = frozenset(keyword.kwlist) | {"function", "repeat", "next", "break", "print"}
+#: What makes the name after it a field's, whatever word it is: R's `d$class`, `obj@class`.
+_FIELD = ("$", "@")
 
 
 def _text(tokens: list[Token], index: int) -> str | None:
@@ -272,8 +274,8 @@ def _whole_subscript(tokens: list[Token], index: int) -> bool:
         return True
     if owner < 0 or _identifier(tokens[owner]) is None:
         return False
-    # A name after `$` or `@` is a field's, whatever word it is: `d$next[1]`.
-    return before not in _KEYWORDS or _text(tokens, owner - 1) in ("$", "@")
+    # A name after `$` or `@` is a field's, whatever word it is: `d$class[1]`.
+    return before not in _KEYWORDS or _text(tokens, owner - 1) in _FIELD
 
 
 #: The calls whose value is the exit status of the process they ran, in R and in Python.

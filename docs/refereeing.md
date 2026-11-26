@@ -3,7 +3,8 @@
 A journal sends its editors and referees manuscripts in confidence. `manuscript-guard audit`
 reads one on your own computer and sends nothing of it anywhere: the checks run here, with no
 model. This page is about reading a paper someone else wrote. For your own, see
-[Auditing a paper you already wrote](audit.md).
+[Auditing a paper you already wrote](audit.md). For a journal's office deciding whether to
+allow it, see [For an editorial office](editorial-office.md).
 
 ## Keep it away from a model
 
@@ -17,11 +18,13 @@ or to handle, and to give you the commands instead. `compare`, which sets a revi
 the version before it, says the same every time it runs, and the hook asks about it too.
 
 What leaves the machine: nothing, unless you ask. `--lookup` asks Crossref, OpenAlex,
-DataCite, doi.org and PubMed about each DOI and PMID of the reference list, and with
-`--cited` asks Europe PMC for each cited work's abstract by its PMID or DOI; it sends those
-identifiers and nothing else, never a sentence, a title or a name. `--lookup --dry-run` lists
-what it would send. The set of DOIs a paper cites is a weak fingerprint of it, and a contact
-address you set in the environment for the registries names you to them.
+DataCite, doi.org and PubMed about each DOI and PMID of the reference list, asks Crossref
+for each article, book or chapter that gives neither by the words of its title, its first
+author's family name and its year, and with `--cited` asks Europe PMC for each cited work's
+abstract by its PMID or DOI. It sends nothing else: no sentence of the paper, and nothing of
+it outside the reference list. `--lookup --dry-run` lists what it would send. Together, what
+it sends about the reference list points to the paper that cites it, and a contact address
+you set in the environment for the registries names you to them.
 
 ## A referee
 

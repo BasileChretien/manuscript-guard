@@ -6,16 +6,24 @@
 //   node web/test/names.mjs < cases.json
 //
 // Each case is {"paper": name, "against": [names]}, with "english", "known", "noAbstract",
-// "noResults", "results", "tracked", "design", "wholeNumbers", "binary", "nonNegative" and
-// "minimumCellCount" where the reader set them; each answer {"args", "written", "corrected"},
-// "corrected" whether the audit was asked to work out G14's corrections, or {"error",
-// "written"} where the worker refuses the names.
+// "noResults", "results", "tracked", "design", "wholeNumbers", "binary", "nonNegative",
+// "minimumCellCount", "journal" and "authors" where the reader set them, and "journalFile"
+// and "authorsFile" by their names where the reader chose one; each answer {"args",
+// "written", "corrected", "made"}, "corrected" whether the audit was asked to work out G14's
+// corrections and "made" the files the journal's form made, by name; or {"error", "written"}
+// where the worker refuses the names or the form. The stand-in for `web.journal_files` makes
+// "profile" and "authors" of what it is given, and refuses a journal named "refused".
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 
 const source = readFileSync(new URL("../worker.js", import.meta.url), "utf-8");
 const written = [];
 const set = {};
+function journalFiles() {
+  if (set.JOURNAL && set.JOURNAL.name === "refused") return JSON.stringify({ error: "a test" });
+  return JSON.stringify({ ...(set.JOURNAL ? { profile: "profile\n" } : {}),
+    ...(set.AUTHORS ? { authors: "authors\n" } : {}) });
+}
 const context = createContext({
   BASE: "/",
   self: { addEventListener() {}, postMessage() {} },
@@ -23,7 +31,8 @@ const context = createContext({
     getEntriesByType: () => [] },
   stub: {
     runPython: (code) => (code.includes("web.view")
-      ? '{"code": 0, "out": "", "err": "", "view": null}' : undefined),
+      ? '{"code": 0, "out": "", "err": "", "view": null}'
+      : code.includes("web.journal_files") ? journalFiles() : undefined),
     FS: { writeFile: (path) => written.push(path) },
     globals: { set: (name, value) => { set[name] = value; }, delete() {} },
     toPy: (value) => value,
@@ -34,14 +43,16 @@ runInContext("py = stub;", context);
 
 const file = (name) => ({ name, data: new ArrayBuffer(0) });
 const cases = JSON.parse(readFileSync(0, "utf-8"));
-const answers = cases.map(({ paper, against, ...chosen }) => {
+const answers = cases.map(({ paper, against, journalFile, authorsFile, ...chosen }) => {
   written.length = 0;
-  delete set.CORRECTED;
+  for (const name of ["CORRECTED", "JOURNAL", "AUTHORS"]) delete set[name];
   context.payload = { paper: file(paper), against: against.map(file), lookup: false,
-    ...chosen };
+    journalFile: journalFile ? file(journalFile) : null,
+    authorsFile: authorsFile ? file(authorsFile) : null, ...chosen };
   try {
-    const { args } = runInContext("run(payload)", context);
-    return { args: [...args], written: [...written], corrected: set.CORRECTED };
+    const { args, made } = runInContext("run(payload)", context);
+    return { args: [...args], written: [...written], corrected: set.CORRECTED,
+      made: { ...made } };
   } catch (error) {
     return { error: String(error.message), written: [...written] };
   }

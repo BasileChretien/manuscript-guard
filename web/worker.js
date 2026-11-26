@@ -145,10 +145,41 @@ const DESIGNS = ["observational", "trial"];
 const labels = (typed) => typed.map((label) => label.trim())
   .filter((label) => label && !label.startsWith("-"));
 
+// The names the page gives the files its journal form makes, which no file chosen may have.
+const FORM_FILES = { profile: "journal.yaml", authors: "authors.yaml" };
+
+// The journal's profile and the authors' names the form describes, as `audit --journal` and
+// `--authors` read them (`web.journal_files`), where no file of the reader's stands in for
+// them: the text of each, by the name it is written under. Refused, before anything is
+// written, where the form cannot make one or a file chosen has its name.
+function formFiles(journal, authors, chosen) {
+  const wanted = { profile: journal, authors };
+  const clash = Object.entries(FORM_FILES).find(([kind, name]) => wanted[kind] && chosen.includes(name));
+  if (clash) {
+    throw new Error(`a file chosen is named ${clash[1]}, the name the page gives the `
+      + `${clash[0] === "profile" ? "journal's profile" : "authors' names"} it makes: rename it`);
+  }
+  if (!journal && !authors) return {};
+  py.globals.set("JOURNAL", journal ? py.toPy(journal) : null);
+  py.globals.set("AUTHORS", authors ? py.toPy(authors) : null);
+  const said = JSON.parse(py.runPython(`import json
+from manuscript_guard import web
+json.dumps(web.journal_files(JOURNAL, AUTHORS))`));
+  py.globals.delete("JOURNAL");
+  py.globals.delete("AUTHORS");
+  if (said.error) throw new Error(`the journal's form: ${said.error}`);
+  return Object.fromEntries(Object.keys(FORM_FILES).filter((kind) => said[kind] !== undefined)
+    .map((kind) => [FORM_FILES[kind], said[kind]]));
+}
+
 function run({ paper, against, lookup, details, english = "", known = [], noAbstract = false,
   noResults = false, results = "", tracked = false, design = "", wholeNumbers = [],
-  binary = [], nonNegative = [], minimumCellCount = "" }) {
-  const [paperName, ...outputNames] = names([paper, ...against]);
+  binary = [], nonNegative = [], minimumCellCount = "", journal = null, journalFile = null,
+  authors = null, authorsFile = null }) {
+  const own = [journalFile, authorsFile].filter(Boolean);
+  const chosen = names([paper, ...against, ...own]);
+  const [paperName, ...outputNames] = chosen.slice(0, 1 + against.length);
+  const made = formFiles(journalFile ? null : journal, authorsFile ? null : authors, chosen);
   py.runPython(`import os, shutil
 os.chdir("/")
 shutil.rmtree("/work", ignore_errors=True)
@@ -163,6 +194,13 @@ os.chdir("/work")`);
       args.push(argument(outputNames[at]));
     });
   }
+  for (const file of own) py.FS.writeFile("/work/" + file.name, new Uint8Array(file.data));
+  for (const [name, text] of Object.entries(made)) py.FS.writeFile("/work/" + name, text);
+  // The journal's rules and the authors' names, a file of the reader's or the form's.
+  const profileName = journalFile ? journalFile.name : made[FORM_FILES.profile] && FORM_FILES.profile;
+  const authorsName = authorsFile ? authorsFile.name : made[FORM_FILES.authors] && FORM_FILES.authors;
+  if (profileName) args.push("--journal", argument(profileName));
+  if (authorsName) args.push("--authors", argument(authorsName));
   if (english) args.push("--english", english);
   // A word that starts with "-" would be read as an option; one such word is no word.
   const words = known.filter((word) => !word.startsWith("-"));
@@ -233,7 +271,7 @@ said`));
       trackedCopy = { error: String((error && error.message) || error) };
     }
   }
-  return { ...result, commented, tracked: trackedCopy, pdf, args, ms, sent: requests(),
+  return { ...result, commented, tracked: trackedCopy, pdf, args, made, ms, sent: requests(),
     refused: [...refused] };
 }
 

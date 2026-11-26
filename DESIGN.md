@@ -29237,10 +29237,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`,
     `tests/test_corruption.py::test_a_thin_space_a_pdf_sets_stays_a_space`
     and `tests/test_corruption.py::test_a_heading_set_in_small_capitals_is_one_word`.
-  - A paragraph left open at a column's or a page's foot goes on only into a block set at
-    its size, its lines' middle height within a tenth: the journal's editorial history set
-    smaller at the next page's head is a paragraph of its own, and so is a paragraph of the
-    text that a break carries into a block set at another size, a box's.
+  - A paragraph left open at the text's size at a column's or a page's foot goes on into no
+    block whose words are set more than a tenth smaller than the text's lines: the journal's
+    editorial history set smaller at the next page's head is a paragraph of its own, and so
+    is a paragraph of the text a break carries into a box set smaller. A paragraph set
+    smaller, or larger, goes on as before into whatever block follows, and so does a
+    paragraph of the text into a block set at the text's size or larger.
     Pinned by `tests/test_corruption.py::test_a_paragraph_open_at_a_page_s_foot_does_not_go_on_into_smaller_type`.
   - A display reaches only as far as its blocks stand one under the other, or beside, over
     some of its width, on its page: a table whose rows a page break cuts is two, the

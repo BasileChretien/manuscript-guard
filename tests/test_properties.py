@@ -3981,7 +3981,7 @@ def _an_open_paragraph_goes_on_into_smaller_type(patch: pytest.MonkeyPatch) -> N
     """As before pdf-pubh-C3: the next page's editorial history, set smaller, joined."""
     from manuscript_guard.auditing import pdf_layout
 
-    patch.setattr(pdf_layout, "_size", lambda block: 1.0)
+    patch.setattr(pdf_layout._Flow, "smaller", lambda self, block: False)
 
 
 def _a_superscript_is_left_bare(patch: pytest.MonkeyPatch) -> None:

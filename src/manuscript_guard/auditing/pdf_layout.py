@@ -64,9 +64,11 @@ JOINED = 0.03
 #: Two words set at two sizes, their heights more than `SAME_SIZE` of the larger apart, are
 #: one where the gap between them is under this share of the line's height: a heading set
 #: in small capitals, "R" and "EFERENCES" half a point on (tex-cs-lg-B2). A paragraph left
-#: open goes on only into a block whose lines are set at its own size, so within
-#: `SAME_SIZE` (`_Flow.body`): a journal's editorial history set smaller at the next
-#: page's head is no part of the list of abbreviations that ended the page (pdf-pubh-C3).
+#: open at the text's size goes on into no block whose words are set smaller than the
+#: text's lines by more than `SAME_SIZE` (`_Flow.body`): a journal's editorial history set
+#: smaller at the next page's head is no part of the list of abbreviations that ended the
+#: page (pdf-pubh-C3). Words, not lines: a line's height is its tallest glyph's, a
+#: checkbox's or a superscript's.
 CAPITALS = 0.1
 SAME_SIZE = 0.1
 #: The top and the bottom share of a page a running head or foot stands in.
@@ -642,8 +644,9 @@ def _kind(block: Block, height: float, width: float) -> str:
 
 
 def _size(block: Block) -> float:
-    """The size a block is set at: its lines' middle height."""
-    heights = sorted(line.height for line in block.lines)
+    """The size a block is set at: its words' middle height, a superscript's left out."""
+    heights = sorted(word.y1 - word.y0 for line in block.lines for word in line.words
+                     if not word.raised) or [block.height]  # fmt: skip
     return heights[len(heights) // 2]
 
 
@@ -708,7 +711,7 @@ class _Flow:
     #: height of its last line.
     open: int | None = None
     open_height: float = 0.0
-    #: The open paragraph's block's size, its lines' middle height (`_size`).
+    #: The size the open paragraph's block is set at (`_size`).
     open_size: float = 0.0
     #: The display being read, its paragraph, its legend's height, and the page, the foot
     #: of its lowest block so far and the left and right of its blocks.
@@ -802,7 +805,7 @@ class _Flow:
         self.flush_held()
         self.display = None
         joined = (self.open is not None and kind == "body" and goes_on(block)
-                  and _sized_alike(_size(block), self.open_size))  # fmt: skip
+                  and not self.smaller(block))  # fmt: skip
         if joined:
             current = self.open
         else:
@@ -830,6 +833,12 @@ class _Flow:
         if self.open is None:
             self.rows += self.pending
             self.pending = []
+
+    def smaller(self, block: Block) -> bool:
+        """Whether `block` is set smaller than the text, where the paragraph left open is
+        set at the text's size: its words more than `SAME_SIZE` below the text's lines."""
+        least = (1 - SAME_SIZE) * self.height
+        return self.open_size >= least > _size(block)
 
     def spaced(self, page: int, line: Line) -> None:
         """`line` the text's last read, and the space it stands below the one before it, on

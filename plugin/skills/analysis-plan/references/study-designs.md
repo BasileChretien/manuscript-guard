@@ -4,7 +4,7 @@ Beyond the seven sections every plan has, a plan for a named design (`study_type
 `paper.yaml`) answers the questions below, one section each. G12 asks for a heading that
 names the section and something under it; whether the answers are sound is the author's and
 the panel's to judge. Each question cites the guideline item it comes from, read on its own
-page on 2026-10-15. Write the answer before the analysis exists, so that a change to it is a
+page on the date its entry in `study_types.yaml` gives. Write the answer before the analysis exists, so that a change to it is a
 deviation. A study that is none of the designs below has `study_type: other`, and its plan
 the seven sections only.
 

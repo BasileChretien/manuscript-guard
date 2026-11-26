@@ -39777,6 +39777,13 @@ def test_a_diagnostic_accuracy_plan_is_asked_for_its_reference_standard_and_thre
                     .replace("## Outcome\n", "## Target condition\n"), encoding="utf-8")
     asked = _plan_asked(project)
     assert "exposure" not in asked and "outcome" not in asked, asked
+    # Only a heading that is the index test or the target condition: one that names it in
+    # passing heads another section (round 1 of #830).
+    plan.write_text(text.replace("## Exposure\n", "## Blinding of index test readers\n")
+                    .replace("## Outcome\n", "## Reference standard for the target condition\n"),
+                    encoding="utf-8")  # fmt: skip
+    asked = _plan_asked(project)
+    assert "exposure" in asked and "outcome" in asked, asked
 
 
 @pytest.mark.parametrize(

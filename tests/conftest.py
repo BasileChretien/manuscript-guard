@@ -72,6 +72,11 @@ os.environ["MANUSCRIPT_GUARD_REPORTS"] = str(_FOR_THIS_RUN / "reports")
 #: tests/test_generated_sessions.py took an import that raised for one that wrote nothing.
 #: The tests of the sentence and the record lift it.
 os.environ["MANUSCRIPT_GUARD_DEBUG"] = "1"
+#: And no test asks the Zotero of the machine it runs on, in this process or in one it
+#: starts: with Zotero open, G7's ping and lookup in every `check` and the probe of every
+#: build read the real library (round 2 of #811). A test marked `real_zotero` is let
+#: through (`zotero_kept_away`), and a test that fakes the transport lifts it in the test.
+os.environ["MANUSCRIPT_GUARD_NO_ZOTERO"] = "1"
 
 #: `communicate publish --post` and `communicate orcid` send nothing while this is set: a test
 #: that forgot to give its own transport fails rather than posting under somebody's name. A
@@ -134,13 +139,11 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @pytest.fixture(autouse=True)
 def zotero_kept_away(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No test asks the Zotero of the machine it runs on what a live build would meet: the
-    probe a build makes (`zotero.readiness`) finds none, unless the test is marked
-    `real_zotero`. A test that wants Zotero to answer patches it in its own way."""
-    if request.node.get_closest_marker(REAL_ZOTERO) is None:
-        from manuscript_guard.zotero import client
-
-        monkeypatch.setattr(client, "_ping", lambda timeout: False)
+    """No test asks the Zotero of the machine it runs on (MANUSCRIPT_GUARD_NO_ZOTERO, set
+    above), unless the test is marked `real_zotero`: for it the switch is lifted. A test that
+    wants Zotero to answer otherwise patches it in its own way."""
+    if request.node.get_closest_marker(REAL_ZOTERO) is not None:
+        monkeypatch.delenv("MANUSCRIPT_GUARD_NO_ZOTERO", raising=False)
 
 
 def _require_latex() -> None:

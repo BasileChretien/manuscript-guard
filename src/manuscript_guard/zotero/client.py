@@ -23,6 +23,7 @@ Three practical notes, all learned the hard way:
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -48,6 +49,19 @@ PIN_LINE = re.compile(r"^\s*citation[ -]key\s*:\s*\S", re.IGNORECASE | re.MULTIL
 # A Zotero search condition, which Better BibTeX's item.search accepts in place of a query
 # string: every item whose Extra carries a pin. Zotero's "contains" ignores case.
 PINNED_CONDITION = [["extra", "contains", "Citation Key:"]]
+
+
+#: Set to anything but an empty string, the client opens no connection to Zotero: a ping is
+#: unanswered and a call refused, as with Zotero closed. For a run that must not read the
+#: library of the machine it is on, and every process it starts: the test suite sets it.
+NO_ZOTERO = "MANUSCRIPT_GUARD_NO_ZOTERO"
+
+
+def _urlopen(target, timeout: float):
+    """`urllib.request.urlopen`, unless `NO_ZOTERO` is set."""
+    if os.environ.get(NO_ZOTERO):
+        raise urllib.error.URLError(f"{NO_ZOTERO} is set, so Zotero is not asked")
+    return urllib.request.urlopen(target, timeout=timeout)
 
 
 class ZoteroUnavailable(Exception):
@@ -128,7 +142,7 @@ def available() -> bool:
     if _unreachable:
         return False
     try:
-        with urllib.request.urlopen(PING, timeout=5) as response:
+        with _urlopen(PING, timeout=5) as response:
             return response.status == 200
     except (urllib.error.URLError, OSError, ValueError):
         return False
@@ -145,7 +159,7 @@ def rpc(method: str, params, timeout: int = GATE_TIMEOUT) -> object:
         ENDPOINT, data=payload.encode("utf-8"), headers={"Content-Type": "application/json"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read())
     except (urllib.error.URLError, OSError, ValueError) as exc:
         global _unreachable
@@ -351,7 +365,7 @@ class Readiness:
 def _ping(timeout: int) -> bool:
     """Zotero's own ping, asked again whatever an earlier call of this run met."""
     try:
-        with urllib.request.urlopen(PING, timeout=timeout) as response:
+        with _urlopen(PING, timeout=timeout) as response:
             return response.status == 200
     except (urllib.error.URLError, OSError, ValueError):
         return False

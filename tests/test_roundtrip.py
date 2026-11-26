@@ -751,11 +751,14 @@ def _built_live(project: Path, tmp_path: Path, monkeypatch, capsys,
     above in place of Better BibTeX's, printing `name` before a narrative citation."""
     from manuscript_guard.build import document
     from manuscript_guard.cli import main
+    from manuscript_guard.zotero import READY, Readiness, client
 
     lua = tmp_path / "zotero.lua"
     lua.write_text(FAKE_ZOTERO_LUA.replace("Fictional and Fictional ", name), encoding="utf-8")
     monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
     monkeypatch.setattr(document, "_zotero_version", lambda: None)
+    # And a Zotero that holds every cited key, which the build asks before it runs.
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(READY))
     assert main(["build", str(project)]) == 0
     capsys.readouterr()
     built = project / "build" / "manuscript.docx"

@@ -314,6 +314,7 @@ def test_a_timeout_says_zotero_is_busy_not_that_it_is_not_running(monkeypatch) -
     def slow(*_args, **_kwargs):
         raise urllib.error.URLError(TimeoutError("timed out"))
 
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", slow)
     with pytest.raises(ZoteroUnavailable) as caught:
         client.rpc("item.search", [""], timeout=1)
@@ -325,6 +326,7 @@ def test_a_refused_connection_asks_whether_zotero_is_running(monkeypatch) -> Non
     def refused(*_args, **_kwargs):
         raise urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
 
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", refused)
     with pytest.raises(ZoteroUnavailable) as caught:
         client.rpc("item.search", [""], timeout=1)
@@ -515,6 +517,7 @@ def test_a_zotero_without_better_bibtex_is_said_as_such(monkeypatch) -> None:
         raise urllib.error.HTTPError(client.ENDPOINT, 404, "Not Found", {}, None)
 
     monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", not_found)
     assert readiness(("a",)).state == NO_BETTER_BIBTEX
 
@@ -526,6 +529,7 @@ def test_a_better_bibtex_that_does_not_answer_in_time_is_said_as_busy(monkeypatc
         raise urllib.error.URLError(TimeoutError("timed out"))
 
     monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", slow)
     found = readiness(("a",))
     assert found.state == BUSY

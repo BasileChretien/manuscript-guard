@@ -7,6 +7,7 @@ one CI and a co-author without Zotero rely on.
 
 from __future__ import annotations
 
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -23,7 +24,22 @@ from manuscript_guard.zotero import available, find_citations
 
 HAS_PANDOC = shutil.which("pandoc") is not None
 needs_pandoc = pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")
-needs_zotero = pytest.mark.skipif(not available(), reason="Zotero is not running")
+
+
+def _zotero_here() -> bool:
+    """Whether a Zotero answers on this machine, asked past the switch the suite sets
+    (MANUSCRIPT_GUARD_NO_ZOTERO), for the tests marked `real_zotero`."""
+    from manuscript_guard.zotero.client import NO_ZOTERO
+
+    kept = os.environ.pop(NO_ZOTERO, None)
+    try:
+        return available()
+    finally:
+        if kept is not None:
+            os.environ[NO_ZOTERO] = kept
+
+
+needs_zotero = pytest.mark.skipif(not _zotero_here(), reason="Zotero is not running")
 
 
 def loaded(root: Path):
@@ -286,6 +302,7 @@ def test_a_live_build_says_why_zotero_cannot_make_its_fields_before_pandoc_runs(
         raise urllib.error.HTTPError(client.ENDPOINT, 404, "Not Found", {}, None)
 
     monkeypatch.setattr(client, "_ping", lambda timeout: ping)
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", nothing_there)
     monkeypatch.setattr(document, "pandoc", lambda: pytest.fail("pandoc ran"))
     proj, namespace, results, _lit = loaded(project)
@@ -386,14 +403,43 @@ def test_the_instruction_for_a_key_several_items_carry_comes_only_with_one() -> 
 
 
 def test_no_test_asks_the_zotero_of_the_machine_it_runs_on(monkeypatch) -> None:
-    """Round 1 of #811: every test that builds offline asked 127.0.0.1:23119 what a live
-    build would meet, and with Zotero open asked the real library. conftest.py keeps the
-    probe from reaching it unless a test is marked `real_zotero`."""
-    from manuscript_guard.zotero import NOT_RUNNING, client, readiness
+    """Rounds 1 and 2 of #811: every test that builds offline asked 127.0.0.1:23119 what a
+    live build would meet, and G7's ping and lookup in every `check` asked the real library
+    where Zotero was open. conftest.py sets MANUSCRIPT_GUARD_NO_ZOTERO for the run and every
+    process it starts, and the client then opens no connection: the ping G7 asks, the
+    probe's, and a call. A test marked `real_zotero` is let through; one that fakes the
+    transport lifts it in the test."""
+    from manuscript_guard.zotero import NOT_RUNNING, ZoteroUnavailable, client, readiness
 
+    assert os.environ.get(client.NO_ZOTERO)
     monkeypatch.setattr(client.urllib.request, "urlopen",
                         lambda *_a, **_k: pytest.fail("a test reached Zotero"))  # fmt: skip
+    assert not client.available()
     assert readiness(("a",)).state == NOT_RUNNING
+    with pytest.raises(ZoteroUnavailable):
+        client.rpc("api.ready", [])
+
+
+@needs_pandoc
+def test_a_live_build_zotero_was_slow_to_answer_for_says_so_in_its_report(
+    project: Path, monkeypatch, tmp_path: Path
+) -> None:
+    """Round 2 of #811: the warning that Better BibTeX did not answer in time reaches the
+    live build's report. A filter that makes no field stands in for Better BibTeX's."""
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import BUSY, Readiness, client
+
+    lua = tmp_path / "zotero.lua"
+    lua.write_text("return {}", encoding="utf-8")
+    monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
+    monkeypatch.setattr(document, "_zotero_version", lambda: None)
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(BUSY))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    result = build_document(proj, assembled, mode=LIVE)
+    codes = [f.code for f in result.report.findings]
+    assert "zotero-unreadable" in codes
+    assert "no-live-citations" in codes, "and the fields it got are counted"
 
 
 @needs_pandoc

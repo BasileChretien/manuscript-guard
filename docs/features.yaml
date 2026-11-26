@@ -154,6 +154,7 @@ features:
       - tests/test_corruption.py::test_a_plan_changed_after_the_results_with_nothing_said_is_a_warning
       - tests/test_corruption.py::test_the_kept_plan_is_never_written_again
       - tests/test_study_types.py
+      - tests/test_differential.py::test_every_plan_sections_asked_input_holds_each_kind_of_section
     docs: docs/stages.md
 
   - id: data-sources
@@ -916,3 +917,18 @@ features:
     commands: [audit]
     tests: [tests/test_audit_commented.py, tests/test_audit_tracked.py, tests/test_report_pdf.py]
     docs: docs/refereeing.md
+
+  - id: editor-report
+    stage: others
+    title: An editor's report
+    says: >-
+      Puts what the audit found in four parts, what to look at before deciding, what to ask
+      the authors, what is for copyediting and what was read, with how often each kind was
+      right on published papers where that was measured.
+    status: partial
+    commands: [audit]
+    tests: [tests/test_audit_editor.py]
+    docs: docs/refereeing.md
+    limits: >-
+      On the command line only: the audit page, the PDF report and a letter to the authors
+      do not give it yet.

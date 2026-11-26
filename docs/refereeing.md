@@ -226,6 +226,45 @@ journal, folded. The report gives the counts and the entries, never a ratio or a
 a namesake counts as much as the author. Without `--lookup` nothing is counted: the reference
 text is not read for names.
 
+**The editor's report.** `--editor` gives the same audit as an editor reads it, for one
+decision and a letter:
+
+```bash
+manuscript-guard audit paper.docx --journal journal.yaml --lookup --editor
+```
+
+Its first line counts what there is to look at before you decide, what to ask the authors and
+what is for copyediting; with `--authors` and `--lookup`, the self-citation counts stand under
+it, in no part, so that they are never read as a problem. Each finding is then in one of four
+parts, by its code, from one table (`auditing/editor.py`, the author's of 2026-11-25):
+
+- **Look at before you decide**: two numbers that cannot both be right, a table's total, a
+  count over its column's n, a broken flow, an SD or a mean impossible for its data, an
+  Abstract that contradicts the Results, a number in none of the outputs given, a retracted or
+  withdrawn reference, text in the Word file a reader does not see or text addressed to an AI
+  reviewer, and a package that does not match its manifest.
+- **Ask the authors**: what they can fix or answer in a line. The journal's limits, sections
+  and statements, a number of the Abstract not found in the Results, an identifier no
+  registry knows, a citation that names no entry, a chatbot's words or a template's left in
+  the text, tracked changes and comments, an author named in a blind submission, the causal
+  words and the P values at baseline.
+- **For copyediting**: spelling, notation, abbreviations and phrasing, each kind in a line
+  with its count and its first place.
+- **What the check read**: what was read and what could not be, the journal's rules to tick
+  by hand, and what was not checked. It is always there, and the report never says that a
+  paper has no problems.
+
+Each kind is said in a sentence, with no gate and no option, and the first three parts say how
+often findings of that kind were right on the corpus of published papers
+([corpus.md](corpus.md)) where ten or more were judged ("Right in 13 of 13 judged on published
+papers"), and "Not yet measured on published papers" where not. Most kinds an option brings,
+`--lookup`, `--journal`, `--design` or `--package`, are not measured: the corpus runs the audit
+without them. `--details` lists every place of the copyediting and of what was read; with
+`--json`, each finding gains its `part` and its `kind`, and `editor` gives the count of each
+part. `--editor` changes nothing of what the audit finds or of what `--strict` counts, and the
+PDF, the copies with comments and the report draft stay the full report's. The audit page does
+not give the editor's report yet.
+
 ## A revision
 
 ```bash

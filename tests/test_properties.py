@@ -22473,7 +22473,7 @@ def _a_number_makes_another_heading(patch: pytest.MonkeyPatch) -> None:
 
 
 def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(related_methods_gate, "_OWN", ())
+    patch.setattr(related_methods_gate, "_own", lambda: ())
 
 
 def _a_heading_that_stands_twice_is_compared_first(patch: pytest.MonkeyPatch) -> None:

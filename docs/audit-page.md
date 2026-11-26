@@ -52,6 +52,50 @@ is `--no-abstract`, "The paper reports no results" is `--no-results`, and "The h
 its results" is `--results`, one heading as the page takes it: the answers to the report's
 questions for the author ([audit.md](audit.md)).
 
+For a .docx, a box beside the paper's, "Also make a copy with the corrections as tracked
+changes", is the copy `audit --tracked` writes: each correction G14 is sure of (spelling to
+the chosen English, the spacing of P values, signs, intervals and percentages, an
+abbreviation used only once written out) a tracked change to accept or reject in Word, and
+every other finding a comment. The corrections are worked out only where the box is ticked
+(the author, 2026-11-12: "only when asked"), in the same audit as the report, which they
+leave as it is; the copy's comments are worded for the page, as the commented copy's are,
+and "Download your paper with its corrections as tracked changes" saves it.
+
+"For a referee or an editor" holds five options of `audit`: "The study's design" is
+`--design` ([refereeing.md](refereeing.md)); "Rows of means of whole numbers", "Rows of
+numbers each 0 or 1" and "Rows that cannot be negative" are `--whole-numbers`, `--binary`
+and `--non-negative`, a label a line, a line that starts with "-" left out as a word to leave
+alone is; and "The data custodian's smallest count" is `--minimum-cell-count`, a whole number
+from 1 ([audit.md](audit.md)). Of the other options refereeing.md gives a referee, the page
+has `--against`, `--english` and `--lookup`, under "More options", and `--journal` and
+`--authors`, under "For a journal"; the rest, `--strict` and `--cited` among them, are the
+command line's only.
+
+"For a journal" is `--journal` ([refereeing.md](refereeing.md), "An editor"), for the reader
+who has the journal's instructions for authors and no profile of it: its name, the address of
+the instructions, its limits on the abstract's and the main text's words, the figures, the
+tables, the references and the keywords, the sections it requires, the headings of a
+structured abstract, the statements it requires (funding, competing interests, ethics
+approval, consent, data availability, author contributions, trial registration, the use of
+AI) and how its review is blinded. The page writes them as the profile the command line
+reads (`manuscript_guard.journal_form`), dated the day it is filled, and passes it as
+`journal.yaml`; a limit left empty is not in it, and is not checked. Each statement ticked
+has a box for the heading the journal asks for it under, which offers the usual one
+("Funding", "Competing interests"), and two it takes are joined by "or" ("Competing interests
+or Conflicts of interest"). The paper is held to that heading: a heading whose whole title
+it is, numbered, marked or not, the marked words a paragraph opens with ("**Funding:**",
+"*Funding.*"), or the words a paragraph opens with in plain type before a colon ("Funding:
+none"), in any case. A statement under another heading is reported missing, with the
+heading the journal asks for, as the journal's own check would report it (DESIGN.md, Known
+gaps). "Or a journal profile
+you keep" passes the reader's own profile in place of the form. For a double- or triple-blind
+review, or a profile of the reader's own, the authors' boxes are shown: each author's given
+and family names, ORCID iD and e-mail address, and the affiliations one a line, written as
+`authors.yaml` for `--authors`, or "Or an authors.yaml you keep" in their place. The report
+then has its Journal section, the Document section of what a .docx holds besides its text,
+and, for a blind review, each place an author is named. Nothing of the form is kept between
+visits.
+
 It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
 read LaTeX projects of several files, figures, or reproducibility packages: the command line
 reads those.
@@ -90,8 +134,10 @@ What the rules cannot stop, so that nobody trusts them beyond it:
 
 ## The reference lookups
 
-They are off until the box is ticked. Ticked, they send the DOIs and PubMed IDs the paper's
-reference list cites, and nothing else, as `audit --lookup` does. A page cannot do three
+They are off until the box is ticked. Ticked, they send what `audit --lookup` sends: the DOIs
+and PubMed IDs the paper's reference list cites, and, for an article, book or chapter that
+gives neither, the words of its title, its first author's family name and its year, to
+Crossref. No sentence of the paper is sent. A page cannot do three
 things the command line does: it sends no User-Agent (a browser forbids it), the browser
 follows a redirect itself rather than refusing it (to a host the rules allow, or not at all),
 and it cannot read Crossref's `Retry-After`, which Crossref does not expose to a page. It has
@@ -139,8 +185,12 @@ policy names no other host: Pyodide from npm (held by `package-lock.json`), the 
 GPL-2.0-or-later, and the page links to its source at the version served.
 
 `web/test/check.py` runs the command line's `audit` on the worked example (the `.docx`
-against its results, the `.docx` alone, `main.md` alone), then the same command as the page
-runs it in Node, and requires the same report and the same `--json`. Then it opens the site in
+against its results, the `.docx` alone, `main.md` alone, with a referee's options, in
+American English with the copy with tracked changes asked for, and held to a journal's rules
+from its form with a double-blind review), then the same command as the page runs it in Node,
+and requires the same report and the same `--json`; in each browser, the page's copy with
+tracked changes must track as many corrections as `--tracked` does, and the files the page
+makes of the journal's form must be the ones the command line was given. Then it opens the site in
 Chrome and in Firefox, served with no policy header as GitHub Pages serves it. The landing
 page must load its style and every picture it names and ask no other host. The audit page
 must start, print the same reports, send nothing, and refuse every request *Test the rules*

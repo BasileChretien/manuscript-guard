@@ -896,3 +896,28 @@ features:
     commands: [audit]
     tests: [tests/test_audit_commented.py, tests/test_audit_tracked.py, tests/test_report_pdf.py]
     docs: docs/refereeing.md
+
+  - id: editor-report
+    stage: others
+    title: An editor's report
+    says: >-
+      Puts what the audit found in four parts, what to look at before deciding, what to ask
+      the authors, what is for copyediting and what was read, with how often each kind was
+      right on published papers where that was measured.
+    status: partial
+    commands: [audit]
+    tests: [tests/test_audit_editor.py, tests/test_audit_editor_pdf.py]
+    docs: docs/refereeing.md
+    limits: >-
+      On the command line and in its PDF only: the audit page does not give it yet.
+
+  - id: editor-letter
+    stage: others
+    title: A letter to the authors
+    says: >-
+      Drafts the letter that returns a paper to its authors before review, from the
+      editor's report: what to correct or answer and what to check, each with its places.
+    status: works
+    commands: [audit]
+    tests: [tests/test_audit_letter.py]
+    docs: docs/refereeing.md

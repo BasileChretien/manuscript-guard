@@ -24,6 +24,7 @@ from pathlib import Path
 
 from manuscript_guard.auditing.by_title import CODES, UNSORTED
 from manuscript_guard.auditing.undefined import gathered
+from manuscript_guard.findings import posix_path
 
 #: The code of the note on an entry not sorted.
 CODE = CODES[UNSORTED]
@@ -102,7 +103,7 @@ def _made(mine: list[tuple[str, object]],
           at: Callable[[Path | None, int | None], str] = _line):  # fmt: skip
     first = mine[0][1]
     entries = [{"entry": label, "message": item.message,
-                "path": None if item.path is None else str(item.path), "line": item.line}
+                "path": None if item.path is None else posix_path(item.path), "line": item.line}
                for label, item in mine]  # fmt: skip
     return replace(first, message=_message(mine, at), listed={"entries": entries})
 

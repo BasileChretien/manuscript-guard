@@ -544,6 +544,16 @@ def test_the_template_follows_the_study_type() -> None:
     assert template.name == templates.DEFAULT and why.startswith("study_type other has no")
 
 
+def test_every_design_of_the_table_has_its_template() -> None:
+    """A design added to `data/study_types.yaml` is given a template here too, or its
+    graphical abstract is drawn as a paper's that names no design and says it has none (a
+    cross-sectional study, the first design added after the table's seven, is observational)."""
+    from manuscript_guard.gates.design import study_types
+
+    assert set(templates.BY_STUDY_TYPE) == set(study_types())
+    assert templates.chosen(None, "cross-sectional")[0].name == "observational"
+
+
 def test_the_graphical_abstract_is_drawn_and_its_report_is_what_check_says(ready: Path) -> None:
     assert main(["communicate", "graphical-abstract", str(ready)]) == 0
     folder = ready / "communication" / "graphical-abstract"

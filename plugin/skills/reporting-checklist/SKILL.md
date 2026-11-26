@@ -169,6 +169,7 @@ that names none: choose the guideline that fits it with the author.
 | trial | CONSORT | SPIRIT |
 | cohort | STROBE, RECORD, TARGET (a target trial emulated) | |
 | case-control | STROBE, RECORD | |
+| cross-sectional | STROBE, RECORD | |
 | self-controlled | STROBE, RECORD (no guideline is written for the design) | |
 | disproportionality | READUS-PV | |
 | systematic-review | PRISMA | PRISMA-P |

@@ -19792,8 +19792,8 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
             form = draw(st.sampled_from(["{x}[length({x}) - {n}]", "{x}[{n}, {n}]"]))
             line = f"{name}_one <- {form.format(x=name, n=n)}"
             return line, [n, n] if ", " in form else [n]
-        form = draw(st.sampled_from(["[{n}]", "[[{n}]]", "[{n}, {n}]"]))
-        return f"{name} = {form.format(n=n)}", [n, n] if ", " in form else [n]
+        form = draw(st.sampled_from(["{x} = [{n}]", "{x} = [[{n}]]", "{x} = [{n}, {n}]"]))
+        return form.format(x=name, n=n), [n, n] if ", " in form else [n]
     zero = draw(st.sampled_from(["0", "0L"])) if r else "0"
     if kind == "status":
         if r:
@@ -19802,6 +19802,7 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
                 '{x} <- system("make"); stopifnot({x} == {z})',
                 '{x} <- processx::run("python", "x.py")$status; if ({z} != {x}) stop()',
                 '{x} <- processx::run("python", "x.py"); if ({x}$status != {z}) stop()',
+                '{x} <- run("python", "x.py"); if ({z} != {x}$status) stop()',
                 'if (system2("python", "x.py") != {z}) stop()']))  # fmt: skip
             return form.format(x=name, z=zero), []
         form = draw(st.sampled_from([
@@ -19810,6 +19811,32 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
             "{x} = subprocess.run(['x']).returncode\nassert 0 == {x}",
             "if os.system('x') != 0:\n    raise SystemExit"]))  # fmt: skip
         return form.format(x=name), []
+    if kind == "status in a body":
+        # Round 1 of #817: in R, assigned inside braces, a function's body, `local()` or
+        # `tryCatch()`; in Python, an annotated assignment, in a function's body or not.
+        if r:
+            form = draw(st.sampled_from([
+                '{x}_check <- function() {{ {x} <- system2("x"); if ({x} != {z}) stop() }}',
+                'local({{ {x} <- system2("x"); if ({x} != {z}) stop() }})',
+                'tryCatch({{ {x} <- processx::run("x"); if ({x}$status != {z}) stop() }}, '
+                "error = stop)"]))  # fmt: skip
+            return form.format(x=name, z=zero), []
+        form = draw(st.sampled_from([
+            "{x}: int = subprocess.call(['x'])\nif {x} != 0:\n    raise SystemExit",
+            "def {x}_check():\n    {x}: int = subprocess.call(['x'])\n    if {x} != 0:\n"
+            "        raise SystemExit"]))  # fmt: skip
+        return form.format(x=name), []
+    if kind == "a column or a keyword's list":
+        # Round 1 of #817: a column called status is no run's, and a list after a keyword,
+        # a soft keyword too, is no subscript.
+        if r:
+            form = draw(st.sampled_from(["p <- ggplot({x}[{x}$status == {z}, ], aes(time))",
+                                         "{x}_one <- subset({x}, {x}$status != {z})"]))
+            return form.format(x=name, z=zero), [zero]
+        form = draw(st.sampled_from(["if {x} in [{n}]:\n    raise SystemExit",
+                                     "def {x}_of():\n    return [{n}]",
+                                     "match {x}:\n    case [{n}]:\n        pass"]))  # fmt: skip
+        return form.format(x=name, n=n), [n]
     # Not a status: another name compared with zero, a status compared with another number,
     # and a status assigned as a call's argument, which is the call's and not the script's.
     if r:
@@ -19826,9 +19853,12 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
 
 
 #: The kinds of line a generated figure script holds: three that name a colour, an index or
-#: an exit status by a number, and beside each what only looks like it.
+#: an exit status by a number, and beside each what only looks like it; and a status and a
+#: lookalike written as round 1 of #817 found them, each a kind of its own, so that every
+#: example holds one.
 FIGURE_SCRIPT_KINDS = ("colour", "not a colour", "subscript", "not a subscript", "status",
-                       "not a status")  # fmt: skip
+                       "not a status", "status in a body",
+                       "a column or a keyword's list")  # fmt: skip
 
 
 @st.composite

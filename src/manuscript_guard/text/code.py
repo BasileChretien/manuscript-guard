@@ -239,7 +239,10 @@ def _between_quotes(literal: str) -> str:
 
 
 #: Words before a bracket that open no subscript: `x in [1]`, `return [1]`, `else [1]`.
-_KEYWORDS = frozenset(keyword.kwlist) | {"function", "repeat", "next", "break", "print"}
+#: Python's soft keywords are not in `keyword.kwlist` (`case [3]:`), and are named here, not
+#: taken from `keyword.softkwlist`, which differs between Python versions.
+_KEYWORDS = frozenset(keyword.kwlist) | {"match", "case", "type", "function", "repeat", "next",
+                                         "break", "print"}  # fmt: skip
 
 
 def _text(tokens: list[Token], index: int) -> str | None:
@@ -272,8 +275,20 @@ def _whole_subscript(tokens: list[Token], index: int) -> bool:
 #: The calls whose value is the exit status of the process they ran, in R and in Python.
 _STATUS_CALLS = frozenset({"system", "system2", "base::system", "base::system2", "os.system",
                            "subprocess.call"})  # fmt: skip
+#: The calls whose value is a run of a process, whose `$status` is its exit status: processx's
+#: `run()`, written with its package or after `library(processx)`.
+_RUN_CALLS = frozenset({"processx::run", "run"})
 #: A zero as an exit status is written: R's integer, and the number of either language.
 _ZERO = frozenset({"0", "0L"})
+
+
+@dataclass(frozen=True)
+class _Statuses:
+    """The names a script assigns an exit status to (`status <- system2(...)`), and those it
+    assigns a run to (`res <- processx::run(...)`), whose `$status` is one."""
+
+    names: frozenset[str] = frozenset()
+    runs: frozenset[str] = frozenset()
 
 
 def _matching(tokens: list[Token], index: int, step: int) -> int | None:
@@ -304,46 +319,76 @@ def _called(tokens: list[Token], opener: int) -> str | None:
     return name
 
 
-def _status_field(tokens: list[Token], index: int) -> bool:
-    """Whether the operand ends at `index` in a process's status: `res$status`,
-    `proc.returncode`, `subprocess.run(...).returncode`."""
+def _status_field(tokens: list[Token], index: int, statuses: _Statuses) -> bool:
+    """Whether the operand ends at `index` in a process's status: `proc.returncode`,
+    `subprocess.run(...).returncode`, and the `$status` of a run, a name assigned one
+    (`res$status`) or written in place (`processx::run(...)$status`). Another `$status` is a
+    column's or a list's, a survival model's censoring (round 1 of #817)."""
     text = _text(tokens, index)
     if text is None:
         return False
-    return text.endswith(".returncode") or (text == "status" and _text(tokens, index - 1) == "$")
+    if text.endswith(".returncode"):
+        return True
+    if text != "status" or _text(tokens, index - 1) != "$":
+        return False
+    owner = _text(tokens, index - 2)
+    if owner == ")":
+        opener = _matching(tokens, index - 2, -1)
+        return opener is not None and _called(tokens, opener) in _RUN_CALLS
+    return owner in statuses.runs
 
 
-def _ends_in_a_status(tokens: list[Token], index: int, statuses: frozenset[str]) -> bool:
+def _ends_in_a_status(tokens: list[Token], index: int, statuses: _Statuses) -> bool:
     """Whether the operand of a comparison that ends at `index` is an exit status."""
     text = _text(tokens, index)
     if text == ")":
         opener = _matching(tokens, index, -1)
         return opener is not None and _called(tokens, opener) in _STATUS_CALLS
-    return _status_field(tokens, index) or (text in statuses
-                                            and _text(tokens, index - 1) not in ("$", "."))
+    return _status_field(tokens, index, statuses) or (
+        text in statuses.names and _text(tokens, index - 1) not in ("$", "."))
 
 
-def _starts_a_status(tokens: list[Token], index: int, statuses: frozenset[str]) -> bool:
-    """Whether the expression that opens at `index` is an exit status: a status call, a
-    call's `$status` or `.returncode`, a name holding one, or its own field."""
+def _call_at(tokens: list[Token], index: int) -> tuple[str | None, int | None]:
+    """The call that opens at `index`, `run(` or `processx::run(`: its name and the index of
+    its closing bracket; (None, None) where no call opens there."""
     if index >= len(tokens) or _identifier(tokens[index]) is None:
-        return False
+        return None, None
     after = index + 1
     if _text(tokens, after) == ":" and _text(tokens, after + 1) == ":":
         after += 3
-    if _text(tokens, after) == "(":
-        closer = _matching(tokens, after, 1)
+    if _text(tokens, after) != "(":
+        return None, None
+    return _called(tokens, after), _matching(tokens, after, 1)
+
+
+def _starts_a_status(tokens: list[Token], index: int, statuses: _Statuses) -> bool:
+    """Whether the expression that opens at `index` is an exit status: a status call, a
+    run's `$status`, a `.returncode`, or a name holding one or a run."""
+    if index >= len(tokens) or _identifier(tokens[index]) is None:
+        return False
+    called, closer = _call_at(tokens, index)
+    if called is not None:
         if closer is None:
             return False
         following = _text(tokens, closer + 1)
         if following == "$":
-            return _text(tokens, closer + 2) == "status"
+            return _text(tokens, closer + 2) == "status" and called in _RUN_CALLS
         if following is not None and following.startswith(".returncode"):
             return following == ".returncode"
-        return _called(tokens, after) in _STATUS_CALLS
-    if _text(tokens, after) == "$":
-        return _text(tokens, after + 1) == "status"
-    return tokens[index].text.endswith(".returncode") or tokens[index].text in statuses
+        return called in _STATUS_CALLS
+    if _text(tokens, index + 1) == "$":
+        return _text(tokens, index + 2) == "status" and tokens[index].text in statuses.runs
+    return tokens[index].text.endswith(".returncode") or tokens[index].text in statuses.names
+
+
+def _starts_a_run(tokens: list[Token], index: int) -> bool:
+    """Whether the expression that opens at `index` is a run, and no more: `processx::run(...)`
+    with nothing read off it."""
+    called, closer = _call_at(tokens, index)
+    if called not in _RUN_CALLS or closer is None:
+        return False
+    following = _text(tokens, closer + 1) or ""
+    return following not in ("$", "[") and not following.startswith(".")
 
 
 def _assigns(tokens: list[Token], index: int) -> bool:
@@ -356,11 +401,25 @@ def _assigns(tokens: list[Token], index: int) -> bool:
         _text(tokens, index + 1) != "="  # fmt: skip
 
 
-def _exit_statuses(tokens: list[Token]) -> frozenset[str]:
-    """The names the script assigns an exit status to, outside any call's brackets: `status
-    <- system2(...)`, `code = subprocess.run(...).returncode`. A name given one as a call's
-    argument (`f(status = system2(...))`) is the call's, not the script's."""
+def _assigned(tokens: list[Token], index: int) -> str | None:
+    """The name the assignment at `index` assigns to: the name before it, or, in Python's
+    annotated assignment `rc: int = ...`, the name before the annotation (round 1 of
+    #817); None where no name stands there."""
+    if index < 1 or _identifier(tokens[index - 1]) is None:
+        return None
+    # R's `pkg::name` is two colons before the name, never a name and one colon.
+    if _text(tokens, index - 2) == ":" and index > 2 and _identifier(tokens[index - 3]):
+        return tokens[index - 3].text
+    return tokens[index - 1].text
+
+
+def _exit_statuses(tokens: list[Token]) -> _Statuses:
+    """The names the script assigns an exit status or a run to, at the top level or inside
+    braces, a function's body, `local({ })` or `tryCatch({ })`: `status <- system2(...)`,
+    `code = subprocess.run(...).returncode`, `res <- processx::run(...)`. A name given one as a
+    call's argument (`f(status = system2(...))`) is the call's, not the script's."""
     names: set[str] = set()
+    runs: set[str] = set()
     brackets: list[str] = []
     for index in range(len(tokens)):
         text = _text(tokens, index)
@@ -369,15 +428,18 @@ def _exit_statuses(tokens: list[Token]) -> frozenset[str]:
         elif text in (")", "]", "}"):
             if brackets:
                 brackets.pop()
-        elif (_assigns(tokens, index) and (not brackets or brackets[-1] == "{")
-              and index > 0 and _identifier(tokens[index - 1]) is not None
-              and index + 1 < len(tokens)
-              and _starts_a_status(tokens, index + 1, frozenset(names))):  # fmt: skip
-            names.add(tokens[index - 1].text)
-    return frozenset(names)
+        elif _assigns(tokens, index) and (not brackets or brackets[-1] == "{"):
+            name = _assigned(tokens, index)
+            if name is None or index + 1 >= len(tokens):
+                continue
+            if _starts_a_status(tokens, index + 1, _Statuses(frozenset(names), frozenset(runs))):
+                names.add(name)
+            elif _starts_a_run(tokens, index + 1):
+                runs.add(name)
+    return _Statuses(frozenset(names), frozenset(runs))
 
 
-def _compared_with_a_status(tokens: list[Token], index: int, statuses: frozenset[str]) -> bool:
+def _compared_with_a_status(tokens: list[Token], index: int, statuses: _Statuses) -> bool:
     """Whether the number at `index` is a zero compared, by `==` or `!=`, with an exit
     status, on either side: `status != 0`, `0 != status`, `system2(...) == 0L`."""
     if tokens[index].text not in _ZERO:

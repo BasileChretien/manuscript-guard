@@ -26201,11 +26201,13 @@ def test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_els
     digits (`"grey50"`, `"steelblue4"`, `"C0"`), a number that is a whole subscript
     (`edges[1]`) and a zero compared with an exit status (`if (status != 0) stop()`), none of
     them a number the figure draws or data typed into it (the bisphosphonates paper,
-    2026-11-26); and beside each what only looks like it, which G3 reports as before: a name
-    R has no colour by, R's names in Python, a subscript with arithmetic in it or two numbers,
-    a list of one number, a zero compared with another name, a status compared with another
-    number, and a status assigned as a call's argument. G3 reports the second kind's numbers,
-    in the order of the lines, and no other."""
+    2026-11-26), a status assigned in a function's body or annotated (`rc: int = ...`) among
+    them; and beside each what only looks like it, which G3 reports as before: a name R has no
+    colour by, R's names in Python, a subscript with arithmetic in it or two numbers, a list
+    of one number, after a keyword too (`in [3]`, `return [3]`, `case [3]:`), a zero compared
+    with another name, a status compared with another number, a status assigned as a call's
+    argument, and a column called status (round 1 of #817). G3 reports the second kind's
+    numbers, in the order of the lines, and no other."""
     read = READINGS["figure script numbers"]()
     for suffix, text, said in drawn:
         found = read({"suffix": suffix, "text": text})["findings"]
@@ -26254,17 +26256,69 @@ def _any_zero_compared_is_a_status(patch: pytest.MonkeyPatch) -> None:
                                               code._text(tokens, index + 2)))  # fmt: skip
 
 
+def _statuses_assigned(code: Any, tokens: list[Any], *, where: Callable[[list[str]], bool],
+                       name: Callable[[list[Any], int], str | None]) -> Any:  # fmt: skip
+    """`_exit_statuses` with the brackets it reads in, and the name each assignment assigns
+    to, decided by `where` and `name`: what a broken rule of its puts in their place."""
+    names: set[str] = set()
+    runs: set[str] = set()
+    brackets: list[str] = []
+    for at in range(len(tokens) - 1):
+        text = code._text(tokens, at)
+        if text in ("(", "[", "{"):
+            brackets.append(text)
+        elif text in (")", "]", "}"):
+            if brackets:
+                brackets.pop()
+        elif code._assigns(tokens, at) and where(brackets) and name(tokens, at) is not None:
+            held = code._Statuses(frozenset(names), frozenset(runs))
+            if code._starts_a_status(tokens, at + 1, held):
+                names.add(name(tokens, at))
+            elif code._starts_a_run(tokens, at + 1):
+                runs.add(name(tokens, at))
+    return code._Statuses(frozenset(names), frozenset(runs))
+
+
 def _a_status_in_a_call_is_the_script_s(patch: pytest.MonkeyPatch) -> None:
     """The bracket rule of `_exit_statuses` taken out: a name assigned a status anywhere."""
     from manuscript_guard.text import code
 
-    def every(tokens: list[Any]) -> frozenset[str]:
-        return frozenset(
-            tokens[at - 1].text for at in range(1, len(tokens) - 1)
-            if code._assigns(tokens, at) and code._identifier(tokens[at - 1]) is not None
-            and code._starts_a_status(tokens, at + 1, frozenset()))  # fmt: skip
+    patch.setattr(code, "_exit_statuses", lambda tokens: _statuses_assigned(
+        code, tokens, where=lambda brackets: True, name=code._assigned))  # fmt: skip
 
-    patch.setattr(code, "_exit_statuses", every)
+
+def _a_status_is_assigned_at_the_top_level_only(patch: pytest.MonkeyPatch) -> None:
+    """A status assigned in braces, a function's body, not read (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_exit_statuses", lambda tokens: _statuses_assigned(
+        code, tokens, where=lambda brackets: not brackets, name=code._assigned))  # fmt: skip
+
+
+def _an_annotation_is_the_name_assigned(patch: pytest.MonkeyPatch) -> None:
+    """`rc: int = subprocess.call(...)` read as assigning to `int` (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_assigned", lambda tokens, index: code._identifier(tokens[index - 1])
+                  if index else None)  # fmt: skip
+
+
+def _any_dollar_status_is_a_status(patch: pytest.MonkeyPatch) -> None:
+    """Every `$status` taken for an exit status, a data frame's column too (round 1 of
+    #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_status_field", lambda tokens, index, statuses: (
+        code._text(tokens, index) or "").endswith(".returncode") or (
+        code._text(tokens, index) == "status" and code._text(tokens, index - 1) == "$"))
+
+
+def _keywords_open_subscripts(patch: pytest.MonkeyPatch) -> None:
+    """The keyword test of `_whole_subscript` taken out: `x in [3]`, `return [3]` and `case
+    [3]:` read as indices (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_KEYWORDS", frozenset())
 
 
 def _a_stylesheet_is_drawn(patch: pytest.MonkeyPatch) -> None:
@@ -33811,6 +33865,22 @@ BROKEN = {
     ),
     "a status assigned in a call is the script's": (
         _a_status_in_a_call_is_the_script_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a status is assigned at the top level only": (
+        _a_status_is_assigned_at_the_top_level_only,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "an annotation is the name assigned": (
+        _an_annotation_is_the_name_assigned,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "any $status is an exit status": (
+        _any_dollar_status_is_a_status,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a keyword before a bracket opens a subscript": (
+        _keywords_open_subscripts,
         test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
     ),
     "an SVG's stylesheet is drawn text": (

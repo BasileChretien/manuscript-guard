@@ -611,11 +611,15 @@ bisphosphonates paper's R figures showed (2026-11-26). A string that is, whole, 
 colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gray 0 to 100,
 and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
 `"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
-bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`) is an
-index. A zero compared by `==` or `!=` with a process's exit status is the test of whether it
-failed: a name the script assigns, outside any call's brackets, from `system2()`, `system()`,
-`os.system()` or `subprocess.call()`, or from a `$status` or a `.returncode`, and any of those
-written in place. A rendered SVG's `<style>` and `<script>` draw nothing either, so their text
+bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and
+not after a keyword (`x in [3]`, `return [3]`, `case [3]:`), is an index. A zero compared by
+`==` or `!=` with a process's exit status is the test of whether it failed: a name the script
+assigns, at the top level or inside braces (a function's body, `local({ })`, `tryCatch({ })`)
+but not as a call's argument, from `system2()`, `system()`, `os.system()` or
+`subprocess.call()`, or from a `.returncode` or a run's `$status`; a run being processx's
+`run()`, with its package or without; and any of those written in place. A `$status` of
+anything else, a data frame's column, is read as before. A rendered SVG's `<style>` and
+`<script>` draw nothing either, so their text
 is not read as the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind
 check still reads them, for a name.
 
@@ -19512,12 +19516,17 @@ Added by the adversarial review, verified and **not** fixed:
     (`labs(title = "red3")`) is taken for a colour and its number is not read. Pinned by
     `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
   - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
-    (`edges[1:3]`) are read as numbers bound to nothing. Pinned by
+    (`edges[1:3]`) are read as numbers bound to nothing, and so is the subscript of a name
+    that is a keyword in either language (`type[1]` in R). Pinned by
     `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read`.
-  - An exit status is known by the calls that return one and by `$status` and `.returncode`:
-    R's `system2(stdout = TRUE)`, which returns the output, is taken for a status, while
-    `Popen(...).wait()`, a status returned by a function of the script's own and one assigned
-    in a function's argument are not, and their zero is read. Pinned by
+  - An exit status is known by the calls that return one, by `.returncode`, and by the
+    `$status` of a run of processx's `run()`: R's `system2(stdout = TRUE)` and
+    `system(intern = TRUE)`, which return the output, are taken for a status, and so is the
+    `$status` of a function of the script's own called `run`; while `Popen(...).wait()`, a
+    status returned by a function of the script's own, one assigned in a function's argument,
+    one annotated with a type that is not a single name (`rc: Optional[int] = ...`) and a run
+    kept by another call (`res <- tryCatch(processx::run(...))`) are not, and their zero is
+    read. Pinned by
     `tests/test_figures.py::test_a_zero_compared_with_an_exit_status_is_no_number` and
     `tests/test_figures.py::test_a_zero_compared_with_anything_else_is_still_read`.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in

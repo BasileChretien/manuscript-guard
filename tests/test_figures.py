@@ -413,8 +413,14 @@ def test_a_number_that_is_a_whole_subscript_is_an_index(
         # A Python list of one number is a list, not a subscript.
         ("ticks = [1]", ".py", ["1"]),
         ("ticks = [[2]]", ".py", ["2"]),
-        # Known gaps: a slice is read.
+        # A list after a keyword is a list, soft keywords too (round 1 of #817).
+        ("if dose in [3.84]:\n    pass", ".py", ["3.84"]),
+        ("def doses():\n    return [3.84]", ".py", ["3.84"]),
+        ("match dose:\n    case [3]:\n        pass", ".py", ["3"]),
+        # Known gaps: a slice is read, and the subscript of a name that is a keyword in either
+        # language.
         ("some <- edges[1:3]", ".R", ["1", "3"]),
+        ("first <- type[1]", ".R", ["1"]),
     ],
 )
 def test_a_number_beside_a_subscript_is_still_read(
@@ -430,7 +436,7 @@ def test_a_number_beside_a_subscript_is_still_read(
          ".R"),
         ('code <- system("make figures")\nstopifnot(code == 0L)', ".R"),
         ('status <- processx::run("python", "x.py")$status\nif (status != 0) stop()', ".R"),
-        ('res <- processx::run("python", "x.py")\nif (res$status != 0) stop()', ".R"),
+        ('job <- processx::run("python", "x.py")\nif (job$status != 0) stop()', ".R"),
         ('if (system2("python", "x.py") != 0) stop()', ".R"),
         ('status <- system2("python", "x.py")\nif (0 != status) stop()', ".R"),
         ("rc = subprocess.call(['x'])\nif rc != 0:\n    raise SystemExit(rc)", ".py"),
@@ -438,8 +444,20 @@ def test_a_number_beside_a_subscript_is_still_read(
         ("proc = subprocess.run(['x'])\nif proc.returncode != 0:\n    raise SystemExit", ".py"),
         ("code = subprocess.run(['x']).returncode\nassert code == 0", ".py"),
         ("if os.system('make') != 0:\n    raise SystemExit", ".py"),
-        # Known gaps: `stdout = TRUE` makes system2() return the output, taken for a status.
+        # Assigned in a block's braces: a function's body, `local()`, `tryCatch()`.
+        ('f <- function() { st <- system2("x"); if (st != 0) stop() }', ".R"),
+        ('local({ st <- system2("x"); if (st != 0) stop() })', ".R"),
+        ('tryCatch({ job <- processx::run("x"); if (job$status != 0) stop() }, error = stop)',
+         ".R"),
+        ('library(processx)\njob <- run("python", "x.py")\nif (job$status != 0) stop()', ".R"),
+        # An annotated assignment names the variable, not its type (round 1 of #817).
+        ("rc: int = subprocess.call(['x'])\nif rc != 0:\n    raise SystemExit", ".py"),
+        ("def check():\n    rc: int = subprocess.call(['x'])\n    if rc != 0:\n"
+         "        raise SystemExit", ".py"),
+        # Known gaps: `stdout = TRUE` and `intern = TRUE` make system2() and system() return
+        # the output, taken for a status.
         ('said <- system2("git", "status", stdout = TRUE)\nif (said != 0) stop()', ".R"),
+        ('said <- system("git status", intern = TRUE)\nif (said != 0) stop()', ".R"),
     ],
 )  # fmt: skip
 def test_a_zero_compared_with_an_exit_status_is_no_number(
@@ -459,9 +477,17 @@ def test_a_zero_compared_with_an_exit_status_is_no_number(
         ('status <- system2("python", "x.py")\nif (status == 2) stop()', ".R", ["2"]),
         # Named in an argument of a call, a status is no status of the script's.
         ('f(status = system2("x"))\nif (status != 0) stop()', ".R", ["0"]),
-        # Known gaps: calls not known to return a status.
+        # A column called status is no exit status: only a run's is (round 1 of #817).
+        ("p <- ggplot(d[d$status == 0, ], aes(time))", ".R", ["0"]),
+        ('fit <- survfit(Surv(time, status) ~ sex, d)\nif (fit$status != 0) stop()', ".R",
+         ["0"]),
+        # Known gaps: calls not known to return a status, an annotation that is not a single
+        # name, and a run kept by another call.
         ("proc = subprocess.Popen(['x'])\nif proc.wait() != 0:\n    raise SystemExit", ".py",
          ["0"]),
+        ("rc: Optional[int] = subprocess.call(['x'])\nif rc != 0:\n    raise SystemExit", ".py",
+         ["0"]),
+        ('job <- tryCatch(processx::run("x"))\nif (job$status != 0) stop()', ".R", ["0"]),
     ],
 )
 def test_a_zero_compared_with_anything_else_is_still_read(

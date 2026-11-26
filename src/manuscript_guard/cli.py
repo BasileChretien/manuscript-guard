@@ -116,6 +116,7 @@ from manuscript_guard.gates.rrids import check_rrids
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.software import check_software
 from manuscript_guard.gates.software_methods import check_software_cited
+from manuscript_guard.gates.statements import check_statements
 from manuscript_guard.gates.summaries import check_summaries
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.gates.vault import check_vault_results
@@ -236,6 +237,9 @@ def _gate_run(
         # Its own too: the declarations are held to authors.yaml whether or not a journal is
         # chosen, and a journal that asks for them has G4's required statements as well.
         ("G4", lambda: check_disclosures(project, chosen)),
+        # The statements every paper makes where no profile lists the journal's, and no
+        # heading with nothing under it.
+        ("G4", lambda: check_statements(project, chosen)),
         ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),

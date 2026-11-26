@@ -5249,6 +5249,81 @@ def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosures, "_data", lambda: data)
 
 
+# ------------------------------------------------- the statements every paper makes
+
+from generated import statement_papers  # noqa: E402
+
+
+@holds(100, statement_papers())
+def test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said(
+    drawn: tuple[str, list[tuple[str, str]], list[tuple[str, str, str]]],
+) -> None:
+    """G4 finds each statement every paper makes under a heading, numbered or not, after a
+    label of any of four shapes, as a sentence of a Declarations section, and an ethics
+    statement in the Methods or as a denial; a heading with only a comment under it is
+    empty, and one whose words are all in its subsection, or the reference list's, is not.
+    Each statement taken out is the one missing, and each emptied under its heading is said
+    by that heading alone (`gates/statements.py`)."""
+    from manuscript_guard.gates.statements import empty_headings, missing, stated
+
+    paper, removed, emptied = drawn
+    assert [heading.title for heading in empty_headings(paper)] == ["Limitations"], paper
+    assert missing(stated(paper)) == [], (stated(paper), paper)
+    for kind, changed in removed:
+        assert missing(stated(changed)) == [kind], (kind, stated(changed), changed)
+    for kind, title, changed in emptied:
+        said = stated(changed)
+        assert said.get(kind) == "empty" and missing(said) == [], (kind, said, changed)
+        shown = sorted(heading.title for heading in empty_headings(changed))
+        assert shown == sorted([title, "Limitations"]), (title, shown, changed)
+
+
+def _a_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+    from manuscript_guard.text.masking import blank, front_matter_end, metadata_blocks
+
+    patch.setattr(statements, "_shown", lambda text: blank(
+        text, [(0, front_matter_end(text)), *metadata_blocks(text)]))
+
+
+def _a_heading_s_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_printed",
+                  lambda headings, bodies: [bool(body.strip()) for body in bodies])
+
+
+def _the_reference_list_s_heading_can_be_empty(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_passed_over", lambda title, level: not title)
+
+
+def _a_label_opens_no_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    patch.setattr(disclosures, "_labelled", lambda printed: iter(()))
+
+
+def _the_methods_are_not_read_for_ethics(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "methods_sections", lambda sections, abstract=None: [])
+
+
+def _a_denial_is_no_ethics_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    data = {**disclosures._data(), "no_approval": []}
+    patch.setattr(disclosures, "_data", lambda: data)
+
+
+def _a_declarations_section_s_words_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_words_of", lambda kind, text: False)
+
+
 # ------------------------------------------------- the head over a fetched PDF's title
 
 from generated import PDF_WORK, pdf_first_pages  # noqa: E402
@@ -33664,6 +33739,34 @@ BROKEN = {
     "an ordinal counts across the paper": (
         _an_ordinal_counts_across_the_paper,
         test_the_ordinal_of_a_key_counts_in_its_sentence_only,
+    ),
+    "a comment under a heading is printed": (
+        _a_comment_is_printed,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a heading's subsections are not read": (
+        _a_heading_s_subsections_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "the reference list's heading can be empty": (
+        _the_reference_list_s_heading_can_be_empty,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label opens no statement": (
+        _a_label_opens_no_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "the Methods are not read for an ethics statement": (
+        _the_methods_are_not_read_for_ethics,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a denial of approval is no ethics statement": (
+        _a_denial_is_no_ethics_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a Declarations section's words are not read": (
+        _a_declarations_section_s_words_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
 }
 

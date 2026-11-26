@@ -30762,6 +30762,30 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Abstract not found, said as the number and the words around it, and a question, said as
     a referee's draft says it; a message that names an option or a gate shows it there.
     Accepted.
+- **The statements every paper makes are found by their headings and labels.** G4's check of
+  empty headings and of the statements every paper makes (`gates/statements.py`, built
+  2026-11-26 after a draft built its declarations as headings over comments) has these
+  limits. Accepted.
+  - Where the journal's profile lists required statements, the check asks for none of its
+    own: a kind the profile leaves out is not asked for. Its empty headings are still said.
+    Pinned by `tests/test_statements.py::test_a_profile_that_lists_the_journal_s_statements_asks_for_them_and_this_asks_none`.
+  - The headings and labels are English only, as G4 reads the declarations: a statement
+    under "Financement" is none.
+    Pinned by `tests/test_statements.py::test_a_statement_under_a_heading_in_another_language_is_not_read`.
+  - A LaTeX manuscript's statements are read in its printed view, and its headings are not
+    checked for emptiness.
+    Pinned by `tests/test_statements.py::test_a_latex_manuscript_s_statements_are_read_and_its_headings_are_not`.
+  - A heading has something under it as soon as anything is printed there: a figure, a
+    table, a listing, or one word such as "TBD".
+    Pinned by `tests/test_statements.py::test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_no_heading`.
+  - An ethics statement is also any sentence of the Methods with "ethics", "ethical",
+    "institutional review" or "IRB" in it, and a sentence anywhere in the main text that
+    says no approval was needed, as G4 reads a denial.
+    Pinned by `tests/test_statements.py::test_an_ethics_statement_may_be_in_the_methods_or_a_denial_anywhere`.
+  - The Acknowledgements count as a funding statement, as G4 reads the declarations, whatever
+    they say. Accepted.
+  - The supplement's headings are checked, and its statements are not read: a journal reads
+    the main text's. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

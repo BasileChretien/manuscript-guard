@@ -43447,6 +43447,42 @@ def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Pa
 
 
 # --------------------------------------------------------------------------------------
+# G4: the statements every paper makes, and no heading with nothing under it
+# (`gates/statements.py`). A note before drafting, a warning while drafting, a failure from
+# internal review.
+
+
+def _statement_findings(root: Path, stage: str) -> list[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return sorted((f.code, f.severity, f.subject or "") for f in report.findings
+                  if f.code in ("section-empty", "declaration-missing"))  # fmt: skip
+
+
+def test_a_statement_left_as_a_comment_under_its_heading_is_caught(project: Path) -> None:
+    """The heading prints alone: the comment saying what is to be written does not print."""
+    _replaced(main_md(project), "This work received no funding.",
+              "<!-- TO CONFIRM WITH THE AUTHORS: no funding. -->")
+    assert _statement_findings(project, "drafting") == [("section-empty", "warn", "Funding")]
+    assert _statement_findings(project, "internal-review") == [
+        ("section-empty", "fail", "Funding")]
+
+
+def test_a_statement_missing_with_no_journal_chosen_is_caught(project: Path) -> None:
+    """Without the journal's list, the five every paper makes are asked for: the example's
+    data, funding and competing interests statements, its ethics in a denial, and no author
+    contributions statement."""
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    assert _statement_findings(project, "drafting") == [
+        ("declaration-missing", "warn", "contributions")]
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.\n", "")
+    assert _statement_findings(project, "submission") == [
+        ("declaration-missing", "fail", "contributions"),
+        ("declaration-missing", "fail", "interests")]
+
+
+# --------------------------------------------------------------------------------------
 # G4: the AI-use statement held to the records of a model's work and to what the authors
 # declare (DESIGN.md, "The AI-use statement names the models the records hold").
 

@@ -629,11 +629,12 @@ features:
     stage: check
     title: Declarations
     says: >-
-      The funding, competing interests, ethics, contributions and AI-use statements say what
-      the authors' records say.
+      The paper makes the statements every paper makes, data availability, ethics, funding,
+      competing interests, contributions and AI use, each saying what the authors' records
+      say, and no heading is left with nothing under it.
     status: works
     gates: [G4]
-    tests: [tests/test_disclosures.py, tests/test_ai_use.py]
+    tests: [tests/test_disclosures.py, tests/test_ai_use.py, tests/test_statements.py]
 
   - id: reporting-checklist
     stage: check

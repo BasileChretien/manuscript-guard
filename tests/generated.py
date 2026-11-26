@@ -8661,6 +8661,125 @@ def declaration_papers(
     return authors, paper({}), [(code, paper(changed)) for code, changed in near]
 
 
+# ----------------------------------------------------- the statements every paper makes
+
+#: The headings and labels each standard statement is written under (`gates/statements.py`).
+DECLARED_TITLES = {
+    "data": ("Data availability", "Data availability statement", "Data sharing",
+             "Availability of data and materials"),
+    "ethics": ("Ethics", "Ethics statement", "Ethical approval",
+               "Ethics approval and consent to participate"),
+    "funding": ("Funding", "Sources of funding", "Financial support"),
+    "interests": ("Competing interests", "Conflicts of interest", "Declaration of interests"),
+    "contributions": ("Author contributions", "Contributors", "CRediT author statement"),
+    "ai_use": ("Use of AI", "Use of generative AI", "AI use statement",
+               "Declaration of generative AI use"),
+}  # fmt: skip
+#: What each says, in words that name no other kind.
+DECLARED_BODIES = {
+    "data": "The extract is held by the agency and can be requested from it.",
+    "ethics": "The committee of the hospital approved the protocol (CPP 2021-12).",
+    "funding": "The work was paid for by the department of the first author.",
+    "interests": "None declared.",
+    "contributions": "AE wrote the first draft and BS revised it.",
+    "ai_use": "A language model corrected the English of two paragraphs.",
+}
+#: The same, as a sentence of a Declarations section, holding the words of its heading.
+DECLARED_WORDS = {
+    "data": "Data sharing is not allowed by the agreement with the agency.",
+    "funding": "No funding was received for this work.",
+    "interests": "The authors declare no competing interests.",
+    "contributions": "The contributions of the authors are given on the title page.",
+    "ai_use": "No generative AI was used in writing the paper.",
+}
+#: An ethics statement where no heading or label opens it: in the Methods, and a denial.
+ETHICS_IN_METHODS = "The ethics committee of the hospital approved the protocol."
+ETHICS_DENIED = "No ethical approval was required for these records."
+
+
+@st.composite
+def statement_papers(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, str]], list[tuple[str, str, str]]]:
+    """A paper that makes every standard statement, each in a form of its own, and the
+    papers made from it: for each kind, the paper without its statement, and for each kind
+    under a heading, the paper with only a comment under that heading.
+
+    In every example the five kinds other than ethics take, between them, each of five
+    forms: a heading, a label that opens its paragraph, a plain label, a label alone in its
+    paragraph and a sentence of a Declarations section; ethics is under a numbered heading,
+    after a plain label alone, a sentence of the Methods or a denial in the Introduction.
+    Every example also holds a Methods heading whose words are all in its subsection, a
+    heading with only a comment under it ("Limitations"), and the reference list's heading
+    with nothing under it, in an order drawn."""
+    case = {"as": str, "upper": str.upper, "lower": str.lower}
+
+    def titled(kind: str) -> str:
+        return case[draw(st.sampled_from(sorted(case)))](
+            draw(st.sampled_from(DECLARED_TITLES[kind])))
+
+    others = ["data", "funding", "interests", "contributions", "ai_use"]
+    forms = dict(zip(others, draw(st.permutations(
+        ["heading", "label", "plain label", "alone", "declarations"])), strict=True))
+    forms["ethics"] = draw(st.sampled_from(("numbered heading", "plain alone", "methods",
+                                            "denial")))  # fmt: skip
+    titles = {kind: titled(kind) for kind in forms}
+    number = draw(st.sampled_from(("6. ", "6.1 ", "VI. ")))
+    filler = st.lists(st.sampled_from(FILLER), min_size=3, max_size=10)
+    words = {name: " ".join(draw(filler)).capitalize() + "."
+             for name in ("introduction", "design", "limitations")}  # fmt: skip
+    comment = draw(st.sampled_from(("<!-- TO CONFIRM WITH THE AUTHORS: {} -->", "<!-- {} -->",
+                                    "<!--\n{}\n-->")))  # fmt: skip
+    references = draw(st.sampled_from(("# References\n", "# References\n\n::: {#refs}\n:::\n")))
+
+    def paper(left_out: str | None = None, emptied: str | None = None) -> str:
+        def body(kind: str) -> str:
+            return comment.format(DECLARED_BODIES[kind]) if kind == emptied else (
+                DECLARED_BODIES[kind])  # fmt: skip
+
+        def written(kind: str) -> bool:
+            return kind != left_out
+
+        introduction = words["introduction"]
+        if forms["ethics"] == "denial" and written("ethics"):
+            introduction += " " + ETHICS_DENIED
+        design = words["design"]
+        if forms["ethics"] == "methods" and written("ethics"):
+            design += " " + ETHICS_IN_METHODS
+        blocks = {"methods": f"# Methods\n\n## Design\n\n{design}\n",
+                  "limitations": f"# Limitations\n\n{comment.format(words['limitations'])}\n"}
+        labels = []
+        for kind, form in forms.items():
+            if not written(kind):
+                continue
+            if form == "heading":
+                blocks[kind] = f"# {titles[kind]}\n\n{body(kind)}\n"
+            elif form == "numbered heading":
+                blocks[kind] = f"# {number}{titles[kind]}\n\n{body(kind)}\n"
+            elif form == "label":
+                labels.append(f"**{titles[kind]}:** {body(kind)}")
+            elif form == "plain label":
+                labels.append(f"{titles[kind]}: {body(kind)}")
+            elif form == "alone":
+                labels.append(f"**{titles[kind]}**\n\n{body(kind)}")
+            elif form == "plain alone":
+                labels.append(f"{titles[kind]}:\n\n{body(kind)}")
+        blocks["further"] = "# Further statements\n\n" + "\n\n".join(labels) + "\n"
+        declared = [DECLARED_WORDS[kind] for kind, form in forms.items()
+                    if form == "declarations" and written(kind)]  # fmt: skip
+        blocks["declarations"] = "# Declarations\n\n" + " ".join(declared) + "\n"
+        middle = "\n".join(blocks[name] for name in order if name in blocks)
+        return f"# Introduction\n\n{introduction}\n\n{middle}\n{references}"
+
+    headed = [kind for kind, form in forms.items() if form in ("heading", "numbered heading")]
+    order = draw(st.permutations(["methods", "limitations", "further", "declarations",
+                                  *headed]))  # fmt: skip
+    shown = {kind: (number if forms[kind] == "numbered heading" else "") + titles[kind]
+             for kind in headed}  # fmt: skip
+    return (paper(), [(kind, paper(left_out=kind)) for kind in forms],
+            [(kind, shown[kind], paper(emptied=kind)) for kind in headed])
+
+
 # --------------------------------------------------- the head over a fetched PDF's title
 
 #: The cited work each first page below is judged against, its DOI and its title.
@@ -19955,6 +20074,12 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             + [{"authors": drawn[0], "main": text} for _code, text in drawn[2]])),
         st.tuples(declaration_papers(), texts(), texts()).map(lambda drawn: {
             "authors": drawn[0][0], "main": drawn[1], "supplement": drawn[2]}),
+    ),  # fmt: skip
+    "statements": st.one_of(
+        statement_papers().flatmap(lambda drawn: st.sampled_from(
+            [drawn[0], *(text for _kind, text in drawn[1]),
+             *(text for _kind, _title, text in drawn[2])])),
+        texts(),
     ),  # fmt: skip
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "pdf shown": pdf_first_pages().map(lambda drawn: [text for text, _work in drawn]),

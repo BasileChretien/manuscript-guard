@@ -929,6 +929,19 @@ def _disclosures() -> Reading:
     return read
 
 
+@reading("statements")
+def _statements() -> Reading:
+    from manuscript_guard.gates.statements import empty_headings, stated
+
+    def read(text: str) -> dict[str, Any]:
+        """Which statements every paper makes a main text holds, and which of its headings
+        have nothing under them (`gates/statements.py`)."""
+        return {"stated": stated(text),
+                "empty": [[heading.title, heading.line] for heading in empty_headings(text)]}
+
+    return read
+
+
 @reading("deposit named")
 def _deposit_named() -> Reading:
     from manuscript_guard.gates.data_statement import names_doi

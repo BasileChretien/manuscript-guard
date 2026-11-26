@@ -3,7 +3,8 @@
 A journal sends its editors and referees manuscripts in confidence. `manuscript-guard audit`
 reads one on your own computer and sends nothing of it anywhere: the checks run here, with no
 model. This page is about reading a paper someone else wrote. For your own, see
-[Auditing a paper you already wrote](audit.md).
+[Auditing a paper you already wrote](audit.md). For a journal's office deciding whether to
+allow it, see [For an editorial office](editorial-office.md).
 
 ## Keep it away from a model
 

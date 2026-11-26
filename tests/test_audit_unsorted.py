@@ -67,7 +67,8 @@ def test_a_paper_s_entries_not_sorted_are_one_note_at_the_first(tmp_path: Path, 
     (one,) = _unsorted(_found(capsys, str(paper)))
     assert one["message"] == (f"3 entries {WHY}: entries 1, 3 and 4 of the list; check them by "
                               "hand"), one["message"]  # fmt: skip
-    assert (one["path"], one["line"]) == (str(paper), 7)
+    # With forward slashes on every system, as audit names a file (Basile, 2026-11-25).
+    assert (one["path"], one["line"]) == (paper.as_posix(), 7)
     assert (one["severity"], one["counted"], one["section"]) == (INFO, False, REFERENCES)
     assert [(e["entry"], e["line"]) for e in one["entries"]] == [
         ("entry 1 of the list", 7), ("entry 3 of the list", 11), ("entry 4 of the list", 13)]
@@ -91,7 +92,7 @@ def test_each_paper_audited_has_a_note_of_its_own(tmp_path: Path, capsys) -> Non
     second = _paper(tmp_path, NUMBERED, "second.md")
     found = _unsorted(_found(capsys, str(first), str(second)))
     assert [(f["path"], f["line"], len(f["entries"])) for f in found] == [
-        (str(first), 7, 3), (str(second), 8, 1)], found
+        (first.as_posix(), 7, 3), (second.as_posix(), 8, 1)], found
 
 
 def test_the_summary_and_the_tile_still_count_the_entries(tmp_path: Path, capsys) -> None:

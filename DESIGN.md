@@ -11424,6 +11424,24 @@ file must end in `.md`, must not exist and must not be a file the command reads,
 with mode "x". Both options are reader options (`READER_FLAGS`): the notice prints and the
 hook asks.
 
+### The letter to the authors (2026-11-25)
+
+An editor who returns a paper before review writes a letter, and the editor's report
+(`auditing.editor`) already says what to ask the authors and what to look at first. So
+`--letter FILE.md` (`auditing.letter`) drafts it from that report, with or without
+`--editor`: the kinds of "Ask the authors" under "Please correct or answer before review",
+and those of "Look at before you decide" under "Please check", introduced as points that
+may be right as they stand (Basile, 2026-11-25, who chose to put them in, worded so, over
+leaving them to the editor, and to build the letter on the editor's parts rather than on a
+sorting of its own). The editor's report says each kind to the editor, a sign "there to steer
+the review" among them; the letter says it to the authors, in a sentence of its own from
+`data/letter.yaml`, which has one for every kind of the two parts and no other
+(`tests/test_audit_letter.py`); a finding no kind names takes the one for any. Under each
+kind stands each place, as the editor's report says it, and up to 200 characters of what
+the finding quotes; a place in the journal's profile is left out, as the authors do not have
+that file. It is a function of the report, as the report draft is, written by the same rule
+(`draft.refused`, mode "x"), never to the report draft's file, and a reader option.
+
 ## A revision read beside the version before it
 
 `compare OLD NEW` is the one new command of the editor and referee layer (decision 1): a referee
@@ -17534,9 +17552,9 @@ of patients, not the self-controlled case series, which `self-controlled` alread
 (labelled "self-controlled design (case series or case-crossover)"); its label says so, and
 which guideline it answers to is read before its entry is written.
 
-`gates/design.py` names cross-sectional surveys, case series and reports, and qualitative
-studies among the studies `other` covers today. `other` stays, for a narrative review and the
-rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+`gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
+studies among the studies `other` covers; the first of them is a design of its own since
+#801. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17573,8 +17591,9 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of STROBE's checklist for cross-sectional studies, CARE, SRQR
-  and COREQ, and which guideline a case series answers to.
+- The pages, items and licences of CARE, SRQR and COREQ, and which guideline a case series
+  answers to. STROBE's checklist for cross-sectional studies was read on its own page on
+  2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
 - A published classification of study designs to take a series of questions from, should the
   sentences beside the options not be enough (answer 5).
 - How an OSF registration is made from a plan file, and whether the page can link to it with
@@ -19626,17 +19645,29 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Seven designs are named; a design outside them (a narrative review, a cross-sectional
-  study, a case series or report, a qualitative study, a diagnostic accuracy study, a target
-  trial emulation as a design of its own) takes `study_type: other`, which settles `next`'s
-  choice of design and keeps the seven sections, with no guideline asked for by the design.
-  A design is added only with sections that each cite their guideline item: a narrative
-  review (SANRA) and a cross-sectional study (STROBE) could be next. The self-controlled designs have no reporting guideline, and
+  not. Eight designs are named, a cross-sectional study the last added; a design outside
+  them (a narrative review, a descriptive case series or a case report, a qualitative study,
+  a diagnostic accuracy study, a target trial emulation as a design of its own) takes
+  `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
+  with no guideline asked for by the design. A design is added only with sections that each
+  cite their guideline item: "One set of plan questions, answered before the data or quoted
+  from a draft" (above) plans case reports, case series, diagnostic accuracy and qualitative
+  studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
+  sampling and measurement are found only by words those sections alone use (sampling,
+  recruitment, selection of participants, survey weights; measurement, instrument,
+  questionnaire, data collection): four rounds of review of #801 found looser patterns
+  taking other sections' headings, a confounding weight, a sample's size, a bias
+  assessment, and missing survey wordings. So a heading of their own in other words, "Study
+  sample", "Measures", "Covariate assessment" or "Probability weights", is refused and the
+  plan told it lacks the section, a false alarm chosen over a false pass (Basile,
+  2026-11-26); a heading that names its section exactly is planned. The self-controlled
+  designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
   Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_a_word_of_any_heading`,
-  `tests/test_corruption.py::test_seven_designs_are_named_and_another_is_other`,
+  `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
+  `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
   `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,
   `tests/test_corruption.py::test_a_paper_whose_design_has_none_of_its_guidelines_is_told`
@@ -29695,13 +29726,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper and outputs beside it. PDFs (`pdftotext`),
-    LaTeX projects, figures, packages, `--journal`, `--authors`, `--cited` and
-    `--report-draft` are the command line's. Accepted.
+  - *What it reads.* A `.docx` or Markdown paper and outputs beside it, and a journal's
+    profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
+    projects, figures, packages, `--cited` and `--report-draft` are the command line's.
+    Accepted.
+  - *The journal form's statements* are found under the heading the reader gives for each,
+    or its usual one: a heading, or the label a paragraph opens with, whose whole title is
+    that heading, its case, number and marks aside (`journal_form.pattern`). A paper that
+    states its funding under another heading, "Financial support" or "Funding sources" where
+    the journal's is "Funding", is told the statement is missing, with the heading asked
+    for, as a journal's own check would tell it (Basile, 2026-11-25). Pinned by
+    `tests/test_journal_form.py::test_another_heading_a_sentence_or_a_title_is_no_statement`.
   - *The word-for-word check is on the worked example* (the `.docx` with and without its
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
-    that start with "-", and the `.docx` against two outputs whose names the page once made
-    one), in Node and in two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    that start with "-", the `.docx` against two outputs whose names the page once made
+    one, with a referee's options, in American English with the copy with tracked changes,
+    and held to a journal's rules from the form with a double-blind review), in Node and in
+    two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the five registries answer a page (CORS) was tested by hand
@@ -30771,6 +30812,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A finding of the first two parts is said in its own message, except a number of the
     Abstract not found, said as the number and the words around it, and a question, said as
     a referee's draft says it; a message that names an option or a gate shows it there.
+    Accepted.
+- **The letter asks what the editor's report parts, and in English.** Its parts and kinds are
+  the editor's report's, so what that report puts in a kind the letter asks in that kind's
+  sentence, and a finding of a code no kind names is asked as "Please look at this point."
+  with its own message. Pinned by
+  `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
+  - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):

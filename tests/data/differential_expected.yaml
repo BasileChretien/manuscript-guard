@@ -229,8 +229,10 @@ expected:
       (`declaration-missing`; Basile, 2026-11-26). Each is a note at the design stage, a
       warning while drafting and a failure from internal review, so the report gains those
       findings and its counts with them, and at submission its exit code is 1 where one
-      fails; nothing else of it changes. The entry it replaces, the keys' of 2026-11-19, is
-      spent
+      fails; where it asks for the funding, competing interests or AI-use statement, the note
+      `funding-not-stated`, `interests-not-stated` or `ai-use-not-stated` is not raised (one
+      gap, one finding: round 1 of #819); nothing else of it changes. The entry it replaces,
+      the keys' of 2026-11-19, is spent
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds

@@ -9,29 +9,40 @@ findings, each a note before the drafting stage, a warning while the paper is dr
 failure from internal review on (the author's rule, 2026-11-26):
 
 - `section-empty`: a heading of the main text or the supplement under which nothing is
-  printed before the next heading of its level or above: no text, or only HTML comments and
-  white space. A heading whose subsections print something is not empty; each empty
-  subsection is said on its own. The reference list's heading is passed over, since the build
-  puts the bibliography under it, and so is a heading with no title.
-- `declaration-missing`: the main text has no statement of one of the kinds every paper
+  printed before the next heading of its level or above: no text, or only HTML comments, a
+  link's reference definition (`[//]: # (to confirm)`, Markdown's comment) and white space, or
+  a placeholder G6 does not already fail ("TO CONFIRM", "Placeholder", "To be completed"; G6
+  fails "TBD", "TODO" and "XXX" as `model-artefact`). A heading whose subsections print
+  something is not empty. One gap is one finding: a heading empty only through its empty
+  subsections is not said, its subsections are. The reference list's heading, and any whose
+  title ends in "references" or "bibliography" ("Supplementary references"), is printed
+  under, since the build puts the bibliography there; a heading with no title is passed over.
+- `declaration-missing`: the manuscript has no statement of one of the kinds every paper
   makes, where no journal's profile says which statements the journal asks for: data
   availability, ethics, funding, competing interests, author contributions, and AI use where
   a record shows a model at work or `authors.yaml` declares a tool under `ai_use`
-  (`gates/ai_use.wanted`). A statement is a heading or a paragraph's label of its kind with
-  something printed under it: the headings of `data/disclosures.yaml` for funding, interests,
-  ethics and contributions, as G4 reads the declarations, the Acknowledgements among the
-  funding statement's; the Data availability statement's (`data_statement.HEADING`, or the
-  profile's own); the AI-use statement's (`ai_use.default_places`). An ethics statement may
-  also be a sentence of the Methods that holds the words of its heading, or a sentence
-  anywhere in the main text that says no approval was needed (`no_approval`, as G4 reads a
-  denial); and any of them a sentence of a Declarations section that holds the words of its
-  kind's heading.
+  (`gates/ai_use.wanted`). The main text and the supplement are read, as G4 reads the
+  declarations. A statement is a heading or a paragraph's label of its kind with words printed
+  after it, a placeholder not among them: the headings of `data/disclosures.yaml` for
+  funding, interests, ethics and contributions, as G4 reads the declarations, the
+  Acknowledgements among the funding statement's; the Data availability statement's, in the
+  forms journals ask for ("Data availability", "Code and data availability", "Data,
+  Materials, and Software Availability", "Data accessibility"), or the profile's own; the
+  AI-use statement's (`ai_use.default_places`). An ethics statement may also be a sentence of
+  the Methods that holds the words of its heading, or a sentence anywhere that says no
+  approval was needed (`no_approval`, as G4 reads a denial); and any of them a sentence of a
+  Declarations section that holds the words of its kind's heading. A label's own words are no
+  sentence of either, and a CRediT role ("Funding acquisition") or an item of the ICMJE form
+  states no funding.
 
 A kind whose only heading is empty is said once, by `section-empty`. Where the target
 journal's profile lists required statements, they are the journal's, read from its page, and
 `missing-required-statement` asks for them: this check then asks for none of its own, so that
 a kind is never asked for twice, nor asked for against the journal's own list. Its empty
-headings are still said.
+headings are still said. And one gap is one finding with the notes of the other checks too:
+where this asks for the funding, competing interests or AI-use statement, G4's notes
+`funding-not-stated`, `interests-not-stated` and `ai-use-not-stated` are not raised
+(`asked_for`), and what they said of the records is in this finding's hint.
 
 English only, as the declarations are read. A LaTeX manuscript's statements are read in its
 printed view; its headings are not checked for emptiness (DESIGN.md, Known gaps).
@@ -90,14 +101,60 @@ WRITE = {
     "the records show",
 }
 
-#: The words of the Data availability statement's heading in a sentence: "Data sharing is not
-#: allowed", "the availability of the data".
-_DATA_WORDS = re.compile(
-    r"\b(?:data (?:and code |and materials )?availability|availability of (?:the )?data"
-    r"|data sharing)\b", re.IGNORECASE)
+#: The words of a Data availability statement's title, in the forms journals ask for: "Data
+#: availability", "Data and code availability", "Code and data availability" (Copernicus),
+#: "Data, Materials, and Software Availability" (PNAS), "Data accessibility", "Data sharing",
+#: "Availability of data and materials" (BMC).
+_DATA_TITLE = (
+    r"(?:(?:code|software) and )?data(?:,? (?:and )?(?:code|materials?|software))*,? "
+    r"(?:availability|accessibility|sharing)|availability of (?:the )?(?:data|code)"
+)
+#: The same as a heading or a label opens with it, its number aside, and in a sentence.
+_DATA_HEADING = re.compile(rf"^[\W\d]*(?:{_DATA_TITLE})\b", re.IGNORECASE)
+_DATA_WORDS = re.compile(rf"\b(?:{_DATA_TITLE})\b", re.IGNORECASE)
+#: What a section or a label holds that says only that its text is still to come, and that G6
+#: does not already fail as a placeholder (`model-artefact`: TBD, TODO, XXX, FIXME): read
+#: whole, its marks and stops aside.
+_PLACEHOLDER = re.compile(
+    r"(?:to (?:be )?(?:confirm(?:ed)?|check(?:ed)?|complet(?:e|ed)|writ(?:e|ten)"
+    r"|fill(?:ed)?(?: in)?|add(?:ed)?|decided?|determined|provided|supplied)"
+    r"(?: (?:with|by|from) the authors?)?|placeholder|pending)",
+    re.IGNORECASE,
+)
+#: A link's reference definition, which prints nothing: `[//]: # (to confirm)`, the idiom for
+#: a comment in Markdown, and `[label]: <url> "title"`. Not a footnote's, `[^1]: ...`, which
+#: prints.
+_DEFINITION = re.compile(
+    r"(?m)^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*\S+"
+    r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*$"
+)
+#: A title the bibliography is printed under besides the reference list's own: one that ends
+#: in its word, "Supplementary references", "Additional references".
+_REFERENCES_LAST = re.compile(
+    r"\b(?:references|bibliography|works cited|literature cited|reference list)\W*$",
+    re.IGNORECASE,
+)
+#: A supplement's number before a title: "S4.", "S2.1".
+_SUPPLEMENT_NUMBER = re.compile(r"^\s*S\d+(?:\.\d+)*\.?\s+")
 #: The kinds G4's reading of the declarations knows by their headings and labels.
 _DISCLOSED = (FUNDING, INTERESTS, ETHICS, CONTRIBUTIONS)
 STATED, HEADED_EMPTY = "stated", "empty"
+
+
+def _placeholder(text: str) -> bool:
+    """Whether `text` says only that its text is still to come."""
+    words = re.sub(r"[\W_]+", " ", text).strip()
+    return bool(words) and _PLACEHOLDER.fullmatch(words) is not None
+
+
+def _says(text: str) -> bool:
+    """Whether `text`, as printed, says something: words that are no placeholder."""
+    return bool(text.strip()) and not _placeholder(text)
+
+
+def _unprinted(text: str) -> str:
+    """`text` with the links' reference definitions blanked, offsets kept."""
+    return blank(text, [found.span() for found in _DEFINITION.finditer(text)])
 
 
 # ----------------------------------------------------------------------- empty headings
@@ -115,9 +172,10 @@ class EmptyHeading:
 
 def _shown(text: str) -> str:
     """`text` with what the build does not print blanked, offsets kept: the front matter, the
-    YAML blocks of the body and the HTML comments. Fenced listings are printed, and kept."""
+    YAML blocks of the body, the HTML comments and the links' reference definitions. Fenced
+    listings are printed, and kept."""
     spans = [(0, front_matter_end(text)), *metadata_blocks(text), *html_comments(text)]
-    return blank(text, spans)
+    return _unprinted(blank(text, spans))
 
 
 def _opens(text: str, start: int, setext: bool) -> int:
@@ -128,33 +186,70 @@ def _opens(text: str, start: int, setext: bool) -> int:
     return len(text) if body == -1 else body
 
 
-def _printed(headings: list, bodies: list[str]) -> list[bool]:
-    """For each heading, whether anything is printed under it: in its own text, or under a
-    heading below it, to the next of its level or above. One pass, a stack of the headings
-    still open."""
-    printed = [bool(body.strip()) for body in bodies]
+def _bibliography(title: str) -> bool:
+    """Whether the build prints the bibliography under a heading of this title."""
+    from manuscript_guard.text.section_names import plain
+
+    # A supplement's number too, "S4. References cited", which `plain` leaves on.
+    bare = _SUPPLEMENT_NUMBER.sub("", plain(title))
+    return (Section(title=bare, level=1, body="", line=0).is_references
+            or bool(_REFERENCES_LAST.search(bare)))  # fmt: skip
+
+
+def _ends(headings: list) -> list[int]:
+    """For each heading, the index of the next of its level or above: where what is below it
+    ends. One pass, a stack of the headings still open."""
+    ends = [len(headings)] * len(headings)
     open_: list[int] = []
-    for index, heading in enumerate([*headings, None]):
-        while open_ and (heading is None or headings[open_[-1]].level >= heading.level):
-            closed = open_.pop()
-            if open_ and printed[closed]:
-                printed[open_[-1]] = True
-        if heading is not None:
-            open_.append(index)
-    return printed
+    for index, heading in enumerate(headings):
+        while open_ and headings[open_[-1]].level >= heading.level:
+            ends[open_.pop()] = index
+        open_.append(index)
+    return ends
+
+
+def _below(flags: list[bool], ends: list[int]) -> list[bool]:
+    """For each heading, whether a heading below it, to `ends`, has its flag: counted from
+    the end, so that each is asked once."""
+    after = [0] * (len(flags) + 1)
+    for index in reversed(range(len(flags))):
+        after[index] = after[index + 1] + flags[index]
+    return [after[index + 1] - after[ends[index]] > 0 for index in range(len(flags))]
+
+
+def _printed(headings: list, bodies: list[str]) -> list[bool]:
+    """For each heading, whether anything is printed under it: in its own text, the
+    bibliography under the reference list's heading, or under a heading below it."""
+    own = [_says(body) or _bibliography(heading.title.strip())
+           for heading, body in zip(headings, bodies, strict=True)]  # fmt: skip
+    below = _below(own, _ends(headings))
+    return [mine or under for mine, under in zip(own, below, strict=True)]
 
 
 def _passed_over(title: str, level: int) -> bool:
-    """A heading never said to be empty: one with no title, and the reference list's, which
-    the build fills with the bibliography."""
-    return not title or Section(title=title, level=level, body="", line=0).is_references
+    """A heading never said to be empty: one with no title."""
+    return not title
+
+
+def _gaps(headings: list, printed: list[bool]) -> list[int]:
+    """The headings said to be empty: each with nothing printed under it and no heading said
+    below it. A heading empty only through its empty subsections is no gap of its own; each
+    of them is."""
+    ends = _ends(headings)
+    said = [False] * len(headings)
+    after = [0] * (len(headings) + 1)
+    for index in reversed(range(len(headings))):
+        heading = headings[index]
+        said[index] = (not printed[index] and after[index + 1] == after[ends[index]]
+                       and not _passed_over(heading.title.strip(), heading.level))  # fmt: skip
+        after[index] = after[index + 1] + said[index]
+    return [index for index, gap in enumerate(said) if gap]
 
 
 def empty_headings(text: str) -> list[EmptyHeading]:
-    """Each heading of `text` under which nothing is printed, in order: its own text and that
-    of every heading below it, to the next of its level or above, blank once the comments
-    are. Headings are found as the gates find them (`scannable`), so a `#` line in a listing
-    is none."""
+    """Each heading of `text` under which nothing is printed, and no heading below it is said
+    to be, in order. Headings are found as the gates find them (`scannable`), so a `#` line
+    in a listing is none."""
     headings = find_headings(scannable(text))
     shown = _shown(text)
     bodies = [
@@ -163,24 +258,26 @@ def empty_headings(text: str) -> list[EmptyHeading]:
         for index, heading in enumerate(headings)
     ]  # fmt: skip
     breaks = [at for at, char in enumerate(text) if char == "\n"]
-    return [
-        EmptyHeading(heading.title.strip(), heading.level,
-                     bisect_left(breaks, heading.start) + 1, heading.start)
-        for heading, printed in zip(headings, _printed(headings, bodies), strict=True)
-        if not printed and not _passed_over(heading.title.strip(), heading.level)
-    ]  # fmt: skip
+    found = []
+    for index in _gaps(headings, _printed(headings, bodies)):
+        heading = headings[index]
+        found.append(EmptyHeading(heading.title.strip(), heading.level,
+                                  bisect_left(breaks, heading.start) + 1, heading.start))
+    return found
 
 
 # ----------------------------------------------------------------------- the statements
 
 
 def _data_kind(title: str, heading: str | None) -> bool:
-    from manuscript_guard.gates.data_statement import HEADING
-
+    """Whether a heading or a label opens a Data availability statement: by the forms
+    journals ask for, or by the heading the journal's profile gives it."""
+    if _DATA_HEADING.search(title):
+        return True
     try:
-        return bool(re.search(heading or HEADING, title, re.IGNORECASE))
+        return bool(heading and re.search(heading, title, re.IGNORECASE))
     except re.error:
-        return bool(re.search(HEADING, title))
+        return False  # G4 says the profile's pattern is no regular expression
 
 
 def _ai_kind(title: str) -> bool:
@@ -202,6 +299,29 @@ def kinds_of(title: str, data_heading: str | None = None) -> list[str]:
     return found
 
 
+def _said_words(text: str) -> str:
+    """The words `text` prints as sentences: each paragraph without the label it opens with,
+    "**Funding:**" or "Data availability:", whose words name a kind and state nothing."""
+    from manuscript_guard.gates.disclosures import _label, paragraphs
+
+    kept = []
+    for paragraph in paragraphs(text):
+        labelled = _label(paragraph)
+        kept.append(labelled[1] if labelled is not None else paragraph)
+    return "\n\n".join(piece for piece in kept if _says(piece))
+
+
+def _without_roles(folded: str) -> str:
+    """Folded words without the CRediT roles and the items of the ICMJE form, whose words name
+    a statement they are no part of: "Funding acquisition", "Grants or contracts from any
+    entity" (`not_statements` of `data/disclosures.yaml`)."""
+    from manuscript_guard.gates.disclosures import _data, _pattern
+
+    for pattern in _data()["not_statements"]:
+        folded = _pattern(f"(?:{pattern})").sub(" ", folded)
+    return folded
+
+
 def _words_of(kind: str, text: str) -> bool:
     """Whether `text` holds the words of `kind`'s heading: "no competing interests", "this
     work received no funding", "ethical approval", "no generative AI was used"."""
@@ -211,29 +331,30 @@ def _words_of(kind: str, text: str) -> bool:
         return bool(_DATA_WORDS.search(text))
     if kind == AI_USE:
         return any(_ai_kind(sentence) for sentence in re.split(r"(?<=[.!?])\s+|\n", text))
-    pattern = _data()["headings"][kind]
+    folded = fold(text)
+    if kind == FUNDING:
+        folded = _without_roles(folded)
     # The headings' patterns that hold to a whole title (`^...$`) say nothing of a sentence.
-    return bool(_pattern(pattern).search(fold(text)))
+    return bool(_pattern(_data()["headings"][kind]).search(folded))
 
 
 def stated(text: str, *, abstract: str | None = None,
            data_heading: str | None = None) -> dict[str, str]:  # fmt: skip
-    """Each standard kind the main text holds: `stated` where something is printed under a
-    heading or a label of it, `empty` where its only heading has nothing printed under it;
-    a kind the text does not hold is left out. Headings' own lines are no statement: the
-    Methods and a Declarations section are read for their words without them."""
+    """Each standard kind `text` holds: `stated` where words are printed after a heading or a
+    label of it, `empty` where its only heading has nothing printed under it; a kind the text
+    does not hold is left out. Headings' and labels' own words are no statement: the Methods
+    and a Declarations section are read for their sentences without them."""
     from manuscript_guard.gates.disclosures import (
         DECLARATIONS,
         _data,
         _first,
-        _label_kinds,
         _labelled,
         _own,
     )
     from manuscript_guard.text.section_names import methods_sections
     from manuscript_guard.text.sections import subsections
 
-    printed = scannable(text)
+    printed = _unprinted(scannable(text))
     sections = split_sections(printed)
     empty = {heading.line for heading in empty_headings(text)}
     said: dict[str, str] = {}
@@ -247,30 +368,66 @@ def stated(text: str, *, abstract: str | None = None,
             continue
         for kind in kinds_of(section.title, data_heading):
             if kind == DECLARATIONS:
-                # Its own words, before a heading of its parts, which are read as headings.
+                # Its own sentences, before a heading of its parts, which are read as headings,
+                # and each without its label, which is read as a label.
+                words = _said_words(section.body)
                 for named in KINDS:
-                    if _words_of(named, section.body):
+                    if _words_of(named, words):
                         found(named, STATED)
-            elif _own(section.enclosed, kind).strip():
+            elif _says(_own(section.enclosed, kind)):
                 found(kind, STATED)
             elif section.line in empty:
                 found(kind, HEADED_EMPTY)
     for section in methods_sections(sections, abstract):
         parts = subsections(sections, sections.index(section))
-        if _words_of(ETHICS, " ".join(part.body for part in parts)):
+        if _words_of(ETHICS, _said_words("\n\n".join(part.body for part in parts))):
             found(ETHICS, STATED)
     # A sentence that says no approval was needed is an ethics statement where it stands: in
     # the Data availability statement, say, as G4 reads a denial (`ethics-approval-denied`).
     if _first(_data()["no_approval"], printed):
         found(ETHICS, STATED)
     for label, rest in _labelled(printed):
-        kinds = [kind for kind in _label_kinds(label) if kind in _DISCLOSED]
-        kinds += [DATA] if _data_kind(label, data_heading) else []
-        kinds += [AI_USE] if _ai_kind(label) else []
-        for kind in kinds:
-            if rest.strip():
+        for kind in _label_of(label, data_heading):
+            if _says(_cut(rest, data_heading)):
                 found(kind, STATED)
     return said
+
+
+def _label_of(label: str, data_heading: str | None) -> list[str]:
+    """The standard kinds a paragraph's label opens: none for a CRediT role or an item of the
+    ICMJE form (`disclosures._label_kinds`)."""
+    from manuscript_guard.gates.disclosures import _label_kinds
+
+    kinds = [kind for kind in _label_kinds(label) if kind in _DISCLOSED]
+    kinds += [DATA] if _data_kind(label, data_heading) else []
+    kinds += [AI_USE] if _ai_kind(label) else []
+    return kinds
+
+
+def _cut(rest: str, data_heading: str | None) -> str:
+    """What a label heads, to the next label of a standard kind. G4's reading of the
+    declarations ends a label alone, or one over a comment, at a label of its own four kinds;
+    a Data availability or an AI-use label after it is no part of it either (round 1 of
+    #819)."""
+    from manuscript_guard.gates.disclosures import _label, paragraphs
+
+    kept = []
+    for paragraph in paragraphs(rest):
+        labelled = _label(paragraph)
+        if labelled is not None and _label_of(labelled[0], data_heading):
+            break
+        kept.append(paragraph)
+    return "\n\n".join(kept)
+
+
+def merged(*readings: dict[str, str]) -> dict[str, str]:
+    """What several texts hold together: a kind stated in one is stated."""
+    out: dict[str, str] = {}
+    for said in readings:
+        for kind, how in said.items():
+            if out.get(kind) != STATED:
+                out[kind] = how
+    return out
 
 
 def missing(said: dict[str, str], wanted: Iterable[str] = KINDS, *,
@@ -341,56 +498,111 @@ def _empty_finding(heading: EmptyHeading, path: Path | None, line: int, severity
         gate=GATE, code=EMPTY, severity=severity, path=path, line=line,
         message=f"the heading {heading.title!r} has nothing under it{lacking}",
         hint="write what goes under it, or take the heading out until it is written: an HTML "
-        "comment is not printed, so the built document shows the heading alone"
-        + "".join(f"; {WRITE[kind]}" for kind in heads),
+        "comment or a placeholder is not a statement, and the built document shows the "
+        "heading alone" + "".join(f"; {WRITE[kind]}" for kind in heads),
         subject=heading.title,
     )  # fmt: skip
 
 
-def _missing_finding(kind: str, path: Path | None, severity: str) -> Finding:
+def _missing_finding(kind: str, path: Path | None, severity: str, recorded: str) -> Finding:
     return Finding(
         gate=GATE, code=MISSING, severity=severity, path=path,
         message=f"the manuscript has no {NAMES[kind]}",
         hint=f"{WRITE[kind]}, under a heading such as \"{USUAL[kind]}\" or in a paragraph "
-        f"labelled \"{USUAL[kind]}:\"; the submission-pack skill drafts the declarations from "
-        "authors.yaml",
+        f"labelled \"{USUAL[kind]}:\"{recorded}; the submission-pack skill drafts the "
+        "declarations from authors.yaml",
         subject=kind,
     )  # fmt: skip
 
 
-def check_statements(project: Project, stage: str | None = None) -> Report:
-    """G4's check of the standard statements and of empty headings, at `stage` (the module's
-    docstring)."""
-    from manuscript_guard.gates.ai_use import wanted
+def _recorded(project: Project, kind: str) -> str:
+    """What the records hold that the statement of `kind` is to give, as the notes this
+    finding stands in for said it (`funding-not-stated`, `interests-not-stated`,
+    `ai-use-not-stated`)."""
+    from manuscript_guard.gates.ai_use import statement_hint
+    from manuscript_guard.gates.disclosures import (
+        _field,
+        _name,
+        _people,
+        _texts,
+        is_none_statement,
+    )
+
+    if kind == AI_USE:
+        return statement_hint(project)
+    people = _people(project.authors)
+    if kind == FUNDING:
+        held = [f"{_name(author)}: {entry}" for author in people
+                for entry in _texts(author.get("funding"))]  # fmt: skip
+    elif kind == INTERESTS:
+        held = [f"{_name(author)}: {_field(author, 'competing_interests')}" for author in people
+                if _field(author, "competing_interests")
+                and not is_none_statement(_field(author, "competing_interests"))]  # fmt: skip
+    else:
+        return ""
+    return f"; authors.yaml records {'; '.join(held)}" if held else ""
+
+
+@dataclass(frozen=True)
+class _Reading:
+    said: dict[str, str]
+    wanted: list[str]
+    markdown: bool
+    data_heading: str | None
+
+    @property
+    def lacking(self) -> list[str]:
+        return missing(self.said, self.wanted, empty_said=self.markdown)
+
+
+def _read(project: Project) -> _Reading:
+    """The statements the manuscript holds, and those this check asks for."""
+    from manuscript_guard.gates.ai_use import supplement_text, wanted
     from manuscript_guard.gates.data_statement import _profile_heading
     from manuscript_guard.gates.journal import _profile, abstract_title, main_text
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     folder = project.path("manuscript")
+    data_heading = _profile_heading(project)
+    abstract = abstract_title(project)
+    said = merged(stated(main_text(project), abstract=abstract, data_heading=data_heading),
+                  stated(supplement_text(project), data_heading=data_heading))  # fmt: skip
+    profile = _profile(project) or {}
+    # The journal's list, where its profile has one, is `missing-required-statement`'s.
+    asked = [] if profile.get("required_statements") else [
+        kind for kind in KINDS if kind != AI_USE or wanted(project)]  # fmt: skip
+    return _Reading(said, asked, manuscript_format(folder) != LATEX, data_heading)
+
+
+def asked_for(project: Project) -> set[str]:
+    """The kinds `declaration-missing` is said of: for the checks whose notes it stands in
+    for, so that one gap is one finding."""
+    if not project.path("manuscript").is_dir():
+        return set()
+    return set(_read(project).lacking)
+
+
+def check_statements(project: Project, stage: str | None = None) -> Report:
+    """G4's check of the standard statements and of empty headings, at `stage` (the module's
+    docstring)."""
+    folder = project.path("manuscript")
     if not folder.is_dir():
         return Report()
     severity = severity_at(stage)
-    markdown = manuscript_format(folder) != LATEX
-    data_heading = _profile_heading(project)
-    said = stated(main_text(project), abstract=abstract_title(project),
-                  data_heading=data_heading)  # fmt: skip
+    reading = _read(project)
     findings: list[Finding] = []
-    if markdown:
+    if reading.markdown:
         for supplementary in (False, True):
             joined, sources = _document(folder, supplementary=supplementary)
             for heading in empty_headings(joined):
                 path, line = _located(joined, sources, heading.offset)
-                named = kinds_of(heading.title, data_heading)
-                heads = [] if supplementary else [
-                    kind for kind in KINDS if kind in named and said.get(kind) == HEADED_EMPTY]
+                named = kinds_of(heading.title, reading.data_heading)
+                heads = [kind for kind in KINDS
+                         if kind in named and reading.said.get(kind) == HEADED_EMPTY]
                 findings.append(_empty_finding(heading, path, line, severity, heads))
-    profile = _profile(project) or {}
-    # The journal's list, where its profile has one, is `missing-required-statement`'s.
-    wanted_kinds = [] if profile.get("required_statements") else [
-        kind for kind in KINDS if kind != AI_USE or wanted(project)]  # fmt: skip
     where = _main_file(folder)
-    findings += [_missing_finding(kind, where, severity)
-                 for kind in missing(said, wanted_kinds, empty_said=markdown)]
+    findings += [_missing_finding(kind, where, severity, _recorded(project, kind))
+                 for kind in reading.lacking]  # fmt: skip
     return Report(tuple(findings))
 
 
@@ -407,5 +619,5 @@ def _main_file(folder: Path) -> Path | None:
     return ordered[0] if ordered else None
 
 
-__all__ = ["EMPTY", "KINDS", "MISSING", "check_statements", "empty_headings", "kinds_of",
-           "missing", "severity_at", "stated"]  # fmt: skip
+__all__ = ["EMPTY", "KINDS", "MISSING", "asked_for", "check_statements", "empty_headings",
+           "kinds_of", "merged", "missing", "severity_at", "stated"]  # fmt: skip

@@ -43482,6 +43482,25 @@ def test_a_statement_missing_with_no_journal_chosen_is_caught(project: Path) -> 
         ("declaration-missing", "fail", "interests")]
 
 
+def test_a_declarations_section_of_labels_over_comments_is_caught(project: Path) -> None:
+    """Springer's layout before the statements are written: each a label over a comment, or
+    over a placeholder. The labels print, so the heading is not empty, and every statement
+    is missing (round 1 of #819); a CRediT role there states no funding."""
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    text = main_md(project).read_text(encoding="utf-8")
+    at = text.index("# Data availability")
+    main_md(project).write_text(text[:at] + (
+        "# Declarations\n\n**Funding:** <!-- TO CONFIRM WITH THE AUTHORS -->\n\n"
+        "**Competing interests:** TO CONFIRM WITH THE AUTHORS.\n\n"
+        "**Ethics approval:** <!-- -->\n\n"
+        "**Availability of data and materials:** [Placeholder]\n\n"
+        "**Author contributions:** AE: Conceptualization, Funding acquisition.\n"),
+        encoding="utf-8")
+    assert _statement_findings(project, "internal-review") == [
+        ("declaration-missing", "fail", subject)
+        for subject in ("data", "ethics", "funding", "interests")]
+
+
 # --------------------------------------------------------------------------------------
 # G4: the AI-use statement held to the records of a model's work and to what the authors
 # declare (DESIGN.md, "The AI-use statement names the models the records hold").

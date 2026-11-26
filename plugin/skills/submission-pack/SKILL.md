@@ -52,10 +52,11 @@ declaration — an empty field is not a declaration of none, and journals ask pe
 Where no journal profile lists the statements the journal asks for, `check` asks for the
 ones every paper makes: data availability, ethics, funding, competing interests, author
 contributions, and AI use where the records show a model at work or `authors.yaml` declares
-a tool (`declaration-missing`). Each is a heading or a paragraph's label of its kind with
-something under it. A heading with only an HTML comment under it prints as a heading alone,
-and is `section-empty`. Both are notes before drafting, warnings while drafting and failures
-from internal review. Draft each from `authors.yaml` and ask the authors, with your question
+a tool (`declaration-missing`), in the main text or the supplement. Each is a heading or a
+paragraph's label of its kind with words after it: a label over a comment or over "TO
+CONFIRM" states nothing. A heading with only a comment or a placeholder under it prints as a
+heading alone, and is `section-empty`. Both are notes before drafting, warnings while
+drafting and failures from internal review. Draft each from `authors.yaml` and ask the authors, with your question
 tool, what no file records: the ethics committee and its reference, or why none was needed;
 where the data can be had. Never fill one in from a guess. Once a profile lists the journal's
 statements, `missing-required-statement` asks for those instead.

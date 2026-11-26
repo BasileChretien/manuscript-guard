@@ -5251,31 +5251,38 @@ def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
 
 # ------------------------------------------------- the statements every paper makes
 
-from generated import statement_papers  # noqa: E402
+from generated import DECLARED_PLANTED, statement_papers  # noqa: E402
 
 
 @holds(100, statement_papers())
 def test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said(
-    drawn: tuple[str, list[tuple[str, str]], list[tuple[str, str, str]]],
+    drawn: tuple[str, list[tuple[str, str]], list[tuple[str, str, str]], list[str]],
 ) -> None:
     """G4 finds each statement every paper makes under a heading, numbered or not, after a
     label of any of four shapes, as a sentence of a Declarations section, and an ethics
-    statement in the Methods or as a denial; a heading with only a comment under it is
-    empty, and one whose words are all in its subsection, or the reference list's, is not.
-    Each statement taken out is the one missing, and each emptied under its heading is said
-    by that heading alone (`gates/statements.py`)."""
+    statement in each of its forms, the Methods and a denial among them, and a Data
+    availability statement under each heading journals ask for; a heading with only a
+    comment, Markdown's comment idiom or a placeholder under it is empty, one whose words are
+    all in its subsection is not, nor one the bibliography is printed under, and one over an
+    empty subsection alone is no gap of its own. Each statement taken out is the one
+    missing, its label left over a comment or a placeholder heading nothing, the label after
+    it a Data availability or an AI-use one, a CRediT role stating no funding; and each
+    emptied under its heading is said by that heading alone (`gates/statements.py`)."""
     from manuscript_guard.gates.statements import empty_headings, missing, stated
 
-    paper, removed, emptied = drawn
-    assert [heading.title for heading in empty_headings(paper)] == ["Limitations"], paper
-    assert missing(stated(paper)) == [], (stated(paper), paper)
+    planted = list(DECLARED_PLANTED)
+    paper, removed, emptied, restated = drawn
+    for text in (paper, *restated):
+        shown = sorted(heading.title for heading in empty_headings(text))
+        assert shown == sorted(planted), (shown, text)
+        assert missing(stated(text)) == [], (stated(text), text)
     for kind, changed in removed:
         assert missing(stated(changed)) == [kind], (kind, stated(changed), changed)
     for kind, title, changed in emptied:
         said = stated(changed)
         assert said.get(kind) == "empty" and missing(said) == [], (kind, said, changed)
         shown = sorted(heading.title for heading in empty_headings(changed))
-        assert shown == sorted([title, "Limitations"]), (title, shown, changed)
+        assert shown == sorted([title, *planted]), (title, shown, changed)
 
 
 def _a_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
@@ -5296,7 +5303,61 @@ def _a_heading_s_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
 def _the_reference_list_s_heading_can_be_empty(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import statements
 
-    patch.setattr(statements, "_passed_over", lambda title, level: not title)
+    patch.setattr(statements, "_bibliography", lambda title: False)
+
+
+def _only_the_reference_list_s_own_heading_holds_the_bibliography(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_bibliography", lambda title: statements.Section(
+        title=title, level=1, body="", line=0).is_references)
+
+
+def _a_heading_over_empty_subsections_is_a_gap_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_gaps", lambda headings, printed: [
+        index for index, (heading, shown) in enumerate(zip(headings, printed, strict=True))
+        if not shown and heading.title.strip()])
+
+
+def _a_placeholder_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_placeholder", lambda text: False)
+
+
+def _a_link_s_reference_definition_prints(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_unprinted", lambda text: text)
+
+
+def _a_label_s_words_are_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_said_words", lambda text: text)
+
+
+def _a_credit_role_states_funding(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_without_roles", lambda folded: folded)
+
+
+def _only_g4_s_data_headings_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+    from manuscript_guard.gates.data_statement import HEADING
+
+    patch.setattr(statements, "_DATA_HEADING", re.compile(HEADING))
+
+
+def _a_label_runs_on_past_a_data_or_ai_use_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_cut", lambda rest, data_heading: rest)
 
 
 def _a_label_opens_no_statement(patch: pytest.MonkeyPatch) -> None:
@@ -33766,6 +33827,38 @@ BROKEN = {
     ),
     "a Declarations section's words are not read": (
         _a_declarations_section_s_words_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "only the reference list's own heading holds the bibliography": (
+        _only_the_reference_list_s_own_heading_holds_the_bibliography,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a heading over empty subsections is a gap of its own": (
+        _a_heading_over_empty_subsections_is_a_gap_of_its_own,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a placeholder is a statement": (
+        _a_placeholder_is_a_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a link's reference definition prints": (
+        _a_link_s_reference_definition_prints,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label's words are a sentence": (
+        _a_label_s_words_are_a_sentence,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a CRediT role states funding": (
+        _a_credit_role_states_funding,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "only G4's own data headings are read": (
+        _only_g4_s_data_headings_are_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label runs on past a Data availability or an AI-use label": (
+        _a_label_runs_on_past_a_data_or_ai_use_label,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
 }

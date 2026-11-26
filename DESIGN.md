@@ -30775,17 +30775,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A LaTeX manuscript's statements are read in its printed view, and its headings are not
     checked for emptiness.
     Pinned by `tests/test_statements.py::test_a_latex_manuscript_s_statements_are_read_and_its_headings_are_not`.
-  - A heading has something under it as soon as anything is printed there: a figure, a
-    table, a listing, or one word such as "TBD".
-    Pinned by `tests/test_statements.py::test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_no_heading`.
+  - A heading has something under it as soon as anything is printed there that is no
+    placeholder of the check's own list ("TO CONFIRM", "Placeholder", "To be completed"): a
+    figure, a table, a listing, a sentence. "TBD", "TODO" and "XXX" count as something,
+    since G6 fails each as `model-artefact` wherever it stands, and one gap is one finding.
+    Pinned by `tests/test_statements.py::test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_no_heading`
+    and `tests/test_statements.py::test_a_tbd_under_a_heading_is_g6_s_and_a_placeholder_g6_passes_is_empty`.
   - An ethics statement is also any sentence of the Methods with "ethics", "ethical",
-    "institutional review" or "IRB" in it, and a sentence anywhere in the main text that
-    says no approval was needed, as G4 reads a denial.
+    "institutional review" or "IRB" in it, and a sentence anywhere in the main text or the
+    supplement that says no approval was needed, as G4 reads a denial.
     Pinned by `tests/test_statements.py::test_an_ethics_statement_may_be_in_the_methods_or_a_denial_anywhere`.
   - The Acknowledgements count as a funding statement, as G4 reads the declarations, whatever
     they say. Accepted.
-  - The supplement's headings are checked, and its statements are not read: a journal reads
-    the main text's. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

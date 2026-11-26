@@ -56,6 +56,9 @@ from pathlib import Path
 #: The variable that names poppler's pdftotext, where the one on PATH is another.
 POPPLER = "MANUSCRIPT_GUARD_POPPLER"
 
+#: Two words poppler sets apart are one where the gap between them is under this share of
+#: the line's words' height: a word kerned in two, "T" and "U1_effect".
+JOINED = 0.1
 #: The top and the bottom share of a page a running head or foot stands in.
 BAND = 0.075
 #: A line in a page's band is a running one where its words, digits read alike, stand in
@@ -162,18 +165,31 @@ class Line:
 
     @property
     def text(self) -> str:
-        return " ".join(word.text for word in self.words)
+        """Its words, a space between two of them but where poppler set them apart with no
+        gap between (`JOINED`): a kerned "T" and "U1_effect" are "TU1_effect", as its text
+        reading prints them."""
+        return "".join(self._spaced(word.text for word in self.words))
 
     @property
     def cited(self) -> str:
         """Its words with each superscript citation bracketed after the word before it."""
-        out: list[str] = []
-        for word in self.words:
-            if word.raised and out:
-                out[-1] += "[" + word.text.rstrip(",") + "]"
-            else:
-                out.append(word.text)
-        return " ".join(out)
+        said = [f"[{word.text.rstrip(',')}]" if word.raised and at else word.text
+                for at, word in enumerate(self.words)]  # fmt: skip
+        out = list(self._spaced(said))
+        for at, word in enumerate(self.words):
+            if word.raised and at:
+                out[at] = out[at].lstrip()
+        return "".join(out)
+
+    def _spaced(self, texts):
+        """Each of `texts`, the words' in order, with the space before it that stands
+        before its word."""
+        heights = sorted(word.y1 - word.y0 for word in self.words)
+        least = JOINED * heights[len(heights) // 2]
+        for at, text in enumerate(texts):
+            word = self.words[at]
+            close = at and not word.raised and word.x0 - self.words[at - 1].x1 < least
+            yield text if not at or close else " " + text
 
     @property
     def height(self) -> float:
@@ -601,13 +617,15 @@ class _Flow:
     paragraph: int = 0
     #: The paragraph a body block ended in mid-sentence, open across the break.
     open: int | None = None
-    #: The display being read, its paragraph, its legend's height, and the page and the
-    #: foot of its lowest block so far.
+    #: The display being read, its paragraph, its legend's height, and the page, the foot
+    #: of its lowest block so far and the left and right of its blocks.
     display: int | None = None
     display_paragraph: int = 0
     display_height: float = 0.0
     display_page: int = 0
     display_foot: float = 0.0
+    display_left: float = 0.0
+    display_right: float = 0.0
     #: Narrow short blocks since the last paragraph, `(page, line)`: a figure's own words,
     #: if a legend follows.
     held: list[tuple[int, Line]] = field(default_factory=list)
@@ -627,6 +645,7 @@ class _Flow:
         self.displays.append("figure" if FIGURE.match(block.lines[0].text) else "table")
         self.display_paragraph, self.display_height = self.paragraph, block.height
         self.display_page, self.display_foot = page, block.y1
+        self.display_left, self.display_right = block.x0, block.x1
         sink = self.sink()
         sink += [(line, page, self.paragraph, self.display) for line in block.lines]
         sink += [(line, at, self.paragraph, self.display) for at, line in self.held]
@@ -634,13 +653,19 @@ class _Flow:
 
     def under_display(self, page: int, block: Block) -> bool:
         """Whether `block` stands right under the display being read, or beside it: its top
-        within `UNDER` of the body's lines below the display's lowest block, on its page. A
-        figure's own words stand under its drawing, further down."""
+        within `UNDER` of the body's lines below the display's lowest block, on its page,
+        and its words over some of the display's width. A figure's own words stand under its
+        drawing, further down; the next column's, to its side."""
         return (self.display is not None and page == self.display_page
-                and block.y0 <= self.display_foot + UNDER * self.height)  # fmt: skip
+                and block.y0 <= self.display_foot + UNDER * self.height
+                and block.x0 < self.display_right and block.x1 > self.display_left)  # fmt: skip
 
-    def of_display(self, kind: str, block: Block) -> bool:
-        if self.display is None:
+    def of_display(self, kind: str, block: Block, page: int = 0) -> bool:
+        """Whether `block` is the display's being read: narrow and short, set small, or set
+        at a legend's size where it is smaller than the body's, and standing right under the
+        display or beside it (`under_display`), so that a display reaches no further down
+        its page than its own blocks do, one under the other."""
+        if self.display is None or not self.under_display(page, block):
             return False
         sized = (abs(block.height - self.display_height) < LEGEND_SIZE
                  and self.display_height < self.height - SMALLER)  # fmt: skip
@@ -690,10 +715,12 @@ class _Flow:
             self.legend(page, block)
         elif kind == "fragment" and figure_next and not self.under_display(page, block):
             self.held += [(page, line) for line in block.lines]
-        elif self.of_display(kind, block):
+        elif self.of_display(kind, block, page):
             self.sink().extend((line, page, self.display_paragraph, self.display)
                                for line in block.lines)  # fmt: skip
             self.display_foot = max(self.display_foot, block.y1)
+            self.display_left = min(self.display_left, block.x0)
+            self.display_right = max(self.display_right, block.x1)
         elif kind == "fragment":
             self.held += [(page, line) for line in block.lines]
         else:

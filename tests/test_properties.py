@@ -3888,7 +3888,7 @@ def _a_paragraph_goes_on_only_before_a_lower_case_letter(patch: pytest.MonkeyPat
 def _a_display_is_its_legend_alone(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
-    patch.setattr(pdf_layout._Flow, "of_display", lambda self, kind, block: False)
+    patch.setattr(pdf_layout._Flow, "of_display", lambda self, kind, block, page=0: False)
 
 
 def _nothing_a_page_repeats_is_taken_out(patch: pytest.MonkeyPatch) -> None:

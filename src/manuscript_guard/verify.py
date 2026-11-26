@@ -85,6 +85,13 @@ RSCRIPT_VARIABLE = "MANUSCRIPT_GUARD_RSCRIPT"
 #: `verify: {timeout: N}` say nothing, in that order.
 TIMEOUT = 1800
 TIMEOUT_VARIABLE = "MANUSCRIPT_GUARD_VERIFY_TIMEOUT"
+#: The warnings that say a re-run was made in another environment than the results were
+#: written in: `record_verified` keeps them, for `check` to say.
+ENVIRONMENT_CODES = ("rerun-other-interpreter", "rerun-r-not-locked")
+#: The longest limit taken: seven days. Windows waits on a 32-bit count of milliseconds, about
+#: 49.7 days, and a limit past it, typed to mean "no limit", wrapped round to under a second
+#: or raised with the script still running (round 1 of #820).
+MOST_SECONDS = 7 * 24 * 3600
 
 
 class VerifyError(Exception):
@@ -146,26 +153,68 @@ class VerifyReport:
 def runner_for(script: Path, rscript: str | None = None) -> list[str] | None:
     """The command that runs this script, or None when nothing here knows how. An R script
     runs with `rscript` where it is given, else with the Rscript `RSCRIPT_VARIABLE` names,
-    else with the first on PATH."""
+    else with the first on PATH; one named is made absolute, since the script runs in a
+    copy of the project and not where it was named (round 1 of #820)."""
     template = RUNNERS.get(script.suffix.lower())
     if template is None:
         return None
-    chosen = rscript or os.environ.get(RSCRIPT_VARIABLE)
-    if chosen and script.suffix.lower() in R_SUFFIXES:
-        template = [chosen, *template[1:]]
+    named = _named(rscript)
+    if named is not None and script.suffix.lower() in R_SUFFIXES:
+        found = shutil.which(named[0])
+        if found is None:
+            return None
+        template = [os.path.abspath(found), *template[1:]]
     if shutil.which(template[0]) is None and template[0] != sys.executable:
         return None
     return template
 
 
-def _named_r(rscript: str | None) -> None:
-    """Refuse an R named that is not a program here, by what named it. Otherwise each R
-    script was skipped as having no runner on this machine, which is not what is wrong."""
+def _named(rscript: str | None) -> tuple[str, str] | None:
+    """The R named for this run and what named it: `rscript` (`--rscript`), else the
+    variable; None where neither names one."""
     for given, by in ((rscript, "--rscript"), (os.environ.get(RSCRIPT_VARIABLE), RSCRIPT_VARIABLE)):
         if given:
-            if shutil.which(given) is None:
-                raise VerifyError(f"{by} names {given}, which is not a program on this machine")
-            return
+            return given, by
+    return None
+
+
+def named_r_problem(script: Path, rscript: str | None = None) -> str | None:
+    """What is wrong with the R named to run `script`: that it is no program here. None for
+    a script R does not run, where no R is named, or where the one named is there. Read
+    only where an R script is to run, so that a project of Python alone is not refused for a
+    variable it never needed (round 1 of #820); `verify`, its receipt and `vault run` say
+    the same words."""
+    named = _named(rscript)
+    if script.suffix.lower() not in R_SUFFIXES or named is None:
+        return None
+    given, by = named
+    if shutil.which(given) is None:
+        return f"{by} names {given}, which is not a program on this machine"
+    return None
+
+
+def seconds(given: object, by: str) -> int:
+    """`given` read as a limit in seconds, by what gave it: a whole number from 1 to
+    `MOST_SECONDS`, written as text or as a number with nothing after its point. Refused,
+    naming `by`, otherwise."""
+    number: int | None = None
+    if isinstance(given, bool):
+        number = None
+    elif isinstance(given, int):
+        number = given
+    elif isinstance(given, float) and given.is_integer():
+        number = int(given)
+    elif isinstance(given, str):
+        try:
+            number = int(given.strip())
+        except ValueError:
+            number = None
+    if number is None or number < 1:
+        raise VerifyError(f"{by} is {given!r}: give it a whole number of seconds, 1 or more")
+    if number > MOST_SECONDS:
+        raise VerifyError(f"{by} is {given!r}: the longest limit taken is {MOST_SECONDS} s, "
+                          "7 days")  # fmt: skip
+    return number
 
 
 def time_limit(project, given: int | None = None) -> tuple[int, str]:
@@ -174,17 +223,14 @@ def time_limit(project, given: int | None = None) -> tuple[int, str]:
     variable that is no whole number of seconds is refused, as the schema refuses one in
     paper.yaml."""
     if given is not None:
-        return given, "--timeout"
+        return seconds(given, "--timeout"), "--timeout"
     said = os.environ.get(TIMEOUT_VARIABLE)
     if said is not None:
-        said = said.strip()
-        if not said.isdigit() or int(said) < 1:
-            raise VerifyError(f"{TIMEOUT_VARIABLE} is {said!r}: give it a whole number of "
-                              "seconds, 1 or more")  # fmt: skip
-        return int(said), TIMEOUT_VARIABLE
+        return seconds(said, TIMEOUT_VARIABLE), TIMEOUT_VARIABLE
+    # The schema refuses one it cannot read; 3600.0 is a whole number to it, and here.
     setting = (project.setting("verify") or {}).get("timeout")
-    if isinstance(setting, int) and not isinstance(setting, bool) and setting >= 1:
-        return setting, "paper.yaml"
+    if setting is not None:
+        return seconds(setting, "paper.yaml's verify: timeout"), "paper.yaml"
     return TIMEOUT, "the default"
 
 
@@ -400,7 +446,6 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
     on PATH; each script may run for `time_limit`'s seconds. Each comparison says what ran
     its script.
     """
-    _named_r(rscript)
     limit, limit_from = time_limit(project, timeout)
     root = Path(project.root)
     results_dir = project.path("results")
@@ -473,6 +518,9 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
                     Comparison(fragment.name, ran=False, error=f"{named} does not exist")
                 )
                 continue
+            problem = named_r_problem(script, rscript)
+            if problem is not None:
+                raise VerifyError(problem)
             runner = runner_for(script, rscript)
             if runner is None:
                 report.skipped.append(

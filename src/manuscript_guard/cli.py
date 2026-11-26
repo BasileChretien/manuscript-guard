@@ -3120,10 +3120,13 @@ def cmd_journal(args: argparse.Namespace) -> int:
 
 
 def _seconds(given: str) -> int:
-    """`--timeout`'s value: a whole number of seconds, 1 or more."""
-    if not given.strip().isdigit() or int(given) < 1:
-        raise argparse.ArgumentTypeError(f"{given!r} is not a whole number of seconds, 1 or more")
-    return int(given)
+    """`--timeout`'s value: a whole number of seconds, from 1 to seven days."""
+    from manuscript_guard.verify import VerifyError, seconds
+
+    try:
+        return seconds(given, "--timeout")
+    except VerifyError as exc:
+        raise argparse.ArgumentTypeError(str(exc).removeprefix("--timeout is ")) from None
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -7316,9 +7319,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=_seconds,
         metavar="SECONDS",
-        help="how long one script may run before it is stopped; otherwise "
-        "MANUSCRIPT_GUARD_VERIFY_TIMEOUT, then `verify: {timeout: SECONDS}` in paper.yaml, "
-        "then 1800",
+        help="how long one script may run before it is stopped, at most 604800 (7 days); "
+        "otherwise MANUSCRIPT_GUARD_VERIFY_TIMEOUT, then `verify: {timeout: SECONDS}` in "
+        "paper.yaml, then 1800",
     )
     verify.set_defaults(func=cmd_verify)
 

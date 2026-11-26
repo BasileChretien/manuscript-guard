@@ -135,21 +135,23 @@ def make_receipt(project, site: str, *, rscript: str | None = None, timeout: int
     `rscript`, and each for `timeout` seconds, as `verify` chooses them."""
     from manuscript_guard.verify import (
         VerifyError,
-        _named_r,
         _run,
         _skip,
+        named_r_problem,
         runner_for,
         time_limit,
         timed_out,
     )
 
     try:
-        _named_r(rscript)
         limit, limit_from = time_limit(project, timeout)
     except VerifyError as exc:
         raise HarvestError(str(exc)) from exc
 
     def chosen(script: Path) -> list[str] | None:
+        problem = named_r_problem(script, rscript)
+        if problem is not None:
+            raise HarvestError(problem)
         return runner_for(script, rscript)
 
     def run_script(script: Path, cwd: Path, env):

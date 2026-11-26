@@ -316,7 +316,8 @@
         "timeout": {
           "type": "integer",
           "minimum": 1,
-          "description": "Seconds one analysis script may run before verify stops it, for a project whose slowest script takes longer than the default of 1800. --timeout and MANUSCRIPT_GUARD_VERIFY_TIMEOUT come first."
+          "maximum": 604800,
+          "description": "Seconds one analysis script may run before verify stops it, for a project whose slowest script takes longer than the default of 1800; at most 604800, seven days. --timeout and MANUSCRIPT_GUARD_VERIFY_TIMEOUT come first."
         }
       }
     },

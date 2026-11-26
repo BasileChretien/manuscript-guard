@@ -150,6 +150,12 @@ def _verified(project: Project) -> list[str]:
         said += f"; {len(left)} fragment{'s' if len(left) > 1 else ''} not re-run"
     if not record.get("ok"):
         said += "; it did not pass"
+    # A re-run with another R or Python than the results were written with is no
+    # reproduction of them as written (round 1 of #820).
+    other = [entry["message"] for entry in record.get("environment") or []
+             if isinstance(entry, dict) and isinstance(entry.get("message"), str)]  # fmt: skip
+    if other:
+        said += f"; not with the R or Python the results were written with ({'; '.join(other)})"
     if fragments_digest(project) != record.get("results_sha256"):
         said += "; the results have changed since"
     return [said]
@@ -198,7 +204,7 @@ def record_verified(project: Project, result) -> Path:
     a failed one went unsaid, and "31 of 31" was printed of an analysis not all re-run. A
     fragment not re-run carries no values in the comparison, so its values are counted from
     the file, as `verify` counts them."""
-    from manuscript_guard.verify import _values_of
+    from manuscript_guard.verify import ENVIRONMENT_CODES, _values_of, to_report
 
     comparisons = result.comparisons
     left = [name for name, _why in result.skipped] + [c.fragment for c in comparisons if not c.ran]
@@ -226,6 +232,14 @@ def record_verified(project: Project, result) -> Path:
         },
         "ok": bool(result.ok),
         "results_sha256": fragments_digest(project),
+        # What ran each script, and where it was not what wrote the results, for `check` to
+        # say (round 1 of #820).
+        "interpreters": {
+            c.fragment: dict(zip(("language", "version", "program"), c.interpreter, strict=True))
+            for c in comparisons if c.interpreter is not None
+        },
+        "environment": [{"code": f.code, "message": f.message}
+                        for f in to_report(result).warnings if f.code in ENVIRONMENT_CODES],
     }
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
     return path

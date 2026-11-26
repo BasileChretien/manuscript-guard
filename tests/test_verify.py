@@ -477,14 +477,22 @@ def _limit(project: Path, given: int | None = None) -> int:
     return time_limit(loaded, given)[0]
 
 
-def _bare(tmp_path: Path) -> Path:
-    """A project with nothing to re-run: what refuses an R or a limit refuses before that."""
+def _bare(tmp_path: Path, script: str | None = None, body: str = "") -> Path:
+    """A project with no example to build: with `script`, a results file that names it and
+    the script itself, holding `body`."""
     root = tmp_path / "bare"
     root.mkdir()
     (root / "paper.yaml").write_text(
         'schema: manuscript-guard/paper/1\ntitle: "B"\nenglish_variant: en-GB\n',
         encoding="utf-8",
     )
+    if script is not None:
+        (root / "analysis").mkdir()
+        (root / "results").mkdir()
+        (root / script).write_text(body, encoding="utf-8")
+        (root / "results" / f"{Path(script).stem}.json").write_text(
+            json.dumps({"provenance": {"generated_by": script}, "values": {}}), encoding="utf-8"
+        )
     return root
 
 
@@ -518,20 +526,61 @@ def test_a_variable_naming_no_program_stops_verify_and_names_it(
 
     monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
     with pytest.raises(VerifyError, match=RSCRIPT_VARIABLE):
-        run(_bare(tmp_path))
+        run(_bare(tmp_path, "analysis/01_r.R", "quit(status = 0)\n"))
 
 
 def test_an_rscript_given_that_is_not_there_stops_verify(tmp_path: Path) -> None:
-    loaded, _ = load_project(_bare(tmp_path))
+    loaded, _ = load_project(_bare(tmp_path, "analysis/01_r.R", "quit(status = 0)\n"))
     with pytest.raises(VerifyError, match="--rscript"):
         verify(loaded, rscript=str(tmp_path / "Rscript.exe"))
 
 
+def test_a_variable_naming_no_r_is_not_read_where_no_r_script_runs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Round 1 of #820: a Python-only project was refused for a variable it never needed."""
+    from manuscript_guard.verify import RSCRIPT_VARIABLE
+
+    monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
+    result = run(_bare(tmp_path, "analysis/01.py", "raise SystemExit(0)\n"))
+    [comparison] = result.comparisons
+    assert comparison.interpreter[0] == "Python"
+    assert "wrote no 01.json" in comparison.error
+
+
+def test_vault_run_says_what_verify_says_of_a_variable_naming_no_r(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from manuscript_guard.vault.run import RunRefused, scripts_to_run
+    from manuscript_guard.verify import RSCRIPT_VARIABLE
+
+    root = _bare(tmp_path, "analysis/01_r.R", "quit(status = 0)\n")
+    monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
+    with pytest.raises(RunRefused, match=f"{RSCRIPT_VARIABLE} names .*, which is not a program"):
+        scripts_to_run(root, ["analysis/01_r.R"])
+
+
+def test_a_relative_rscript_is_made_absolute_where_it_is_checked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Checked against this folder, it was run from the scratch copy (round 1 of #820)."""
+    import os
+    import sys
+
+    from manuscript_guard.verify import runner_for
+
+    here = Path(sys.executable).parent
+    monkeypatch.chdir(here)
+    runner = runner_for(tmp_path / "01.R", rscript=f".{os.sep}{Path(sys.executable).name}")
+    assert Path(runner[0]).is_absolute() and Path(runner[0]).parent == here
+
+
 def test_the_limit_is_the_flag_then_the_variable_then_paper_yaml_then_1800(
-    project: Path, monkeypatch
+    tmp_path: Path, monkeypatch
 ) -> None:
     from manuscript_guard.verify import TIMEOUT, TIMEOUT_VARIABLE
 
+    project = _bare(tmp_path)
     monkeypatch.delenv(TIMEOUT_VARIABLE, raising=False)
     assert _limit(project) == TIMEOUT == 1800
     _with_verify_setting(project, "{timeout: 5400}")
@@ -541,19 +590,49 @@ def test_the_limit_is_the_flag_then_the_variable_then_paper_yaml_then_1800(
     assert _limit(project, 60) == 60
 
 
-@pytest.mark.parametrize("given", ["soon", "0", "-5", "1.5"])
+@pytest.mark.parametrize("given", ["soon", "0", "-5", "1.5", "\u00b2", "604801"])
 def test_a_limit_in_the_variable_that_is_no_whole_number_of_seconds_is_refused(
-    project: Path, monkeypatch, given: str
+    tmp_path: Path, monkeypatch, given: str
 ) -> None:
     from manuscript_guard.verify import TIMEOUT_VARIABLE
 
     monkeypatch.setenv(TIMEOUT_VARIABLE, given)
     with pytest.raises(VerifyError, match=TIMEOUT_VARIABLE):
+        _limit(_bare(tmp_path))
+
+
+def test_a_limit_past_seven_days_is_refused_saying_the_most(tmp_path: Path, monkeypatch) -> None:
+    """Round 1 of #820: Windows waits on a 32-bit count of milliseconds, so a limit typed to
+    mean "no limit" wrapped round to under a second, or raised with the script running."""
+    from manuscript_guard.verify import MOST_SECONDS, TIMEOUT_VARIABLE
+
+    assert MOST_SECONDS == 7 * 24 * 3600
+    project = _bare(tmp_path)
+    monkeypatch.delenv(TIMEOUT_VARIABLE, raising=False)
+    assert _limit(project, MOST_SECONDS) == MOST_SECONDS
+    with pytest.raises(VerifyError, match="604800 s, 7 days"):
+        _limit(project, MOST_SECONDS + 1)
+    monkeypatch.setenv(TIMEOUT_VARIABLE, str(MOST_SECONDS + 1))
+    with pytest.raises(VerifyError, match="604800 s, 7 days"):
         _limit(project)
 
 
-@pytest.mark.parametrize("block", ["{timeout: 0}", "{timeout: soon}", "{limit: 60}"])
-def test_paper_yaml_refuses_a_verify_setting_it_cannot_read(project: Path, block: str) -> None:
+def test_a_whole_number_of_seconds_written_with_a_point_is_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Round 1 of #820: the schema takes 3600.0 as an integer, and the limit was 1800."""
+    from manuscript_guard.verify import TIMEOUT_VARIABLE
+
+    project = _bare(tmp_path)
+    monkeypatch.delenv(TIMEOUT_VARIABLE, raising=False)
+    _with_verify_setting(project, "{timeout: 3600.0}")
+    assert _limit(project) == 3600
+
+
+@pytest.mark.parametrize("block", ["{timeout: 0}", "{timeout: soon}", "{limit: 60}",
+                                   "{timeout: 604801}", "{timeout: 3600.5}"])
+def test_paper_yaml_refuses_a_verify_setting_it_cannot_read(tmp_path: Path, block: str) -> None:
+    project = _bare(tmp_path)
     _with_verify_setting(project, block)
     _loaded, report = load_project(project)
     assert not report.ok
@@ -689,9 +768,35 @@ def test_the_command_refuses_a_limit_that_is_no_number_and_an_r_that_is_not_ther
 ) -> None:
     from manuscript_guard.cli import main
 
-    project = _bare(tmp_path)
-    with pytest.raises(SystemExit) as stopped:
-        main(["verify", str(project), "--timeout", "0"])
-    assert stopped.value.code == 2
+    project = _bare(tmp_path, "analysis/01_r.R", "quit(status = 0)\n")
+    for given in ("0", "604801", "\u00b2"):
+        with pytest.raises(SystemExit) as stopped:
+            main(["verify", str(project), "--timeout", given])
+        assert stopped.value.code == 2
+    assert "604800" in capsys.readouterr().err
     assert main(["verify", str(project), "--rscript", str(tmp_path / "Rscript.exe")]) == 2
     assert "--rscript names" in capsys.readouterr().err
+
+
+def test_check_does_not_call_a_re_run_with_another_r_verified_in_full(tmp_path: Path) -> None:
+    """Round 1 of #820: build/verify.json kept the counts and not what ran them, so `check`
+    said "12 of 12 values reproduced" of a re-run made with another R."""
+    from manuscript_guard.assurance import VERIFIED, _verified, record_verified
+    from manuscript_guard.verify import Comparison, VerifyReport
+
+    root = _bare(tmp_path, "analysis/01_r.R", "quit(status = 0)\n")
+    loaded, _ = load_project(root)
+    ran = Comparison("01_r.json", agreed=("cohort.n",),
+                     interpreter=("R", "4.3.3", "C:/R/R-4.3.3/bin/Rscript.exe"),
+                     session=("R", "4.6.1", "4.3.3"))  # fmt: skip
+    record_verified(loaded, VerifyReport(comparisons=[ran], r_pinned="4.6.1"))
+    record = json.loads((root / "build" / VERIFIED).read_text(encoding="utf-8"))
+    assert record["interpreters"] == {"01_r.json": {
+        "language": "R", "version": "4.3.3", "program": "C:/R/R-4.3.3/bin/Rscript.exe"}}
+    assert [e["code"] for e in record["environment"]] == ["rerun-other-interpreter",
+                                                           "rerun-r-not-locked"]  # fmt: skip
+    [said] = _verified(loaded)
+    assert "1 of 1 values reproduced" in said
+    assert "not with the R or Python the results were written with" in said
+    assert "R 4.3.3" in said and "R 4.6.1" in said
+

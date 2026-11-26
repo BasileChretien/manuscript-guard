@@ -352,10 +352,12 @@ features:
     title: Word documents
     says: >-
       Builds the manuscript and its supplement as Word documents, with live Zotero
-      citations, and on request every number coloured by what backs it.
+      citations and the reference list under its heading, and on request every number
+      coloured by what backs it.
     status: works
     commands: [build]
-    tests: [tests/test_build.py, tests/test_annotate.py, tests/test_zotero_word.py]
+    tests: [tests/test_build.py, tests/test_annotate.py, tests/test_zotero_word.py,
+            tests/test_references_heading.py]
 
   - id: readable
     stage: write

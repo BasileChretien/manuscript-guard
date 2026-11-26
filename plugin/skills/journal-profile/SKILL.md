@@ -215,6 +215,7 @@ references:
   numbered: true
   # The CSL repository's name: Zotero's in a live build, kept by `style` for offline.
   csl: elsevier-vancouver
+  # heading: Literature cited   # the build's heading over the list, where not "References"
 
 reporting_guidelines: [STROBE]
 

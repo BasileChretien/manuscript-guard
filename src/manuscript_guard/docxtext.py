@@ -67,6 +67,11 @@ _MOVE_STARTS = {W + "moveFromRangeStart": "moveFrom", W + "moveToRangeStart": "m
 _MOVE_ENDS = {W + "moveFromRangeEnd": "moveFrom", W + "moveToRangeEnd": "moveTo"}
 
 _IDENTIFIER = re.compile(r"mg-p-[A-Za-z0-9_.-]+$")
+#: The bookmark of the heading the build puts over the reference list
+#: (`build/references_heading.lua`). It is the build's, in no paragraph of the source, and a
+#: document built before it had none: `blocks` passes it over, so that a document is read
+#: back as it was before the heading was added.
+BUILT_HEADING = "mg-references"
 _PICTURES = {W + "drawing", W + "pict", W + "object"}
 #: The extent of one binding or citation, marked only in the build `import` compares with.
 TOKEN = "mg-t-"
@@ -201,6 +206,8 @@ class _Paragraph:
     #: See `Block.beyond`: a note's id and a link's relationship id until `paragraphs_of`
     #: reads what they name.
     beyond: tuple[tuple[str, str | None], ...] = ()
+    #: It is the heading the build put over the reference list (`BUILT_HEADING`).
+    built: bool = False
 
 
 #: A heading level, which Word writes as an outline level of 0 to 8; 9 is body text.
@@ -580,11 +587,13 @@ def _paragraph(
 ) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
+    built = False
     for node in element.iter():
         if node.tag == W + "bookmarkStart":
             name = node.get(W + "name", "")
             if _IDENTIFIER.match(name) and name not in names:
                 names.append(name)
+            built = built or name == BUILT_HEADING
         elif node.tag == W + "commentRangeStart":
             comments.append(node.get(W + "id", ""))
     # What a reader sees once every tracked change is accepted. A picture or an equation
@@ -641,6 +650,7 @@ def _paragraph(
         style=_style(element, styles),
         at=tuple(at.items()),
         beyond=tuple(_beyond(seen)),
+        built=built,
     )
 
 
@@ -991,6 +1001,9 @@ def blocks(document: Path, fields: FieldReading | None = None) -> list[Block]:
     pending: list[_Paragraph] = []
     cells: list[str] | None = None
     for paragraph in paragraphs:
+        # The build's heading over the reference list is not read back (`BUILT_HEADING`).
+        if paragraph.built and not paragraph.table:
+            continue
         if paragraph.table:
             if cells is None:
                 out.extend(_fold(pending))

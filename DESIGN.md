@@ -30762,6 +30762,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Abstract not found, said as the number and the words around it, and a question, said as
     a referee's draft says it; a message that names an option or a gate shows it there.
     Accepted.
+- **The heading the build puts over the reference list is known by its bookmark only.**
+  `build/references_heading.lua` gives it the bookmark `mg-references`, and a document read
+  back passes that paragraph over (`docxtext.BUILT_HEADING`), so that `import` reads a document
+  built before the heading as it did, and a co-author's rewording of it changes nothing.
+  Where Word drops the bookmark, as it does when the heading's words are selected whole and
+  typed over, the heading comes back as one without an identifier that the build compared with
+  does not hold, and `import` lists it among the paragraphs that came back different and were
+  not compared, though it is in no paragraph of the source. Accepted.
+- **No heading is added over a reference list placed inside another block.** A `::: {#refs}`
+  div within another div is the author's arrangement, and the build adds no heading over it,
+  nor makes a place for a live build's bibliography field at the end. Pinned by
+  `tests/test_references_heading.py::test_a_list_inside_another_block_gets_no_heading`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

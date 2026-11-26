@@ -83,6 +83,11 @@ NARRATIVE_LUA = Path(__file__).with_name("narrative.lua")
 # Also ours, run on every docx build: the paragraph after a figure is styled as its caption,
 # so a reader can see where the caption ends. See the file's header and `build/styles.py`.
 FIGURE_CAPTION_LUA = Path(__file__).with_name("figure_caption.lua")
+# Ours, run on every docx build that cites: a heading over the reference list, unless the
+# author wrote one. After citeproc offline, before zotero_word.lua live. See the file's header.
+REFERENCES_HEADING_LUA = Path(__file__).with_name("references_heading.lua")
+#: The heading over the reference list where the journal's profile names none.
+REFERENCES_HEADING = "References"
 ZOTERO_STYLES = "http://www.zotero.org/styles/"
 
 
@@ -367,6 +372,38 @@ def _zotero_style(project) -> str | None:
     return None
 
 
+def references_heading(project) -> str:
+    """The heading over the reference list: the target journal's, where its profile names one
+    under `references.heading`, and "References" otherwise."""
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    if path is not None:
+        # A profile that does not read is G4's to report; the build titles the list as any.
+        with contextlib.suppress(Exception):
+            document = read_structured(path)
+            heading = ((document or {}).get("references") or {}).get("heading")
+            if isinstance(heading, str) and one_line(heading).strip():
+                return one_line(heading).strip()
+    return REFERENCES_HEADING
+
+
+def _references_filter(project, *, live: bool) -> list[str]:
+    """The arguments that run `references_heading.lua`, with the heading in the metadata as
+    JSON in hexadecimal, as narrative.lua takes its names; `live` where the bibliography is
+    a field the filter is to make a place for."""
+    title = json.dumps(references_heading(project), ensure_ascii=False).encode("utf-8").hex()
+    arguments = [
+        f"--lua-filter={REFERENCES_HEADING_LUA.resolve()}",
+        f"--metadata=mg-references-heading:{title}",
+    ]
+    if live:
+        arguments.append("--metadata=mg-references-live:true")
+    return arguments
+
+
 def _zotero_version() -> str | None:
     """The running Zotero's version, as Better BibTeX reports it; None if it does not answer."""
     from manuscript_guard.zotero import ZoteroUnavailable, rpc
@@ -626,8 +663,11 @@ def build_document(
 
         if mode == LIVE:
             command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
-            # A document with no citations gets no bibliography field (a supplement of tables).
+            # A document with no citations gets no bibliography field (a supplement of tables),
+            # and no heading over one. The heading goes first: the field takes the place of the
+            # `refs` div it is put before.
             if cites:
+                command += _references_filter(project, live=True)
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         elif mode == PLAIN:
             # No citeproc and no Zotero: a citation prints as the source writes it, a
@@ -640,7 +680,9 @@ def build_document(
                     f"--lua-filter={NARRATIVE_LUA.resolve()}",
                     f"--metadata=mg-narrative:{names}",
                 ]
+            # As the live build has them, which this one stands in for.
             if cites:
+                command += _references_filter(project, live=True)
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         else:
             bib = project.path("literature") / "references.bib"
@@ -656,6 +698,10 @@ def build_document(
                 # the style. The working directory stays first, as it is by default.
                 folder = relative_to_root(project, csl.resolve().parent)
                 command += [f"--resource-path=.{os.pathsep}{folder}"]
+            # After citeproc, which runs where it stands among the filters: the list is then
+            # in its `refs` div, and the heading goes over it.
+            if cites:
+                command += _references_filter(project, live=False)
 
         finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
     if finished.returncode != 0:

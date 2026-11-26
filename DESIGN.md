@@ -18323,6 +18323,36 @@ to fix is pinned until the fix lands, and the fix changes its test.
   one. Literature values (`lit.`) are not looked for: an abstract may give the background
   it rests on.
   Pinned by `tests/test_corruption.py::test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display`.
+- **A result the Discussion gives is looked for as a summary's is** (`gates/reported.py`,
+  `discussion-not-reported`). It takes that reading's limits: a display printed whole in a
+  placed table's cells or a figure's text reports a key by coincidence, and the supplement
+  reports a key it binds or prints anywhere. A paper with no Results heading is not read for
+  it at all. Pinned by
+  `tests/test_corruption.py::test_a_result_the_discussion_gives_is_looked_for_where_a_summary_s_is`.
+  - A result the Discussion interprets in words, with no number bound, is not seen, nor one
+    it binds under a second key the analysis emitted for it without `same_as`. Accepted.
+- **`analysis-not-in-methods` reads names from a list** (`data/statistical_methods.yaml`). A
+  method the list does not hold says nothing, and a name the Methods give only to say the
+  method was not used, or a surname standing alone ("Cox", "Holm"), counts as naming it.
+  Accepted.
+  - The Abstract, the Introduction and the Discussion are not read, since they name the
+    methods of other studies too. Pinned by
+    `tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name`.
+  - An emitted table's caption is not read, nor a figure's text: a method named only there
+    is not looked for in the Methods. Accepted.
+- **`caption-line-unnamed` reads one shape** (`gates/caption_marks.py`): a line or a curve
+  pointed at by where something stands against it ("below the line"), with "the", "these",
+  "those", "this" or "that" directly before the mark. "The dashed line" names its style and
+  is not warned of, though nothing may say what it marks; a caption that names one line and
+  points at "the line" where two are drawn is not warned of either; and a band, a bar or an
+  area pointed at so is not read. Pinned by
+  `tests/test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is`.
+  - A Markdown figure's caption is read only as a legend that opens with its pointer, typed or
+    bound ("{{ref.figure.forest}}."), or as an image's; a paragraph under a figure that opens
+    otherwise is no caption to the build either. Accepted.
+- **The second starter round's plain reader reads no figure.** Its remit asks for tables that
+  stand alone and names no figure, since a model is sent none; the displays alone, figures
+  included, are a remit read by route A, which `review --run` never reads. Accepted.
 - **A paper with no Results heading reports under every heading that names no part.** A
   section of a review's own that is really an introduction ("The problem of arrests"), a
   discussion ("What this means for regulators") or a summary is read as reporting, so a
@@ -30884,36 +30914,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
   - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
-- **A result the Discussion gives is looked for as a summary's is** (`gates/reported.py`,
-  `discussion-not-reported`). It takes that reading's limits: a display printed whole in a
-  placed table's cells or a figure's text reports a key by coincidence, and the supplement
-  reports a key it binds or prints anywhere. A paper with no Results heading is not read for
-  it at all. Pinned by
-  `tests/test_corruption.py::test_a_result_the_discussion_gives_is_looked_for_where_a_summary_s_is`.
-  - A result the Discussion interprets in words, with no number bound, is not seen, nor one
-    it binds under a second key the analysis emitted for it without `same_as`. Accepted.
-- **`analysis-not-in-methods` reads names from a list** (`data/statistical_methods.yaml`). A
-  method the list does not hold says nothing, and a name the Methods give only to say the
-  method was not used, or a surname standing alone ("Cox", "Holm"), counts as naming it.
-  Accepted.
-  - The Abstract, the Introduction and the Discussion are not read, since they name the
-    methods of other studies too. Pinned by
-    `tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name`.
-  - An emitted table's caption is not read, nor a figure's text: a method named only there
-    is not looked for in the Methods. Accepted.
-- **`caption-line-unnamed` reads one shape** (`gates/caption_marks.py`): a line or a curve
-  pointed at by where something stands against it ("below the line"), with "the", "these",
-  "those", "this" or "that" directly before the mark. "The dashed line" names its style and
-  is not warned of, though nothing may say what it marks; a caption that names one line and
-  points at "the line" where two are drawn is not warned of either; and a band, a bar or an
-  area pointed at so is not read. Pinned by
-  `tests/test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is`.
-  - A Markdown figure's caption is read only as a legend that opens with its pointer, typed or
-    bound ("{{ref.figure.forest}}."), or as an image's; a paragraph under a figure that opens
-    otherwise is no caption to the build either. Accepted.
-- **The second starter round's plain reader reads no figure.** Its remit asks for tables that
-  stand alone and names no figure, since a model is sent none; the displays alone, figures
-  included, are a remit read by route A, which `review --run` never reads. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

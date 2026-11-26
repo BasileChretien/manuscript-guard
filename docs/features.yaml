@@ -740,6 +740,9 @@ features:
     skills: [co-author-checking]
     tests: [tests/test_checking.py]
     docs: docs/co-authors.md
+    limits: >-
+      The page shows the quotes and passages the author recorded, never the stored copy of a
+      cited work; where no copy is stored, it says so on each item citing the work.
 
   - id: approvals
     stage: review

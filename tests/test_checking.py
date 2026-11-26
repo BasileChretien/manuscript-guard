@@ -563,6 +563,129 @@ def test_an_attested_value_travels_with_the_attestation(project: Path) -> None:
     ] in item["facts"]
 
 
+# What a co-author is told of a cited work this computer holds no copy of. The page shows the
+# quotes and passages the author recorded and never the stored copy itself, so a work with no
+# copy is one the co-author has to find for themselves, and the item says so in its own words.
+
+#: The example's two cited works, each with its full text stored.
+SIGNAL, COHORT = "fictionalClassSignal2019", "fictionalHepaticCohort2021"
+
+
+def _sources(root: Path) -> Path:
+    return root / "literature" / "sources"
+
+
+def _unstored_of(items: list[dict], key: str) -> list[dict]:
+    return [entry for item in items for entry in item.get("unstored") or [] if entry["key"] == key]
+
+
+def test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so(project: Path) -> None:
+    (_sources(project) / f"{SIGNAL}.txt").unlink()
+    document = produced(project)
+    claims = only(document, "claim")
+    citing = [item for item in claims if f"@{SIGNAL}" in dict(item["facts"])["Cites"]]
+    assert citing
+    for item in citing:
+        (entry,) = _unstored_of([item], SIGNAL)
+        assert entry["state"] == "nothing stored"
+        assert f"No copy of @{SIGNAL} is stored" in entry["says"]
+        assert "manuscript-guard sync-sources" in entry["says"]
+        assert f"literature/sources/{SIGNAL}.pdf" in entry["says"]
+    # The other work's copy is there, and nothing is said of it.
+    assert not _unstored_of(claims, COHORT)
+    assert not _unstored_of(only(document, "literature"), COHORT)
+    # The value quoted from it: its quote is on the page, as the author copied it.
+    value = next(i for i in only(document, "literature") if "class_ror" in i["title"])
+    (entry,) = _unstored_of([value], SIGNAL)
+    assert "as the author copied them" in entry["says"]
+
+
+def test_a_work_of_which_only_the_abstract_is_stored_says_so(project: Path) -> None:
+    sources = _sources(project)
+    (sources / f"{SIGNAL}.txt").rename(sources / f"{SIGNAL}.abstract.txt")
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+    assert f"Only the abstract of @{SIGNAL} is stored ({SIGNAL}.abstract.txt)" in entries[0]["says"]
+
+
+def test_a_copy_kept_out_of_git_is_said_to_be_on_another_computer(project: Path) -> None:
+    from kept_away import keep_away
+
+    keep_away(project, f"{SIGNAL}.txt", SIGNAL)
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries
+    assert entries[0]["state"] == "kept out of git, not on this computer"
+    assert "not on the computer that built this page" in entries[0]["says"]
+
+
+def test_a_sentence_shown_none_of_its_works_words_is_told_to_read_the_work(project: Path) -> None:
+    """Both of the example's works have a value quoted from them, so a work cited with nothing
+    quoted and nothing stored is added: its sentence shows the co-author the reference alone."""
+    new = "fictionalRegistryReview2024"
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + (
+        f"\n@article{{{new},\n  title = {{A fictional review of registries}},\n"
+        "  journal = {Fictional Journal},\n  year = {2024}\n}\n"), encoding="utf-8")  # fmt: skip
+    main_md = project / "manuscript" / "main.md"
+    sentence = f"\nRegistries of this kind are rarely complete [@{new}].\n"
+    main_md.write_text(main_md.read_text(encoding="utf-8") + sentence, encoding="utf-8")
+    claims = only(produced(project), "claim")
+    item = next(i for i in claims if dict(i["facts"])["Cites"] == f"@{new}")
+    assert not any(e["kind"] == "quote" for e in item["evidence"])
+    (entry,) = _unstored_of([item], new)
+    assert "this page shows none of its words" in entry["says"]
+    assert 'answer "not sure"' in entry["says"]
+
+
+def test_storing_a_copy_later_keeps_the_answers_given_without_it(project: Path) -> None:
+    """What the page says of a missing copy is outside the digest: a co-author who answered
+    about a sentence is not asked again because the author has since stored the work."""
+    from manuscript_guard.cli import _checking_items, load_project
+
+    copy = (_sources(project) / f"{SIGNAL}.txt").read_bytes()
+    (_sources(project) / f"{SIGNAL}.txt").unlink()
+    items = _checking_items(load_project(project)[0], None)
+    said = [item for item in items.items if item.get("unstored")]
+    assert said
+    answers = project / "a.json"
+    answers.write_text(json.dumps(answers_for(items, by="Ada Example",
+                                              statuses={i["id"]: "ok" for i in said})),
+                       encoding="utf-8")  # fmt: skip
+    import_answers(project, answers, items)
+    (_sources(project) / f"{SIGNAL}.txt").write_bytes(copy)
+    again = _checking_items(load_project(project)[0], None)
+    assert not any(item.get("unstored") for item in again.items)
+    standing = status(project, again)
+    assert all(standing.answered.get(str(item["id"])) for item in said)
+
+
+def test_build_lists_the_items_whose_work_has_no_copy_by_group_and_key(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    capsys.readouterr()
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    assert "no copy stored" not in capsys.readouterr().out
+
+    (_sources(project) / f"{SIGNAL}.txt").unlink()
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    said = capsys.readouterr().out
+    assert "cite a work with no copy stored on this computer" in said, said
+    assert f"Cited statements: @{SIGNAL}, 2 items (nothing stored)" in said, said
+    assert f"Numbers from the literature: @{SIGNAL}, 1 item (nothing stored)" in said, said
+    assert COHORT not in said.split("cite a work with no copy stored")[1]
+    assert "manuscript-guard sync-sources" in said
+
+
+def test_the_page_shows_what_it_says_of_a_missing_copy_escaped() -> None:
+    from manuscript_guard.checking.bundle import TEMPLATE
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert "(it.unstored || [])" in page
+    assert "esc(u.says)" in page and "esc(u.state)" in page
+
+
 def test_a_cited_sentence_reaches_the_co_author_without_its_bindings(project: Path) -> None:
     """A binding is markup. The claim is what the sentence says, and a `{{results.x}}` in front
     of a reader is a question about the toolkit instead of about the paper."""

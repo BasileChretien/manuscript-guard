@@ -6212,6 +6212,11 @@ def _checker_build(project, items, args) -> int:
         )
     if standing.already:
         print(f"{standing.already} more on the page are marked as checked before this round.")
+    # Said where the pages are made, which is where a copy can still be stored before they go.
+    from manuscript_guard.checking.produce import unstored_lines
+
+    for line in unstored_lines(items):
+        print(line)
     print(f"Each page is recorded in {REGISTER}, with the digest of its token.")
     print(
         "Send each person their one file. It opens by double-clicking, needs nothing installed "

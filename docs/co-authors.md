@@ -98,6 +98,16 @@ A number transcribed from a table in a source document is not among them and can
 the project knows which row it came from — so a project that traces its own numbers adds them in
 `checks/items.json`.
 
+The page shows the quotes and passages the author recorded, never the stored copy of a cited
+work itself. Where the computer building the page holds no copy of a work under
+`literature/sources/` (nothing at all, only its abstract, or a copy kept out of git on another
+computer), each sentence citing it and each value quoted from it says so on its own item, and
+says whether any of the work's words are shown: a co-author shown none of them has to find the
+work to answer. `build` lists those works by group and citation key, with how many items cite
+each, so that the author can store them first (`manuscript-guard sync-sources`, or the PDF saved
+as `literature/sources/<key>.pdf`) and build again. What the page says of a missing copy is not
+in the item's digest, so storing the copy afterwards asks nobody again.
+
 A group the project fills, it fills alone: one contributed item in a group means none of the
 toolkit's are added to it, since the two are keyed differently and a co-author would otherwise
 read the same value twice.

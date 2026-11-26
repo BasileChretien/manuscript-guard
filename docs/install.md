@@ -83,6 +83,7 @@ particular thing, and the tool tells you which when you reach it.
 | **Zotero + Better BibTeX** | live citation fields, `sync-bib`, `sync-sources` | Builds fall back to the committed `references.bib`; citation-key pinning goes unchecked; sources are saved under `literature/sources/` by hand |
 | **poppler** (`pdftotext`) or **pypdf** | reading PDF sources and PDF figures | Those sources are reported as unverifiable rather than passed |
 | **poppler** or **Xpdf** (`pdftotext`, `pdfinfo`) | `audit` and `compare` reading a PDF manuscript; `pdfinfo` reads its Author field for `--journal` | A PDF manuscript is refused with a sentence (pypdf is not used for it); without `pdfinfo` the Author field is said not to be read |
+| **poppler**'s `pdftotext` (not Xpdf's) | `audit` rebuilding a PDF manuscript's lines into paragraphs for G6 and G14, from where each word is set (below) | G6 and G14 read the PDF's lines as `pdftotext` gives them, and the report says why |
 | **R** (+ `jsonlite`, `digest`) | emitting results from R | Only if your analysis is in R; the Python emitter needs nothing extra |
 | **matplotlib** | the worked example's figure | Only for the example |
 | **A model provider's API key, or Ollama** | `review --run` | The panel is read by people or an agent, and each reading filed with `review --record` |
@@ -92,6 +93,27 @@ Nothing is fetched during installation. Reporting checklists are downloaded on r
 [ATTRIBUTION.md](../ATTRIBUTION.md) for why. One file in the package is derived from
 somebody else's work: the list of spellings G14 reads comes from VarCon and carries its
 notices, and the same file says how.
+
+### Poppler's pdftotext, for a PDF's paragraphs
+
+`audit` reads a PDF manuscript's words where each is set on its page to give G6 and G14 its
+paragraphs, its columns in reading order, its tables and legends apart and without its
+running heads and line numbers. Only poppler's `pdftotext` gives each word's place
+(`-bbox-layout`). Linux and macOS packages of poppler (`poppler-utils`, `brew install
+poppler`, conda-forge's `poppler`) put it on `PATH`, and nothing more is needed. Git for
+Windows puts Xpdf's `pdftotext` on `PATH`, which gives no word's place; a poppler installed
+beside it (MiKTeX ships one, and conda-forge has a build for Windows) is used for this where
+the variable `MANUSCRIPT_GUARD_POPPLER` names it:
+
+```bash
+export MANUSCRIPT_GUARD_POPPLER="/path/to/poppler/bin/pdftotext"
+```
+
+The variable is read before `PATH`, so it also picks one poppler over another. The program it
+names is used for the paragraphs alone. Every other reading of a PDF's text,
+its numbers, its Abstract against its Results, its reference list, and all of `compare`, uses
+the `pdftotext` on `PATH` as before. Where neither gives each word's place, the report says
+that G6 and G14 read the PDF's lines as `pdftotext` gives them, and why.
 
 ## The R emitter (only if your analysis is in R)
 

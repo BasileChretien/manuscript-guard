@@ -13932,6 +13932,50 @@ def test_a_feasibility_fragment_that_fails_its_schema_is_said_to_emit_nothing(
                     "answer: nothing is emitted under feasibility. or quality.")
 
 
+# ------------------------------------------------- a key two scripts publish
+
+
+def _second_fragment(project: Path, values: dict[str, dict]) -> list[str]:
+    """A second script's fragment beside the example's, holding `values`, and what G0 says
+    of the results then: each `duplicate-key` message, in order."""
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    (project / "analysis" / "02_trials.py").write_bytes(b"# the trials\n")
+    document["provenance"]["generated_by"] = "analysis/02_trials.py"
+    for section in ("tables", "code_lists", "variables", "models", "steps", "relations",
+                    "flows", "corrections", "datasets", "controls"):  # fmt: skip
+        document.pop(section, None)
+    document["values"] = values
+    second = project / "results" / "02_trials.json"
+    second.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(second)
+    return [f.message for f in gate_report(project).failures if f.code == "duplicate-key"]
+
+
+def test_a_key_two_scripts_publish_is_defined_twice_unless_one_software_version(
+    project: Path,
+) -> None:
+    """On the bisphosphonates paper two scripts each recorded which R they ran, the same R,
+    and `check` failed it as a key defined twice. One version of one piece of software is one
+    record. Two versions are still `duplicate-key`, since the Methods can name only one, and
+    any other key two scripts publish is too, its value the same or not: one script owns a
+    result, so that G1 knows which run made it."""
+    first = json.loads((project / "results" / "01_disproportionality.json")
+                       .read_text(encoding="utf-8"))["values"]  # fmt: skip
+    python = first["software.python"]
+    assert _second_fragment(project, {"software.python": dict(python)}) == []
+    older = {**python, "value": "2.7.0", "display": "2.7.0"}
+    said = _second_fragment(project, {"software.python": older})
+    assert said == [f"'software.python' is {python['display']} in 01_disproportionality.json "
+                    "and 2.7.0 in 02_trials.json: two versions of one piece of software"]
+    # A result is not a software record by its role alone, nor by its key alone.
+    point = first["ror.point"]
+    for values in ({"ror.point": dict(point)}, {"ror.point": {**point, "role": "software"}},
+                   {"software.python": {k: v for k, v in python.items() if k != "role"}}):
+        key = next(iter(values))
+        assert _second_fragment(project, values) == [f"results key {key!r} is defined twice"]
+
+
 # ------------------------------------------------- the plan's Software section
 
 

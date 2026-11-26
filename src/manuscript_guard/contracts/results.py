@@ -5,7 +5,10 @@ rather than a single file. Each fragment carries its own provenance, which is wh
 freshness gate say *which* script is stale rather than merely that something is.
 
 A key defined by two fragments is an error. Last-one-wins would make the value of a number
-depend on filesystem ordering.
+depend on filesystem ordering. One record is not: the version of a piece of software that
+two scripts each record with `software()`, the same in both, is the same fact twice, and
+the first fragment keeps it (`_same_software`). Two versions of it are still an error,
+since the Methods can name only one.
 """
 
 from __future__ import annotations
@@ -152,6 +155,50 @@ class Results:
         return frozenset(k for k, t in self.tables.items() if t.quoted)
 
 
+#: What the emitters' `software()` writes: a key under `software.` and this role.
+_SOFTWARE = "software"
+
+
+def _is_software(key: str, role: object) -> bool:
+    return role == _SOFTWARE and key.startswith(f"{_SOFTWARE}.")
+
+
+def _same_software(kept: Value, key: str, spec: dict) -> bool:
+    """Whether a second fragment's `spec` for `key` records the version `kept` holds: a
+    software record in both, of the same value and display. Every script that ran R may
+    say which R it ran; one version is one record."""
+    return (
+        _is_software(key, kept.role)
+        and _is_software(key, spec.get("role"))
+        and spec.get("value") == kept.value
+        and spec.get("display", spec.get("value")) == kept.display
+    )
+
+
+def _defined_twice(key: str, spec: dict, kept: Value, path: Path) -> Finding:
+    """`duplicate-key` for a second fragment's `key`: for software, with the version each
+    fragment recorded, since the Methods can name only one."""
+    if _is_software(key, kept.role) and _is_software(key, spec.get("role")):
+        return Finding(
+            gate="G0",
+            code="duplicate-key",
+            message=f"{key!r} is {kept.display} in {kept.source.name} and "
+            f"{spec.get('display', spec.get('value'))} in {path.name}: two versions of one "
+            f"piece of software",
+            path=path,
+            context=f"also recorded in {kept.source.name}",
+            hint="run both scripts with one version, or record it from one script only",
+        )
+    return Finding(
+        gate="G0",
+        code="duplicate-key",
+        message=f"results key {key!r} is defined twice",
+        path=path,
+        context=f"also defined in {kept.source.name}",
+        hint="rename one, or have a single script own the key",
+    )
+
+
 def load_results(results_dir: Path) -> tuple[Results, Report]:
     """Read and merge every fragment in `results_dir`."""
     if not results_dir.exists():
@@ -225,20 +272,9 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
 
         for key, spec in document["values"].items():
             if key in owner:
-                reports.append(
-                    Report(
-                        (
-                            Finding(
-                                gate="G0",
-                                code="duplicate-key",
-                                message=f"results key {key!r} is defined twice",
-                                path=path,
-                                context=f"also defined in {owner[key].name}",
-                                hint="rename one, or have a single script own the key",
-                            ),
-                        )
-                    )
-                )
+                if _same_software(values[key], key, spec):
+                    continue
+                reports.append(Report((_defined_twice(key, spec, values[key], path),)))
                 continue
             try:
                 display = derive_display(

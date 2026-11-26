@@ -29,10 +29,17 @@ MODES = (OFFLINE, LIVE, PLAIN)
 
 def _stub_zotero_lua(tmp_path: Path, monkeypatch) -> None:
     """Better BibTeX's zotero.lua asks the running Zotero; a filter that does nothing stands
-    in for it, so that the live build's other filters run as they do on a real one."""
+    in for it, so that the live build's other filters run as they do on a real one. Where the
+    build asks Better BibTeX first whether Zotero holds every cited key (`client.readiness`),
+    a Zotero that holds them all stands in for that answer too."""
     stub = tmp_path / "zotero.lua"
     stub.write_text("return {}\n", encoding="utf-8")
     monkeypatch.setattr(builder, "ensure_zotero_lua", lambda _cache: stub)
+    from manuscript_guard.zotero import client
+
+    if hasattr(client, "readiness"):
+        ready = client.Readiness(client.READY)
+        monkeypatch.setattr(client, "readiness", lambda *_keys, **_said: ready)
 
 
 def _no_heading(_project, _csl=None, **_said) -> list[str]:

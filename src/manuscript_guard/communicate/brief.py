@@ -429,8 +429,11 @@ def _from_plan(project) -> dict[str, list[dict]]:
     name = path.relative_to(project.root).as_posix()
     out: dict[str, list[dict]] = {}
     for part, key in _FROM_PLAN:
-        section = next((s for i, s in enumerate(sections) if s.title and (
-            re.search(patterns[key], s.title) or names_section(key, named[i]))), None)  # fmt: skip
+        # A heading that is only its block, `## {#population}`, has no words to read and
+        # may still name its section (round 2 of #824).
+        section = next((s for i, s in enumerate(sections) if (
+            s.title and re.search(patterns[key], s.title)) or names_section(key, named[i])),
+                       None)  # fmt: skip
         if section is None:
             continue
         for _piece, first, end in sentence_spans(section.body):

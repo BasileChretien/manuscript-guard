@@ -7308,7 +7308,8 @@ def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, st
     # so the plan still names one exactly and holds every kind.
     for unnamed in UNNAMED & set(kinds):
         if kinds[unnamed] == "named exactly":
-            other = next(name for name in ids if name not in UNNAMED and kinds[name] != "named exactly")
+            other = next(name for name in ids
+                         if name not in UNNAMED and kinds[name] != "named exactly")
             kinds[unnamed], kinds[other] = kinds[other], kinds[unnamed]
     parts = []
     for name in ids:

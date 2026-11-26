@@ -136,12 +136,15 @@ def test_the_brief_reads_a_plan_section_named_by_its_identifier(project: Path) -
     plan = project / "design" / "plan.md"
     text = plan.read_text(encoding="utf-8")
     assert "## Population and data source\n" in text
-    plan.write_text(text.replace("## Population and data source\n", "## Who {#population}\n"),
-                    encoding="utf-8")  # fmt: skip
     enable(project)
-    assert main(["communicate", "brief", str(project)]) == 0
-    document = yaml.safe_load(brief_file(project).read_bytes())
-    assert [one["id"] for one in document.get("population", [])] == ["population.1"]
+    for heading in ("## Who {#population}\n", "## {#population}\n"):
+        # The second is a heading that is only its block, whose title is empty (round 2).
+        plan.write_text(text.replace("## Population and data source\n", heading),
+                        encoding="utf-8")  # fmt: skip
+        assert main(["communicate", "brief", str(project), "--force"]) == 0
+        document = yaml.safe_load(brief_file(project).read_bytes())
+        assert [one["id"] for one in document.get("population", [])] == ["population.1"], (
+            heading)
 
 
 def test_the_brief_is_scaffolded_from_the_plan_and_the_manuscript_the_same_every_time(

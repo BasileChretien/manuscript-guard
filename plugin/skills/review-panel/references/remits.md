@@ -7,8 +7,9 @@ like any other remit, with an id, the remit and a `why`.
 A remit read by route A only goes in a round that no model reads. `review --run` cannot
 leave a reviewer out: it gives every reviewer in the round's panel file to every model, with
 the whole manuscript, and without `--round` it runs the first round someone has not reported
-in. So record that round's readings before any run, or give every run `--round`. The two
-such remits below can share a round. It is a round like any other: it counts toward
+in. So record that round's readings before any run, or give every run `--round`. The three
+such remits below, the abstract alone, the displays alone and citation support, can share a
+round. It is a round like any other: it counts toward
 `review.rounds_required`, once complete it supersedes the stale rounds before it, and a later
 round without `blinded: true` draws `round-not-blinded`.
 
@@ -69,12 +70,17 @@ read the remit as well, as a reading of its own (`--reading`).
 ## The abstract alone
 
 Most people who meet a paper read its title and abstract and go no further. One reader
-should do the same: they are sent the title and the abstract, nothing else, and asked two
+should do the same: they are sent the title and the abstract, nothing else, and asked three
 things:
 
 - what they conclude, in a sentence or two, as they would put it to a colleague;
 - whether the abstract carries a caveat that would change that conclusion. If it does, they
-  quote it; if not, they say what the conclusion would turn on.
+  quote it; if not, they say what the conclusion would turn on;
+- which words they could not have understood from the abstract alone: a term it uses before
+  or without defining it, the paper's central quantity first; a term it uses in two senses;
+  a method or a comparison named and not said ("the strictest comparison", "adjusted",
+  "expected by chance"); a group described by something its definition contradicts. Each is
+  a finding quoting the words.
 
 This is not the desk editor's remit, which reads the whole paper and asks whether the
 abstract matches it. This reader cannot compare the two, and that is what makes the reading
@@ -86,7 +92,8 @@ Never ask the context that wrote them: it knows what the abstract leaves out. Ro
 by reading the whole manuscript, which this reader must not do, so if your tool cannot start
 a fresh agent and no person is at hand, leave this remit out. Give it an id
 such as `abstract-alone` and the remit "what a reader of the title and abstract alone
-concludes, and whether the abstract carries the caveat that would change that conclusion".
+concludes, whether the abstract carries the caveat that would change that conclusion, and
+which of its words such a reader could not understand from the abstract alone".
 If the manuscript is in several files and another reader of the same round, such as citation
 support, lists them all, keep under `file_sha256` only the file that holds the abstract, as
 step 2 of the skill says for a reader of some of them. Alone in its round, this reader keeps
@@ -94,7 +101,8 @@ the whole list: a round stays incomplete while a file is on nobody's list.
 
 The reading's summary is that conclusion, and its verdict is on the abstract, not on the
 paper. Its findings are about the abstract too: a caveat the
-conclusion turns on that the abstract leaves out, or places where a reader passes over it.
+conclusion turns on that the abstract leaves out, places where a reader passes over it, and
+words the abstract does not define for a reader who has nothing else.
 Keep the reader to that. Given the abstract and a remit about the whole paper, a reader lists
 what the paper might lack, and rates it major, without having seen it; those findings are
 not this reader's to make.
@@ -104,6 +112,88 @@ than it says, the abstract has to change, even if the reader found no caveat mis
 this reader concluded is what a reader of the abstract will conclude. No gate makes this
 comparison and no record holds it, so give the author the conclusion and the Results it goes
 beyond, and let the next round read the abstract they write.
+
+Each fix this reader's findings ask for adds words to an abstract that has a limit, and G4
+counts them (`over-journal-limit`). Fit the definitions in by apposition, "the reporting odds
+ratio, the odds that a report names the event for this drug against all other drugs", rather
+than a sentence of their own, and drop a secondary result before a definition the headline
+needs. The manuscript-writing skill's references/clarity.md says more.
+
+## A reader new to the paper
+
+Every reader of a draft except its authors' panel meets it for the first time. A reader of
+the field who has not seen the paper stops where a term is used before it is defined, or in
+two senses, and readers who have checked its numbers for many rounds no longer see those
+places. Worth a reader on every paper, in the round before submission at the latest.
+
+Either route reads it; by route A, have a fresh agent read it, never the context that wrote
+the paper. Give it an id such as `newcomer` and the remit "whether a reader of the field who
+has not seen this paper can follow it from the title to the conclusion: each term defined
+before or where it is first used, the abstract included, for every unit it is used of; one
+sense for each term; each group described by what defines it; each claim said to hold 'by
+construction' explained; each result the Discussion interprets reported in the Results; and
+the order of each sentence's clauses giving the headline its true size". Its findings quote
+the first use of each word it could not follow, and say what it took the word to mean.
+
+`check` finds two of these places by their shape: a result the Discussion binds that the
+Results do not report (`discussion-not-reported`, a warning) or report only in the supplement
+(`discussion-in-supplement`, a note). The rest is this reader's.
+
+## Statistics for a reader without statistical training
+
+A paper's statistics are read by its statistician for whether they are right. They are also
+read by people who never studied statistics, and nobody checks that those readers can tell
+what a method does or what a number means. Worth a reader on any paper with a test, an
+interval, a model or a correction in it.
+
+Either route reads it. Give it an id such as `plain-statistics` and the remit "whether a
+reader without statistical training can tell what each method does and what each number
+means: a plain one-sentence gloss of each method where it first appears (what an odds ratio
+of 1 means and what one below 1 means; what an interval is, and what it is an interval for
+where the data are a census; what a correction for several tests does; what 'adjusted for'
+and 'conditioning on' mean; what a resampling method does), each range labelled so that it is
+not read as an interval, each test the Results use named in the Methods, what 'expected by
+chance' stands for, why two intervals that overlap can sit beside a difference whose own
+interval excludes no difference, what weight an 'exploratory' or 'post hoc' result carries,
+and what each sensitivity analysis is for". The reader is told to answer as someone who
+knows the field and not the statistics, and that a gloss the paper gives in the Methods
+counts wherever the term comes again.
+
+`check` warns of a method of its list that the Results name and the Methods never do
+(`analysis-not-in-methods`); the list holds tests, corrections, intervals and models, and
+what it does not hold, and whether a gloss says enough, is this reader's.
+
+## The displays alone
+
+Many readers look at the tables and the figures and read little else, and an editor often
+does the same before deciding to read on. Each display has to be read without the text: its
+symbols, abbreviations, columns and units defined in its caption, legend or notes; the
+comparator it holds the others to named; the test behind each P value said, and whether the
+P values are corrected; each line, band and mark said for what it stands; a total that
+differs from the count the text gives explained; one sense for each word in it; a legend
+that agrees with its caption. Worth a reader on every paper with a display.
+
+Read it by route A only, since `review --run` sends no figure and every manuscript file.
+Build the document first (`manuscript-guard build --offline`), and put in the brief of a
+fresh agent the rendered figures (the PNG beside each `figures/<name>.svg`, or one you render)
+and each table with its caption and notes as the built document prints them, numbers filled
+in, and nothing of the text. Give it an id such as `displays-alone` and the remit "for each
+table and figure, read alone with its caption, legend and notes: what it shows and what a
+reader concludes from it; each symbol, abbreviation, column heading and unit it does not
+define; whether it names its comparator and the test behind each P value and their
+correction; what each line, band and mark stands for; and each word used in two senses in
+it". The reading's summary gives, for each display, what the reader concluded from it.
+Under `file_sha256` keep only the files that hold the captions it read, as step 2 of the
+skill says for a reader of some of them.
+
+Once the reading is sealed, set each display's conclusion beside the sentence of the text
+that cites it. Where the text headlines a comparison the figure does not draw, the strictest
+of several comparators in the text and the weakest in the figure say, the figure overstates
+the result for every reader who looks at it alone: the figure changes, or the text's headline
+does. The figure-review skill's `caption-agrees` check asks the same of each figure when it
+is reviewed. `check` warns of one shape of these defects, a caption that points at "the
+line" and never says which line (`caption-line-unnamed`), and G14 holds the abbreviations a
+display defines for itself to its own uses.
 
 ## Interpretation
 

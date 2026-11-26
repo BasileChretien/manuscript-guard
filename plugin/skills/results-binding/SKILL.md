@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked, rule-unchecked, mean-sd-skewed or comparison-contradicted. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked, rule-unchecked, mean-sd-skewed, comparison-contradicted, discussion-not-reported or discussion-in-supplement. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -211,6 +211,13 @@ A binding left in a caption, a header or a cell is refused as `binding-in-table`
 emitter and by G2: bindings resolve only in the prose, so one in a table would print as
 braces.
 
+A table is read without the text, so its emitted caption says what the text would: each
+symbol, abbreviation and column heading that is not plain English ("n/N, cases with the
+outcome over all cases"), the units, the comparator the text's headline uses, the test
+behind each P value and whether the P values are corrected. Write those into `caption=` in
+the script, where they stay with the table. The manuscript-writing skill's
+references/clarity.md lists what a display that stands alone carries.
+
 A figure script lives in `figures/`, reads the results, and types no data values. Numbers in
 the rendered figure must be result displays, conventions, or declared ticks in
 `figures/<name>.guard.yaml`, each with a `why`. With matplotlib, set
@@ -282,6 +289,8 @@ checked like any other.
 | `interval-level-differs`, `spread-label-differs` | a warning: the level written beside an interval ("90% CI"), or the label beside a dispersion ("SE"), is not the one the analysis emitted. Write the one emitted, or bind what the text means |
 | `interval-level-undeclared` | a warning: an interval is quoted and its level was not emitted. Say it once: `Emitter(__file__, ci_level="95%")`, `mg_emitter(..., ci_level = "95%")` |
 | `family-uncorrected` | a warning: a family of more than one p value, and no `correction()` declared for it. "none" with a reason is a declaration |
+| `discussion-not-reported` | a warning: the Discussion binds a result that the Methods, the Results, the supplement and the tables and figures placed never report. Report it in the Results, and let the Discussion come back to it |
+| `discussion-in-supplement` | a note: the Discussion binds a result only the supplement reports. Report it in the Results too, or say in the Discussion's sentence where the supplement has it ("Table S3") |
 
 ## If you are a model doing this
 

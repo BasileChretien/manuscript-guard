@@ -43,7 +43,17 @@ read [references/remits.md](references/remits.md), which gives each one's remit 
   comparisons it uses, and for the people whose work it says it improves on, asked apart
   whether the paper is right and whether it is new;
 - **the abstract alone**: a reader sent only the title and abstract, who says what they
-  conclude and whether the caveat that would change that conclusion is there; route A only;
+  conclude, whether the caveat that would change that conclusion is there, and which words
+  they could not understand from the abstract alone; route A only;
+- **a reader new to the paper**, on every paper: whether someone of the field who has not
+  seen it can follow it, each term defined at first use and used in one sense, each result
+  the Discussion interprets reported in the Results;
+- **statistics for a reader without statistical training**: whether each method has a plain
+  gloss where it first appears and each number says what it is, a range labelled, a test the
+  Results use named in the Methods;
+- **the displays alone**: a reader sent only the tables and the rendered figures with their
+  captions, legends and notes, who says what each shows and what it leaves undefined; then
+  each display's conclusion is set beside the text's headline; route A only;
 - **interpretation**, when `check` notes `interpretation-sentences`: a reader sent the
   sentences of the Results and the Discussion that claim and rest on neither a result nor a
   citation, which `manuscript-guard explain <file>` lists, and asked whether each follows from
@@ -57,8 +67,10 @@ reviewers with the same remit are one reviewer.
 
 If there is no panel file when `manuscript-guard review --run` is used (route B below), it
 writes a starter panel that assumes no field: design, statistics, reporting and an
-adversarial reviewer in round one; a desk editor and a specialist reader in round two. That
-is a place to start. A panel fitted to the paper sees more, so edit the file.
+adversarial reviewer in round one; a desk editor, a specialist reader and a reader new to the
+paper with no statistical training in round two. That is a place to start. A panel fitted to
+the paper sees more, so edit the file, and add the displays alone and the abstract alone as a
+round of their own read by route A.
 
 ## 2. Review
 

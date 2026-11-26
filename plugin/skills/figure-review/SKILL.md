@@ -1,6 +1,6 @@
 ---
 name: figure-review
-description: Look at a rendered figure and record whether it is honest, complete and consistent with the results and the manuscript. Use when `manuscript-guard check` reports figure-unreviewed, figure-review-stale, figure-alt-missing, figure-alt-long, figure-alt-number or figure-alt-binding, when writing a figure's alternative text, after re-rendering a figure, or before a submission build.
+description: Look at a rendered figure and record whether it is honest, complete and consistent with the results and the manuscript. Use when `manuscript-guard check` reports figure-unreviewed, figure-review-stale, figure-alt-missing, figure-alt-long, figure-alt-number, figure-alt-binding or caption-line-unnamed, when writing a figure's alternative text, after re-rendering a figure, or before a submission build.
 ---
 
 # Reviewing a figure
@@ -50,7 +50,7 @@ having done it, so write what you actually saw in each case.
 |---|---|
 | `values-match-results` | Does every number shown match `results/`, to the digit? Do the marks sit where those values belong on the scale? |
 | `axes-labelled-and-scaled` | Do axes carry units? Is a log or truncated scale declared rather than left to be inferred? |
-| `caption-agrees` | Does the caption describe the figure that is actually drawn — the same panels, the same series, the same comparison? |
+| `caption-agrees` | Does the caption describe the figure that is actually drawn — the same panels, the same series, the same comparison? Does the figure draw the comparison the text headlines, against the same comparator? Does the legend name what the caption names? |
 | `legend-and-marks-explained` | Is every mark, colour, line style and series accounted for? Is anything drawn that nothing names? Does the legend state n, and whether it counts biological or technical replicates; what the error bars or ribbons are (SD, SE or a CI, and its level); any smoothing; what each significance marker means, and whether it was corrected for multiple comparisons? Where intervals are drawn at separate time points, does it say they are not an interval for the change between them? |
 | `no-unexplained-number` | Is anything visible that is neither a result nor part of the scale? |
 | `scale-not-misleading` | Does the visual encoding overstate the finding? Baseline not at zero, area used for a linear quantity, a ratio on a linear axis? A bar of means for a small sample with no points drawn, which hides how the data are spread? `check` reports one its script draws (`figure-bars-of-means`); a figure with no script is yours to see. |
@@ -60,6 +60,21 @@ The check that most often finds something is `caption-agrees`, because the text 
 figure are edited at different times and drift apart quietly. Read the manuscript sentence
 that refers to the figure and compare it, word by word, against what is drawn. A sentence
 promising "against the comparators" beside a single-row plot is the archetype.
+
+Then read the sentence that gives the paper's headline, in the Abstract and the Results, and
+find its comparison in the figure. Where the text reports the result against the strictest
+of several comparators and the figure draws only the weakest, the figure shows a larger
+effect than the text claims, and every reader who looks at the figure alone takes that one
+away. Record it as a `fail` finding under `caption-agrees` and set the verdict to `concerns`:
+the figure draws the headline's comparator, or the text headlines what the figure draws.
+
+The legend and the caption are read alone by many readers, so under
+`legend-and-marks-explained` also ask whether they define every symbol, abbreviation and
+unit the figure shows, name the comparator, and say what each line, band and marker stands
+for and how it is drawn. `check` warns of a caption that points at "the line" or "the curve"
+and never says which (`caption-line-unnamed`): name the mark by its style and by what it
+marks, "below the dashed line of equal shares". The manuscript-writing skill's
+references/clarity.md says what a display that stands alone carries.
 
 ## The alternative text
 

@@ -1,0 +1,224 @@
+schema: manuscript-guard/statistical-methods/1
+
+# The tests, corrections, intervals, resampling methods and models a paper names, each by the
+# words papers use for it. Read by G9 (`gates/analyses_named.py`): one the Results name, the
+# main text's or the supplement's, that the Methods do not name at all, the main text's or the
+# supplement's, is a warning (`analysis-not-in-methods`). A reader meets the test in the
+# Results and cannot find what it was, what it was used for, or why it fitted the data.
+#
+# Each entry:
+#   id      a short name that does not change, the finding's subject;
+#   name    the method as the warning names it;
+#   names   the words that name it, any one of which in the Methods counts as naming it.
+#
+# How a name is read:
+#   - whole words, in any case, but a name in capitals alone ("ANOVA", "GEE"), matched as
+#     written;
+#   - a space, a hyphen, an en dash or a line break between two of its words, as one: "chi
+#     squared", "chi-squared", "Mann–Whitney";
+#   - "'s" at the end of a word may be there or not, so "Fisher's exact test" is also
+#     "Fisher exact test", and an "s" or "es" after the last word, so "t tests" too;
+#   - in the text as a reader reads it: not in a binding, a citation, a comment, code or an
+#     address.
+#
+# An entry is one method under every name it has, so that naming it one way in the Methods
+# and another in the Results is no warning: "Mann-Whitney" and "Wilcoxon rank-sum" are one
+# test. Two methods that only share a word are two entries, and a name that is a word of
+# another method's names is left out ("Wilcoxon" alone, "Fisher" alone, "Wilson" alone).
+# Erring towards finding a name in the Methods is deliberate: a warning that is wrong costs
+# the author's trust, and the review panel's statistics remit reads what the list does not.
+#
+# Not here: the measures a paper estimates (an odds ratio, a hazard ratio, a sensitivity),
+# which a paper names in the Methods as a matter of course and a Results sentence restates;
+# and the designs (a case-control study), which are G12's.
+
+methods:
+  # Tests of a difference
+  - id: fisher-exact
+    name: Fisher's exact test
+    names: ["Fisher's exact test", "Fisher's test", "Fisher-Freeman-Halton"]
+  - id: chi-squared
+    name: the chi-squared test
+    names: ["chi-squared", "chi-square", "chi2", "χ2", "χ²", "χ^2^"]
+  - id: t-test
+    name: the t test
+    names: ["t test", "Student's t", "Welch's t", "Welch's test"]
+  - id: mann-whitney
+    name: the Mann-Whitney test
+    names: ["Mann-Whitney", "Wilcoxon rank-sum", "Wilcoxon-Mann-Whitney"]
+  - id: wilcoxon-signed-rank
+    name: the Wilcoxon signed-rank test
+    names: ["signed-rank"]
+  - id: kruskal-wallis
+    name: the Kruskal-Wallis test
+    names: ["Kruskal-Wallis"]
+  - id: anova
+    name: analysis of variance
+    names: ["ANOVA", "analysis of variance"]
+  - id: ancova
+    name: analysis of covariance
+    names: ["ANCOVA", "analysis of covariance"]
+  - id: mcnemar
+    name: McNemar's test
+    names: ["McNemar's"]
+  - id: cochran-armitage
+    name: the Cochran-Armitage test for trend
+    names: ["Cochran-Armitage"]
+  - id: mantel-haenszel
+    name: the Mantel-Haenszel method
+    names: ["Mantel-Haenszel"]
+  - id: breslow-day
+    name: the Breslow-Day test
+    names: ["Breslow-Day"]
+  - id: log-rank
+    name: the log-rank test
+    names: ["log-rank", "logrank"]
+  - id: wald
+    name: the Wald test or interval
+    names: ["Wald"]
+  - id: permutation
+    name: a permutation test
+    names: ["permutation test", "permutation-based", "randomisation test", "randomization test"]
+
+  # Tests of a model or of a distribution
+  - id: shapiro-wilk
+    name: the Shapiro-Wilk test
+    names: ["Shapiro-Wilk"]
+  - id: kolmogorov-smirnov
+    name: the Kolmogorov-Smirnov test
+    names: ["Kolmogorov-Smirnov"]
+  - id: levene
+    name: Levene's test
+    names: ["Levene's"]
+  - id: hosmer-lemeshow
+    name: the Hosmer-Lemeshow test
+    names: ["Hosmer-Lemeshow"]
+
+  # Corrections for multiple comparisons
+  - id: bonferroni
+    name: the Bonferroni correction
+    names: ["Bonferroni"]
+  - id: holm
+    name: Holm's correction
+    names: ["Holm's", "Holm-Bonferroni"]
+  - id: benjamini-hochberg
+    name: the Benjamini-Hochberg correction
+    names: ["Benjamini-Hochberg", "Benjamini and Hochberg", "Benjamini-Yekutieli",
+            "false discovery rate", "FDR"]
+  - id: tukey
+    name: Tukey's test
+    names: ["Tukey's"]
+  - id: dunnett
+    name: Dunnett's test
+    names: ["Dunnett's"]
+  - id: dunn
+    name: Dunn's test
+    names: ["Dunn's test", "Dunn's post hoc", "Dunn's multiple"]
+  - id: scheffe
+    name: Scheffé's method
+    names: ["Scheffé's", "Scheffe's"]
+
+  # Intervals
+  - id: wilson
+    name: the Wilson interval
+    names: ["Wilson interval", "Wilson score", "Wilson's score", "Wilson confidence",
+            "Wilson CI", "Wilson's method", "Wilson method"]
+  - id: clopper-pearson
+    name: the Clopper-Pearson interval
+    names: ["Clopper-Pearson", "exact binomial"]
+
+  # Resampling and validation
+  - id: bootstrap
+    name: the bootstrap
+    names: ["bootstrap", "bootstrapped", "bootstrapping"]
+  - id: jackknife
+    name: the jackknife
+    names: ["jackknife", "jack-knife", "jackknifed", "jackknifing"]
+  - id: cross-validation
+    name: cross-validation
+    names: ["cross-validation", "cross-validated", "k-fold", "leave-one-out"]
+
+  # Agreement and correlation
+  - id: kappa
+    name: a kappa statistic
+    names: ["kappa", "κ"]
+  - id: intraclass
+    name: the intraclass correlation
+    names: ["intraclass correlation", "intra-class correlation", "ICC"]
+  - id: spearman
+    name: Spearman's correlation
+    names: ["Spearman's"]
+  - id: pearson-correlation
+    name: Pearson's correlation
+    names: ["Pearson's correlation", "Pearson's r", "Pearson's coefficient",
+            "Pearson's product-moment"]
+  - id: kendall
+    name: Kendall's tau
+    names: ["Kendall's tau", "Kendall's τ", "Kendall's rank"]
+
+  # Models
+  - id: logistic
+    name: logistic regression
+    names: ["logistic regression", "logistic model", "logit model"]
+  - id: poisson
+    name: Poisson regression
+    names: ["Poisson regression", "Poisson model"]
+  - id: negative-binomial
+    name: negative binomial regression
+    names: ["negative binomial"]
+  - id: linear-regression
+    name: linear regression
+    names: ["linear regression", "linear model", "least squares", "OLS"]
+  - id: mixed-model
+    name: a mixed-effects model
+    names: ["mixed model", "mixed-effects", "multilevel model", "multilevel regression",
+            "hierarchical model", "random intercept"]
+  - id: gee
+    name: generalised estimating equations
+    names: ["generalised estimating equation", "generalized estimating equation", "GEE"]
+  - id: cox
+    name: Cox regression
+    names: ["Cox regression", "Cox model", "Cox proportional", "Cox's", "proportional hazards",
+            "proportional-hazards"]
+  - id: kaplan-meier
+    name: the Kaplan-Meier method
+    names: ["Kaplan-Meier"]
+  - id: fine-gray
+    name: the Fine-Gray model
+    names: ["Fine-Gray", "Fine and Gray", "subdistribution hazard"]
+  - id: spline
+    name: a spline
+    names: ["spline", "restricted cubic"]
+  - id: penalised
+    name: penalised regression
+    names: ["lasso", "elastic net", "ridge regression", "penalised regression",
+            "penalized regression"]
+  - id: random-forest
+    name: a random forest
+    names: ["random forest"]
+  - id: gradient-boosting
+    name: gradient boosting
+    names: ["gradient boosting", "gradient-boosted", "XGBoost", "LightGBM"]
+
+  # Adjustment and causal methods
+  - id: propensity
+    name: a propensity score
+    names: ["propensity"]
+  - id: inverse-probability
+    name: inverse probability weighting
+    names: ["inverse probability", "inverse-probability", "IPTW", "IPW"]
+  - id: imputation
+    name: imputation of missing data
+    names: ["imputation", "imputed"]
+  - id: e-value
+    name: the E-value
+    names: ["E-value"]
+  - id: instrumental-variable
+    name: an instrumental variable
+    names: ["instrumental variable", "two-stage least squares"]
+  - id: difference-in-differences
+    name: difference-in-differences
+    names: ["difference-in-differences", "difference-in-difference"]
+  - id: interrupted-time-series
+    name: an interrupted time series
+    names: ["interrupted time series", "segmented regression", "joinpoint"]

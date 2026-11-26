@@ -227,6 +227,29 @@ outcome, the exposure, the population, the data source or the method. Propose th
 do not add it without the author's word, since choosing between two terms is choosing what
 the paper says.
 
+## Every reader
+
+The paper is read by a reader of the field new to it, a reader without statistical
+training, a reader of the tables and figures alone and a reader of the abstract alone, and
+each stops where its authors no longer look. Write for them from the first draft:
+
+- define each term where it is first used, the abstract included, for every unit it is used
+  of, and use it in one sense only;
+- give each statistical method a plain one-sentence gloss where it first appears, and name
+  in the Methods every test the Results use;
+- label every range, and say what "exploratory", "post hoc" and each sensitivity analysis
+  mean for the weight a reader gives the result;
+- report in the Results every result the Discussion interprets;
+- make each caption stand alone: its symbols, abbreviations, units, comparator, test and
+  whether its P values are corrected, and what each line and mark stands for;
+- have each figure draw the comparison the text headlines.
+
+[references/clarity.md](references/clarity.md) says how, with glosses that work, how to fit
+the definitions into an abstract with a word limit, and which of these `check` finds:
+`discussion-not-reported` and `discussion-in-supplement` (the results-binding skill),
+`analysis-not-in-methods` (methods-writer) and `caption-line-unnamed` (figure-review). The
+rest are found by the review panel's clarity remits.
+
 ## One English
 
 `english_variant` in `paper.yaml` says if the paper is in British (`en-GB`) or

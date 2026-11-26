@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed, software-uncited, rrid-not-looked-up, rrid-unresolved or cell-line-problematic, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed, software-uncited, rrid-not-looked-up, rrid-unresolved, cell-line-problematic or analysis-not-in-methods, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -51,6 +51,18 @@ Methods is not bound, the analysis is not emitting something it should. Add the 
 it reads naturally. "We removed duplicate reports by matching on report identifier" beats
 "Duplicate report removal was performed utilising identifier-based matching". The
 [manuscript-writing](../manuscript-writing/SKILL.md) skill covers the register.
+
+**Name every test the Results use, and gloss each method once.** A reader who meets a test
+in the Results looks for it here. Each test, correction, interval, resampling method and
+model the Results name is named in the Methods, with what it was used for, and given a plain
+one-sentence gloss where it first appears: "Proportions were compared with Fisher's exact
+test, a test of whether two proportions differ that holds for small counts". Say what an
+interval is an interval for where the data are a census, what "expected by chance" was
+computed from, and what each sensitivity analysis changes. G9 warns of a method from its
+list that the Results name and the Methods never do (`analysis-not-in-methods`): name it
+here, in the words the Results use, or give it one name in both. The manuscript-writing
+skill's references/clarity.md has glosses that work for a reader without statistical
+training.
 
 ## Reconciling after a change
 

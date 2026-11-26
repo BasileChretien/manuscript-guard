@@ -58,7 +58,7 @@ from manuscript_guard import claims
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.keys import ABSTRACT, MAIN, digest
 from manuscript_guard.text.boxes import box_of, environment_spans
@@ -78,6 +78,10 @@ from manuscript_guard.text.sections import Section, scannable, split_sections, s
 GATE = "G8"
 CODE = "summary-not-reported"
 CLAIM_CODE = "summary-claim-stronger"
+#: A result the Discussion gives that the paper reports nowhere, and one it reports only in
+#: the supplement.
+DISCUSSION_CODE = "discussion-not-reported"
+DISCUSSION_APART = "discussion-in-supplement"
 #: What `claims.compare_pair` may say of a summary sentence that holds a word of the claim
 #: lists against a Results sentence for it to claim more (`_more_than`).
 _MORE = frozenset({claims.STRONGER, claims.NEGATION})
@@ -259,12 +263,16 @@ class Walk:
     #: Each results key bound in a Results section of the files read so far, with its
     #: sentence, in the order read.
     stated: list[Stated] = field(default_factory=list)
+    #: Each results key bound in the Discussion of the files read so far, under the title of
+    #: the heading that names it, in the order read (`discussion-not-reported`).
+    discussed: list[Given] = field(default_factory=list)
 
     def read(self, text: str) -> tuple[list[Given], set[str]]:
         """The results keys `text` binds in a summary, and those it binds where the paper
         reports them. Those it binds in a Results section are kept in `stated`, with their
-        sentences, as each summary's binding is kept with its sentence."""
-        starts, places, results, _argued = self._placed(
+        sentences, as each summary's binding is kept with its sentence, and those it binds in
+        the Discussion in `discussed`."""
+        starts, places, results, _argued, discussion = self._placed(
             [section for section in split_sections(scannable(text)) if section.level])
         sentence_at = _sentences_of(text)
         given: list[Given] = []
@@ -290,6 +298,9 @@ class Walk:
             elif place is not None:
                 given.append(Given(placeholder.key, place, placeholder.line, placeholder.start,
                                    sentence, opens))  # fmt: skip
+            elif discussion[at] is not None:
+                self.discussed.append(Given(placeholder.key, discussion[at], placeholder.line,
+                                            placeholder.start, sentence, opens))  # fmt: skip
         return given, reported
 
     def reported_without_results(self) -> set[str]:
@@ -304,25 +315,38 @@ class Walk:
         for none of these. What `read` places a binding by, and the audit's Abstract against Results
         a number by, its sections read from a Word document's heading styles or a LaTeX
         document's printed view as well as from Markdown (`auditing.abstract`)."""
-        starts, places, _results, _argued = self._placed(sections)
+        starts, places, _results, _argued, _discussion = self._placed(sections)
         return lambda line: places[bisect_right(starts, line) - 1]
+
+    def parts(self, sections: list[Section]) -> tuple[list[int], list[str | None]]:
+        """The line each heading of one file starts on, given its headings in order, and what
+        the text under it is: the Methods' ("methods"), the Results' ("results") or neither
+        (None). The text under a heading the paper reports under, as `read` places a binding,
+        is the Results' where a Results heading decides its place (`_in_results`) and the
+        Methods' where a Methods heading does. What G9 reads a named analysis in
+        (`gates/analyses_named.py`), as `supplement_parts` reads a file of the supplement."""
+        starts, places, results, _argued, _discussion = self._placed(sections)
+        kinds = ["results" if inside else "methods" if place is REPORTED else None
+                 for place, inside in zip(places, results, strict=True)]  # fmt: skip
+        return starts, kinds
 
     def arguing(self, sections: list[Section]) -> Callable[[int], bool]:
         """Whether each line of one file, given its headings in order, is in the Results or
         the Discussion (`_argues`): what G8 reads the paper's interpretation in
         (`gates/interpretation.py`)."""
-        starts, _places, _results, argued = self._placed(sections)
+        starts, _places, _results, argued, _discussion = self._placed(sections)
         return lambda line: argued[bisect_right(starts, line) - 1]
 
-    def _placed(self, sections: list[Section]
-                ) -> tuple[list[int], list[object], list[bool], list[bool]]:  # fmt: skip
+    def _placed(self, sections: list[Section]) -> tuple[
+            list[int], list[object], list[bool], list[bool], list[str | None]]:  # fmt: skip
         """The line each heading of one file starts on, the place the text under it has,
         whether that text is in a Results section, one the paper's Results heading decides,
-        and whether it is in the Results or the Discussion."""
+        whether it is in the Results or the Discussion, and the title of the heading that
+        names the Discussion it is in, or None."""
         self.kept += sections
         self._name(sections)
         starts, places, results = [0], [self._place()], [self._in_results()]
-        argued = [self._argues()]
+        argued, discussion = [self._argues()], [self._discussion()]
         for section in sections:
             while self.chain and self.chain[-1].level >= section.level:
                 self.chain.pop()
@@ -331,9 +355,10 @@ class Walk:
             places.append(self._place())
             results.append(self._in_results())
             argued.append(self._argues())
+            discussion.append(self._discussion())
             if id(section) in self.results and places[-1] is REPORTED:
                 self.has_results = True
-        return starts, places, results, argued
+        return starts, places, results, argued, discussion
 
     def _name(self, sections: list[Section]) -> None:
         """Which sections of one file report and which summarise. A Results or a conclusion
@@ -418,6 +443,15 @@ class Walk:
                 discussion = True
         return discussion
 
+    def _discussion(self) -> str | None:
+        """The title of the heading that names the Discussion the text under the current
+        headings is in, as `_argues` reads it, the outermost such heading's; None where the
+        text is not the Discussion's: the Results', a summary's, the Methods' or another."""
+        if not self._argues() or self._in_results():
+            return None
+        return next(section.title for section in self.chain
+                    if id(section) not in self.titles and names_discussion(section.title))
+
 
 def check_reported(project: Project, results: Results) -> Report:
     """A warning for each results key a summary gives that the paper reports nowhere else,
@@ -428,18 +462,18 @@ def check_reported(project: Project, results: Results) -> Report:
 
     root = project.path("manuscript")
     walk = Walk(abstract_title(project), box_rules_of(project))
-    if manuscript_format(root) == LATEX:
-        given, reported, placed, stated = _latex_read(root, walk)
-    else:
-        given, reported, placed, stated = _markdown_read(root, walk)
-    reported |= walk.reported_without_results()
+    read = (_latex_read if manuscript_format(root) == LATEX else _markdown_read)(root, walk)
+    given, stated = read.given, read.stated
+    reported = read.reported | read.supplement | walk.reported_without_results()
+    placed = {kind: read.placed[kind] | read.placed_apart[kind] for kind in read.placed}
     same = _same_quantity(results)
     claimed = _claimed(root, given, stated, same)
+    discussed = _discussed(project, results, read, same) if walk.has_results else []
     reported_as = {same(key) for key in reported}
     missing = [(path, one) for path, one in given if same(one.key) not in reported_as]
     report = Report()
     if not missing:
-        return report.with_findings(*claimed)
+        return report.with_findings(*claimed, *discussed)
     shown = _printed(project, results, placed)
     seen: set[tuple[Path, str, str]] = set()
     for path, one in missing:
@@ -462,12 +496,73 @@ def check_reported(project: Project, results: Results) -> Report:
                 subject=one.key, at=one.start, sentence=_digest(one),
             )
         )
-    return report.with_findings(*claimed)
+    return report.with_findings(*claimed, *discussed)
 
 
-#: Read: (the summaries' bindings, the keys reported, the tables and figures placed, the
-#: Results' bindings), each binding with the file it is typed in.
-Read = tuple[list[tuple[Path, Given]], set[str], dict, list[tuple[Path, Stated]]]
+def _discussed(project: Project, results: Results, read: Read,
+               same: Callable[[str], str]) -> list[Finding]:  # fmt: skip
+    """For each results key the Discussion binds that the main text does not report, as a
+    summary's would be reported (`check_reported`) but by the main text alone: a note where
+    the supplement reports it, bound there or printed in a display it places, and a warning
+    where nothing does. Once for a key in a file under one heading. Read only where the paper
+    has a Results section (the caller's), since a review with none weighs the work of others
+    in its Discussion."""
+    main = {same(key) for key in read.reported}
+    apart = {same(key) for key in read.supplement}
+    shown: dict[bool, str] = {}
+    found: list[Finding] = []
+    seen: set[tuple[Path, str, str]] = set()
+    for path, one in read.discussed:
+        value = results.values.get(one.key)
+        if value is None or (path, one.key, one.heading) in seen or same(one.key) in main:
+            continue  # G2 says a key the analysis did not emit
+        seen.add((path, one.key, one.heading))
+        if False not in shown:
+            shown[False] = _printed(project, results, read.placed)
+        if _shows(shown[False], value.display):
+            continue
+        if True not in shown:
+            shown[True] = _printed(project, results, read.placed_apart)
+        heading = plain(one.heading)
+        if same(one.key) in apart or _shows(shown[True], value.display):
+            found.append(Finding(
+                gate=GATE, code=DISCUSSION_APART, severity=INFO, path=path, line=one.line,
+                message=f"results.{one.key} is given under {heading!r} and reported only in "
+                "the supplement",
+                hint="a reader of the paper meets this result first where the Discussion "
+                "interprets it: report it in the Results as well, or say in the sentence where "
+                "the supplement reports it (\"Table S3\")",
+                subject=one.key, at=one.start, sentence=_digest(one),
+            ))  # fmt: skip
+            continue
+        found.append(Finding(
+            gate=GATE, code=DISCUSSION_CODE, severity=WARN, path=path, line=one.line,
+            message=f"results.{one.key} is given under {heading!r} and {_NOWHERE}",
+            hint="the Discussion interprets results and gives none of its own: report this "
+            "one where the paper reports its results, a table or a figure included, and let "
+            "the Discussion come back to it",
+            subject=one.key, at=one.start, sentence=_digest(one),
+        ))  # fmt: skip
+    return found
+
+
+@dataclass
+class Read:
+    """What G8 reads of a manuscript for its summaries and its Discussion, each binding with
+    the file it is typed in: the summaries' bindings; the keys the main text binds where the
+    paper reports; those the supplement binds anywhere; the tables and figures the main text
+    places, and those the supplement places; the Results' bindings, the main text's and the
+    supplement's; and the bindings of the main text's Discussion."""
+
+    given: list[tuple[Path, Given]] = field(default_factory=list)
+    reported: set[str] = field(default_factory=set)
+    supplement: set[str] = field(default_factory=set)
+    placed: dict[str, set[str]] = field(
+        default_factory=lambda: {"table": set(), "figure": set()})
+    placed_apart: dict[str, set[str]] = field(
+        default_factory=lambda: {"table": set(), "figure": set()})
+    stated: list[tuple[Path, Stated]] = field(default_factory=list)
+    discussed: list[tuple[Path, Given]] = field(default_factory=list)
 
 
 def _latex_read(root: Path, walk: Walk) -> Read:
@@ -480,15 +575,13 @@ def _latex_read(root: Path, walk: Walk) -> Read:
     from manuscript_guard.text.latex.printed import printed
     from manuscript_guard.text.latex.structure import ENTRY, read_document
 
-    given: list[tuple[Path, Given]] = []
-    reported: set[str] = set()
-    placed: dict[str, set[str]] = {"table": set(), "figure": set()}
-    stated: list[tuple[Path, Stated]] = []
+    read = Read()
     for supplementary in (False, True):
         sources = [source for source in read_document(root, supplementary=supplementary).sources
                    if not source.loose and not source.path.lower().endswith(".sty")]  # fmt: skip
         view = printed(sources)
         placeholders = parse(view.text)[0]
+        placed = read.placed_apart if supplementary else read.placed
         for placeholder in placeholders:
             if placeholder.namespace in placed:
                 placed[placeholder.namespace].add(placeholder.key)
@@ -499,21 +592,24 @@ def _latex_read(root: Path, walk: Walk) -> Read:
             return root / path, line
 
         if supplementary:
-            reported |= {p.key for p in placeholders if p.namespace == "results"}
+            read.supplement |= {p.key for p in placeholders if p.namespace == "results"}
             for one in supplement_stated(view.text):
                 path, line = at(one)
-                stated.append((path, replace(one, line=line)))
+                read.stated.append((path, replace(one, line=line)))
             continue
         walk.boxed = _boxed_in(view, sources, walk.boxes)
         found, binds = walk.read(view.text)
         for one in found:
             path, line = at(one)
-            given.append((path, replace(one, line=line)))
+            read.given.append((path, replace(one, line=line)))
         for one in walk.stated:
             path, line = at(one)
-            stated.append((path, replace(one, line=line)))
-        reported |= binds
-    return given, reported, placed, stated
+            read.stated.append((path, replace(one, line=line)))
+        for one in walk.discussed:
+            path, line = at(one)
+            read.discussed.append((path, replace(one, line=line)))
+        read.reported |= binds
+    return read
 
 
 def _boxed_in(view, sources: list, rules: list) -> Callable[[int], str | None] | None:
@@ -543,28 +639,27 @@ def _markdown_read(root: Path, walk: Walk) -> Read:
     headings carried from one into the next, and the supplement's bindings, each reported;
     and the bindings of the Results, the paper's and the supplement's."""
     sources = source_files(root)
-    given: list[tuple[Path, Given]] = []
-    reported: set[str] = set()
-    placed: dict[str, set[str]] = {"table": set(), "figure": set()}
-    stated: list[tuple[Path, Stated]] = []
+    read = Read()
     supplement = [p for p in sources if is_supplementary(root, p)]
     paper = printed_order([p for p in sources if p not in supplement], supplementary=False)
     for path in [*paper, *supplement]:
         text = read_text(path)
         placeholders = parse(text)[0]
+        placed = read.placed_apart if path in supplement else read.placed
         for placeholder in placeholders:
             if placeholder.namespace in placed:
                 placed[placeholder.namespace].add(placeholder.key)
         if path in supplement:
-            reported |= {p.key for p in placeholders if p.namespace == "results"}
-            stated += [(path, one) for one in supplement_stated(text)]
+            read.supplement |= {p.key for p in placeholders if p.namespace == "results"}
+            read.stated += [(path, one) for one in supplement_stated(text)]
             continue
-        before = len(walk.stated)
+        before, discussed = len(walk.stated), len(walk.discussed)
         found, binds = walk.read(text)
-        given += [(path, one) for one in found]
-        stated += [(path, one) for one in walk.stated[before:]]
-        reported |= binds
-    return given, reported, placed, stated
+        read.given += [(path, one) for one in found]
+        read.stated += [(path, one) for one in walk.stated[before:]]
+        read.discussed += [(path, one) for one in walk.discussed[discussed:]]
+        read.reported |= binds
+    return read
 
 
 def _claimed(root: Path, given: list[tuple[Path, Given]], stated: list[tuple[Path, Stated]],

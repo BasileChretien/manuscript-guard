@@ -121,8 +121,8 @@ section in full and every finding with its place, its context and its hint, as o
 | Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
 | Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
-`--journal`, `--authors`, `--design` and `--cited` are for an editor or a referee, reading a
-paper someone else wrote: [For editors and reviewers](refereeing.md).
+`--journal`, `--authors`, `--design`, `--cited` and `--editor` are for an editor or a
+referee, reading a paper someone else wrote: [For editors and reviewers](refereeing.md).
 
 **Questions for the author.** Where no exact rule can decide, the audit asks. A question
 says what the audit saw, asks one question and names the answer that ends it. It is a
@@ -352,9 +352,10 @@ not read at all, in the audit or in `check`, which still gives one warning for e
 `--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
 `check` does at the submission stage. Neither gate is counted by `--strict`.
 Two of their findings are notes in an audit, and in `compare`, where `check` warns on them
-or fails them: the names from the code, and a bare placeholder ("xxxx", "[url]", "TBD").
-On real papers each was right less than half the time; a journal template's instruction
-left in the text, "Click or tap here to enter text." among them, still fails
+or fails them: the names from the code, and text a model or a template left behind ("xxxx",
+"[url]", "TBD", "TODO", a journal template's instruction to its authors, Word's "Click or tap
+here to enter text." in a field left empty). On real papers each was right less than half
+the time, the second 1 time in 30
 ([DESIGN.md](../DESIGN.md), "In an audit, a code's severity follows how often it was
 right"). A short form used before its definition is a note too where the audit read the text
 from a PDF, a LaTeX or Word paper's own PDF among them: a PDF's paragraphs are gone, so a

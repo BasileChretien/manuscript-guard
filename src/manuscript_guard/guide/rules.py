@@ -233,6 +233,13 @@ def _either(names) -> str:
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} or {names[-1]}"
 
 
+#: The studies `other` stands for, said beside "None of these" as each design's `describes` is
+#: beside it, so that an author whose study is one of them knows to choose it
+#: (`gates/design.py`, OTHER).
+_OTHER_STUDIES = ("a cross-sectional survey, a case series or report, a qualitative study, a "
+                  "narrative review, and any other study")
+
+
 def _choose_study_type(state: State) -> list[Action]:
     from manuscript_guard.gates.design import OTHER
 
@@ -243,8 +250,8 @@ def _choose_study_type(state: State) -> list[Action]:
                + (f", and it is reported with {_either(guidelines)}" if guidelines else ""),
                argv(state, "set", "study_type", key))
         for key, label, guidelines in state.study_types
-    ) + (Option(OTHER, "None of these", "the plan is asked for the seven sections every plan "
-                "has, and no guideline is asked for by the design",
+    ) + (Option(OTHER, f"None of these ({_OTHER_STUDIES})", "the plan is asked for the seven "
+                "sections every plan has, and no guideline is asked for by the design",
                 argv(state, "set", "study_type", OTHER)),)  # fmt: skip
     return [_choice_action("choose-study-type", "Name the study design", "analysis-plan",
                            Choice("What kind of study is this?", options), (), state, 3)]

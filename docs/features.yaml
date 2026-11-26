@@ -154,6 +154,7 @@ features:
       - tests/test_corruption.py::test_a_plan_changed_after_the_results_with_nothing_said_is_a_warning
       - tests/test_corruption.py::test_the_kept_plan_is_never_written_again
       - tests/test_study_types.py
+      - tests/test_differential.py::test_every_plan_sections_asked_input_holds_each_kind_of_section
     docs: docs/stages.md
 
   - id: data-sources
@@ -849,11 +850,19 @@ features:
     title: Audit a paper
     says: >-
       Checks a paper in Word, Markdown, LaTeX or PDF: its numbers against each other and the
-      outputs given, its Abstract against its Results, its words and its references.
+      outputs given, its Abstract against its Results, its words and its references, each
+      numbered entry held to the citations of it. In a Word or Markdown paper, every entry
+      is reported where the text cites nothing by number and no author of the list with a
+      year; a PDF's list and a LaTeX paper's are never reported so.
     status: works
     commands: [audit]
     skills: [paper-audit]
-    tests: [tests/test_audit.py, tests/test_audit_sections.py, tests/test_audit_pdf.py]
+    tests:
+      - tests/test_audit.py
+      - tests/test_audit_sections.py
+      - tests/test_audit_pdf.py
+      - tests/test_corruption.py::test_a_numbered_list_in_a_text_that_cites_nothing_by_number_is_every_entry_uncited
+      - tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number
     docs: docs/audit.md
 
   - id: audit-page
@@ -897,3 +906,18 @@ features:
     commands: [audit]
     tests: [tests/test_audit_commented.py, tests/test_audit_tracked.py, tests/test_report_pdf.py]
     docs: docs/refereeing.md
+
+  - id: editor-report
+    stage: others
+    title: An editor's report
+    says: >-
+      Puts what the audit found in four parts, what to look at before deciding, what to ask
+      the authors, what is for copyediting and what was read, with how often each kind was
+      right on published papers where that was measured.
+    status: partial
+    commands: [audit]
+    tests: [tests/test_audit_editor.py]
+    docs: docs/refereeing.md
+    limits: >-
+      On the command line only: the audit page, the PDF report and a letter to the authors
+      do not give it yet.

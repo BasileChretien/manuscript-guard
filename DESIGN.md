@@ -19666,14 +19666,22 @@ Added by the adversarial review, verified and **not** fixed:
   assessment, and missing survey wordings. So a heading of their own in other words, "Study
   sample", "Measures", "Covariate assessment" or "Probability weights", is refused and the
   plan told it lacks the section, a false alarm chosen over a false pass (Basile,
-  2026-11-26); a heading that names its section exactly is planned. The self-controlled
-  designs have no reporting guideline, and
+  2026-11-26). The author answers such a false alarm, for any design and any section but
+  the Deviations, by naming the section on the heading: its attribute block's identifier,
+  the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
+  the section's whatever its words, and the warning says which identifier. G12's check of the plan's
+  sections, its check that the Population names the chosen data source, and the brief read
+  the identifier. The Deviations cannot be so named: every other reader of it finds it by
+  its words, and one named under other words would be read by none of them. The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
   Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_a_word_of_any_heading`,
   `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
+  `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
+  `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
+  `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
   `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,
   `tests/test_corruption.py::test_a_paper_whose_design_has_none_of_its_guidelines_is_told`
@@ -29857,10 +29865,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper and outputs beside it, and a journal's
-    profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
-    projects, figures, packages, `--cited` and `--report-draft` are the command line's.
-    Accepted.
+  - *What it reads.* A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a
+    `.tar.gz`, outputs beside it, and a journal's profile and the authors' names, from its
+    form or from a file. PDFs (`pdftotext`), figures, packages, `--cited` and `--report-draft`
+    are the command line's. Accepted.
+  - *An archive is unpacked into the browser's memory*, so it is refused past 1 GiB
+    unpacked (`web.PAGE_MAX_BYTES`), where a package's `.zip` is taken up to 16 GiB; a
+    browser may run out of memory below that, and then says so as its own error. Pinned by
+    `tests/test_paper_archive.py::test_an_archive_past_the_limits_is_refused`.
   - *The journal form's statements* are found under the heading the reader gives for each,
     or its usual one: a heading, or the label a paragraph opens with, whose whole title is
     that heading, its case, number and marks aside (`journal_form.pattern`). A paper that
@@ -29872,8 +29884,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
     that start with "-", the `.docx` against two outputs whose names the page once made
     one, with a referee's options, in American English with the copy with tracked changes,
-    and held to a journal's rules from the form with a double-blind review), in Node and in
-    two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    held to a journal's rules from the form with a double-blind review, and a LaTeX project
+    as a `.zip` and as a `.tar.gz` held to the folder they hold), in Node and in two
+    browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the five registries answer a page (CORS) was tested by hand

@@ -731,7 +731,7 @@ def test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held(project: Path) 
     assert not _unstored_of(only(document, "claim"), COHORT)
 
 
-@pytest.mark.parametrize("suffix", [".csv", ".bib", ".docx"])
+@pytest.mark.parametrize("suffix", [".csv", ".bib", ".ris", ".docx"])
 def test_a_file_the_ledger_names_that_is_not_the_work_is_no_copy(
     project: Path, suffix: str
 ) -> None:
@@ -742,6 +742,77 @@ def test_a_file_the_ledger_names_that_is_not_the_work_is_no_copy(
     _ledger_names(project, COHORT, f'"sources/Cohort 2021 table 2{suffix}"')
     entries = _unstored_of(only(produced(project), "claim"), COHORT)
     assert entries and all(entry["state"] == "nothing stored" for entry in entries)
+
+
+@pytest.mark.parametrize("name", ["Cohort 2021.md", "Cohort 2021 PMC.xml", "Cohort 2021"])
+def test_a_file_the_ledger_names_that_g7_reads_as_the_work_is_a_copy(
+    project: Path, name: str
+) -> None:
+    """Round 3 of #810: round 2 kept only .txt, HTML and PDF, so a work's Markdown, its JATS
+    XML from PMC or a file with no suffix, each of which G7 reads and holds a quote to
+    (`read_source`), was said to be no copy on every item citing it."""
+    sources = _sources(project)
+    (sources / f"{COHORT}.txt").rename(sources / name)
+    _ledger_names(project, COHORT, f'"sources/{name}"')
+    assert not _unstored_of(produced(project)["items"], COHORT)
+
+
+def test_a_table_under_the_works_filed_name_alone_is_no_copy(project: Path) -> None:
+    """Round 3 of #810: a file under the filed name counted whatever its kind, so
+    `<key>.csv`, a table, was taken for the work's full text."""
+    sources = _sources(project)
+    (sources / f"{COHORT}.txt").rename(sources / f"{COHORT}.csv")
+    entries = _unstored_of(only(produced(project), "claim"), COHORT)
+    assert entries and all(entry["state"] == "nothing stored" for entry in entries)
+
+
+def _second_entry(root: Path, key: str, depth: str) -> None:
+    """A second value of the ledger read from the signal's stored file, at `depth`."""
+    ledger = root / "literature" / "ledger.yaml"
+    ledger.write_text(ledger.read_text(encoding="utf-8") + (
+        f"\n  - key: background.{key}\n    value: 3.2\n    display: \"3.2\"\n"
+        f"    citekey: {SIGNAL}\n    depth: {depth}\n"
+        f"    source_file: sources/{SIGNAL}.txt\n    locator: \"Abstract, Results\"\n"
+        "    quote: \"A signal was detected for the class as a whole (ROR 2.6, 95% CI "
+        "2.1-3.2).\"\n"), encoding="utf-8")  # fmt: skip
+
+
+def test_a_file_one_entry_reads_from_the_full_text_is_a_copy(project: Path) -> None:
+    """The abstract rule is of every entry naming a file: one entry at `full-text` beside the
+    example's at `abstract-only`, both naming the signal's file, makes it the full text."""
+    _second_entry(project, "class_ror_upper", "full-text")
+    assert not _unstored_of(produced(project)["items"], SIGNAL)
+
+
+def test_a_file_every_entry_reads_from_the_abstract_is_the_abstract(project: Path) -> None:
+    _second_entry(project, "class_ror_upper", "abstract-only")
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+
+
+def test_a_copy_away_the_ledger_reads_as_an_abstract_is_only_the_abstract(project: Path) -> None:
+    """The kept-away branch of the abstract rule: the signal's copy, recorded and kept out of
+    git, is the file the ledger reads at `depth: abstract-only`, so it is not a copy of the
+    work kept elsewhere."""
+    from kept_away import keep_away
+
+    keep_away(project, f"{SIGNAL}.txt", SIGNAL)
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+    assert f"Only the abstract of @{SIGNAL} ({SIGNAL}.txt) is recorded" in entries[0]["says"]
+    assert "not on the computer that built this page" in entries[0]["says"]
+
+
+def test_the_depth_is_the_ledgers_and_not_the_files(project: Path) -> None:
+    """Known gaps: a full text saved over the file the ledger still reads at `depth:
+    abstract-only` is said to be only its abstract, until the entry's depth is changed."""
+    path = _sources(project) / f"{SIGNAL}.txt"
+    path.write_text(path.read_text(encoding="utf-8") + "\nIntroduction\n" + "Methods. " * 400,
+                    encoding="utf-8")  # fmt: skip
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+    _all_full_text(project)
+    assert not _unstored_of(produced(project)["items"], SIGNAL)
 
 
 def test_a_source_file_is_read_as_g7_reads_it_with_its_spaces_taken_off(project: Path) -> None:

@@ -104,11 +104,12 @@ only its abstract, or a copy kept out of git on another computer), each sentence
 each value quoted from it says so on its own item, and says whether any of the work's words are
 shown: a co-author shown none of them has to find the work to answer. A copy counts where it is
 under `literature/sources/` by the work's citation key, where a ledger entry citing the work
-names it as its `source_file`, or where `literature/sources.yaml` records it as the work's; one
-the ledger names or the record lists counts only as a `.txt` file, a page of HTML or a PDF,
-never as a table, a citation file or a Word document, which `check` does not read as the
-work. A file every ledger entry naming it reads at `depth: abstract-only` is the work's
-abstract, whatever its name.
+names it as its `source_file`, or where `literature/sources.yaml` records it as the work's. In
+each of these places it counts in any kind `check` holds a quote to (text, Markdown, XML, a file
+with no suffix, HTML, a PDF), and never as a table or a citation file (`.csv`, `.bib`, `.nbib`,
+`.ris`) or a Word document. A file every ledger entry naming it reads at
+`depth: abstract-only` is the work's abstract, whatever its name and whatever it now holds:
+the depth is the ledger's.
 `build` lists the works with none by group and citation key, with how many items cite each and
 the name to save its PDF under (the key, each character other than an ASCII letter, a digit,
 `_`, `.` or `-` written `_`, then `.pdf`: `müller2020` is saved as `m_ller2020.pdf`), so that

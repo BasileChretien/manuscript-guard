@@ -79,6 +79,10 @@ RESERVED_GROUPS = frozenset({METHODS_GROUP["id"]})
 NOTHING_STORED = "nothing stored"
 ONLY_ABSTRACT = "only its abstract"
 KEPT_AWAY = "kept out of git, not on this computer"
+#: What G7 reads and is no work: a table and a citation file, the kinds `copies.NOT_THE_WORK`
+#: is written for. That set also holds every text kind `sync-sources` does not take from
+#: Zotero, .md and .xml among them, which G7 reads as a work and holds a quote to.
+_NOT_A_WORK = frozenset({".csv", ".bib", ".nbib", ".ris"})
 
 #: A binding, as the manuscript writes it. The toolkit's own pattern, from
 #: `text/placeholders.py`: it accepts `{{ lit.x }}` with spaces, which the renderer resolves and
@@ -453,10 +457,11 @@ def holdings(project, literature=None) -> Holdings:
     """What this computer holds of each cited work, by its citation key: None where its full
     text is stored, and otherwise its state and what is to be said of it.
 
-    A copy is a file of `literature/sources/` under the work's filed name that G7 reads
-    (`stored_files`), a file a ledger entry citing the work names as its `source_file`, or a
-    file `literature/sources.yaml` records as the work's, each of the last two read as G7
-    reads a ledger's (`_named_copies`). One the record lists and git keeps out of the
+    A copy is a file of a kind G7 reads as the work (`_a_work_kind`, so never a table or a
+    citation file): one of `literature/sources/` under the work's filed name (`stored_files`),
+    one a ledger entry citing the work names as its `source_file`, or one
+    `literature/sources.yaml` records as the work's, each of the last two read as G7 reads a
+    ledger's (`_named_copies`). One the record lists and git keeps out of the
     repository is on another computer, as in CI. An abstract alone is a part of the work, not
     the work, whether it is here or away: a file named `<key>.abstract.<suffix>`, or one every
     ledger entry naming it reads at `depth: abstract-only`, whatever its name (round 2 of
@@ -472,10 +477,11 @@ def holdings(project, literature=None) -> Holdings:
         return is_abstract(path) or _same(path) in read_as_abstract
 
     def held(key: str) -> tuple[str, str] | None:
-        files = (stored_files(folder, key) if folder.is_dir() else []) + named.get(key, [])
+        filed = stored_files(folder, key) if folder.is_dir() else []
+        files = [path for path in filed if _a_work_kind(path)] + named.get(key, [])
         if any(not an_abstract(path) for path in files):
             return None
-        elsewhere = kept.of(key)
+        elsewhere = [name for name in kept.of(key) if _a_work_kind(name)]
         whole = [name for name in elsewhere if not an_abstract(folder / name)]
         if whole:
             return KEPT_AWAY, (f"A copy of @{key} ({', '.join(whole)}) is recorded in "
@@ -492,6 +498,17 @@ def holdings(project, literature=None) -> Holdings:
     return held
 
 
+def _a_work_kind(name: str | Path) -> bool:
+    """Whether a file so named is of a kind G7 reads as the work: one `read_source` reads (text
+    of any kind, a file with no suffix, HTML, a PDF), and not a table or a citation file
+    (round 3 of #810). A Word document G7 does not read at all."""
+    from manuscript_guard.literature.sources import HTML_SUFFIXES, PDF_SUFFIXES, TEXT_SUFFIXES
+
+    suffix = Path(name).suffix.lower()
+    read = TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES | {""}
+    return suffix in read and suffix not in _NOT_A_WORK
+
+
 def _same(path: Path) -> str:
     """A path as two spellings of one file compare: a ledger's `sources/x.txt` from
     `literature/` and the filed name found in `literature/sources/`."""
@@ -504,20 +521,19 @@ def _named_copies(project, literature) -> tuple[dict[str, list[Path]], frozenset
 
     A ledger entry's `source_file` is read as G7 reads it (gates/literature.py,
     gates/citations.py): its spaces taken off, from `literature/`. Each file the record lists
-    is read from `literature/sources/`. Either is a copy only in a form G7 reads as the work:
-    one `stored_files` would find (text, HTML or PDF), and never a table or a citation file
-    (`copies.NOT_THE_WORK`), nor a Word document, which G7 cannot read (round 2 of #810). A
-    file is read as an abstract where each entry naming it says `depth: abstract-only`."""
+    is read from `literature/sources/`. Either is a copy only of a kind G7 reads as the work
+    (`_a_work_kind`): never a table or a citation file, nor a Word document, which G7 cannot
+    read (rounds 2 and 3 of #810). A file is read as an abstract where each entry naming it
+    says `depth: abstract-only`: the ledger says what the file is, and nothing reads the
+    file to see (Known gaps)."""
     from manuscript_guard.contracts._schema import ContractError
     from manuscript_guard.contracts.literature import ABSTRACT_ONLY
-    from manuscript_guard.literature.copies import NOT_THE_WORK, read_record
-    from manuscript_guard.literature.sources import HTML_SUFFIXES, PDF_SUFFIXES, TEXT_SUFFIXES
+    from manuscript_guard.literature.copies import read_record
 
-    readable = (TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES) - NOT_THE_WORK
     root = project.path("literature")
 
     def the_work(path: Path) -> bool:
-        return path.suffix.lower() in readable and path.is_file()
+        return _a_work_kind(path) and path.is_file()
 
     named: dict[str, list[Path]] = {}
     depths: dict[str, set[str]] = {}

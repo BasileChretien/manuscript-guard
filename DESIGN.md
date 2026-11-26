@@ -18055,6 +18055,12 @@ to fix is pinned until the fix lands, and the fix changes its test.
   `tests/test_checking.py::test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held`,
   `tests/test_checking.py::test_a_file_the_ledger_reads_as_an_abstract_is_only_the_abstract`
   and `tests/test_checking.py::test_storing_a_copy_later_keeps_the_answers_given_without_it`.
+- **On the checker page, a file's depth is the ledger's.** A stored file is a cited work's
+  abstract where every ledger entry naming it reads it at `depth: abstract-only`, and nothing
+  reads the file to see which it is: a full text saved later over that file is still said to
+  be only its abstract, on each item citing the work and in `checker build`'s list, until the
+  entry's depth is changed. Accepted.
+  Pinned by `tests/test_checking.py::test_the_depth_is_the_ledgers_and_not_the_files`.
 - **A methods item's code is read from disk, and only what the step's digest holds.** The
   lines shown are the script as it is when the page is built, and a script whose digest is not
   the one its run recorded is said to be so on the page and by `build`; a fragment that records

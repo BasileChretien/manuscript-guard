@@ -89,7 +89,7 @@ TIMEOUT_VARIABLE = "MANUSCRIPT_GUARD_VERIFY_TIMEOUT"
 #: written in: `record_verified` keeps them, for `check` to say.
 ENVIRONMENT_CODES = ("rerun-other-interpreter", "rerun-r-not-locked")
 #: The longest limit taken: seven days. Windows waits on a 32-bit count of milliseconds, about
-#: 49.7 days, and a limit past it, typed to mean "no limit", wrapped round to under a second
+#: 49.7 days, and a limit past it, typed to mean "no limit", wrapped round
 #: or raised with the script still running (round 1 of #820).
 MOST_SECONDS = 7 * 24 * 3600
 
@@ -464,7 +464,7 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
             )
     # A bad R is refused before any script runs, where an R script is among those to run:
     # refused at the first, the scripts sorted before it ran in full (round 2 of #820).
-    for named in _scripts_to_run(fragments, only):
+    for named in _scripts_to_run(fragments, only, root):
         problem = named_r_problem(Path(named), rscript)
         if problem is not None:
             raise VerifyError(problem)
@@ -580,9 +580,10 @@ def verify(project, *, only: list[str] | None = None, rscript: str | None = None
     return report
 
 
-def _scripts_to_run(fragments: list[Path], only: list[str] | None) -> list[str]:
+def _scripts_to_run(fragments: list[Path], only: list[str] | None, root: Path) -> list[str]:
     """The scripts `verify` runs for `fragments`, by their paths from the root, as its loop
-    passes them over: left out by `only`, naming none, or run at a site its receipt names."""
+    passes them over: left out by `only`, naming none, run at a site its receipt names, or
+    not there, which the run says as it did (round 3 of #820)."""
     named = []
     for fragment in fragments:
         if only and fragment.stem not in only:
@@ -595,7 +596,7 @@ def _scripts_to_run(fragments: list[Path], only: list[str] | None) -> list[str]:
         if isinstance(harvested, dict) and isinstance(harvested.get("receipt"), dict):
             continue
         script = provenance.get("generated_by") if isinstance(provenance, dict) else None
-        if isinstance(script, str) and script:
+        if isinstance(script, str) and script and (root / script).exists():
             named.append(script)
     return named
 

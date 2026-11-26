@@ -149,9 +149,6 @@ def make_receipt(project, site: str, *, rscript: str | None = None, timeout: int
         raise HarvestError(str(exc)) from exc
 
     def chosen(script: Path) -> list[str] | None:
-        problem = named_r_problem(script, rscript)
-        if problem is not None:
-            raise HarvestError(problem)
         return runner_for(script, rscript)
 
     def run_script(script: Path, cwd: Path, env):
@@ -165,6 +162,12 @@ def make_receipt(project, site: str, *, rscript: str | None = None, timeout: int
     entries = [entry for entry in load_entries(root) if entry.receipt == site]
     if not entries:
         raise HarvestError(f"no entry of harvest.yaml names the site {site!r} as its receipt")
+    # Every entry's R, before anything is copied or run: checked entry by entry, a Python
+    # entry before the R one ran in full before the receipt was refused (round 3 of #820).
+    for entry in entries:
+        problem = named_r_problem(root / entry.script, rscript)
+        if problem is not None:
+            raise HarvestError(problem)
     runs, outputs, warned = [], [], []
     with tempfile.TemporaryDirectory() as scratch:
         work = Path(scratch) / root.name

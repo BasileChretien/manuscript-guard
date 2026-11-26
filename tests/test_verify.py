@@ -641,6 +641,46 @@ def test_a_receipt_of_an_r_script_says_what_verify_says_of_a_variable_naming_no_
     assert not (root / "receipts").exists()
 
 
+
+def test_a_stale_r_fragment_whose_script_is_gone_is_said_so_as_before(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Round 3 of #820: the R named was checked for a script that is not there, and the run
+    was refused for the R where base ran the rest and said the script does not exist."""
+    from manuscript_guard.verify import RSCRIPT_VARIABLE
+
+    root = _bare(tmp_path, "analysis/01.py", "raise SystemExit(0)\n")
+    (root / "results" / "00_old.json").write_text(
+        json.dumps({"provenance": {"generated_by": "analysis/00_old.R"}, "values": {}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
+    result = run(root)
+    errors = {c.fragment: c.error for c in result.comparisons}
+    assert errors["00_old.json"] == "analysis/00_old.R does not exist"
+    assert "wrote no 01.json" in errors["01.json"]
+
+
+def test_a_receipt_refuses_a_bad_r_before_any_entry_runs(tmp_path: Path, monkeypatch) -> None:
+    """Round 3 of #820: checked entry by entry, a Python entry before the R one ran in full
+    before the receipt was refused."""
+    from manuscript_guard.harvest import Entry, HarvestError, append_entry, make_receipt
+    from manuscript_guard.verify import RSCRIPT_VARIABLE
+
+    ran = tmp_path / "ran.txt"
+    root = _receipted_bare(
+        tmp_path, "analysis/01_est.py",
+        f"from pathlib import Path\nPath({str(ran)!r}).write_text('ran')\n",
+    )
+    (root / "analysis" / "02_r.R").write_text("quit(status = 0)\n", encoding="utf-8")
+    append_entry(root, Entry("r", "output/r.csv", "analysis/02_r.R", row_key="group",
+                             receipt="site-a"))  # fmt: skip
+    monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
+    with pytest.raises(HarvestError, match=f"{RSCRIPT_VARIABLE} names .*, which is not a program"):
+        make_receipt(load_project(root)[0], "site-a")
+    assert not ran.exists()
+
+
 def test_the_limit_is_the_flag_then_the_variable_then_paper_yaml_then_1800(
     tmp_path: Path, monkeypatch
 ) -> None:

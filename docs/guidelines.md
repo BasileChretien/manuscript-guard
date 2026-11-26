@@ -51,8 +51,10 @@ A heading alone is satisfied by any manuscript, since every paper has a Methods;
 is what a reviewer checks. G5 looks for the quote under the heading `where` names, its
 subsections included, in the main text and in the supplement, and in the caption of the table
 or figure where `where` names one ("Table 1", "Figure S2"). Where `where` is `Title`, it looks
-in the title the document prints: for Markdown, `paper.yaml`'s title, not the short title,
-which the submission prints apart as the running title; for LaTeX, the one `\title{}` of the
+in the paper's title: for Markdown, `paper.yaml`'s `title`. Its `short_title` is printed too,
+by the Word build as a subtitle under the title and by the submission as the running title,
+but an item addressed in the title is addressed in the title alone, so quote the title. For
+LaTeX, the one `\title{}` of the
 main text TeX reads, as printed, without its `\thanks` or `\footnote`, or `paper.yaml`'s title
 where no file sets one. Where TeX reads several `\title`s, in two files or in a conditional's
 two branches, G5 names where each stands (`checklist-location-unknown`) and asks for one; it

@@ -257,9 +257,9 @@ _TWIN_TITLE = ("\\title{Reporting of hepatic injury with example-drug: a disprop
                "analysis of a synthetic spontaneous reporting database}")  # fmt: skip
 
 
-def _title_answer(twin: Path, quote: str) -> list[tuple[str, str]]:
-    """What G5 says, at submission, of the checklist's first item answered `where: Title`
-    with `quote`: each finding's code and message."""
+def _title_said(twin: Path, quote: str, stage: str = "submission") -> list[tuple[str, str, str]]:
+    """What G5 says, at `stage`, of the checklist's first item answered `where: Title` with
+    `quote`: each finding's code, severity and message."""
     import yaml
 
     from manuscript_guard.gates import check_reporting
@@ -268,8 +268,14 @@ def _title_answer(twin: Path, quote: str) -> list[tuple[str, str]]:
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     document["items"][0].update(where="Title", quote=quote)
     path.write_bytes(yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode())
-    found = check_reporting(load_project(twin)[0], stage="submission").findings
-    return [(f.code, f.message) for f in found if f.code.startswith("checklist-")]
+    found = check_reporting(load_project(twin)[0], stage=stage).findings
+    return [(f.code, f.severity, f.message) for f in found if f.code.startswith("checklist-")]
+
+
+def _title_answer(twin: Path, quote: str) -> list[tuple[str, str]]:
+    """What G5 says, at submission, of the checklist's first item answered `where: Title`
+    with `quote`: each finding's code and message."""
+    return [(code, message) for code, _severity, message in _title_said(twin, quote)]
 
 
 def test_a_latex_answer_in_the_title_is_held_to_the_title_main_tex_prints(twin: Path) -> None:
@@ -350,6 +356,58 @@ def test_two_titles_are_not_guessed_between(twin: Path) -> None:
     said = _title_answer(twin, "Reporting of hepatic injury with example-drug: a")
     assert [code for code, _message in said] == ["checklist-location-unknown"]
     assert "front.tex line 1" in said[0][1] and "main.tex line 4" in said[0][1]
+
+
+@pytest.mark.parametrize(("stage", "severity"),
+                         [("drafting", "info"), ("internal-review", "warn"),
+                          ("submission", "fail")])  # fmt: skip
+def test_two_titles_are_told_as_a_quote_is_and_a_missing_quote_still_is_said(
+    twin: Path, stage: str, severity: str
+) -> None:
+    """Round 3 of #813: the finding of two titles is told at the stage a quote's finding is,
+    a note while drafting, a warning from internal review and a failure at submission; and an
+    answer that quotes nothing is still said to, beside it."""
+    _set_title(twin, "\\input{front}\n" + _TWIN_TITLE,
+               "\\title{An older title of the study}\n")  # fmt: skip
+    quoted = _title_said(twin, "Reporting of hepatic injury with example-drug: a", stage)
+    assert [(code, said) for code, said, _message in quoted] == [
+        ("checklist-location-unknown", severity)]
+    unquoted = _title_said(twin, "", stage)
+    assert [(code, said) for code, said, _message in unquoted] == [
+        ("checklist-location-unknown", severity), ("checklist-quote-missing", severity)]
+
+
+#: How a preamble defines `\title` rather than setting a title, each before the title set.
+_TITLE_DEFINED = (
+    "\\renewcommand\\title[1]{\\gdef\\thetitle{#1}}",
+    "\\renewcommand*\\title[1]{\\gdef\\thetitle{#1}}",
+    "\\providecommand\\title{A title defined and never set}",
+    "\\newcommand\\title{A title defined and never set}",
+    "\\def\\title{A title defined and never set}",
+)
+
+
+@pytest.mark.parametrize("defined", _TITLE_DEFINED)
+def test_a_definition_of_title_is_no_title(tmp_path: Path, defined: str) -> None:
+    """Round 3 of #813: `\\title` after a definer is the command being defined, which prints
+    nothing there; the title is the one set after it."""
+    from manuscript_guard.text.latex.printed import printed_titles
+
+    folder = tmp_path / "manuscript"
+    shutil.copytree(TWIN, folder)
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_bytes(text.replace(_TWIN_TITLE, f"{defined}\n{_TWIN_TITLE}").encode())
+    assert [(t.path, t.line) for t in printed_titles(folder)] == [("main.tex", 4)]
+
+
+def test_a_title_set_after_its_definition_is_held_to(twin: Path) -> None:
+    """Round 3 of #813: so a quote of the title set is found, and one of the definition's
+    words is not."""
+    _set_title(twin, f"{_TITLE_DEFINED[3]}\n{_TWIN_TITLE}")
+    assert _title_answer(twin, "Reporting of hepatic injury with example-drug: a") == []
+    said = _title_answer(twin, "A title defined and never set")
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
 
 
 def test_a_title_s_notes_are_left_out_their_braces_nested(twin: Path) -> None:

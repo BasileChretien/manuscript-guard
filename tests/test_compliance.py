@@ -1241,9 +1241,10 @@ def test_title_and_abstract_still_names_the_abstract(project: Path) -> None:
 
 
 def test_the_running_title_is_not_part_of_the_title(project: Path) -> None:
-    """Round 2 of #813: `short_title` is the running title, which the submission's title page
-    prints apart ("Running title."), so a quote it alone holds, or one that runs from the title
-    into it, does not stand in the title: an item addressed in the title is the title's."""
+    """Rounds 2 and 3 of #813: `short_title` prints as a subtitle under the title in the Word
+    build and as the running title in the submission ("Running title."), but an item
+    addressed in the title is addressed in the title alone: a quote the short title alone
+    holds, or one that runs from the title into it, does not stand in the title."""
     edit_yaml(project / "paper.yaml",
               lambda d: d.update(short_title="A cohort study of hepatic injury"))  # fmt: skip
     for words in ("A cohort study of hepatic injury",

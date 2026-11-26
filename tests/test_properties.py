@@ -23663,6 +23663,12 @@ def _a_latex_title_tex_does_not_read_is_read(patch: pytest.MonkeyPatch) -> None:
                                                             passed(reading)[1]))  # fmt: skip
 
 
+def _a_definition_of_latex_title_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    patch.setattr(printed, "_DEFINED", re.compile(r"(?!)"))
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -26910,6 +26916,10 @@ BROKEN = {
     ),
     "a LaTeX title in a comment or in iffalse is read": (
         _a_latex_title_tex_does_not_read_is_read,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
+    ),
+    "a definition of LaTeX's title is read as a title": (
+        _a_definition_of_latex_title_is_a_title,
         test_a_latex_title_is_each_one_tex_reads_where_it_stands,
     ),
     "a finding's quote is found as characters, not as words": (

@@ -423,12 +423,14 @@ def _check_completion(
 
         titled = _several_titles(where, reason, quoting)
         if titled:
-            # Which `\title` prints is not guessed at, and the quote is held to none.
+            # Which `\title` prints is not guessed at, and the quote is held to none. Told as
+            # a quote is at the stage, and an answer that quotes nothing is still said to
+            # (round 3 of #813).
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="checklist-location-unknown",
-                    severity=WARN,
+                    severity=_quote_severity(quoting.stage),
                     message=f"{label} points at the title, and the manuscript sets "
                     f"\\title in {len(titled)} places TeX reads: {'; '.join(titled)}",
                     path=path,
@@ -436,6 +438,9 @@ def _check_completion(
                     "cannot be told from the source",
                 )
             )
+            if quoting.manuscript.judged(str(entry.get("quote") or ""), where) is None:
+                report = report.with_findings(*_quote_findings(label, entry, where, quoting,
+                                                               path))  # fmt: skip
             continue
 
         if where and not (

@@ -18,8 +18,10 @@ an emitted table's caption, numbered as the build numbers it (`display_numbers`)
 `where` is "Title" or "the title" (`names_title`), in the title the document prints as well:
 READUS-PV's items 1a and 1b are addressed there, and on the bisphosphonates paper
 (2026-11-25) they pointed at no heading. For a Markdown manuscript that is `paper.yaml`'s
-`title`, not its `short_title`, which the submission prints apart as the running title
-(round 2 of #813); for a LaTeX one, the one `\\title{}` of the main text TeX reads, as the
+`title` alone. Its `short_title` prints too, as a subtitle under the title in the Word build
+and as the running title in the submission, but an item addressed in the title is addressed
+in the title, so its quote is the title's (rounds 2 and 3 of #813). For a LaTeX one, the one
+`\\title{}` of the main text TeX reads, a `\\title` being defined setting none, as the
 reader prints the body, its notes left out (`latex.printed.printed_titles`), and
 `paper.yaml`'s title only where no file sets one (round 1). Where TeX reads several, in two
 files or in a conditional's two branches, which prints cannot be told: no title is read,
@@ -252,8 +254,9 @@ def _title_part(title: str, namespace: Mapping[str, object], named: str = TITLE_
 
 
 def _yaml_title(project) -> str | None:
-    """`paper.yaml`'s title, which the build prints as the title; not the short title, which
-    the submission prints apart as the running title (round 2 of #813)."""
+    """`paper.yaml`'s title, which the build prints as the title. Not the short title, which
+    the Word build prints as a subtitle under it and the submission as the running title: an
+    item addressed in the title is addressed in the title alone (rounds 2 and 3 of #813)."""
     said = project.paper.get("title")
     return said if isinstance(said, str) and said.strip() else None
 

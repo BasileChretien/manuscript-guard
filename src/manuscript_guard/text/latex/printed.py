@@ -166,6 +166,16 @@ def printed_of(folder, *, supplementary: bool, quoting: bool = False,
 #: print as footnotes, a note's number in brackets or not.
 _TITLE = re.compile(r"\\title(?![A-Za-z@])")
 _NOTE = re.compile(r"\\(?:thanks|footnote)(?![A-Za-z@])\s*(?:\[[^\]\n]*\]\s*)?\{")
+#: What stands before a `\\title` that is being defined, not set (round 3 of #813):
+#: `\\renewcommand\\title`, `\\renewcommand*\\title`, `\\providecommand\\title`,
+#: `\\newcommand\\title`, `\\DeclareRobustCommand\\title`, `\\def\\title` and its global and
+#: expanding forms, and `\\let\\title`. Read up to the `\\title`, white space between.
+_DEFINED = re.compile(
+    r"\\(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*$|\\[gex]?def\s*$"
+    r"|\\let\s*$"
+)
+#: How far before a `\\title` its definer is looked for.
+_DEFINER_REACH = 40
 
 
 @dataclass(frozen=True)
@@ -213,12 +223,15 @@ def _title_text(source: Source, start: int, end: int) -> str:
 
 def _title_spans(source: Source) -> list[tuple[int, int, int]]:
     """Each `\\title` a file sets that TeX reads: where its command starts, and where its
-    argument runs, inside its braces."""
+    argument runs, inside its braces. One a definer stands before is being defined, and sets
+    no title (`_DEFINED`)."""
     text = source.text
     read, comments = _passed_over(source.reading)
     spans = []
     for found in _TITLE.finditer(text):
         if not read(found.start()):
+            continue
+        if _DEFINED.search(text, max(0, found.start() - _DEFINER_REACH), found.start()):
             continue
         at = _ahead(text, _options_end(text, found.end(), comments), comments)
         if at < 0 or at >= len(text) or text[at] != "{":

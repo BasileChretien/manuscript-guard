@@ -6230,11 +6230,17 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
 
 #: Each way a LaTeX manuscript's main text sets its title (`latex.printed.printed_titles`,
 #: round 2 of #813): one `\title`, in the entry file or in a file its preamble inputs, beside
-#: one TeX does not read, in a comment or in `\iffalse`, with its notes or a CAS option, and
-#: two that TeX reads, which G5 does not choose between.
+#: one TeX does not read, in a comment or in `\iffalse`, after a definition of `\title`,
+#: which sets no title (round 3), with its notes or a CAS option, and two that TeX reads,
+#: which G5 does not choose between.
 LATEX_TITLES = (
     "in the entry file", "in a file it inputs", "beside a commented one", "beside one in iffalse",
-    "with its notes", "with an option", "two of them",
+    "after a definition of it", "with its notes", "with an option", "two of them",
+)  # fmt: skip
+#: How a preamble defines `\title` rather than setting one (round 3 of #813), `{}` its body.
+_TITLE_DEFINERS = (
+    "\\renewcommand\\title[1]{}", "\\renewcommand*\\title[1]{}", "\\providecommand\\title{}",
+    "\\newcommand\\title{}", "\\def\\title{}",
 )  # fmt: skip
 
 
@@ -6287,6 +6293,12 @@ def latex_titles(draw: st.DrawFn) -> list[tuple[str, dict[str, str], list[list[A
     cases["beside one in iffalse"] = (
         {"main.tex": f"{head}{hidden}{BS}title{{{written}}}\n{body}"},
         [[printed, "main.tex", 2 + hidden.count(chr(10))]])  # fmt: skip
+    written, printed = title()
+    other, _ = title(one_line=True)
+    defined = draw(st.sampled_from(_TITLE_DEFINERS)).replace("{}", f"{{{other}}}")
+    cases["after a definition of it"] = (
+        {"main.tex": f"{head}{defined}\n{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 3]])  # fmt: skip
     written, printed = title()
     notes = f"{BS}thanks{{{note()}}}{BS}footnote{{{note()}}}"
     cases["with its notes"] = ({"main.tex": f"{head}{BS}title{{{written}{notes}}}\n{body}"},

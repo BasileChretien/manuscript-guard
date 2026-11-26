@@ -23,7 +23,11 @@ studies as well as their own.
 
 It reads names from a list, so it says nothing of a method the list does not hold, and a
 Methods that names a method only to say it was not used counts as naming it. DESIGN.md's
-Known gaps carries both.
+Known gaps carries both. A name too loose to say which method the Results used, "the Wilcoxon
+test" for either of Wilcoxon's, is listed under `in_methods`: it names each method it may be
+in the Methods and none in the Results (`_LOOSE_PARTS`), so a Methods that writes it is no
+cause for a warning, and a Results that writes it is none either (the real-paper corpus,
+round 1 of #826).
 """
 
 from __future__ import annotations
@@ -58,15 +62,20 @@ _WORDS = re.compile(r"[ \-\N{EN DASH}]+")
 _CAPITALS = re.compile(r"[A-Z]{2,}")
 #: The parts of the paper a method is looked for in.
 METHODS, RESULTS = "methods", "results"
+#: The parts a name of `in_methods` is read in: a name too loose to say which method the
+#: Results used, which in the Methods names each it may be.
+_LOOSE_PARTS = (METHODS,)
 
 
 @dataclass(frozen=True)
 class Method:
-    """A method of the list: its id, the name a warning gives it, and what finds its names."""
+    """A method of the list: its id, the name a warning gives it, what finds its names, and
+    what finds those that name it in the Methods only, or None."""
 
     id: str
     name: str
     pattern: re.Pattern[str]
+    loose: re.Pattern[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -86,7 +95,8 @@ class Named:
 def methods() -> tuple[Method, ...]:
     """The methods of `data/statistical_methods.yaml`, in its order."""
     data = yaml.safe_load(DATA.read_text(encoding="utf-8"))
-    return tuple(Method(entry["id"], entry["name"], pattern(entry["names"]))
+    return tuple(Method(entry["id"], entry["name"], pattern(entry["names"]),
+                        pattern(entry["in_methods"]) if entry.get("in_methods") else None)
                  for entry in data["methods"])  # fmt: skip
 
 
@@ -121,13 +131,15 @@ def named_in(text: str, starts: list[int], kinds: list[str | None]
     breaks = [found.start() for found in re.finditer("\n", text)]
     found = []
     for method in methods():
-        for match in method.pattern.finditer(read):
+        loose = method.loose.finditer(read) if method.loose is not None else ()
+        for match, parts in [*((one, (METHODS, RESULTS)) for one in method.pattern.finditer(read)),
+                             *((one, _LOOSE_PARTS) for one in loose)]:
             line = bisect_right(breaks, match.start() - 1) + 1
             part = kinds[bisect_right(starts, line) - 1]
-            if part in (METHODS, RESULTS):
+            if part in parts:
                 found.append((method.id, line, match.start(), text[match.start():match.end()],
                               part))  # fmt: skip
-    return sorted(found, key=lambda one: one[2])
+    return sorted(found, key=lambda one: (one[2], one[0]))
 
 
 def paper_parts(text: str, walk: Walk) -> tuple[list[int], list[str | None]]:

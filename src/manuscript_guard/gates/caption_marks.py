@@ -17,8 +17,12 @@ even where it draws two.
 The captions read: in a Markdown file of the main text or the supplement, a legend that opens
 with its display ("Figure 1. ...", "**Table 2.** ..."), a table's caption (`Table: ...`) and an
 image's (`![...](...)`), as G14 finds the first two (`glossary.markdown_captions`); in a LaTeX
-file, each `\\caption{...}`; and the caption the analysis emits for a table. The words are read
-as a reader reads them (`claims.readable`): not in a binding, a citation, a comment or code.
+file, each `\\caption{...}`; and the caption the analysis emits for a table. A Markdown
+caption's words are read as a reader reads them (`claims.readable`): not in a binding, a
+citation, a comment or code. A LaTeX caption and an emitted one are read as typed.
+
+"The area under the curve" is a measure, and points at no curve: it is read as no mention of
+a mark at all (round 1 of #826).
 """
 
 from __future__ import annotations
@@ -44,18 +48,29 @@ _PLACE = (
     r"|near|(?:to\s+the\s+)?(?:left|right)\s+of)"
 )
 #: What, after the mark, says which it is: "of no association", "at 1", "(y = x)", "=", "for
-#: the trend", "that marks", "drawn at".
+#: the trend", "that marks", "drawn at"; and its equation, "y = x", "$y = 2x$" (round 1 of
+#: #826). Either after spaces or a LaTeX tie.
 _SAYS_WHICH = (
     r"(?:\(|=|(?:of|at|for|through|that|which|where|drawn|marking|showing|indicating|denoting"
     r"|representing)\b)"
 )
-#: A mark pointed at by its place, with nothing between "the" and the mark and nothing after it
-#: that says which it is. The mark is the group `mark`.
-_POINTED = re.compile(
-    rf"(?<!\w){_PLACE}\s+(?:the|these|those|this|that)\s+(?P<mark>{_MARK})(?!\w)"
-    rf"(?!\s*{_SAYS_WHICH})",
-    re.IGNORECASE,
-)
+_EQUATION = r"(?:\$?[A-Za-z]\s*=)"
+
+
+def pointed(says: str) -> re.Pattern[str]:
+    """A mark pointed at by its place, with nothing between "the" and the mark and nothing
+    after it that `says` which it is, after spaces or a tie. The mark is the group `mark`."""
+    return re.compile(
+        rf"(?<!\w){_PLACE}\s+(?:the|these|those|this|that)\s+(?P<mark>{_MARK})(?!\w)"
+        rf"(?![\s~]*{says})",
+        re.IGNORECASE,
+    )
+
+
+_POINTED = pointed(rf"(?:{_SAYS_WHICH}|{_EQUATION})")
+#: The area under a curve, a measure: "area under the curve", "areas under the curves".
+_AREA = re.compile(r"(?<!\w)areas?\s+under\s+(?:the|these|those|this|that)\s+curves?(?!\w)",
+                   re.IGNORECASE)
 #: Any mention of a mark.
 _MENTION = re.compile(rf"(?<!\w){_MARK}(?!\w)", re.IGNORECASE)
 #: A display's pointer or number the build prints, `{{ref.figure.forest}}` or
@@ -86,14 +101,15 @@ class Caption:
 def unnamed(read: str) -> re.Match[str] | None:
     """The first mark `read` points at by its place and never names (`_POINTED`), where no
     mention of a mark in it names one: None where every mention is such a pointing, or there
-    is none."""
-    pointed = list(_POINTED.finditer(read))
-    if not pointed:
+    is none. An area under a curve is read as no mention (`_AREA`)."""
+    read = _AREA.sub(lambda found: " " * len(found[0]), read)
+    found = list(_POINTED.finditer(read))
+    if not found:
         return None
-    marks = {found.start("mark") for found in pointed}
-    if any(found.start() not in marks for found in _MENTION.finditer(read)):
+    marks = {one.start("mark") for one in found}
+    if any(one.start() not in marks for one in _MENTION.finditer(read)):
         return None
-    return pointed[0]
+    return found[0]
 
 
 def markdown_captions(text: str, path: Path, named: str) -> list[Caption]:
@@ -153,12 +169,12 @@ def captions(project: Project, results: Results | None) -> list[Caption]:
 def check_caption_marks(project: Project, results: Results | None) -> Report:
     """A warning for each caption that points at a line or a curve it never names."""
     report = Report()
-    seen: set[tuple[Path, int]] = set()
+    seen: set[tuple[Path, int, str]] = set()
     for caption in captions(project, results):
         found = unnamed(caption.read)
-        if found is None or (caption.path, caption.start) in seen:
+        if found is None or (caption.path, caption.start, caption.named) in seen:
             continue
-        seen.add((caption.path, caption.start))
+        seen.add((caption.path, caption.start, caption.named))
         pointed = " ".join(caption.typed[found.start():found.end()].split())
         line = None if caption.line is None else (
             caption.line + caption.typed.count("\n", 0, found.start()))

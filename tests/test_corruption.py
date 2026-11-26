@@ -5372,6 +5372,28 @@ def test_an_analysis_the_results_name_is_one_the_methods_name(project: Path) -> 
     assert _unexplained(project) == []
 
 
+def test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning(
+    project: Path,
+) -> None:
+    """Round 1 of #826 and the real-paper corpus: "kappa" in "kappa light chains" and
+    "propensity" in "reporting propensity" are words of other fields and name no method; a
+    Methods that writes the chi-squared test as maths, or calls a test "the Wilcoxon test",
+    names it, the second for both of Wilcoxon's tests. A bare "Wilcoxon" in the Results names
+    neither, and is not warned of."""
+    _swap(project, _ADJUSTED, "can reconstruct it. Free kappa light chains rose, the "
+          "reporting propensity fell, the counts differed by a chi-squared test, and the "
+          "titres by a Wilcoxon signed-rank test. Adjusted for age group and sex")  # fmt: skip
+    line = _line_of(project, "Free kappa light chains rose")
+    assert _unexplained(project) == [("chi-squared", "main.md", line),
+                                     ("wilcoxon-signed-rank", "main.md", line)]
+    _swap(project, "# Methods\n", "# Methods\n\nCounts were compared by a $\\chi^2$ test, and "
+          "titres by the Wilcoxon test.\n")  # fmt: skip
+    assert _unexplained(project) == []
+    _swap(project, "by the Wilcoxon test", "by ranks")
+    _swap(project, "by a Wilcoxon signed-rank test", "by a Wilcoxon test")
+    assert _unexplained(project) == []
+
+
 def test_an_analysis_the_supplement_s_results_name_is_held_to_the_methods(project: Path) -> None:
     """The supplement's Results are read as the main text's are, and a paper with no Methods
     section is not read at all."""
@@ -5441,6 +5463,14 @@ def test_a_caption_that_points_at_a_line_says_which_line_it_is(project: Path) ->
         _swap(project, "right of the line are signals", f"{named} are signals")
         assert _unnamed_lines(project) == [], named
         _swap(project, f"{named} are signals", "right of the line are signals")
+    # Round 1 of #826: a line named by its equation, and the area under a curve, which is
+    # a measure and no curve pointed at.
+    for named in ("above the line y = x", "above the line $y = x$",
+                  "right of the line and an area under the curve"):
+        _swap(project, "right of the line are signals", f"{named} are signals")
+        assert _unnamed_lines(project) == ([] if "y = x" in named
+                                           else [("line", "main.md", legend)]), named
+        _swap(project, f"{named} are signals", "right of the line are signals")
     _swap(project, "ratio with its interval;", "ratio with its interval, the dashed line "
           "marking no association;")  # fmt: skip
     assert _unnamed_lines(project) == []
@@ -5464,6 +5494,18 @@ def test_a_table_s_emitted_caption_is_read_for_the_line_it_points_at(project: Pa
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)
     assert _unnamed_lines(project) == [("line", fragment.name, None)]
+    # Round 1 of #826: a second table of the same results file is read too, and the area
+    # under the curve, in a model's table, points at no curve.
+    document["tables"]["two_by_two"]["caption"] = "Counts; rows above the line are cases."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == [("line", fragment.name, None)] * 2
+    for key in ("baseline", "two_by_two"):
+        document["tables"][key]["caption"] = ("Discrimination by model: area under the curve "
+                                              "and calibration slope.")  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == []
 
 
 def test_a_latex_caption_is_read_for_the_line_it_points_at(project: Path) -> None:
@@ -5476,6 +5518,7 @@ def test_a_latex_caption_is_read_for_the_line_it_points_at(project: Path) -> Non
         "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nx\n"
         "\\begin{figure}\\caption{Journals below the line had fewer seats.}\\end{figure}\n"
         "\\begin{figure}\\caption{Journals below the line of equal shares.}\\end{figure}\n"
+        "\\begin{figure}\\caption{Journals above the line~(y = x).}\\end{figure}\n"
         "% \\caption{Journals above the curve.}\n\\end{document}\n",
         encoding="utf-8",
     )

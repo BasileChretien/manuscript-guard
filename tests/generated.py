@@ -14260,7 +14260,8 @@ ANALYSIS_FORMS = {
     "hyphen as two": "kolmogorov-smirnov", "across a line": "logistic", "plural": "t-test",
     "a name in capitals": "anova", "a name in capitals in lower case": None,
     "a look-alike": None, "in a binding": None, "in a citation": None, "in code": None,
-    "in a comment": None,
+    "in a comment": None, "in maths": "chi-squared", "a word of another field": None,
+    "a name too loose for the results": None,
 }  # fmt: skip
 #: What each form writes. `{tag}` stands before it on its line.
 ANALYSIS_WRITTEN = {
@@ -14274,52 +14275,64 @@ ANALYSIS_WRITTEN = {
     "a look-alike": ("Holmes", "Waldorf", "Coxswain", "Spearmint", "Fisherman"),
     "in a binding": ("{{results.bootstrap.ci}}",), "in a citation": ("[@holm1979]",),
     "in code": ("`jackknife()`",), "in a comment": ("<!-- a Wilson interval -->",),
+    "in maths": ("a $\\chi^2$ test", "a $\\chi^{2}$ test"),
+    "a word of another field": ("kappa light chains", "NF-kappa B", "reporting propensity"),
+    "a name too loose for the results": ("a Wilcoxon test",),
 }  # fmt: skip
 #: Each place a name of a method may stand, and the part G9 reads it as: the Methods, the
 #: Results, or None for neither. The name is Fisher's exact test, Holm's or the bootstrap,
-#: drawn each time.
+#: drawn each time, but in the last place, which names both of Wilcoxon's tests in the Methods.
 ANALYSIS_PLACES = {
     "methods": "methods", "results": "results", "a heading under the results": "results",
     "a subsection of the methods": "methods", "abstract": None, "introduction": None,
     "discussion": None, "the supplement's methods": "methods",
     "the supplement's results": "results", "the supplement's tables": None,
+    "a name loose enough for the methods only": "methods",
 }  # fmt: skip
+#: What the Methods write in that place, and the methods it names.
+ANALYSIS_LOOSE = ("the Wilcoxon test", ("mann-whitney", "wilcoxon-signed-rank"))
 #: The plain names a place is planted with, and their methods.
 ANALYSIS_PLAIN = (("Fisher's exact test", "fisher-exact"), ("Holm's correction", "holm"),
                   ("a bootstrap", "bootstrap"))  # fmt: skip
 
 
 @st.composite
-def analysis_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, tuple[str, str]]]:
+def analysis_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, set[tuple[str, str]]]]:
     """A paper with an Abstract, an Introduction, Methods (with a subsection),
     Results (with a heading under them) and a Discussion, and a file of its supplement with
     Methods, Results and tables of its own; each line of the Results holding a name of a method
     written in each way of `ANALYSIS_FORMS`, and a plain name in each place of
     `ANALYSIS_PLACES`, each line opening with a tag of its own ("t07"). And what G9 reads of
-    each tag: the method and the part, for those it reads."""
+    each tag: each method it names and the part, for those it reads."""
     tags = iter(f"t{at:02d}" for at in range(100))
     parts: dict[str, list[str]] = {name: [] for name in (
         "abstract", "introduction", "methods", "pilot", "results", "secondary", "discussion",
         "s methods", "s results", "s tables")}  # fmt: skip
-    expected: dict[str, tuple[str, str]] = {}
+    expected: dict[str, set[tuple[str, str]]] = {}
     for kind in draw(st.permutations(tuple(ANALYSIS_FORMS))):
         tag = next(tags)
         written = draw(st.sampled_from(ANALYSIS_WRITTEN[kind]))
         parts["results"].append(f"{tag} compared by {written} here.")
         if ANALYSIS_FORMS[kind] is not None:
-            expected[tag] = (ANALYSIS_FORMS[kind], "results")
+            expected[tag] = {(ANALYSIS_FORMS[kind], "results")}
     where = {"methods": "methods", "results": "results",
              "a heading under the results": "secondary",
              "a subsection of the methods": "pilot", "abstract": "abstract",
              "introduction": "introduction", "discussion": "discussion",
              "the supplement's methods": "s methods", "the supplement's results": "s results",
-             "the supplement's tables": "s tables"}  # fmt: skip
+             "the supplement's tables": "s tables",
+             "a name loose enough for the methods only": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods")))}  # fmt: skip
     for kind in draw(st.permutations(tuple(ANALYSIS_PLACES))):
         tag = next(tags)
-        name, method = draw(st.sampled_from(ANALYSIS_PLAIN))
+        if kind == "a name loose enough for the methods only":
+            name, named = ANALYSIS_LOOSE
+        else:
+            name, method = draw(st.sampled_from(ANALYSIS_PLAIN))
+            named = (method,)
         parts[where[kind]].append(f"{tag} compared by {name} here.")
         if ANALYSIS_PLACES[kind] is not None:
-            expected[tag] = (method, ANALYSIS_PLACES[kind])
+            expected[tag] = {(method, ANALYSIS_PLACES[kind]) for method in named}
 
     def run(lines: list[str]) -> str:
         return "\n".join(draw(st.permutations(lines))) if lines else "The data were given."
@@ -14350,6 +14363,7 @@ CAPTION_KINDS = {
     "a legend, the line in brackets": False, "a legend, a style between": False,
     "a legend, a line named before": False, "a legend, a line with no place": False,
     "prose, pointed": False, "prose opened with a pointer": False,
+    "a legend, the line and its equation": False, "a legend, the area under the curve": False,
 }  # fmt: skip
 #: The words that say where something stands against a mark.
 CAPTION_PLACES = ("below", "above", "under", "to the left of", "right of", "beyond", "across")
@@ -14387,6 +14401,10 @@ def caption_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
             "a legend, a line with no place": f"{opens} The {mark} {tag} is the fitted trend.",
             "prose, pointed": f"The points {tag} {place} the {mark} were kept.",
             "prose opened with a pointer": f"Figure 2 shows points {tag} {place} the {mark}.",
+            "a legend, the line and its equation": f"{opens} Points {tag} {place} the {mark}"
+            + draw(st.sampled_from((" y = x.", " $y = 2x$.", "~(y = x)."))),
+            "a legend, the area under the curve": f"{opens} Models {tag} by the "
+            + draw(st.sampled_from(("area under the curve.", "areas under the curves."))),
         }[kind]
         paragraphs.append(said)
         if CAPTION_KINDS[kind]:

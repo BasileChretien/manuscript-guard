@@ -10805,28 +10805,30 @@ from generated import analysis_papers  # noqa: E402
 
 @holds(40, analysis_papers())
 def test_a_method_is_read_where_the_methods_and_the_results_name_it(
-    drawn: tuple[str, str, dict[str, tuple[str, str]]],
+    drawn: tuple[str, str, dict[str, set[tuple[str, str]]]],
 ) -> None:
     """G9 reads a method of its list where the Methods or the Results name it, the main
     text's and the supplement's, a subsection of either with them, under each of its names:
     in any case but a name in capitals, its words joined by a space, a hyphen, an en dash,
     two hyphens or a line break, with or without "'s", a curly apostrophe as a straight one,
-    and a plural. It reads none a look-alike holds, a name in capitals written small, or a
-    binding, a citation, code or a comment, and none the Abstract, the Introduction, the
-    Discussion or another part of the supplement names. The methods the Results name and the
-    Methods never do are those `analysis-not-in-methods` warns of."""
+    a plural, and the chi-squared test as maths. A name too loose for the Results, "the
+    Wilcoxon test", names each method it may be in the Methods and none in the Results. It
+    reads none a look-alike or a word of another field holds, a name in capitals written
+    small, or a binding, a citation, code or a comment, and none the Abstract, the
+    Introduction, the Discussion or another part of the supplement names. The methods the
+    Results name and the Methods never do are those `analysis-not-in-methods` warns of."""
     text, supplement, expected = drawn
     read = READINGS["analyses named"]()({"text": text, "supplement": supplement})
-    found: dict[str, tuple[str, str]] = {}
+    found: dict[str, set[tuple[str, str]]] = {}
     for part, source in (("paper", text), ("supplement", supplement)):
         lines = source.splitlines()
         for method, line, kind in read[part]:
             (tag,) = re.findall(r"\bt\d\d\b", lines[line - 1])
-            assert tag not in found, (tag, source)
-            found[tag] = (method, kind)
+            found.setdefault(tag, set()).add((method, kind))
     assert found == expected, (text, supplement)
-    results = {method for method, part in expected.values() if part == "results"}
-    methods = {method for method, part in expected.values() if part == "methods"}
+    named = [one for ones in expected.values() for one in ones]
+    results = {method for method, part in named if part == "results"}
+    methods = {method for method, part in named if part == "methods"}
     assert set(read["unexplained"]) == results - methods, (text, supplement)
 
 
@@ -23391,6 +23393,34 @@ def _an_image_s_caption_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(caption_marks_gate, "_IMAGE", re.compile(r"(?!)(?P<caption>)"))
 
 
+def _a_line_s_equation_says_nothing_of_it(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #826: "above the line y = x" was warned of.
+    patch.setattr(caption_marks_gate, "_POINTED",
+                  caption_marks_gate.pointed(caption_marks_gate._SAYS_WHICH))
+
+
+def _the_area_under_the_curve_points_at_a_curve(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #826: "area under the curve" was warned of.
+    patch.setattr(caption_marks_gate, "_AREA", re.compile(r"(?!)"))
+
+
+def _a_name_too_loose_for_the_results_names_a_method_there(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(analyses_gate, "_LOOSE_PARTS", (analyses_gate.METHODS, analyses_gate.RESULTS))
+
+
+def _a_name_too_loose_for_the_results_names_nothing_in_the_methods(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    # The corpus: "the Wilcoxon test" in the Methods, "Wilcoxon signed-rank" in the Results.
+    patch.setattr(analyses_gate, "_LOOSE_PARTS", ())
+
+
+def _a_method_written_as_maths_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #826: a Methods' "$¦chi^2$ test" named nothing.
+    real = analyses_gate.pattern
+    _rebuilt(patch, pattern=lambda names: real([one for one in names if "\\" not in one]))
+
+
 def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -27671,6 +27701,26 @@ BROKEN = {
     "an image's caption is not read": (
         _an_image_s_caption_is_not_read,
         test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a line's equation says nothing of it": (
+        _a_line_s_equation_says_nothing_of_it,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "the area under the curve points at a curve": (
+        _the_area_under_the_curve_points_at_a_curve,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a name too loose for the Results names a method there": (
+        _a_name_too_loose_for_the_results_names_a_method_there,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a name too loose for the Results names nothing in the Methods": (
+        _a_name_too_loose_for_the_results_names_nothing_in_the_methods,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method written as maths is not read": (
+        _a_method_written_as_maths_is_not_read,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
     ),
     "a ladder word a bare summary leaves out is more": (
         _a_ladder_word_a_bare_summary_leaves_out_is_more,

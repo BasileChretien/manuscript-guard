@@ -8564,8 +8564,9 @@ note, at every stage: a new rule starts as one, until what it says of real paper
   finds them (`Walk.parts`).
 - **A caption that points at a line it never names** (G3, `gates/caption_marks.py`): "below
   the line", "right of the curves", with nothing between "the" and the mark and nothing after
-  it that says which, in a caption that names no line or curve any other way
-  (`caption-line-unnamed`). The captions read are a Markdown file's legends and tables'
+  it that says which, its equation ("y = x") among what does, in a caption that names no
+  line or curve any other way (`caption-line-unnamed`). "The area under the curve" is a
+  measure, and points at nothing. The captions read are a Markdown file's legends and tables'
   captions as G14 finds them, an image's, a LaTeX file's `\caption`, and the caption the
   analysis emits for a table.
 
@@ -18338,6 +18339,15 @@ to fix is pinned until the fix lands, and the fix changes its test.
   - The Abstract, the Introduction and the Discussion are not read, since they name the
     methods of other studies too. Pinned by
     `tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name`.
+  - A heading that names the Results and the Discussion together, "Results and discussion",
+    is the Results', so a method of another study it names is held to this paper's Methods
+    (round 1 of #826). Accepted.
+  - A word another field uses for something else is read as the method where the list keeps
+    it: "E-value" in a sequence search, "imputed" genotypes. "Kappa" and "propensity" alone
+    are left out for that reason, and a name too loose to say which method the Results
+    used, "the Wilcoxon test", names each it may be in the Methods and none in the Results,
+    where it is not warned of. Pinned by
+    `tests/test_corruption.py::test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning`.
   - An emitted table's caption is not read, nor a figure's text: a method named only there
     is not looked for in the Methods. Accepted.
 - **`caption-line-unnamed` reads one shape** (`gates/caption_marks.py`): a line or a curve

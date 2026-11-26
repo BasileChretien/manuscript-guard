@@ -9,7 +9,10 @@ schema: manuscript-guard/statistical-methods/1
 # Each entry:
 #   id      a short name that does not change, the finding's subject;
 #   name    the method as the warning names it;
-#   names   the words that name it, any one of which in the Methods counts as naming it.
+#   names   the words that name it, any one of which in the Methods counts as naming it;
+#   in_methods  words that name it in the Methods but are too loose to name it in the
+#           Results: "the Wilcoxon test" names both of Wilcoxon's tests, so a Methods that
+#           writes it names either, and a Results that writes it names neither.
 #
 # How a name is read:
 #   - whole words, in any case, but a name in capitals alone ("ANOVA", "GEE"), matched as
@@ -29,6 +32,10 @@ schema: manuscript-guard/statistical-methods/1
 # Erring towards finding a name in the Methods is deliberate: a warning that is wrong costs
 # the author's trust, and the review panel's statistics remit reads what the list does not.
 #
+# A word another field uses for something else is no name: "kappa" alone ("kappa light
+# chains", "NF-kappa B") and "propensity" alone ("reporting propensity") are left out, and the
+# kappa statistic and the propensity score are named whole (round 1 of #826).
+#
 # Not here: the measures a paper estimates (an odds ratio, a hazard ratio, a sensitivity),
 # which a paper names in the Methods as a matter of course and a Results sentence restates;
 # and the designs (a case-control study), which are G12's.
@@ -40,16 +47,18 @@ methods:
     names: ["Fisher's exact test", "Fisher's test", "Fisher-Freeman-Halton"]
   - id: chi-squared
     name: the chi-squared test
-    names: ["chi-squared", "chi-square", "chi2", "χ2", "χ²", "χ^2^"]
+    names: ["chi-squared", "chi-square", "chi2", "χ2", "χ²", "χ^2^", '\chi^2', '\chi^{2}']
   - id: t-test
     name: the t test
     names: ["t test", "Student's t", "Welch's t", "Welch's test"]
   - id: mann-whitney
     name: the Mann-Whitney test
     names: ["Mann-Whitney", "Wilcoxon rank-sum", "Wilcoxon-Mann-Whitney"]
+    in_methods: ["Wilcoxon"]
   - id: wilcoxon-signed-rank
     name: the Wilcoxon signed-rank test
     names: ["signed-rank"]
+    in_methods: ["Wilcoxon"]
   - id: kruskal-wallis
     name: the Kruskal-Wallis test
     names: ["Kruskal-Wallis"]
@@ -142,7 +151,8 @@ methods:
   # Agreement and correlation
   - id: kappa
     name: a kappa statistic
-    names: ["kappa", "κ"]
+    names: ["Cohen's kappa", "Fleiss' kappa", "weighted kappa", "kappa statistic",
+            "kappa coefficient", "kappa value", "Cohen's κ", "κ statistic", "κ coefficient"]
   - id: intraclass
     name: the intraclass correlation
     names: ["intraclass correlation", "intra-class correlation", "ICC"]
@@ -204,7 +214,8 @@ methods:
   # Adjustment and causal methods
   - id: propensity
     name: a propensity score
-    names: ["propensity"]
+    names: ["propensity score", "propensity-matched", "propensity matching",
+            "propensity weighting"]
   - id: inverse-probability
     name: inverse probability weighting
     names: ["inverse probability", "inverse-probability", "IPTW", "IPW"]

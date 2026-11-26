@@ -901,3 +901,18 @@ features:
     commands: [audit]
     tests: [tests/test_audit_commented.py, tests/test_audit_tracked.py, tests/test_report_pdf.py]
     docs: docs/refereeing.md
+
+  - id: editor-report
+    stage: others
+    title: An editor's report
+    says: >-
+      Puts what the audit found in four parts, what to look at before deciding, what to ask
+      the authors, what is for copyediting and what was read, with how often each kind was
+      right on published papers where that was measured.
+    status: partial
+    commands: [audit]
+    tests: [tests/test_audit_editor.py]
+    docs: docs/refereeing.md
+    limits: >-
+      On the command line only: the audit page, the PDF report and a letter to the authors
+      do not give it yet.

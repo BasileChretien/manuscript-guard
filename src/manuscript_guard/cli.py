@@ -2392,8 +2392,8 @@ def _reader(args: argparse.Namespace) -> _Reader | int | None:
     from manuscript_guard.auditing.journal import english_of, read_authors, read_profile
 
     if args.journal is None and args.authors is None:
-        if any(value is not None for value in (args.design, args.cited, args.package,
-                                               args.report_draft)):  # fmt: skip
+        if args.editor or any(value is not None for value in (
+                args.design, args.cited, args.package, args.report_draft)):  # fmt: skip
             print(NOTICE, file=sys.stderr)
         return None
     if args.journal is None:
@@ -2659,7 +2659,7 @@ _AUDIT_FLAGS = ("against", "figures", "english", "known", "no_abstract", "no_res
                 "submission_residue", "lookup",
                 "dry_run", "whole_numbers", "binary", "non_negative", "minimum_cell_count",
                 "journal", "authors", "design", "cited", "commented", "tracked", "pdf", "package",
-                "strict")  # fmt: skip
+                "strict", "editor")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
@@ -2946,8 +2946,11 @@ def _audit(args: argparse.Namespace, package) -> int:
                          sections._shown(Path.cwd(), report.placers))  # fmt: skip
         if not _write_draft(args, text, "audit"):
             return 2
+    from manuscript_guard.auditing import editor
+
     if args.json:
-        print(sections.as_json(report, discrimination))
+        print(editor.as_json(report, discrimination) if args.editor
+              else sections.as_json(report, discrimination))  # fmt: skip
         if package is not None:
             from manuscript_guard.auditing.package import WORDING
 
@@ -2956,7 +2959,8 @@ def _audit(args: argparse.Namespace, package) -> int:
         # Told only of a report whose text is rendered and printed (#601: a draft that could
         # not be written, or a text that could not be rendered, printed none, and the page
         # drew one).
-        text = sections.render(report, discrimination, Path.cwd(), details=args.details)
+        text = (editor.render(report, Path.cwd(), details=args.details) if args.editor
+                else sections.render(report, discrimination, Path.cwd(), details=args.details))
         if AUDITED is not None:
             AUDITED(report, discrimination)
         print(text)
@@ -7217,6 +7221,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="also write the findings and their places to FILE (.md, which must not exist "
         "yet), as the start of your report: what was read and not checked, the exact "
         "findings, the rest by section, and each check that found nothing with what it read",
+    )
+    audit.add_argument(
+        "--editor",
+        action="store_true",
+        help="give the report as an editor reads it, each finding in one of four parts: what "
+        "to look at before you decide, what to ask the authors, what is for copyediting and "
+        "what the check read, with how often each kind was right on published papers where "
+        "that was measured; with --json, each finding gains its part (docs/refereeing.md)",
     )
     audit.add_argument(
         "--strict",

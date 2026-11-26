@@ -81,32 +81,52 @@ def strip_attributes(text: str) -> str:
     "References", underlined, and the heading keeps its block. Taken off, the title was
     "[References]", which no reader knew for the reference list (`without_spans`).
     """
+    found = _block(text)
+    return text if found is None else found[0]
+
+
+def heading_identifier(text: str) -> str | None:
+    """The identifier the attribute block a heading ends with gives it: `sampling` of
+    `## Study sample {#sampling}` and of `## Study sample {.unnumbered #sampling}`. The block
+    is read as `strip_attributes` reads it, so a block pandoc prints, a span's or one that
+    holds an item pandoc refuses, gives none; so does a block with no `#` item. Of two, the
+    first."""
+    found = _block(text)
+    if found is None:
+        return None
+    return next((item[1:] for item in found[1] if item.startswith("#")), None)
+
+
+def _block(text: str) -> tuple[str, tuple[str, ...]] | None:
+    """What `text` holds before the attribute block it ends with, and the block's items, or
+    None where it ends with no block pandoc reads (`strip_attributes` says which)."""
     body = text.rstrip(" \t")
     if not body.endswith("}"):
-        return text
+        return None
     opening = len(body)
     while True:
         opening = body.rfind("{", 0, opening)
         if opening < 0:
-            return text
+            return None
         escaped, before = _escaped(body, opening)
         if not escaped:
             break
         opening = before
     if opening and body[opening - 1] == "]" and not _escaped(body, opening - 1)[0]:
-        return text
-    inner, position = body[opening + 1 : -1], 0
+        return None
+    inner, position, items = body[opening + 1 : -1], 0, []
     while True:
         while position < len(inner) and inner[position] in " \t":
             position += 1
         if position == len(inner):
-            return body[:opening].rstrip(" \t")
+            return body[:opening].rstrip(" \t"), tuple(items)
         item = _ATTRIBUTE_ITEM.match(inner, position)
         if item is None:
-            return text
+            return None
         letter = item.group("lead") or item.group("key")
         if letter and not letter.isalpha():
-            return text
+            return None
+        items.append(item.group(0))
         position = item.end()
 
 

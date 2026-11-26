@@ -297,6 +297,29 @@ def commented(paper: str, target: str, *, tracked: bool = False) -> dict:
     return said
 
 
+#: The most bytes an archive the page is given may hold unpacked: it is unpacked into the
+#: browser's memory, which a package's limit (`unpack.MAX_BYTES`) would outgrow.
+PAGE_MAX_BYTES = 1 << 30
+
+
+def unpack_paper(archive: str, into: str) -> dict:
+    """The .zip or .tar.gz `archive` of a paper's project unpacked into a folder of `into`
+    named after it (`unpack.archive_stem`), for the audit to be given that folder, as the
+    command line is given the folder the reader unpacks: {"folder": its name}, or {"error":
+    why} where it is refused (`unpack.unpack_archive`)."""
+    from manuscript_guard.auditing.unpack import Refused, archive_stem, unpack_archive
+
+    path = Path(archive)
+    stem = archive_stem(path.name)
+    if not stem:
+        return {"error": f"{path.name} is not a .zip or a .tar.gz"}
+    try:
+        unpack_archive(path, Path(into) / stem, max_bytes=PAGE_MAX_BYTES)
+    except Refused as exc:
+        return {"error": str(exc)}
+    return {"folder": stem}
+
+
 def journal_files(journal: dict | None, authors: dict | None) -> dict:
     """The journal's profile and the authors' names the page's form describes, as the text of
     the files `audit --journal` and `--authors` read (`journal_form`): {"profile": text} and
@@ -332,5 +355,6 @@ def report_pdf(target: str) -> dict:
     return {"bytes": len(data)}
 
 
-__all__ = ["PandocCall", "commented", "install", "journal_files", "pandoc_options",
-           "report_pdf", "run", "runner_for", "view", "xhr_transport"]  # fmt: skip
+__all__ = ["PAGE_MAX_BYTES", "PandocCall", "commented", "install", "journal_files",
+           "pandoc_options", "report_pdf", "run", "runner_for", "unpack_paper", "view",
+           "xhr_transport"]  # fmt: skip

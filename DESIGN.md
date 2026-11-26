@@ -19645,13 +19645,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Eight designs are named, a cross-sectional study the last added; a design outside
+  not. Nine designs are named, a diagnostic accuracy study the last added; a design outside
   them (a narrative review, a descriptive case series or a case report, a qualitative study,
-  a diagnostic accuracy study, a target trial emulation as a design of its own) takes
+  a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case reports, case series, diagnostic accuracy and qualitative
+  from a draft" (above) plans case reports, case series and qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,

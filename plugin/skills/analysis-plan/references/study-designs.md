@@ -75,6 +75,24 @@ a prevalence, an association, not which came first.
 - **Sensitivity analyses.** Which subgroups, interactions and sensitivity analyses?
   (STROBE, 12b and 12e)
 
+## diagnostic-accuracy
+
+The paper follows STARD 2015. The index test is the plan's exposure and the target
+condition its outcome, and G12 reads those headings as such.
+
+- **Sampling.** Where and how are potentially eligible participants identified, and are
+  they a consecutive, random or convenience series? (STARD 2015, 7 to 9)
+- **Reference standard.** Which, in enough detail to repeat it, and why that one?
+  (STARD 2015, 10b and 11)
+- **Thresholds.** The positivity cut-offs or result categories of both tests, and which
+  were set in advance. (STARD 2015, 12a and 12b)
+- **Blinding.** Do those who read each test know the other's result or the clinical
+  information? (STARD 2015, 13a and 13b)
+- **Indeterminate results.** How are results that cannot be read handled? (STARD 2015, 15)
+- **Missing data.** Missing results of either test. (STARD 2015, 16)
+- **Sample size.** How many, with how many having the condition, and how it was worked
+  out. (STARD 2015, 18)
+
 ## self-controlled
 
 No reporting guideline is written for self-controlled designs; the paper follows STROBE.

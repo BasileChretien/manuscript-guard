@@ -297,6 +297,23 @@ def commented(paper: str, target: str, *, tracked: bool = False) -> dict:
     return said
 
 
+def journal_files(journal: dict | None, authors: dict | None) -> dict:
+    """The journal's profile and the authors' names the page's form describes, as the text of
+    the files `audit --journal` and `--authors` read (`journal_form`): {"profile": text} and
+    {"authors": text} for each asked for, or {"error": why} where the form cannot make one."""
+    from manuscript_guard import journal_form
+
+    said: dict = {}
+    try:
+        if journal is not None:
+            said["profile"] = journal_form.as_text(journal_form.profile_of(journal))
+        if authors is not None:
+            said["authors"] = journal_form.as_text(journal_form.authors_of(authors))
+    except journal_form.FormError as exc:
+        return {"error": str(exc)}
+    return said
+
+
 def report_pdf(target: str) -> dict:
     """The report of the audit `view` ran last as a PDF, with every place and every section,
     written to `target` as `audit --pdf` writes it (`auditing.report_pdf`), from the same
@@ -315,5 +332,5 @@ def report_pdf(target: str) -> dict:
     return {"bytes": len(data)}
 
 
-__all__ = ["PandocCall", "commented", "install", "pandoc_options", "report_pdf", "run",
-           "runner_for", "view", "xhr_transport"]  # fmt: skip
+__all__ = ["PandocCall", "commented", "install", "journal_files", "pandoc_options",
+           "report_pdf", "run", "runner_for", "view", "xhr_transport"]  # fmt: skip

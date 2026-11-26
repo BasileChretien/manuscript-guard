@@ -26,6 +26,14 @@ Where none holds, a warning names the key and the heading it was given under. Th
 route matches a display and not a key, so a coincidence can keep the warning back; DESIGN.md's
 Known gaps carries that and the rest.
 
+The Discussion interprets results and gives none of its own, so each key it binds is held the
+same way, by the main text alone (`_discussed`): one the supplement alone reports, bound there
+or printed in a display it places, is a note (`discussion-in-supplement`), since a reader of
+the paper meets its interpretation before the result; one nothing reports, a warning
+(`discussion-not-reported`). Only where the paper has a Results section: a review with none
+weighs the work of others in its Discussion. The Discussion is read as G8 reads it for the
+paper's interpretation (`Walk._argues`), a conclusion under it being a summary's.
+
 A summary can also give the number and claim more than the Results do: drop their "may",
 say "increased" where they said "associated with". So each sentence of a summary that binds
 a key is held to the sentences of a Results section, of the main text or of the supplement,

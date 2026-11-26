@@ -8577,10 +8577,11 @@ Not checked, and why:
 - A method with no gloss. What counts as a gloss, a clause, an apposition, the sentence
   before, cannot be read from its shape without many false alarms; the statistics reader
   judges it, and `analysis-not-in-methods` holds the one part that is exact.
-- A display's short form that only the text defines. G14 reads a display's own definitions
-  for its own uses and lets the text's cover the rest (Basile, 2026-11-21, "Table stands
-  alone", and 2026-11-22, "Still counts"). Asking a display to define every form it uses
-  would change that decision, so it is left to the displays reader until the author decides.
+- A display's short form that only the text defines. G14 holds a display's own definitions
+  to its own uses (Basile, 2026-11-21, "Table stands alone"), and a use in a display that
+  defines nothing to the text's definition (`language._loose`), so such a use is defined.
+  Asking each display to define every form it uses would add a finding to a reading the
+  author settled then, so it is left to the displays reader until the author decides.
 - A figure that draws a weaker comparison than the text headlines: only a reader who looks at
   the figure sees what it draws.
 

@@ -274,8 +274,8 @@ NOT_CODES = {
     "package-result": "a prefix the draft groups the package's codes by (auditing/draft.py)",
     "package-verification": "a prefix the draft groups the package's codes by",
     "claim-negation": "compare's code, which measured.py sets the severity of",
-    "placeholder-slot": "a rule of G6's model-artefact (auditing/measured.py)",
-    "placeholder-word": "a rule of G6's model-artefact (auditing/measured.py)",
+    "placeholder-slot": "a rule of G6's model-artefact (gates/writing.py)",
+    "placeholder-word": "a rule of G6's model-artefact (gates/writing.py)",
     "placeholder-template": "a rule of G6's model-artefact (auditing/summary.py)",
     "manuscript-guard": "the tool's name",
 }

@@ -8714,6 +8714,8 @@ DECLARED_COMMENTS = ("<!-- TO CONFIRM WITH THE AUTHORS: {} -->", "<!-- {} -->", 
 DECLARED_IDIOM = "[//]: # (ask the authors for the words of it)"
 DECLARED_PLACEHOLDERS = ("TO CONFIRM WITH THE AUTHORS.", "To be completed.", "Pending.")
 DECLARED_NOTHING = (*DECLARED_COMMENTS, DECLARED_IDIOM, *DECLARED_PLACEHOLDERS)
+#: How a label alone that ends in a stop is written, its title for `{}` (round 3 of #819).
+STOPPED_LABELS = ("**{}.**", "*{}.*", "**{}**.", "_{}._")
 #: A label of each kind that the generated papers add after a label left over a comment.
 USUAL_TITLES = {"data": "Data availability", "ai_use": "Use of AI"}
 #: The titles the bibliography is printed under: the reference list's own, anywhere, and one
@@ -8740,7 +8742,8 @@ def statement_papers(
     """A paper that makes every standard statement, each in a form of its own, and the
     papers made from it: for each kind, the paper without its statement, a label of it left
     over a comment or a placeholder in its Declarations section, and again over a comment
-    first of the labels, a Data availability or an AI-use label after it, and the funding
+    first of the labels, a Data availability or an AI-use label after it, and again as a
+    label alone that ends in a stop ("**Funding.**") over a comment, and the funding
     statement taken out with the contributions, which name a CRediT role with funding in it,
     written as a sentence of the Declarations section; for each kind under a heading, the
     paper with nothing printed under that heading; and the papers that state the same in
@@ -8787,6 +8790,8 @@ def statement_papers(
     # Over a comment first of the labels, where the label after it is a Data availability or
     # an AI-use one, which G4's reading of the declarations does not end a label at.
     hidden = draw(st.sampled_from(DECLARED_COMMENTS))
+    # And once more as a label alone that ends in a stop, over a comment.
+    stopped = draw(st.sampled_from(STOPPED_LABELS))
     last = f"# {draw(st.sampled_from(DECLARED_LAST_REFERENCES))}\n"
     own_list = f"# {draw(st.sampled_from(DECLARED_REFERENCES))}\n" + draw(
         st.sampled_from(("", "\n::: {#refs}\n:::\n")))
@@ -8846,6 +8851,8 @@ def statement_papers(
         # layout does before the statement is written: a label states nothing.
         left = ([f"**{named[left_out]}:** {over.format(DECLARED_BODIES[left_out])}"]
                 if left_out else [])  # fmt: skip
+        if left_out and left_in == "stopped":
+            left = [stopped.format(named[left_out]), hidden.format(DECLARED_BODIES[left_out])]
         if left_out and left_in == "further":
             after = "ai_use" if left_out == "data" else "data"
             labels = [f"**{named[left_out]}:** {hidden.format(DECLARED_BODIES[left_out])}",
@@ -8868,7 +8875,7 @@ def statement_papers(
     shown = {kind: (number if forms[kind] == "numbered heading" else "") + titles[kind]
              for kind in headed}  # fmt: skip
     removed = [(kind, paper(left_out=kind, left_in=place)) for kind in forms
-               for place in ("declarations", "further")]
+               for place in ("declarations", "further", "stopped")]
     removed.append(("funding", paper(left_out="funding",
                                      shaped={"contributions": "declarations"})))
     restated = [paper(shaped={"ethics": form}) for form in (*ETHICS_FORMS, "label")]

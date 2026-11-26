@@ -138,6 +138,23 @@ def test_an_emphasised_sentence_is_a_statement_and_only_words_before_a_colon_a_l
     assert missing(stated(text), FIVE) == ["funding", "interests"]
 
 
+def test_a_label_alone_ending_in_a_stop_is_a_label() -> None:
+    """Round 3 of #819: a paragraph wholly in emphasis whose words, its stop taken off, are
+    only a kind's title ("**Funding.**", "*Competing interests.*", "**Funding**.", "*Data
+    availability.*") is a label, as G4 reads it, and over a comment or a placeholder it
+    states nothing; only a longer sentence in emphasis is a statement."""
+    text = WHOLE.split("# Funding")[0].replace(
+        "# Data availability\n\nThe data are held by the agency.\n\n", "") + (
+        "# Declarations\n\n**Funding.**\n\n<!-- TO CONFIRM -->\n\n*Competing interests.*\n\n"
+        "To be completed.\n\n**Ethics approval and consent to participate**.\n\n<!-- -->\n\n"
+        "*Data availability.*\n\n<!-- -->\n")
+    assert missing(stated(text), FIVE) == ["data", "funding", "interests"]
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n**Funding.**\n\nThe work was paid for by the department.\n\n"
+        "*Competing interests.* None declared.\n")
+    assert missing(stated(text), FIVE) == []
+
+
 def test_a_label_s_own_paragraph_never_ends_it() -> None:
     """Round 2 of #819: words after a label that look like a label of the same kind are its
     statement."""

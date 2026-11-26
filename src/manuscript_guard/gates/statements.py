@@ -36,9 +36,11 @@ failure from internal review on (the author's rule, 2026-11-26):
   Declarations section that holds the words of its kind's heading. A label's own words are no
   sentence of either, and a CRediT role ("Funding acquisition") or an item of the ICMJE form
   states no funding. A label is the words a paragraph opens with before a colon ("**Funding:**",
-  "Funding:"), or a short paragraph wholly in emphasis with no stop ("**Funding**"); one
-  wholly in emphasis that ends in a stop ("*The authors declare no competing interests.*")
-  is a sentence, a statement of what its words name.
+  "Funding:"), or a short paragraph wholly in emphasis with no stop ("**Funding**"), or one
+  whose words are only a statement's title, whatever stop ends it ("**Funding.**",
+  "*Competing interests.*"); one wholly in emphasis that ends in a stop and says more ("*The
+  authors declare no competing interests.*") is a sentence, a statement of what its words
+  name.
 
 A kind whose only heading is empty is said once, by `section-empty`. Where the target
 journal's profile lists required statements, they are the journal's, read from its page, and
@@ -333,7 +335,8 @@ def _emphasised_sentence(paragraph: str) -> bool:
     """Whether a paragraph is a sentence wholly in emphasis, ending in a stop inside its marks
     or after them: "*The authors declare no competing interests.*", "**No funding was
     received.**". G4's reading of the declarations takes one of six words or fewer for a label
-    alone; it is a statement (round 2 of #819). "**Funding**", with no stop, is a label."""
+    alone; it is a statement (round 2 of #819). "**Funding**", with no stop, is a label, and
+    so is a title alone with its stop, "**Funding.**", "*Competing interests.*" (round 3)."""
     text = paragraph.strip()
     for mark in _EMPHASIS:
         if not text.startswith(mark):
@@ -344,8 +347,36 @@ def _emphasised_sentence(paragraph: str) -> bool:
         if len(inner) <= len(mark) or not inner.endswith(mark):
             return False
         inner = inner[: -len(mark)]
-        return mark not in inner and bool(stop or inner.rstrip().endswith((".", "!", "?")))
+        return (mark not in inner and bool(stop or inner.rstrip().endswith((".", "!", "?")))
+                and not _title_only(inner))  # fmt: skip
     return False
+
+
+#: The words a statement's title is made of ("Ethics approval and consent to participate",
+#: "Data, Materials, and Software Availability", "Use of generative AI"): a paragraph wholly
+#: in emphasis of these words alone is a label, whatever stop ends it.
+_TITLE_WORDS = frozenset((
+    "a", "accessibility", "acknowledgement", "acknowledgements", "acknowledgment",
+    "acknowledgments", "ai", "and", "approval", "artificial", "author", "author's", "authors",
+    "authors'", "authorship", "availability", "board", "code", "committee", "competing",
+    "conflict", "conflicting", "conflicts", "consent", "contribution", "contributions",
+    "contributor", "contributors", "contributorship", "credit", "data", "declaration",
+    "declarations", "disclosure", "disclosures", "duality", "ethical", "ethics", "financial",
+    "for", "funder", "funding", "generative", "grant", "grants", "information",
+    "institutional", "intelligence", "interest", "interests", "irb", "language", "llm", "llms",
+    "materials", "model", "models", "of", "on", "or", "participate", "publication", "review",
+    "role", "roles", "sharing", "software", "source", "sources", "statement", "statements",
+    "support", "the", "to", "tools", "use",
+))  # fmt: skip
+
+
+def _title_only(words: str) -> bool:
+    """Whether `words`, their marks and stops taken off, are only a statement's title, of a
+    kind this check reads: "Funding", "Competing interests", "Data availability" (round 3 of
+    #819). "The authors declare no competing interests" is a sentence."""
+    said = re.findall(r"[a-z']+", words.casefold().replace("\N{RIGHT SINGLE QUOTATION MARK}", "'"))
+    return (bool(said) and all(word in _TITLE_WORDS for word in said)
+            and bool(_label_of(" ".join(said), None)))  # fmt: skip
 
 
 def _said_words(text: str) -> str:

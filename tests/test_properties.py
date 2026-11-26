@@ -5375,6 +5375,12 @@ def _an_emphasised_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(statements, "_emphasised_sentence", lambda paragraph: False)
 
 
+def _a_title_alone_with_a_stop_is_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_title_only", lambda words: False)
+
+
 def _a_label_s_own_paragraph_is_cut(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import statements
 
@@ -33902,6 +33908,10 @@ BROKEN = {
     ),
     "an emphasised sentence is a label": (
         _an_emphasised_sentence_is_a_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label alone ending in a stop is a sentence": (
+        _a_title_alone_with_a_stop_is_a_sentence,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
     "a label's own paragraph is cut": (

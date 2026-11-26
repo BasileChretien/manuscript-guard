@@ -8684,7 +8684,10 @@ DECLARED_TITLES = {
 #: What each says, in words that name no other kind.
 DECLARED_BODIES = {
     "data": "The extract is held by the agency and can be requested from it.",
-    "ethics": "The committee of the hospital approved the protocol (CPP 2021-12).",
+    # Opening as a label of its own kind does: after a label, it is that label's statement
+    # still (round 2 of #819).
+    "ethics": "Ethics committee: the committee of the hospital approved the protocol "
+    "(CPP 2021-12).",
     "funding": "The work was paid for by the department of the first author.",
     "interests": "None declared.",
     # A CRediT role that names funding, which states none (round 1 of #819).
@@ -8705,15 +8708,16 @@ ETHICS_IN_METHODS = "The ethics committee of the hospital approved the protocol.
 ETHICS_DENIED = "No ethical approval was required for these records."
 #: What a heading with nothing printed under it holds, in three kinds every generated paper
 #: holds one of each of: a comment, with `{}` the words it hides; Markdown's comment idiom;
-#: and a placeholder G6 has no rule for.
+#: and a placeholder G6 has no rule for. One G6 fails ("[Placeholder]") is something
+#: printed.
 DECLARED_COMMENTS = ("<!-- TO CONFIRM WITH THE AUTHORS: {} -->", "<!-- {} -->", "<!--\n{}\n-->")
 DECLARED_IDIOM = "[//]: # (ask the authors for the words of it)"
-DECLARED_PLACEHOLDERS = ("TO CONFIRM WITH THE AUTHORS.", "[Placeholder]", "To be completed.")
+DECLARED_PLACEHOLDERS = ("TO CONFIRM WITH THE AUTHORS.", "To be completed.", "Pending.")
 DECLARED_NOTHING = (*DECLARED_COMMENTS, DECLARED_IDIOM, *DECLARED_PLACEHOLDERS)
 #: A label of each kind that the generated papers add after a label left over a comment.
 USUAL_TITLES = {"data": "Data availability", "ai_use": "Use of AI"}
-#: The titles the bibliography is printed under: the reference list's own, at the end of a
-#: generated paper, and one whose last word is the list's, among its sections.
+#: The titles the bibliography is printed under: the reference list's own, anywhere, and one
+#: whose last word is the list's, as the last heading of a generated paper (round 2 of #819).
 DECLARED_REFERENCES = ("References", "Bibliography")
 DECLARED_LAST_REFERENCES = ("Supplementary references", "Additional references",
                             "S4. References cited", "Supplementary bibliography")  # fmt: skip
@@ -8725,7 +8729,8 @@ DATA_TITLES_NEW = ("Code and data availability", "Data, Materials, and Software 
 #: What a Declarations section says before its statements, stating none of them.
 DECLARED_OPENING = "The statements below are the authors' own."
 #: The headings every generated paper holds with nothing printed under them.
-DECLARED_PLANTED = ("Limitations", "Notes on the data", "Supplementary figures")
+DECLARED_PLANTED = ("Limitations", "Notes on the data", "Supplementary figures",
+                    "Key references")
 
 
 @st.composite
@@ -8748,11 +8753,16 @@ def statement_papers(
     after a plain label alone, a sentence of the Methods or a denial in the Introduction.
     Every example also holds a Methods heading whose words are all in its subsection; a
     heading over a comment ("Limitations"), one over an empty subsection alone ("Appendix"
-    over "Notes on the data", Markdown's comment idiom under it) and one over a placeholder
-    ("Supplementary figures"); a heading whose last word is the reference list's, and the
-    reference list's own at the end, with nothing under them, in an order drawn (round 1 of
-    #819). Each is in every example, not one among several drawn, so that a rule broken for
-    any of them fails under every seed."""
+    over "Notes on the data", Markdown's comment idiom under it), one over a placeholder G6
+    passes ("Supplementary figures") and one over a placeholder G6 fails ("Supplementary
+    tables", which is not empty); the reference list's own heading, and one whose last word
+    is the list's, as the last heading ("Supplementary references") and before it ("Key
+    references", which is empty), with nothing under them; and "Availability of code", which
+    is no data statement, in an order drawn (rounds 1 and 2 of #819). The ethics statement
+    opens like a label of its own kind ("Ethics committee:"), and the papers made from this
+    one write it after a label too, and a Declarations section's sentences each wholly in
+    emphasis. Each is in every example, not one among several drawn, so that a rule broken
+    for any of them fails under every seed."""
     case = {"as": str, "upper": str.upper, "lower": str.lower}
 
     def titled(kind: str) -> str:
@@ -8777,13 +8787,14 @@ def statement_papers(
     # Over a comment first of the labels, where the label after it is a Data availability or
     # an AI-use one, which G4's reading of the declarations does not end a label at.
     hidden = draw(st.sampled_from(DECLARED_COMMENTS))
-    last = draw(st.sampled_from(DECLARED_LAST_REFERENCES))
-    references = f"# {draw(st.sampled_from(DECLARED_REFERENCES))}\n" + draw(
+    last = f"# {draw(st.sampled_from(DECLARED_LAST_REFERENCES))}\n"
+    own_list = f"# {draw(st.sampled_from(DECLARED_REFERENCES))}\n" + draw(
         st.sampled_from(("", "\n::: {#refs}\n:::\n")))
 
     def paper(left_out: str | None = None, emptied: str | None = None,
               left_in: str = "declarations", shaped: dict[str, str] | None = None,
-              retitled: dict[str, str] | None = None) -> str:  # fmt: skip
+              retitled: dict[str, str] | None = None,
+              emphasised: bool = False) -> str:  # fmt: skip
         shapes = {**forms, **(shaped or {})}
         named = {**titles, **(retitled or {})}
 
@@ -8805,7 +8816,13 @@ def statement_papers(
             "limitations": f"# Limitations\n\n{comment.format(words['limitations'])}\n",
             "appendix": f"# Appendix\n\n## Notes on the data\n\n{DECLARED_IDIOM}\n",
             "figures": f"# Supplementary figures\n\n{placeholder}\n",
-            "last": f"# {last}\n",
+            # A placeholder G6 fails: something printed, the gap G6's alone.
+            "tables": "# Supplementary tables\n\n[Placeholder]\n",
+            # Not the document's last heading: the bibliography is not printed under it.
+            "key": "# Key references\n",
+            "own": own_list,
+            # A heading that names code and no data, which is no data statement.
+            "code": "# Availability of code\n\nThe code is in the repository.\n",
         }
         labels = []
         for kind, form in shapes.items():
@@ -8835,23 +8852,27 @@ def statement_papers(
                       f"**{USUAL_TITLES[after]}:** {DECLARED_BODIES[after]}", *labels]
             left = []
         blocks["further"] = "# Further statements\n\n" + "\n\n".join(labels) + "\n"
-        blocks["declarations"] = "# Declarations\n\n" + "\n\n".join(
-            [" ".join([DECLARED_OPENING, *declared]), *left]) + "\n"
+        # A sentence of a Declarations section wholly in emphasis is a sentence still.
+        said = ([DECLARED_OPENING, *(f"*{sentence}*" for sentence in declared)] if emphasised
+                else [" ".join([DECLARED_OPENING, *declared])])  # fmt: skip
+        blocks["declarations"] = "# Declarations\n\n" + "\n\n".join([*said, *left]) + "\n"
         middle = "\n".join(blocks[name] for name in order if name in blocks)
-        return f"# Introduction\n\n{introduction}\n\n{middle}\n{references}"
+        return f"# Introduction\n\n{introduction}\n\n{middle}\n{last}"
 
     headed = [kind for kind, form in forms.items() if form in ("heading", "numbered heading")]
     # Every kind has a place in the order whatever its form, since the papers made from this
     # one give some of them other forms.
-    order = draw(st.permutations(["methods", "limitations", "appendix", "figures", "last",
-                                  "further", "declarations", *forms]))  # fmt: skip
+    order = draw(st.permutations(["methods", "limitations", "appendix", "figures", "tables",
+                                  "key", "own", "code", "further", "declarations",
+                                  *forms]))  # fmt: skip
     shown = {kind: (number if forms[kind] == "numbered heading" else "") + titles[kind]
              for kind in headed}  # fmt: skip
     removed = [(kind, paper(left_out=kind, left_in=place)) for kind in forms
                for place in ("declarations", "further")]
     removed.append(("funding", paper(left_out="funding",
                                      shaped={"contributions": "declarations"})))
-    restated = [paper(shaped={"ethics": form}) for form in ETHICS_FORMS]
+    restated = [paper(shaped={"ethics": form}) for form in (*ETHICS_FORMS, "label")]
+    restated.append(paper(shaped={"interests": "declarations"}, emphasised=True))
     restated += [paper(shaped={"data": "heading"}, retitled={"data": title})
                  for title in DATA_TITLES_NEW]  # fmt: skip
     return (paper(), removed, [(kind, shown[kind], paper(emptied=kind)) for kind in headed],

@@ -99,22 +99,108 @@ def test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_
     assert empty_headings(text) == []
 
 
-def test_a_tbd_under_a_heading_is_g6_s_and_a_placeholder_g6_passes_is_empty() -> None:
-    """G6 fails "TBD", "TODO" and "XXX" as `model-artefact` wherever they stand, so a heading
-    over one of them is said once, by G6; a placeholder G6 has no rule for is no statement,
-    and the heading over it is empty (round 1 of #819)."""
+def _g6_fails(word: str) -> bool:
     from manuscript_guard.gates.writing import judge_texts
 
-    for word in ("TBD", "TODO: ask the authors", "XXX"):
-        said, _totals = judge_texts([(Path("manuscript/main.md"),
-                                      f"# Intro\n\nWords.\n\n# Funding\n\n{word}\n")])
-        assert "model-artefact" in {finding.code for finding in said.findings}, word
-    for word in ("TO CONFIRM WITH THE AUTHORS.", "[Placeholder]", "To be completed.",
-                 "*Pending*"):
+    said, _totals = judge_texts([(Path("manuscript/main.md"),
+                                  f"# Intro\n\nWords.\n\n# Funding\n\n{word}\n")])
+    return "model-artefact" in {finding.code for finding in said.findings}
+
+
+def test_a_placeholder_g6_fails_is_g6_s_and_one_g6_passes_is_empty() -> None:
+    """One gap, one finding (rounds 1 and 2 of #819): a heading over a placeholder G6 fails as
+    `model-artefact` ("TBD", "XXX", "[Placeholder]", "[TO BE COMPLETED]") has something under
+    it, and the gap is G6's alone; one over a placeholder G6 passes is empty."""
+    for word in ("TBD", "TODO: ask the authors", "XXX", "[Placeholder]", "[TO BE COMPLETED]"):
+        assert _g6_fails(word), word
+        assert empty_headings(f"# Funding\n\n{word}\n") == [], word
+    for word in ("TO CONFIRM WITH THE AUTHORS.", "To be completed.", "*Pending*"):
+        assert not _g6_fails(word), word
         assert [h.title for h in empty_headings(f"# Funding\n\n{word}\n")] == ["Funding"], word
     assert missing(stated(WHOLE.replace("# Funding\n\nThis work received no funding.\n",
                                         "**Funding:** To be confirmed by the authors.\n")),
                    FIVE) == ["funding"]
+
+
+def test_an_emphasised_sentence_is_a_statement_and_only_words_before_a_colon_a_label() -> None:
+    """Round 2 of #819: "*The authors declare no competing interests.*" and "**No funding was
+    received.**" are sentences of a Declarations section, not labels; "**Funding:**" and
+    "Funding:" are labels, and so is "**Funding**" alone, with no stop."""
+    for interests, funding in (
+        ("*The authors declare no competing interests.*", "**Funding:** ANR-20-CE17-0001."),
+        ("**Competing interests:** None.", "**No funding was received.**"),
+        ("_The authors declare no competing interests_.", "__No funding was received.__"),
+    ):
+        text = WHOLE.split("# Funding")[0] + f"# Declarations\n\n{interests}\n\n{funding}\n"
+        assert missing(stated(text), FIVE) == [], (interests, funding)
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n**Funding**\n\n<!-- -->\n\nCompeting interests: <!-- -->\n")
+    assert missing(stated(text), FIVE) == ["funding", "interests"]
+
+
+def test_a_label_s_own_paragraph_never_ends_it() -> None:
+    """Round 2 of #819: words after a label that look like a label of the same kind are its
+    statement."""
+    for written in ("**Ethics approval and consent to participate:** Ethics committee: CPP "
+                    "Sud-Est (2021-12).",
+                    "Ethical approval:\n\nEthics committee: CPP Sud-Est (2021-12)."):
+        text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                             f"# Further statements\n\n{written}\n")
+        assert missing(stated(text), FIVE) == [], written
+
+
+def test_availability_of_code_alone_is_no_data_statement() -> None:
+    """Round 2 of #819: a title is a data statement only where it names data."""
+    text = WHOLE.replace("# Data availability\n\nThe data are held by the agency.\n",
+                         "# Availability of code\n\nThe code is on GitHub.\n")
+    assert missing(stated(text), FIVE) == ["data"]
+
+
+def test_only_the_last_heading_ending_in_references_holds_the_bibliography() -> None:
+    """Pandoc prints the bibliography at the end, or at a `#refs` div (round 2 of #819): an
+    empty "Key references" in the middle of a document is empty; at its end it is not."""
+    text = "# Introduction\n\nI.\n\n# Key references\n\n# Discussion\n\nD.\n"
+    assert [heading.title for heading in empty_headings(text)] == ["Key references"]
+    assert empty_headings("# Introduction\n\nI.\n\n# Key references\n") == []
+
+
+def test_g4_s_data_policy_reads_only_its_own_data_headings() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): a statement under a heading this check reads and
+    `data_statement.HEADING` does not is a data statement here, and G4's check of the
+    profile's data policy does not find it, so the policy is not applied to it."""
+    from manuscript_guard.gates.data_statement import statement_text
+
+    text = WHOLE.replace("# Data availability\n\nThe data are held by the agency.\n",
+                         "# Data accessibility\n\nThe data are held by the agency.\n")
+    assert missing(stated(text), FIVE) == []
+    assert statement_text(text) is None
+
+
+def test_a_label_over_a_placeholder_is_said_by_g4_s_other_checks_too(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): only the notes that say a statement is not stated give way
+    to this check's finding. A label over a placeholder with a grant on record is also
+    `funding-grant-missing`, and a heading over one with a model on record also
+    `ai-use-model-unnamed`."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "paper"
+    init_project(root, title="A study")
+    (root / "manuscript" / "main.md").write_text(
+        WHOLE.split("# Funding")[0] + "**Funding:** TO CONFIRM WITH THE AUTHORS.\n\n"
+        "# Competing interests\n\nNone declared.\n\n# Use of AI\n\nTO CONFIRM.\n",
+        encoding="utf-8")
+    (root / "authors.yaml").write_text(
+        "schema: manuscript-guard/authors/1\nauthors:\n"
+        "  - given: Ada\n    family: Example\n    funding: ['Agence (ANR-20-CE17-0001)']\n"
+        "    competing_interests: None declared.\n"
+        "ai_use:\n  declared_by: Ada Example\n  declared_on: 2026-11-26\n  uses:\n"
+        "    - tool: Claude Opus 5\n      purpose: editing\n", encoding="utf-8")
+    report, *_ = _run_gates(root, stage="drafting")
+    codes = {finding.code for finding in report.findings}
+    assert {"funding-grant-missing", MISSING, "ai-use-model-unnamed", EMPTY} <= codes, codes
 
 
 def test_markdown_s_comment_idiom_prints_nothing() -> None:

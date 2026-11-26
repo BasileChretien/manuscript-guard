@@ -30814,17 +30814,28 @@ What papers converted from Word showed (see "What papers converted from Word sho
     checked for emptiness.
     Pinned by `tests/test_statements.py::test_a_latex_manuscript_s_statements_are_read_and_its_headings_are_not`.
   - A heading has something under it as soon as anything is printed there that is no
-    placeholder of the check's own list ("TO CONFIRM", "Placeholder", "To be completed"): a
-    figure, a table, a listing, a sentence. "TBD", "TODO" and "XXX" count as something,
-    since G6 fails each as `model-artefact` wherever it stands, and one gap is one finding.
+    placeholder of the check's own list, which G6 does not fail ("TO CONFIRM", "To be
+    completed", "Pending"): a figure, a table, a listing, a sentence. A placeholder G6 fails
+    as `model-artefact` ("TBD", "TODO", "XXX", "[Placeholder]", "[TO BE COMPLETED]") counts
+    as something, and one gap is one finding, G6's.
     Pinned by `tests/test_statements.py::test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_no_heading`
-    and `tests/test_statements.py::test_a_tbd_under_a_heading_is_g6_s_and_a_placeholder_g6_passes_is_empty`.
+    and `tests/test_statements.py::test_a_placeholder_g6_fails_is_g6_s_and_one_g6_passes_is_empty`.
   - An ethics statement is also any sentence of the Methods with "ethics", "ethical",
     "institutional review" or "IRB" in it, and a sentence anywhere in the main text or the
     supplement that says no approval was needed, as G4 reads a denial.
     Pinned by `tests/test_statements.py::test_an_ethics_statement_may_be_in_the_methods_or_a_denial_anywhere`.
   - The Acknowledgements count as a funding statement, as G4 reads the declarations, whatever
     they say. Accepted.
+  - The Data availability headings this check reads are wider than G4's own data checks'
+    (`data_statement.HEADING`): a statement under "Data accessibility" or "Code and data
+    availability" is a data statement here, while the profile's data policy is not applied
+    to it and no package DOI is looked for in it.
+    Pinned by `tests/test_statements.py::test_g4_s_data_policy_reads_only_its_own_data_headings`.
+  - Only the notes that say a statement is not stated give way to this check's finding. A
+    label over a placeholder, with a grant on record, is also `funding-grant-missing` beside
+    `declaration-missing`; a heading over one, with a model on record, is also
+    `ai-use-model-unnamed` beside `section-empty`.
+    Pinned by `tests/test_statements.py::test_a_label_over_a_placeholder_is_said_by_g4_s_other_checks_too`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

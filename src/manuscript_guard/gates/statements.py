@@ -11,12 +11,14 @@ failure from internal review on (the author's rule, 2026-11-26):
 - `section-empty`: a heading of the main text or the supplement under which nothing is
   printed before the next heading of its level or above: no text, or only HTML comments, a
   link's reference definition (`[//]: # (to confirm)`, Markdown's comment) and white space, or
-  a placeholder G6 does not already fail ("TO CONFIRM", "Placeholder", "To be completed"; G6
-  fails "TBD", "TODO" and "XXX" as `model-artefact`). A heading whose subsections print
+  a placeholder G6 does not fail ("TO CONFIRM", "To be completed", "Pending"). A placeholder
+  G6 fails as `model-artefact` ("TBD", "TODO", "XXX", "[Placeholder]", "[TO BE COMPLETED]")
+  is something printed, and its gap is G6's finding alone. A heading whose subsections print
   something is not empty. One gap is one finding: a heading empty only through its empty
-  subsections is not said, its subsections are. The reference list's heading, and any whose
-  title ends in "references" or "bibliography" ("Supplementary references"), is printed
-  under, since the build puts the bibliography there; a heading with no title is passed over.
+  subsections is not said, its subsections are. The reference list's heading is printed
+  under, since the build puts the bibliography there, and so is the last heading of the main
+  text or the supplement when its title ends in "references" or "bibliography"
+  ("Supplementary references"), where pandoc puts it; a heading with no title is passed over.
 - `declaration-missing`: the manuscript has no statement of one of the kinds every paper
   makes, where no journal's profile says which statements the journal asks for: data
   availability, ethics, funding, competing interests, author contributions, and AI use where
@@ -33,7 +35,10 @@ failure from internal review on (the author's rule, 2026-11-26):
   approval was needed (`no_approval`, as G4 reads a denial); and any of them a sentence of a
   Declarations section that holds the words of its kind's heading. A label's own words are no
   sentence of either, and a CRediT role ("Funding acquisition") or an item of the ICMJE form
-  states no funding.
+  states no funding. A label is the words a paragraph opens with before a colon ("**Funding:**",
+  "Funding:"), or a short paragraph wholly in emphasis with no stop ("**Funding**"); one
+  wholly in emphasis that ends in a stop ("*The authors declare no competing interests.*")
+  is a sentence, a statement of what its words name.
 
 A kind whose only heading is empty is said once, by `section-empty`. Where the target
 journal's profile lists required statements, they are the journal's, read from its page, and
@@ -54,6 +59,7 @@ import re
 from bisect import bisect_left
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
@@ -104,17 +110,20 @@ WRITE = {
 #: The words of a Data availability statement's title, in the forms journals ask for: "Data
 #: availability", "Data and code availability", "Code and data availability" (Copernicus),
 #: "Data, Materials, and Software Availability" (PNAS), "Data accessibility", "Data sharing",
-#: "Availability of data and materials" (BMC).
+#: "Availability of data and materials" (BMC). Each names data: "Availability of code" is no
+#: data statement (round 2 of #819).
 _DATA_TITLE = (
     r"(?:(?:code|software) and )?data(?:,? (?:and )?(?:code|materials?|software))*,? "
-    r"(?:availability|accessibility|sharing)|availability of (?:the )?(?:data|code)"
+    r"(?:availability|accessibility|sharing)"
+    r"|availability of (?:the )?(?:(?:code|software) and (?:the )?)?data"
 )
 #: The same as a heading or a label opens with it, its number aside, and in a sentence.
 _DATA_HEADING = re.compile(rf"^[\W\d]*(?:{_DATA_TITLE})\b", re.IGNORECASE)
 _DATA_WORDS = re.compile(rf"\b(?:{_DATA_TITLE})\b", re.IGNORECASE)
-#: What a section or a label holds that says only that its text is still to come, and that G6
-#: does not already fail as a placeholder (`model-artefact`: TBD, TODO, XXX, FIXME): read
-#: whole, its marks and stops aside.
+#: What a section or a label holds that says only that its text is still to come: read whole,
+#: its marks and stops aside. One G6 already fails as `model-artefact` ("TBD", "XXX",
+#: "[Placeholder]", "[TO BE COMPLETED]") is no placeholder here: it is something printed, and
+#: its gap is G6's finding alone (`_placeholder`).
 _PLACEHOLDER = re.compile(
     r"(?:to (?:be )?(?:confirm(?:ed)?|check(?:ed)?|complet(?:e|ed)|writ(?:e|ten)"
     r"|fill(?:ed)?(?: in)?|add(?:ed)?|decided?|determined|provided|supplied)"
@@ -128,8 +137,9 @@ _DEFINITION = re.compile(
     r"(?m)^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*\S+"
     r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*$"
 )
-#: A title the bibliography is printed under besides the reference list's own: one that ends
-#: in its word, "Supplementary references", "Additional references".
+#: A title the bibliography is printed under besides the reference list's own, as the last
+#: heading of its document, where pandoc puts the bibliography: one that ends in its word,
+#: "Supplementary references", "Additional references" (round 2 of #819).
 _REFERENCES_LAST = re.compile(
     r"\b(?:references|bibliography|works cited|literature cited|reference list)\W*$",
     re.IGNORECASE,
@@ -142,9 +152,24 @@ STATED, HEADED_EMPTY = "stated", "empty"
 
 
 def _placeholder(text: str) -> bool:
-    """Whether `text` says only that its text is still to come."""
+    """Whether `text` says only that its text is still to come, in words G6 does not fail."""
     words = re.sub(r"[\W_]+", " ", text).strip()
-    return bool(words) and _PLACEHOLDER.fullmatch(words) is not None
+    return (bool(words) and _PLACEHOLDER.fullmatch(words) is not None
+            and not _g6_fails(text))  # fmt: skip
+
+
+@cache
+def _g6_rules() -> object:
+    from manuscript_guard.gates.writing import load_rules
+
+    return load_rules()
+
+
+def _g6_fails(text: str) -> bool:
+    """Whether G6 fails something in `text` as `model-artefact`, as it reads the manuscript."""
+    from manuscript_guard.gates.writing import artefacts_in
+
+    return next(artefacts_in(_g6_rules(), text, manuscript=True), None) is not None
 
 
 def _says(text: str) -> bool:
@@ -186,14 +211,15 @@ def _opens(text: str, start: int, setext: bool) -> int:
     return len(text) if body == -1 else body
 
 
-def _bibliography(title: str) -> bool:
-    """Whether the build prints the bibliography under a heading of this title."""
+def _bibliography(title: str, last: bool) -> bool:
+    """Whether the build prints the bibliography under a heading of this title: the reference
+    list's own, or, as the document's `last` heading, one whose title ends in its word."""
     from manuscript_guard.text.section_names import plain
 
     # A supplement's number too, "S4. References cited", which `plain` leaves on.
     bare = _SUPPLEMENT_NUMBER.sub("", plain(title))
     return (Section(title=bare, level=1, body="", line=0).is_references
-            or bool(_REFERENCES_LAST.search(bare)))  # fmt: skip
+            or (last and bool(_REFERENCES_LAST.search(bare))))  # fmt: skip
 
 
 def _ends(headings: list) -> list[int]:
@@ -220,8 +246,8 @@ def _below(flags: list[bool], ends: list[int]) -> list[bool]:
 def _printed(headings: list, bodies: list[str]) -> list[bool]:
     """For each heading, whether anything is printed under it: in its own text, the
     bibliography under the reference list's heading, or under a heading below it."""
-    own = [_says(body) or _bibliography(heading.title.strip())
-           for heading, body in zip(headings, bodies, strict=True)]  # fmt: skip
+    own = [_says(body) or _bibliography(heading.title.strip(), index == len(headings) - 1)
+           for index, (heading, body) in enumerate(zip(headings, bodies, strict=True))]
     below = _below(own, _ends(headings))
     return [mine or under for mine, under in zip(own, below, strict=True)]
 
@@ -299,14 +325,38 @@ def kinds_of(title: str, data_heading: str | None = None) -> list[str]:
     return found
 
 
+#: The marks of emphasis, the doubled before the single.
+_EMPHASIS = ("**", "__", "*", "_")
+
+
+def _emphasised_sentence(paragraph: str) -> bool:
+    """Whether a paragraph is a sentence wholly in emphasis, ending in a stop inside its marks
+    or after them: "*The authors declare no competing interests.*", "**No funding was
+    received.**". G4's reading of the declarations takes one of six words or fewer for a label
+    alone; it is a statement (round 2 of #819). "**Funding**", with no stop, is a label."""
+    text = paragraph.strip()
+    for mark in _EMPHASIS:
+        if not text.startswith(mark):
+            continue
+        inner = text[len(mark):]
+        stop = inner[-1:] if inner[-1:] in (".", "!", "?") and inner[:-1].endswith(mark) else ""
+        inner = inner[: len(inner) - len(stop)]
+        if len(inner) <= len(mark) or not inner.endswith(mark):
+            return False
+        inner = inner[: -len(mark)]
+        return mark not in inner and bool(stop or inner.rstrip().endswith((".", "!", "?")))
+    return False
+
+
 def _said_words(text: str) -> str:
     """The words `text` prints as sentences: each paragraph without the label it opens with,
-    "**Funding:**" or "Data availability:", whose words name a kind and state nothing."""
+    "**Funding:**" or "Data availability:", whose words name a kind and state nothing. A
+    sentence wholly in emphasis is kept whole: it is no label."""
     from manuscript_guard.gates.disclosures import _label, paragraphs
 
     kept = []
     for paragraph in paragraphs(text):
-        labelled = _label(paragraph)
+        labelled = None if _emphasised_sentence(paragraph) else _label(paragraph)
         kept.append(labelled[1] if labelled is not None else paragraph)
     return "\n\n".join(piece for piece in kept if _says(piece))
 
@@ -327,6 +377,8 @@ def _words_of(kind: str, text: str) -> bool:
     work received no funding", "ethical approval", "no generative AI was used"."""
     from manuscript_guard.gates.disclosures import _data, _pattern, fold
 
+    # Marks of emphasis are no part of a word: "_no competing interests_".
+    text = re.sub(r"[*_`]+", " ", text)
     if kind == DATA:
         return bool(_DATA_WORDS.search(text))
     if kind == AI_USE:
@@ -348,8 +400,10 @@ def stated(text: str, *, abstract: str | None = None,
         DECLARATIONS,
         _data,
         _first,
+        _label,
         _labelled,
         _own,
+        paragraphs,
     )
     from manuscript_guard.text.section_names import methods_sections
     from manuscript_guard.text.sections import subsections
@@ -386,11 +440,27 @@ def stated(text: str, *, abstract: str | None = None,
     # the Data availability statement, say, as G4 reads a denial (`ethics-approval-denied`).
     if _first(_data()["no_approval"], printed):
         found(ETHICS, STATED)
-    for label, rest in _labelled(printed):
+    # `_labelled` gives one label for each paragraph that opens with one, in order.
+    labelled = [piece for piece in paragraphs(printed) if _label(piece) is not None]
+    for paragraph, (label, rest) in zip(labelled, _labelled(printed), strict=False):
+        if _emphasised_sentence(paragraph):
+            # A sentence, not a label: it states what its words name (round 2 of #819).
+            for kind in KINDS:
+                if _words_of(kind, paragraph):
+                    found(kind, STATED)
+            continue
+        held = _held(_label(paragraph)[1], rest, data_heading)
         for kind in _label_of(label, data_heading):
-            if _says(_cut(rest, data_heading)):
+            if _says(held):
                 found(kind, STATED)
     return said
+
+
+def _held(own: str, rest: str, data_heading: str | None) -> str:
+    """What a label holds: the rest of its own paragraph, whatever that is ("**Ethics
+    approval:** Ethics committee: CPP Sud-Est", round 2 of #819); for a label alone, or over a
+    comment, what follows it up to the next label of a standard kind (`_cut`)."""
+    return own if own.strip() else _cut(rest, data_heading)
 
 
 def _label_of(label: str, data_heading: str | None) -> list[str]:
@@ -405,10 +475,11 @@ def _label_of(label: str, data_heading: str | None) -> list[str]:
 
 
 def _cut(rest: str, data_heading: str | None) -> str:
-    """What a label heads, to the next label of a standard kind. G4's reading of the
-    declarations ends a label alone, or one over a comment, at a label of its own four kinds;
-    a Data availability or an AI-use label after it is no part of it either (round 1 of
-    #819)."""
+    """What a label alone heads, to the next label of a standard kind. G4's reading of the
+    declarations ends one, or one over a comment, at a label of its own four kinds; a Data
+    availability or an AI-use label after it is no part of it either (round 1 of #819). A label
+    of the same kind after it ("Ethical approval:", then "Ethics committee: CPP Sud-Est") is a
+    statement of its own."""
     from manuscript_guard.gates.disclosures import _label, paragraphs
 
     kept = []

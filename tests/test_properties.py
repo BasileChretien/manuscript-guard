@@ -5303,7 +5303,7 @@ def _a_heading_s_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
 def _the_reference_list_s_heading_can_be_empty(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import statements
 
-    patch.setattr(statements, "_bibliography", lambda title: False)
+    patch.setattr(statements, "_bibliography", lambda title, last: False)
 
 
 def _only_the_reference_list_s_own_heading_holds_the_bibliography(
@@ -5311,7 +5311,7 @@ def _only_the_reference_list_s_own_heading_holds_the_bibliography(
 ) -> None:
     from manuscript_guard.gates import statements
 
-    patch.setattr(statements, "_bibliography", lambda title: statements.Section(
+    patch.setattr(statements, "_bibliography", lambda title, last: statements.Section(
         title=title, level=1, body="", line=0).is_references)
 
 
@@ -5358,6 +5358,41 @@ def _a_label_runs_on_past_a_data_or_ai_use_label(patch: pytest.MonkeyPatch) -> N
     from manuscript_guard.gates import statements
 
     patch.setattr(statements, "_cut", lambda rest, data_heading: rest)
+
+
+def _any_heading_ending_in_references_holds_the_bibliography(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    held = statements._bibliography
+    patch.setattr(statements, "_bibliography", lambda title, last: held(title, True))
+
+
+def _an_emphasised_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_emphasised_sentence", lambda paragraph: False)
+
+
+def _a_label_s_own_paragraph_is_cut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_held",
+                  lambda own, rest, data_heading: statements._cut(rest, data_heading))
+
+
+def _a_placeholder_g6_fails_is_nothing_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_g6_fails", lambda text: False)
+
+
+def _availability_of_code_is_a_data_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    title = statements._DATA_TITLE + "|availability of (?:the )?code"
+    patch.setattr(statements, "_DATA_HEADING", re.compile(rf"^[\W\d]*(?:{title})\b", re.I))
 
 
 def _a_label_opens_no_statement(patch: pytest.MonkeyPatch) -> None:
@@ -33859,6 +33894,26 @@ BROKEN = {
     ),
     "a label runs on past a Data availability or an AI-use label": (
         _a_label_runs_on_past_a_data_or_ai_use_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "any heading ending in references holds the bibliography": (
+        _any_heading_ending_in_references_holds_the_bibliography,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "an emphasised sentence is a label": (
+        _an_emphasised_sentence_is_a_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label's own paragraph is cut": (
+        _a_label_s_own_paragraph_is_cut,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a placeholder G6 fails is nothing printed": (
+        _a_placeholder_g6_fails_is_nothing_printed,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "Availability of code is a data statement": (
+        _availability_of_code_is_a_data_statement,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
 }

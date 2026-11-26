@@ -564,7 +564,7 @@ What has run on real papers:
   for a review panel.
 - **`audit`**, which reads a paper written some other way, has been pointed at one submitted
   paper, and what it found is recorded in DESIGN.md.
-- **False alarms** were measured on 98 real papers with 0.2.503: of the warnings `audit` gives about a paper, 18% were judged false (95% interval 14% to 23%), and 46% (37% to 54%) on 48 papers held out from the tuning, with 0.2.502 (commit `77abd45db`). Of those `check` gives, most of them `G7/reference-uncited`, 2.7% were (1.2% to 9.5%). [How often a warning is wrong](docs/false-alarms.md) gives the share for each code, and what it does not measure.
+- **False alarms** were measured on 98 real papers with 0.2.503: of the warnings `audit` gives about a paper, 18% were judged false (95% interval 13% to 23%), and 45% (36% to 54%) on 48 papers held out from the tuning, with the same build. Of those `check` gives, most of them `G7/reference-uncited`, 2.7% were (1.2% to 9.5%). [How often a warning is wrong](docs/false-alarms.md) gives the share for each code, and what it does not measure.
 - **G7's reference checks** were measured on 2026-10-21 against the 740 references of 16
   published open-access pharmacology and epidemiology papers: as published, 1.49 false
   alarms per 100 references in all, of which 0.68 from the search by title and the

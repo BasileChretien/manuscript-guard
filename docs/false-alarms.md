@@ -2,7 +2,7 @@
 
 manuscript-guard was run over real papers that nobody wrote for it, and the warnings it gave were judged true or false against each paper's text. This page gives, for each kind of warning, its code, the share judged false: how far an editor, a referee or an author can take a warning of that kind on trust. It counts warnings and failures only. A note or a question accuses nothing, and the notices that say how a paper was read say nothing about the paper.
 
-Measured with manuscript-guard 0.2.503 (commit `8f4629a2f`), in the corpus's run `main-8f4629a2f`, on 98 papers, and counted on 2026-11-25. The verdicts read are 2,547 from the first judging and 1,182 from the later batches; left out: 19 verdicts on papers found after judging not to be manuscripts; 12 problems a judge noticed that no warning raised; 7 warnings a judge could not settle from the text. The page is drawn by `tools/false_alarms.py` from [its counts](false-alarms.yaml), which hold no paper's text, and is drawn again whenever a new run of main becomes the base of the corpus gate ([Measuring the gates on real papers](corpus.md)).
+Measured with manuscript-guard 0.2.503 (commit `27b5cfba4`), in the corpus's run `main-27b5cfba4`, on 98 papers, and counted on 2026-11-26. The verdicts read are 2,547 from the first judging and 1,182 from the later batches; left out: 19 verdicts on papers found after judging not to be manuscripts; 12 problems a judge noticed that no warning raised; 7 warnings a judge could not settle from the text. The page is drawn by `tools/false_alarms.py` from [its counts](false-alarms.yaml), which hold no paper's text, and is drawn again whenever a new run of main becomes the base of the corpus gate ([Measuring the gates on real papers](corpus.md)).
 
 ## In all
 
@@ -10,8 +10,8 @@ By command, `audit` first: it is the one an editor or a referee runs on a paper 
 
 | command | papers | warnings | in papers with a verdict | judged | false | share false | 95% interval |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `audit` | all, 95 | 1,047 | 1,022 | 981 | 178 | 18% | 14% to 23% |
-|  | Word, 42 |  | 458 | 441 | 50 | 12% | 8.0% to 17% |
+| `audit` | all, 95 | 1,056 | 1,031 | 990 | 178 | 18% | 13% to 23% |
+|  | Word, 42 |  | 467 | 450 | 50 | 11% | 8.0% to 17% |
 |  | PDF, 33 |  | 316 | 314 | 96 | 31% | 21% to 41% |
 |  | LaTeX, 20 |  | 248 | 226 | 32 | 13% | 7.5% to 20% |
 | `check` | all, 59 | 4,026 | 3,765 | 673 | 97 | 2.7% | 1.2% to 9.5% |
@@ -33,6 +33,7 @@ A code's share is given where 10 or more of its warnings were judged, from 3 pap
 | `G6/ai-phrasing` | audit, check, compare | 130 | 130 | 26 | 20% | 8.8% to 34% | 41 (Word 17, PDF 16, LaTeX 8) |
 | `G6/vague-attribution` | audit, check | 21 | 14 | 9 | 64% | 27% to 94% | 9 (Word 3, PDF 3, LaTeX 3) |
 | `G7/entries-not-told-apart` | audit | 18 | 18 | 1 | 5.6% | 0% to 26% | 18 (PDF 13, LaTeX 5) |
+| `G7/entry-never-cited` | audit | 17 | 17 | 2 | 12% | 0% to 36% | 4 (Word 2, PDF 1, LaTeX 1) |
 | `G7/novelty-unsearched` | check | 32 | 31 | 5 | 16% | 2.7% to 35% | 17 (Word 14, LaTeX 3) |
 | `G7/reference-uncited` | check | 3,216 | 112 | 13 | 0.6% | 0.1% to 4.4% | 19 (Word 7, LaTeX 12) |
 | `G14/abbreviation-redefined` | audit, check, compare | 491 | 483 | 71 | 15% | 7.6% to 25% | 61 (Word 23, PDF 24, LaTeX 14) |
@@ -57,7 +58,6 @@ Fewer than 10 judged, or from fewer than 3 papers: too few to say what share is 
 | `G6/model-artefact` | audit | 2 | 2 | 0 | 2 | 2 |
 | `G6/revision-residue` | audit, check | 5 | 3 | 1 | 2 | 2 |
 | `G7/citation-beyond-list` | audit | 1 | 1 | 0 | 1 | 1 |
-| `G7/entry-never-cited` | audit | 8 | 8 | 6 | 2 | 3 |
 | `G8/p-decision-error` | check | 1 | 1 | 1 | 0 | 1 |
 | `G8/p-inconsistent` | check | 5 | 5 | 5 | 0 | 4 |
 | `G12/registration-undeclared` | check | 1 | 1 | 1 | 0 | 1 |
@@ -75,17 +75,17 @@ Every code that gave a warning has a judged one.
 
 The rules were changed, pull request by pull request, against the verdicts above, so on those papers they look better than they are. Another 48 papers are held out: they are measured at the end of a stage of the work only, never shown to whoever changes a rule, and joined to the tuning papers after three such measures. Their shares are given by command and format, not by code, which would show where to look.
 
-Measure 1, with manuscript-guard 0.2.502 (commit `77abd45db`), in the run `main-77abd45db`:
+Measure 2, with manuscript-guard 0.2.503 (commit `27b5cfba4`), in the run `main-27b5cfba4`:
 
 | command | papers | warnings judged | false | share false | 95% interval |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `audit` | all, 40 | 343 | 157 | 46% | 37% to 54% |
+| `audit` | all, 40 | 326 | 147 | 45% | 36% to 54% |
 |  | Word, 10 | 95 | 38 | 40% | 27% to 50% |
-|  | PDF, 12 | 144 | 88 | 61% | 48% to 76% |
+|  | PDF, 12 | 127 | 78 | 61% | 47% to 80% |
 |  | LaTeX, 9 | 73 | 26 | 36% | 16% to 47% |
 |  | Markdown, 9 | 31 | 5 | 16% | 0% to 34% |
-| `check` | all, 17 | 237 | 28 | 12% | 4.2% to 30% |
-|  | Word, 9 | 51 | 22 | 42% | 20% to 59% |
+| `check` | all, 17 | 235 | 26 | 11% | 4.0% to 29% |
+|  | Word, 9 | 49 | 20 | 40% | 18% to 57% |
 |  | LaTeX, 8 | 186 | 6 | 3.2% | 1.2% to 9.2% |
 
 ## The papers

@@ -92,8 +92,16 @@ jobs:
             found="$prefix/Library/bin/pdftotext.exe"
             echo "MANUSCRIPT_GUARD_POPPLER=$(cygpath -w "$found")" >> "$GITHUB_ENV"
           else
+            # Only the poppler programs the suite calls, in a folder of their own: the
+            # environment's bin holds what poppler depends on too, which must not stand
+            # before the runner's own programs for the steps after this one.
             found="$prefix/bin/pdftotext"
-            echo "$prefix/bin" >> "$GITHUB_PATH"
+            mkdir -p "$RUNNER_TEMP/poppler-bin"
+            for program in pdftotext pdfinfo; do
+              printf '#!/bin/sh\nexec "%s" "$@"\n' "$prefix/bin/$program" > "$RUNNER_TEMP/poppler-bin/$program"
+              chmod +x "$RUNNER_TEMP/poppler-bin/$program"
+            done
+            echo "$RUNNER_TEMP/poppler-bin" >> "$GITHUB_PATH"
           fi
           "$found" -v
       - run: python -m pip install --upgrade pip
@@ -255,8 +263,16 @@ jobs:
             found="$prefix/Library/bin/pdftotext.exe"
             echo "MANUSCRIPT_GUARD_POPPLER=$(cygpath -w "$found")" >> "$GITHUB_ENV"
           else
+            # Only the poppler programs the suite calls, in a folder of their own: the
+            # environment's bin holds what poppler depends on too, which must not stand
+            # before the runner's own programs for the steps after this one.
             found="$prefix/bin/pdftotext"
-            echo "$prefix/bin" >> "$GITHUB_PATH"
+            mkdir -p "$RUNNER_TEMP/poppler-bin"
+            for program in pdftotext pdfinfo; do
+              printf '#!/bin/sh\nexec "%s" "$@"\n' "$prefix/bin/$program" > "$RUNNER_TEMP/poppler-bin/$program"
+              chmod +x "$RUNNER_TEMP/poppler-bin/$program"
+            done
+            echo "$RUNNER_TEMP/poppler-bin" >> "$GITHUB_PATH"
           fi
           "$found" -v
       - run: python -m pip install --upgrade pip

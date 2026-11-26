@@ -29146,31 +29146,56 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A display is found only by the label its legend opens on, "Figure 2.", "Fig. 2",
     "Table 1:", at the start of its block. A legend without one, a table without a legend,
     and a figure's words with no legend under them are read as the text's. Accepted.
+  - A label with a capital or a bracket after it and no stop, "Fig. 2 Three classes",
+    opens a legend only where its block is set smaller than the text; a paragraph of the
+    text that opens so, "Figure 2 (A) shows", is the text's, and so is a legend set at the
+    text's size that opens so.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`.
   - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
     reference list are read as prose, as before (answer 9). Accepted.
   - Inside a band of a page, two columns are read left then right, each block by its centre:
     a page of three columns, or a block set across one column and part of the next, is read
     in that order. Accepted.
+  - On a page set in two columns (a block of three lines or more wholly on each side of the
+    middle), two lines on one baseline that the page's middle parts are never made one,
+    however narrow the gutter: a table's row set across the middle is read as two rows'
+    cells.
+    Pinned by `tests/test_corruption.py::test_a_right_column_line_on_a_left_column_line_s_baseline_keeps_the_columns`.
   - A margin's numbers are taken out, and given to the line on their baseline as its printed
     number, where they stand alone outside the text's left or right edge (read from the
     lines of three words or more), or just before a column's line, in the gutter, where three
     stand so on the page. A number in the gutter on a page with fewer is read as the text's.
-    A line of a block of one line, as a double-spaced manuscript sets each, ends its
-    paragraph only where it ends short of the lines beside it on a stop.
-    Pinned by `tests/test_corruption.py::test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs`.
-  - Two words poppler sets apart are read as one where the gap between them is under a tenth
+    A number at either end of a line's words is the margin's only where an em parts it from
+    them, so a page that sets its margin's numbers closer keeps them in its lines. A line of
+    a block of one line, as a double-spaced manuscript sets each, ends its paragraph only
+    where it ends short of the lines beside it on a stop.
+    Pinned by `tests/test_corruption.py::test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs`
+    and `tests/test_corruption.py::test_a_number_ending_a_ragged_line_is_the_text_s`.
+  - A narrow short block, a paragraph's last line set apart, goes on with the paragraph left
+    open where it is set at that paragraph's lines' height and not at a display's size under
+    it; otherwise it is a figure's words, a display's or a paragraph of its own.
+    Pinned by `tests/test_corruption.py::test_a_double_spaced_paragraph_s_short_last_line_is_its_own`
+    and `tests/test_corruption.py::test_a_one_line_remnant_at_a_column_s_top_goes_on_with_its_paragraph`.
+  - A line that ends short on a stop ends its paragraph, an abbreviation's stop among them,
+    "et al.", "vs.", so a paragraph that a line of that shape breaks is read as two, as main
+    read every line as its own. A number after a stop is a superscript citation only after a
+    letter or a bracket, so a decimal, "was 2.5", ends nothing. Accepted.
+  - Two words poppler sets apart are read as one where the gap between them is under 0.03
     of the line's height, as `pdftotext`'s text reading joins them; two words set touching
-    that are two, a typesetter's tight pair, are read as one.
-    Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`.
+    that are two, a typesetter's tight pair, are read as one. A thin space is a space.
+    Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`
+    and `tests/test_corruption.py::test_a_thin_space_a_pdf_sets_stays_a_space`.
   - A display reaches only as far as its blocks stand one under the other, or beside, over
     some of its width, on its page: a table whose rows a page break cuts is two, the
     second read as the text's where it has no legend of its own. Accepted.
   - A line drawn twice is read once only where it repeats word for word, at the same place.
     Pinned by `tests/test_corruption.py::test_a_line_a_pdf_draws_twice_is_read_once`.
   - A short form broken at a line's end is joined only where its two parts hold two capitals
-    or more, "RE-" then "AIM"; a long form broken so keeps G14's way of being compared
+    or more, "RE-" then "AIM", "SARS-" then "CoV-2" with its own hyphens; a bracket after
+    it stays on the next line; a long form broken so keeps G14's way of being compared
     (#784).
-    Pinned by `tests/test_corruption.py::test_a_short_form_a_pdf_breaks_at_a_line_s_end_is_one`.
+    Pinned by `tests/test_corruption.py::test_a_short_form_a_pdf_breaks_at_a_line_s_end_is_one`
+    and `tests/test_corruption.py::test_a_hyphenated_short_form_a_pdf_breaks_at_a_line_s_end_is_one`.
   - A superscript is a citation for G6 only where it holds numbers, commas and dashes and
     follows a word of three letters or more or a stop: a footnote's letter is not one, nor a
     raised number after a unit, "m 2". G14 reads the number as it is set.

@@ -261,9 +261,12 @@ papers"), and "Not yet measured on published papers" where not. Most kinds an op
 `--lookup`, `--journal`, `--design` or `--package`, are not measured: the corpus runs the audit
 without them. `--details` lists every place of the copyediting and of what was read; with
 `--json`, each finding gains its `part` and its `kind`, and `editor` gives the count of each
-part. `--editor` changes nothing of what the audit finds or of what `--strict` counts, and the
-PDF, the copies with comments and the report draft stay the full report's. The audit page does
-not give the editor's report yet.
+part. `--editor` changes nothing of what the audit finds or of what `--strict` counts. With
+`--pdf` it writes the editor's report as the PDF: the summary line and the scope sentence on
+the cover, the contents, then each part with each kind, its record, and every place of every
+finding, copyediting's and what was read as well; without `--editor` the PDF stays the full
+report's. The copies with comments and the report draft stay the full report's. The audit page
+does not give the editor's report yet.
 
 ## A revision
 

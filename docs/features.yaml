@@ -906,8 +906,8 @@ features:
       right on published papers where that was measured.
     status: partial
     commands: [audit]
-    tests: [tests/test_audit_editor.py]
+    tests: [tests/test_audit_editor.py, tests/test_audit_editor_pdf.py]
     docs: docs/refereeing.md
     limits: >-
-      On the command line only: the audit page, the PDF report and a letter to the authors
+      On the command line and in its PDF only: the audit page and a letter to the authors
       do not give it yet.

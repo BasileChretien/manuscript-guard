@@ -2516,14 +2516,17 @@ def _pdf_refused(target: Path, given: list[Path]) -> str:
 
 
 def _write_pdf(report, discrimination, args: argparse.Namespace) -> bool:
-    """The report as a PDF (`auditing.report_pdf`), with every place and every section,
-    written to the file `--pdf` names and to no file there already; False, said on stderr,
-    where it could not be written."""
+    """The report as a PDF (`auditing.report_pdf`), with every place and every section, or
+    with `--editor` the editor's report in its four parts (`auditing.editor_pdf`), written to
+    the file `--pdf` names and to no file there already; False, said on stderr, where it could
+    not be written."""
+    from manuscript_guard.auditing.editor_pdf import editor_pdf
     from manuscript_guard.auditing.report_pdf import report_pdf
 
+    names = [path.name for path in report.papers]
     try:
-        data = report_pdf(report, discrimination, Path.cwd(),
-                          [path.name for path in report.papers])  # fmt: skip
+        data = (editor_pdf(report, Path.cwd(), names) if getattr(args, "editor", False)
+                else report_pdf(report, discrimination, Path.cwd(), names))  # fmt: skip
     except Exception as exc:  # noqa: BLE001 - said, and exit 2, as a --cited that fails
         from manuscript_guard.diagnostics import crashes
 
@@ -2544,8 +2547,10 @@ def _write_pdf(report, discrimination, args: argparse.Namespace) -> bool:
         print(f"manuscript-guard audit: --pdf {args.pdf} could not be written: {exc}",
               file=sys.stderr)  # fmt: skip
         return False
-    print(f"manuscript-guard audit: wrote {args.pdf}, the report as a PDF with every place and "
-          "every section", file=sys.stderr)  # fmt: skip
+    said = ("the editor's report as a PDF, every place in its four parts"
+            if getattr(args, "editor", False)
+            else "the report as a PDF with every place and every section")  # fmt: skip
+    print(f"manuscript-guard audit: wrote {args.pdf}, {said}", file=sys.stderr)
     return True
 
 
@@ -7196,7 +7201,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="give the report as an editor reads it, each finding in one of four parts: what "
         "to look at before you decide, what to ask the authors, what is for copyediting and "
         "what the check read, with how often each kind was right on published papers where "
-        "that was measured; with --json, each finding gains its part (docs/refereeing.md)",
+        "that was measured; with --json, each finding gains its part, and with --pdf the PDF "
+        "is the editor's report, every place listed (docs/refereeing.md)",
     )
     audit.add_argument(
         "--strict",

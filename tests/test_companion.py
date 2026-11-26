@@ -572,15 +572,19 @@ def test_the_page_prints_a_shared_software_version_from_the_fragment_it_holds(
     `software.python` by a package that withholds the first. The evidence map prints the
     version, read from the second, and the first fragment's own results stay withheld."""
     from manuscript_guard.deposit.companion import companion_html
-    from manuscript_guard.emit import write_digest
+    from manuscript_guard.emit import source_digest, write_digest
 
     ready(project)
     first = "results/01_disproportionality.json"
     document = json.loads((project / first).read_text(encoding="utf-8"))
     python = document["values"]["software.python"]
-    (project / "analysis" / "02_trials.py").write_bytes(b"# the trials\n")
+    script = project / "analysis" / "02_trials.py"
+    script.write_bytes(b"# the trials\n")
+    # The script's own digest, as the emitter records the script that wrote a fragment
+    # (round 3 of #821), not the first script's.
     second = {"schema": document["schema"], "values": {"software.python": dict(python)},
-              "provenance": {**document["provenance"], "generated_by": "analysis/02_trials.py"}}
+              "provenance": {**document["provenance"], "generated_by": "analysis/02_trials.py",
+                             "generated_by_sha256": source_digest(script)}}
     path = project / "results" / "02_trials.json"
     path.write_text(json.dumps(second, indent=2), encoding="utf-8")
     write_digest(path)

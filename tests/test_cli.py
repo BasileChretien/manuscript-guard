@@ -841,6 +841,23 @@ def test_an_offline_build_says_its_citations_are_text_and_check_notes_it(
     assert "citations-not-live" not in {f.code for f in _findings(project)}
 
 
+def test_an_offline_build_does_not_say_a_live_one_would_fail_when_zotero_was_slow(
+    capsys, monkeypatch
+) -> None:
+    """Round 1 of #811: Better BibTeX slow to answer is not known to fail, and the offline
+    build says it is not known rather than that a live build would not work."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.cli import _said_offline_citations
+    from manuscript_guard.zotero import BUSY, Readiness, client
+
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(BUSY))
+    _said_offline_citations(None, SimpleNamespace(citations=("a",)), None)
+    out = capsys.readouterr().out
+    assert "Whether a live build would work now is not known" in out
+    assert "would not work now" not in out
+
+
 def test_only_a_document_holding_a_reference_list_as_text_is_noted(project: Path) -> None:
     """The note reads the document: no record of a live build, and pandoc's bookmark of a
     formatted reference (`ref-<key>`). A document citing nothing is noted of nothing."""
@@ -855,16 +872,29 @@ def test_only_a_document_holding_a_reference_list_as_text_is_noted(project: Path
     document = build / "manuscript.docx"
     (build / f"manuscript.docx{SOURCE_STAMP}").write_text("0" * 64 + "  manuscript.docx")
 
-    def noted(body: str) -> list:
+    def noted(body: str, custom: bytes | None = None) -> list:
         with zipfile.ZipFile(document, "w") as archive:
             archive.writestr("word/document.xml", f"<w:document><w:body>{body}</w:body>")
+            if custom is not None:
+                archive.writestr("docProps/custom.xml", custom)
         loaded, _ = load_project(project)
         found = _check_built_document(loaded).findings
         return [f for f in found if f.code == "citations-not-live"]
 
     assert noted("<w:p><w:r><w:t>Nothing cited.</w:t></w:r></w:p>") == []
-    entry = '<w:bookmarkStart w:id="1" w:name="ref-fictionalClassSignal2019"/>'
-    assert len(noted(f"<w:p>{entry}<w:r><w:t>Author A. Title.</w:t></w:r></w:p>")) == 1
+    # As pandoc writes a reference list: the list's bookmark, then its first entry's.
+    listed = ('<w:bookmarkStart w:id="39" w:name="refs" />' + chr(10) + "    "
+              '<w:bookmarkStart w:id="37" w:name="ref-fictionalClassSignal2019" />'
+              "<w:p><w:r><w:t>Author A. Title.</w:t></w:r></w:p>")  # fmt: skip
+    assert len(noted(listed)) == 1
+    # Round 1 of #811: a heading's bookmark is its id, and "Ref-seq results" is
+    # `ref-seq-results`: no reference list.
+    heading = '<w:bookmarkStart w:id="3" w:name="ref-seq-results" /><w:p><w:r><w:t>Ref-seq'
+    assert noted(heading) == []
+    # Nor a crash where the document's properties are not UTF-8: no note.
+    latin = ('<?xml version="1.0" encoding="windows-1252"?><Properties>café</Properties>'
+             .encode("cp1252"))  # fmt: skip
+    assert noted(listed, custom=latin) == []
 
 
 @needs_pandoc

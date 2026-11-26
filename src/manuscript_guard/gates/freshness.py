@@ -333,9 +333,13 @@ def _check_built_document(project: Project) -> Report:
     return report
 
 
-#: The bookmark pandoc gives each entry of a reference list citeproc formatted:
-#: `ref-<key>`. A document holding one has its references as text.
-_FORMATTED_REFERENCE = re.compile(rb'w:name="ref-[^"]')
+#: A reference list citeproc formatted, as pandoc writes it: the list's bookmark, `refs`,
+#: and straight after it its first entry's, `ref-<key>`. A bookmark `ref-...` alone is no
+#: list: pandoc bookmarks a heading by its id, "Ref-seq results" as `ref-seq-results`
+#: (round 1 of #811).
+_FORMATTED_REFERENCE = re.compile(
+    rb'w:name="refs"[^>]*/>\s*<w:bookmarkStart\b[^>]*\bw:name="ref-[^"]'
+)
 
 
 def _citations_not_live(document: Path) -> Report:
@@ -357,7 +361,8 @@ def _citations_not_live(document: Path) -> Report:
             body = read_member(archive, "word/document.xml")
         if cited_of(document) == LIVE_CITATIONS:
             return Report()
-    except (RoundTripError, UnsafeDocument):
+    except (RoundTripError, UnsafeDocument, UnicodeDecodeError):
+        # Properties that are not UTF-8 are not a record this can read (round 1 of #811).
         return Report()
     if not _FORMATTED_REFERENCE.search(body):
         return Report()

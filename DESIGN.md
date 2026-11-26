@@ -30750,11 +30750,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **What says a citation is not a Zotero field reads the source and the document.** A live
   build counts the citations in its source (each group in brackets, and each narrative
   citation outside one, leaving out comments, listings and inline code) and warns where the
-  document holds fewer Zotero fields; a citation pandoc reads that this count does not, or the
-  reverse, moves the count. `check` notes a built document (`citations-not-live`) only where
-  the document records no live build and holds pandoc's bookmark of a formatted reference
-  (`ref-<key>`), so one built offline in a style that prints no reference list is not noted.
-  Pinned by
+  document, its footnotes and its endnotes hold fewer Zotero fields; a citation pandoc reads
+  that this count does not, or the reverse, moves the count. `check` notes a built document
+  (`citations-not-live`) only where the document records no live build and holds a reference
+  list as pandoc bookmarks one (`refs`, then its first entry's `ref-<key>`), so one built
+  offline in a style that prints no reference list is not noted, nor one whose properties are
+  not UTF-8. Pinned by
   `tests/test_cli.py::test_only_a_document_holding_a_reference_list_as_text_is_noted`.
 - **The editor's report parts each finding by its code.** `audit --editor` puts a finding in
   one of its four parts by the table in `auditing/editor.py` (the author's, 2026-11-25), and

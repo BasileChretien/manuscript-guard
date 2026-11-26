@@ -93,6 +93,8 @@ _TERMINAL: int | None = None
 
 #: The mark of a test that reads a clock. See `pytest_collection_modifyitems`.
 TIMING = "timing"
+#: The mark of a test that asks the Zotero running on this machine. See `zotero_kept_away`.
+REAL_ZOTERO = "real_zotero"
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -100,6 +102,7 @@ def pytest_configure(config: pytest.Config) -> None:
     needs it. Unset, a missing pandoc still skips them."""
     global _TERMINAL
     config.addinivalue_line("markers", f"{TIMING}: reads a clock; CI runs it apart, in one process")
+    config.addinivalue_line("markers", f"{REAL_ZOTERO}: asks the Zotero running on this machine")
     try:
         _TERMINAL = os.dup(sys.stderr.fileno())
     except (AttributeError, OSError, ValueError):
@@ -127,6 +130,17 @@ def pytest_configure(config: pytest.Config) -> None:
     version = line.group(1) if line else "unreadable"
     if version != wanted:
         raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
+
+
+@pytest.fixture(autouse=True)
+def zotero_kept_away(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test asks the Zotero of the machine it runs on what a live build would meet: the
+    probe a build makes (`zotero.readiness`) finds none, unless the test is marked
+    `real_zotero`. A test that wants Zotero to answer patches it in its own way."""
+    if request.node.get_closest_marker(REAL_ZOTERO) is None:
+        from manuscript_guard.zotero import client
+
+        monkeypatch.setattr(client, "_ping", lambda timeout: False)
 
 
 def _require_latex() -> None:

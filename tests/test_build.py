@@ -316,9 +316,11 @@ def test_a_live_build_refuses_keys_the_library_does_not_hold_and_names_them(
     assert "fictionalClassSignal2019" not in str(caught.value)
 
 
-def _docx_with(path: Path, xml: str) -> Path:
+def _docx_with(path: Path, xml: str, **parts: str) -> Path:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("word/document.xml", xml)
+        for name, part in parts.items():
+            archive.writestr(f"word/{name}.xml", part)
     return path
 
 
@@ -337,8 +339,66 @@ def test_fewer_zotero_fields_than_citations_are_said(tmp_path: Path) -> None:
     assert not _verify_live_fields(whole, 3).findings
 
 
+def test_a_citation_in_a_note_is_counted_where_the_note_is(tmp_path: Path) -> None:
+    """Round 1 of #811: pandoc writes a footnote's Zotero field into word/footnotes.xml, and
+    only word/document.xml was counted, so `Text [@a].[^1]` with `[^1]: As shown by @b.` was
+    said to hold a citation as plain text."""
+    from manuscript_guard.build.document import _verify_live_fields
+
+    field = "<w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {}</w:instrText>"
+    noted = _docx_with(tmp_path / "notes.docx", f"<w:document>{field}</w:document>",
+                       footnotes=f"<w:footnotes>{field}</w:footnotes>",
+                       endnotes=f"<w:endnotes>{field}</w:endnotes>")  # fmt: skip
+    report = _verify_live_fields(noted, 3)
+    assert not report.findings
+    assert report.counts["zotero_fields"] == 3
+
+
+def test_a_better_bibtex_slow_to_answer_lets_the_live_build_try_and_says_so(
+    monkeypatch,
+) -> None:
+    """Round 1 of #811: a Better BibTeX slow to answer just after Zotero starts refused a
+    live build that worked before. Not knowing is not a refusal: the build runs, says Zotero
+    did not answer in time, and counts the fields it got."""
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import BUSY, NOT_RUNNING, Readiness, client
+
+    busy = Readiness(BUSY, detail="did not answer")
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: busy)
+    said = document._require_zotero(("a",))
+    assert [f.code for f in said.findings] == ["zotero-unreadable"]
+    assert "did not answer in time" in said.findings[0].message
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(NOT_RUNNING))
+    with pytest.raises(document.ZoteroNotReady):
+        document._require_zotero(("a",))
+
+
+def test_the_instruction_for_a_key_several_items_carry_comes_only_with_one() -> None:
+    """Round 1 of #811: "give a key to one item only" was said where no key was ambiguous."""
+    from manuscript_guard.build.document import zotero_not_ready
+    from manuscript_guard.zotero import KEYS_MISSING, Readiness
+
+    _why, what = zotero_not_ready(Readiness(KEYS_MISSING, missing=("a",)))
+    assert "one item only" not in what
+    why, what = zotero_not_ready(Readiness(KEYS_MISSING, ambiguous=("b",)))
+    assert "one item only" in what
+    assert "several items in it carry 1 cited key (@b)" in why
+
+
+def test_no_test_asks_the_zotero_of_the_machine_it_runs_on(monkeypatch) -> None:
+    """Round 1 of #811: every test that builds offline asked 127.0.0.1:23119 what a live
+    build would meet, and with Zotero open asked the real library. conftest.py keeps the
+    probe from reaching it unless a test is marked `real_zotero`."""
+    from manuscript_guard.zotero import NOT_RUNNING, client, readiness
+
+    monkeypatch.setattr(client.urllib.request, "urlopen",
+                        lambda *_a, **_k: pytest.fail("a test reached Zotero"))  # fmt: skip
+    assert readiness(("a",)).state == NOT_RUNNING
+
+
 @needs_pandoc
 @needs_zotero
+@pytest.mark.real_zotero
 def test_live_build_writes_real_zotero_fields(tmp_path: Path) -> None:
     """The end the whole architecture rests on: Markdown in, live Zotero citations out."""
     from manuscript_guard.zotero import ZoteroUnavailable, rpc

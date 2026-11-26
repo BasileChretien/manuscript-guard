@@ -4888,7 +4888,7 @@ def _said_offline_citations(project, result, supplement: Path | None) -> None:
     document that cites something; Zotero is asked, read-only, what a live build would meet
     (`zotero.readiness`)."""
     from manuscript_guard.build.document import outside_code, zotero_not_ready
-    from manuscript_guard.zotero import find_citations, readiness
+    from manuscript_guard.zotero import BUSY, client, find_citations
 
     keys = set(result.citations)
     if supplement is not None:
@@ -4900,10 +4900,14 @@ def _said_offline_citations(project, result, supplement: Path | None) -> None:
         return
     print("  The citations are formatted text from literature/references.bib, not Zotero "
           "fields: Word's Zotero plugin cannot refresh, restyle or add to them.")  # fmt: skip
-    found = readiness(tuple(sorted(keys)))
+    found = client.readiness(tuple(sorted(keys)))
     if found.ready:
         print("  A live build would work now: Zotero and Better BibTeX answer and hold every "
               "cited key. Build without --offline for Zotero fields.")  # fmt: skip
+        return
+    if found.state == BUSY:
+        print("  Whether a live build would work now is not known: Zotero is running and "
+              "Better BibTeX did not answer in time. Build without --offline to try.")  # fmt: skip
         return
     why, what = zotero_not_ready(found)
     print(f"  A live build would not work now: {why}. For Zotero fields, {what}, then build "

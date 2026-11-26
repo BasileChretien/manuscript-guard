@@ -9843,8 +9843,8 @@ findings (`auditing.gates.run_gates`, which both run), where the audit says what
 a PDF's reference list and which numbers of the Abstract it found nowhere the paper reports,
 and where `compare` says a sentence's claim changed; `check` never reads it. Measured on main
 at d056f71, the next two rows at 0949b4b, once the two judges had read the findings no
-verdict covered (`docs/corpus.md`, "Judging"), the last at 77abd45db, and `model-artefact`'s
-again at 27b5cfb:
+verdict covered (`docs/corpus.md`, "Judging"), the last at 77abd45db and again at f1bd2fad5,
+and `model-artefact`'s again at 27b5cfb:
 
 | Code | Read from | Judged | True | False ones from | In `audit` and `compare` | In `check` |
 |---|---|---|---|---|---|---|
@@ -9853,7 +9853,7 @@ again at 27b5cfb:
 | `entries-not-told-apart` (G7) | any format | 13 | 13 | none | warning | not given |
 | `abstract-not-found` (audit) | any format | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
 | `claim-negation` (compare) | any format | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
-| `abbreviation-used-before-defined` (G14) | PDF only | 81 | 35 | 17 papers | INFO from a PDF; a warning from Word, LaTeX or Markdown | warns |
+| `abbreviation-used-before-defined` (G14) | PDF only | 85 | 49 | 16 papers | INFO from a PDF; a warning from Word, LaTeX or Markdown | warns |
 
 An entry can hold for one format, and the last row is the first that does (Basile,
 2026-11-23, "INFO on PDFs now"). G14 reads a PDF's text with its paragraphs gone, so a table's
@@ -9866,7 +9866,10 @@ PDF the code was right 111 times of 166 (0.669). What
 decides is what a finding was read from, which is the file audited: a LaTeX or Word paper's
 own PDF, audited as a PDF, is text read from a PDF, and its source keeps the warning.
 Rebuilding a PDF's paragraphs is another piece of work, and the code stays a note there until
-a fix measures 0.75.
+a fix measures 0.75. #802 rebuilt them for G6 and G14, and the row is that fix's measure, at
+f1bd2fad5: 49 true of the 85 judged findings present on text read from a PDF (0.576), the
+false ones from 16 papers. Short of 0.75, the code stays a note there (Basile, 2026-11-26,
+"Keep INFO, the 0.75 rule").
 
 The Abstract's numbers found nowhere were false where the paper gives the number another
 way: written out as a word, as a proportion where the Abstract gives a share, inside a name

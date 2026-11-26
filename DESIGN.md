@@ -30816,12 +30816,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
   only a number in the reference list is passed over. Each finding gives the place the number
   stands, which tells the reader whose it is. On 100 openly licensed papers (2026-11-26), 8
   named a number, each only one, and none another trial's. Accepted.
+  - A reference list the audit does not find, under a heading it does not know and read as
+    text, is not passed over: its NCT and ISRCTN numbers are asked about as the text's are
+    (round 1 of #827). Accepted.
   - EU PAS and PROSPERO are not asked: their note gives the page to read the record on, as a
     project's `lookup --registrations` reads PROSPERO by hand. Accepted.
   - Only the registry's dates are judged, never the paper's: a paper whose primary outcome
-    is not the one registered is shown beside the record and said nowhere, and a start the
-    registry gives as expected, not actual, never makes a registration late. Pinned by
-    `tests/test_audit_registration.py::test_a_registration_not_shown_late_by_the_registry_s_own_dates_is_not_flagged`.
+    is not the one registered is shown beside the record and said nowhere, and a start
+    ClinicalTrials.gov gives as expected, not actual, never makes a registration late. Pinned
+    by `tests/test_audit_registration.py::test_a_registration_not_shown_late_by_the_registry_s_own_dates_is_not_flagged`.
+  - ISRCTN's dates are shown and never judged: it gives a recruitment start without saying
+    whether it happened or was planned, and a registration after a start that was only
+    planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
+    by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

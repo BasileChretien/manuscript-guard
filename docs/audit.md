@@ -404,12 +404,15 @@ With `--lookup`, each trial registration number the paper names outside its refe
 (an NCT, ISRCTN, EU PAS or PROSPERO number) is looked up too (Basile, 2026-11-26):
 ClinicalTrials.gov and ISRCTN are sent the number and nothing else, and what they
 hold is shown under "Registration (G12)": the title, the date the study was registered, its
-actual start, and its first primary outcome, for a reader to set beside the paper's
+start, and its first primary outcome, for a reader to set beside the paper's
 (`registration-record`). Nothing of the paper's own outcomes or dates is read. What is judged
 is the registry's own dates alone: a study registered after its actual start, compared as far
 as the less precise date goes, as G12 compares them in a project, is said
 (`registration-late`); a start after the day the registry was asked is a plan, and never
-makes a registration late. A number its registry does not know is said
+makes a registration late. Only ClinicalTrials.gov says whether a start was actual or
+expected, and only its actual start is judged. ISRCTN gives a recruitment start without
+saying whether recruitment began then or was planned to, so an ISRCTN record shows it as
+the start given, and its dates are never judged. A number its registry does not know is said
 (`registration-unknown`), and one it could not answer for is a note. EU PAS and PROSPERO
 are not asked: the note gives the page to read the record on. A number named only in the
 reference list is another study's and is not asked; one named in the text is asked

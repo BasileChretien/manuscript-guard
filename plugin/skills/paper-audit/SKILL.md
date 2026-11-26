@@ -36,8 +36,8 @@ The first is the editor's: the paper held to the journal's profile, which the ed
 The second also looks for the authors' names where the journal reviews blind. The third is
 a referee's: everything else this skill describes, and the registries asked about each
 reference, which sends their DOIs and PMIDs, the title, first author and year of each that
-gives neither, and the trial's registration number to its registry, but no sentence of the
-paper. The fourth sets a
+gives neither, and the trial's ClinicalTrials.gov or ISRCTN number to that registry, but no
+sentence of the paper. The fourth sets a
 revision beside the version before it, with the authors' letter. The hook asks the
 person before an agent runs `audit` with `--journal`, `--authors`, `--design` or
 `--cited`, or `compare`; that question is theirs to answer, not yours. The project's
@@ -152,8 +152,8 @@ list is counted and its numbered citations held to it; nothing is sent to a regi
 unless you pass `--lookup`, and then ask the author first: run `--lookup --dry-run`, show
 what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.org where
 Crossref has no record; each PMID to PubMed; the title, first author and year of an article
-or a book with neither to Crossref; each trial registration number the paper names to
-ClinicalTrials.gov or ISRCTN), and keep the answers with `--lookup-cache DIR`
+or a book with neither to Crossref; each ClinicalTrials.gov or ISRCTN number the paper
+names to that registry), and keep the answers with `--lookup-cache DIR`
 if they will audit again.
 
 Where no rule can decide, the report asks under "Questions for the author" (`"question":

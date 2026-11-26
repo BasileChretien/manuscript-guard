@@ -138,8 +138,8 @@ What the rules cannot stop, so that nobody trusts them beyond it:
 They are off until the box is ticked. Ticked, they send what `audit --lookup` sends: the DOIs
 and PubMed IDs the paper's reference list cites; for an article, book or chapter that gives
 neither, the words of its title, its first author's family name and its year, to Crossref;
-and each trial registration number the paper names outside its reference list, to
-ClinicalTrials.gov or ISRCTN ([audit.md](audit.md)). No sentence of the paper is sent. A page
+and each ClinicalTrials.gov or ISRCTN number the paper names outside its reference list,
+to that registry ([audit.md](audit.md)). No sentence of the paper is sent. A page
 cannot do three
 things the command line does: it sends no User-Agent (a browser forbids it), the browser
 follows a redirect itself rather than refusing it (to a host the rules allow, or not at all),

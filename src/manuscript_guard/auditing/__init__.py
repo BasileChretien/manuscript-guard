@@ -30,7 +30,6 @@ DESIGNS = ("observational", "trial")
 NOTICE = (
     "manuscript-guard: a manuscript sent to you in confidence is read here and nothing is sent "
     "(--lookup sends its references' DOIs and PMIDs, the title, first author and year of "
-    "each that gives neither, and its trial registration numbers); the report quotes it, so "
-    "keep the report out of a "
-    "chat with a model and away from an agent"
+    "each that gives neither, and its ClinicalTrials.gov and ISRCTN numbers); the report "
+    "quotes it, so keep the report out of a chat with a model and away from an agent"
 )

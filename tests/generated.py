@@ -7502,13 +7502,15 @@ _AUDITED_NUMBERS = tuple(dict.fromkeys((w, kept) for w, kept, found in REGISTERE
 
 
 @st.composite
-def registration_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
+def registration_papers(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
     """A Markdown paper naming three registration numbers, each another study's: one in its
     text, which the audit takes; one in an HTML comment, which it does not; and one in its
-    reference list, which cites another study and is not taken either. Every paper holds one
-    of each kind, in a section and a form drawn, under a reference heading of each style
-    (`REFERENCE_HEADINGS`) and either line end, so that a rule broken for one kind is seen
-    whatever the seed. With the numbers the audit should take: the text's alone."""
+    reference list, which cites another study and is not taken either. A comment of several
+    lines, of a length drawn, stands just above the text's number, whose line a count in the
+    masked text put too early (round 1 of #827). Every paper holds one of each kind, in a
+    section and a form drawn, under a reference heading of each style (`REFERENCE_HEADINGS`)
+    and either line end, so that a rule broken for one kind is seen whatever the seed. With
+    the numbers the audit should take and their lines: the text's alone."""
     kept = sorted({number for _written, number in _AUDITED_NUMBERS})
     in_text, in_comment, in_list = draw(st.permutations(kept))[:3]
 
@@ -7517,18 +7519,21 @@ def registration_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
 
     sections = ("Abstract", "Methods", "Results", "Discussion")
     text_at, comment_at = draw(st.sampled_from(sections)), draw(st.sampled_from(sections))
+    note = [f"a note, line {n}" for n in range(1, draw(st.integers(1, 4)) + 1)]
     lines = ["# A trial", ""]
+    at = 0
     for name in sections:
         lines += [f"## {name}", "", "Of the 120 patients, 30 had the outcome."]
         if name == text_at:
-            lines += ["", f"The trial was registered: {form(in_text)}."]
+            lines += ["", "<!--", *note, "-->", f"The trial was registered: {form(in_text)}."]
+            at = len(lines)
         if name == comment_at:
             lines += ["", f"<!-- registered as {form(in_comment)} -->"]
         lines.append("")
     lines += [*draw(st.sampled_from(REFERENCE_HEADINGS)), "",
               f"1. Smith A. Another trial. Lancet. 2019;393:1-2. {form(in_list)}"]  # fmt: skip
     end = draw(st.sampled_from(("\n", "\r\n")))
-    return end.join(lines) + end, {in_text}
+    return end.join(lines) + end, {(in_text, at)}
 
 
 #: How a manuscript says a registration was late, and what reads like it and does not.

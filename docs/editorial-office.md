@@ -17,9 +17,10 @@ editor then does with it is in [For editors and reviewers](refereeing.md).
   the public registries (Crossref, OpenAlex, DataCite, doi.org and PubMed) whether each cited
   work exists and whether it was retracted. They are sent each DOI and PubMed ID the list
   gives, and, for an article, book or chapter that gives neither, the words of its title, its
-  first author's family name and its year, which go to Crossref. Each trial registration
-  number the paper names is sent to its registry, ClinicalTrials.gov or ISRCTN, to show what
-  the trial registered. No sentence of the paper is sent.
+  first author's family name and its year, which go to Crossref. Each ClinicalTrials.gov
+  (NCT) or ISRCTN number the paper names outside its reference list is sent to that
+  registry, to show what the trial registered; an EU PAS or PROSPERO number is not sent.
+  No sentence of the paper is sent.
 - **Free and open source.** manuscript-guard is under the MIT licence. Nothing in it is
   paid, and it needs no subscription or key.
 

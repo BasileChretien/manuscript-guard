@@ -167,15 +167,35 @@ def test_a_number_its_registry_does_not_know_is_said(
     assert "NCT04446611" in unknown["message"] and unknown["severity"] == "warn"
 
 
-def test_an_isrctn_number_is_asked_of_isrctn_and_its_late_registration_flagged(
+def test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged(
     tmp_path: Path, capsys, registries: Registries
 ) -> None:
+    """ISRCTN gives its recruitment start with no word of whether it happened or was planned:
+    registered after a start that was only planned is not late, so ISRCTN's dates are shown
+    and never judged (round 1 of #827)."""
     text = PAPER.replace("ClinicalTrials.gov NCT04446611", "ISRCTN24952438").replace(
         "(NCT04446611)", "(ISRCTN24952438)")
     _code, _out, data = _audit(tmp_path, capsys, text, "--lookup")
     assert any("isrctn.com" in url and "ISRCTN24952438" in url for url in registries.asked)
-    codes = {f["code"] for f in _registration(data)}
-    assert {"registration-record", "registration-late"} <= codes
+    (record,) = [f for f in _registration(data) if f["code"] == "registration-record"]
+    assert "recruitment start" in record["message"] and "2019-03-01" in record["message"]
+    assert "study started" not in record["message"]
+    assert not [f for f in _registration(data) if f["code"] == "registration-late"]
+
+
+def test_a_number_after_a_comment_of_several_lines_is_said_at_its_own_line(
+    tmp_path: Path, capsys, registries: Registries
+) -> None:
+    """A comment's line breaks are masked as no breaks at all: a number counted in the masked
+    text was placed above where it stands, its context another line's (round 1 of #827)."""
+    registries.studies["NCT04446611"] = _study("NCT04446611", "2020-06-20", "2020-07")
+    text = PAPER.replace("Trial registration: ClinicalTrials.gov NCT04446611.\n\n", "").replace(
+        "## Methods\n\n", "## Methods\n\n<!--\nnote one\nnote two\n-->\n")
+    _code, _out, data = _audit(tmp_path, capsys, text, "--lookup")
+    (record,) = [f for f in _registration(data) if f["code"] == "registration-record"]
+    lines = text.split("\n")
+    assert lines[record["line"] - 1] == "The trial was registered before it began (NCT04446611)."
+    assert record["context"] == lines[record["line"] - 1]
 
 
 def test_a_prospero_number_is_left_to_be_looked_up_by_hand_and_nothing_is_sent(

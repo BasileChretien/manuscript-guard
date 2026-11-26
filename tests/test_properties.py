@@ -26180,14 +26180,14 @@ from generated import registration_papers  # noqa: E402
 
 @holds(40, registration_papers())
 def test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other(
-    drawn: tuple[str, set[str]],
+    drawn: tuple[str, set[tuple[str, int]]],
 ) -> None:
     """`audit --lookup` asks a registry about each registration number the paper's text
-    names: not one in a comment, and not one its reference list cites, which is another
-    study's (`auditing.registration`, Basile, 2026-11-26)."""
+    names, at the line it stands on: not one in a comment, and not one its reference list
+    cites, which is another study's (`auditing.registration`, Basile, 2026-11-26)."""
     text, named = drawn
     read = READINGS["audit registration numbers"]()
-    assert {number for number, _line in read(text)} == named, text
+    assert {(number, line) for number, line in read(text)} == named, text
 
 
 def _registration_numbers_read_in_the_reference_list(patch: pytest.MonkeyPatch) -> None:
@@ -26210,6 +26210,25 @@ def _a_registration_number_in_a_comment_is_taken(patch: pytest.MonkeyPatch) -> N
     patch.setattr(registration, "named_in", lambda path, hidden, text: found(path, text, text))
 
 
+def _a_registration_number_s_line_counted_in_the_masked_text(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #827: the mask turns a comment's line breaks into no break at all."""
+    from manuscript_guard.auditing import registration
+    from manuscript_guard.registrations import NAMED_IN_TEXT, identify
+
+    def counted(path: Path, hidden: str, text: str) -> list:
+        lines, found = text.split("\n"), []
+        for match in NAMED_IN_TEXT.finditer(hidden):
+            registry, identifier = identify(match.group(0))
+            if registry is None or identifier is None:
+                continue
+            line = hidden.count("\n", 0, match.start()) + 1
+            found.append(registration.Named(identifier, registry, path, line,
+                                            lines[line - 1].strip()[:200]))  # fmt: skip
+        return found
+
+    patch.setattr(registration, "named_in", counted)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -26219,6 +26238,10 @@ BROKEN = {
     ),
     "a registration number in a comment is taken": (
         _a_registration_number_in_a_comment_is_taken,
+        test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
+    ),
+    "a registration number's line is counted in the masked text": (
+        _a_registration_number_s_line_counted_in_the_masked_text,
         test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
     ),
     "a run-in Keywords: in a PDF's Abstract is no heading": (

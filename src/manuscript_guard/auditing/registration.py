@@ -8,7 +8,9 @@ and its dates are shown, and whether the paper reports that outcome is the edito
 What is judged is only what the registry's own dates show: a study registered after its
 actual start, compared as far as the less precise of the two dates goes, as G12 compares them
 for a project (`gates.registration._after`), and a start after the day the registry was asked
-taken for a plan. A number in the reference list is another study's and is not asked; one
+taken for a plan. Only ClinicalTrials.gov says a start is actual; ISRCTN gives its recruitment
+start with no word of whether it was done or planned, so its dates are shown and never judged
+(round 1 of #827). A number in the reference list is another study's and is not asked; one
 named in the text is asked as written, whoever's it is (DESIGN.md, Known gaps).
 
 ClinicalTrials.gov and ISRCTN are asked through their APIs (`lookup.registries`), sending the
@@ -80,14 +82,17 @@ class RegistrationRun:
 def named_in(path: Path, hidden: str, text: str) -> list[Named]:
     """Each registration number in a paper's text, with its reference lists blanked (as the
     audit reads it), found in `hidden`, the text with its comments masked at the same
-    offsets, so that a number in a comment is not taken; its line and context from `text`."""
+    offsets, so that a number in a comment is not taken; its line and context from `text`,
+    counted there: the mask turns a comment's line breaks into no break at all, and a line
+    counted in `hidden` stood above the number after a comment of several lines (round 1 of
+    #827)."""
     lines = text.split("\n")
     found = []
     for match in NAMED_IN_TEXT.finditer(hidden):
         registry, identifier = identify(match.group(0))
         if registry is None or identifier is None:
             continue
-        line = hidden.count("\n", 0, match.start()) + 1
+        line = text.count("\n", 0, match.start()) + 1
         found.append(Named(identifier, registry, path, line, lines[line - 1].strip()[:200]))
     return found
 
@@ -165,12 +170,16 @@ def look_up(
     return RegistrationRun(tuple(out), dry_run)
 
 
-def late(record: dict) -> str | None:
+def late(record: dict, registry: str) -> str | None:
     """The study's actual start, where the registry's own dates show it registered after it
     (`gates.registration._after`): a start after the day the registry was asked is a plan,
-    not a start, and is never one."""
+    not a start, and is never one. Only ClinicalTrials.gov's start is known to be actual
+    (`lookup.registries.clinicaltrials` keeps one typed ACTUAL alone); ISRCTN's recruitment
+    start may be a plan, and is never judged."""
     from manuscript_guard.gates.registration import _after
 
+    if registry != CLINICALTRIALS:
+        return None
     dates = record.get("dates") or {}
     registered, start = dates.get("registered"), dates.get("study_start")
     asked = record.get("asked_on") or date.today().isoformat()
@@ -198,7 +207,14 @@ def record_said(one: Asked) -> str:
     record, named = one.record, one.named
     dates = record.get("dates") or {}
     title = f' as "{record["title"]}"' if record.get("title") else ""
-    start = f"; its study started {dates['study_start']}" if dates.get("study_start") else ""
+    start = dates.get("study_start")
+    if start and named.registry == CLINICALTRIALS:
+        start = f"; its study started {start}"
+    elif start:
+        # ISRCTN gives it whether recruitment started then or was to start then.
+        start = f"; its recruitment start is given as {start}"
+    else:
+        start = ""
     times = f" (named {named.times} times)" if named.times > 1 else ""
     return (f"{named.identifier}{times}: {NAMES[named.registry]} holds it{title}, registered "
             f"{dates.get('registered', 'on a date not given')}{start}; {_primary(record)}")
@@ -232,7 +248,7 @@ def findings(run: RegistrationRun) -> list:
         if status == FOUND:
             out.append(about(Item(SECTION, "G12", "registration-record", record_said(one),
                                   INFO, False, *place), named.identifier))  # fmt: skip
-            started = late(one.record)
+            started = late(one.record, named.registry)
             if started:
                 registered = one.record["dates"]["registered"]
                 out.append(about(Item(

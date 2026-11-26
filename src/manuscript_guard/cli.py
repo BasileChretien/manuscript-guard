@@ -2654,6 +2654,12 @@ def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
 #: (`web.view`), rather than auditing the paper a second time; None tells nothing.
 AUDITED: Callable[[object, object], None] | None = None
 
+#: Whether an audit works out G14's corrections of the .docx named first though no
+#: `--tracked` names a copy: the page sets it where the reader ticked the box for the copy,
+#: which it writes itself from the same audit, worded for the page (`web.commented`). The
+#: report is the same either way.
+CORRECTED = False
+
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "known", "no_abstract", "no_results", "results",
                 "submission_residue", "lookup",
@@ -2909,7 +2915,7 @@ def _audit(args: argparse.Namespace, package) -> int:
     report.gates = [
         # G14's corrections only for the paper `--tracked` copies (Basile, 2026-11-12).
         *(run_gates(path, english=english, residue=args.submission_residue, known=known,
-                    corrected=args.tracked is not None
+                    corrected=(args.tracked is not None or CORRECTED)
                     and Path(path).resolve() == args.paper[0].resolve())
           for path in papers if path.suffix.lower() != ".tex" and path in read),
         *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,

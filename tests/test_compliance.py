@@ -1196,6 +1196,50 @@ def test_a_quote_copied_from_the_built_document_is_found(project: Path) -> None:
     assert [f.code for f in quote_findings(project)] == ["checklist-quote-not-found"]
 
 
+#: Words of the example's title, `paper.yaml`'s, that no heading's text holds.
+_IN_TITLE = "Reporting of hepatic injury with example-drug: a disproportionality analysis"
+
+
+@pytest.mark.parametrize("where", ["Title", "title", "The title", "Title."])
+def test_an_item_addressed_in_the_title_is_held_to_the_paper_s_title(
+    project: Path, where: str
+) -> None:
+    """READUS-PV's items 1a and 1b are addressed in the title, and on the bisphosphonates
+    paper `where: Title` named no heading, since a Markdown manuscript's title is in
+    paper.yaml: G5 warned that the item pointed nowhere, and its quote, the title itself, was
+    never found. `where: Title` names paper.yaml's title, and the quote is held to it."""
+    quote(project, 0, where=where, quote=_IN_TITLE)
+    loaded, _ = load_project(project)
+    report = check_reporting(loaded, stage="submission")
+    assert [f.code for f in report.findings if f.code.startswith("checklist-")] == []
+    # Words not in the title are not found there, and the finding says where it looked.
+    quote(project, 0, where=where, quote="Hepatic injury with example-drug in a cohort study")
+    (found,) = quote_findings(project)
+    assert found.code == "checklist-quote-not-found"
+    assert "is not under the title in paper.yaml" in found.message
+
+
+def test_words_of_the_title_quoted_under_a_heading_say_they_stand_in_the_title(
+    project: Path,
+) -> None:
+    """The title is where the quote stands, and `where` is then wrong, as for a heading."""
+    quote(project, 0, where="Methods", quote=_IN_TITLE)
+    (found,) = quote_findings(project)
+    assert found.code == "checklist-quote-not-found"
+    assert found.message.endswith("it stands under the title in paper.yaml")
+    assert "point `where` at `Title`" in found.hint
+
+
+def test_title_and_abstract_still_names_the_abstract(project: Path) -> None:
+    """Only `Title` names the title: STROBE's "Title and abstract" goes on naming the
+    Abstract heading, as G5 has always matched one, and a quote in the title is not found
+    there."""
+    quote(project, 0, where="Title and abstract", quote=_IN_TITLE)
+    (found,) = quote_findings(project)
+    assert found.code == "checklist-quote-not-found"
+    assert "'Abstract'" in found.message
+
+
 def test_one_sentence_may_be_quoted_for_two_items(project: Path) -> None:
     """Known gaps: nothing holds a quote to one item."""
     sentence = "Confidence intervals were derived from the standard error of the log odds ratio"

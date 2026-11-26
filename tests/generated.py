@@ -6083,9 +6083,12 @@ CHECKLIST_QUOTES = {
     "binding as printed": "found",
     "in a table's caption": "found",
     "in a figure's legend": "found",
+    "in the title": "found",
     "under another heading": "elsewhere",
     "the parent's own text": "elsewhere",
     "another display's caption": "elsewhere",
+    "the title's words under a heading": "elsewhere",
+    "a heading's words in the title": "elsewhere",
     "in a comment": "nowhere",
     "word changed": "nowhere",
     "inside a word": "nowhere",
@@ -6097,6 +6100,10 @@ CHECKLIST_QUOTES = {
 #: Where a paragraph of `checklist_quotes` holds a word marked up and one set otherwise, and
 #: where the subsection's holds its two bindings.
 _QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
+#: How an answer says it is addressed in the paper's title, which is `paper.yaml`'s.
+_TITLE_WHERE = ("Title", "title", "The title", "the Title", "Title.", " TITLE ")
+#: How G5 names the title, where a quote stands in it.
+_TITLE_SHOWN = "the title in paper.yaml"
 
 
 @st.composite
@@ -6108,7 +6115,8 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
     their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
     one set by the typographer, drawn white space between words, two value bindings in A1's
     paragraph, a comment and a figure's legend typed under B, and two emitted tables'
-    captions; and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
+    captions; the paper's title, `paper.yaml`'s, of words of its own with drawn white space;
+    and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
     time, each with what G5 finds of it: None for no quote, else whether it stands under what
     its `where` names and the parts it stands under instead.
 
@@ -6144,6 +6152,8 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         shown[para_a1[at]] = values[ref]
     comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
     captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
+    in_title = [word() for _ in range(10)]
+    in_title[0] = in_title[0].capitalize()
     files = {
         # First by path, and printed after `main.md`, as the main text's other files are.
         "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
@@ -6178,10 +6188,15 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
         "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),
         "in a figure's legend": ("Figure 1", " ".join(run(legend, 4, 6)), found),
+        "in the title": (draw(st.sampled_from(_TITLE_WHERE)), " ".join(run(in_title)), found),
         "under another heading": (b, " ".join(para_a[5:10]), under_a),
         "the parent's own text": (a1, " ".join(para_a[5:10]), under_a),
         "another display's caption": ("Table 2", " ".join(run(captions[0], 4, 6)),
                                       [False, ["the caption of Table 1"]]),
+        "the title's words under a heading": (a, " ".join(run(in_title)),
+                                              [False, [_TITLE_SHOWN]]),
+        "a heading's words in the title": (draw(st.sampled_from(_TITLE_WHERE)),
+                                           " ".join(para_a[5:10]), under_a),
         "in a comment": (b, " ".join(run(comment, 4, 6)), [False, []]),
         "word changed": (a, " ".join([*para_a[4:6], word(), *para_a[7:9]]), [False, []]),
         # Its first letter left off: the rest stands inside the word, and is no word anywhere.
@@ -6198,6 +6213,7 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "values": values,
         "captions": [["table", False, n, " ".join(words) + "."]
                      for n, words in enumerate(captions, 1)],
+        "title": joined(in_title),
         "items": [{"where": ways[kind][0], "quote": ways[kind][1]} for kind in order],
     }  # fmt: skip
     return given, [(kind, ways[kind][2]) for kind in order]

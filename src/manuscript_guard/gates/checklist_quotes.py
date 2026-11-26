@@ -14,7 +14,10 @@ subsections included, in the main text or the supplement, each its files joined 
 prints them (`documents`). Where `where` names a table or a
 figure ("Table 1", "Figure S2", "eTable 1"), in that display's caption as well: a legend typed
 as a paragraph that opens with the display's pointer, as G2 reads one (`opening_pointer`), and
-an emitted table's caption, numbered as the build numbers it (`display_numbers`).
+an emitted table's caption, numbered as the build numbers it (`display_numbers`). Where
+`where` is "Title" or "the title" (`names_title`), in the paper's title as well, `paper.yaml`'s,
+which the build prints and a Markdown manuscript does not hold: READUS-PV's items 1a and 1b
+are addressed there, and on the bisphosphonates paper (2026-11-25) they pointed at no heading.
 
 **How it is found.** As a review finding's quote is found in the manuscript
 (`anchoring.stands`), which is as G7 finds a passage in a work's source
@@ -45,12 +48,16 @@ from manuscript_guard.text.masking import blank_comments, without_front_matter
 from manuscript_guard.text.sections import split_sections
 
 __all__ = [
-    "QUOTE_WORDS", "Caption", "Manuscript", "Placed", "captions", "display_named", "of_project",
-    "read", "typed_legends",
+    "QUOTE_WORDS", "TITLE_SHOWN", "Caption", "Manuscript", "Placed", "captions", "display_named",
+    "names_title", "of_project", "read", "typed_legends",
 ]  # fmt: skip
 
 #: What may close a `where` that names a display, "Table 1." or "Figure 2:".
 _CLOSING = " .:;,"
+#: What `where` says, case aside, of an item addressed in the paper's title.
+_TITLE_WHERE = frozenset({"title", "the title"})
+#: How a finding names the paper's title, where a quote is looked for or stands.
+TITLE_SHOWN = "the title in paper.yaml"
 
 
 @dataclass(frozen=True)
@@ -70,16 +77,20 @@ class Caption:
 
 @dataclass(frozen=True)
 class _Part:
-    """A stretch a quote may stand in: a section, under its heading's title, or a caption.
-    Each text is folded as printed and as written: its own, and with its subsections."""
+    """A stretch a quote may stand in: a section, under its heading's title, a caption, or
+    the paper's title (`paper_title`). Each text is folded as printed and as written: its
+    own, and with its subsections."""
 
     title: str
     caption: tuple[str, bool, int] | None
     own: tuple[str, str]
     enclosed: tuple[str, str]
+    paper_title: bool = False
 
     @property
     def shown(self) -> str:
+        if self.paper_title:
+            return TITLE_SHOWN
         if self.caption is not None:
             kind, supplementary, number = self.caption
             return f"the caption of {Caption(kind, supplementary, number, '').label}"
@@ -104,6 +115,13 @@ def display_named(where: str) -> tuple[str, bool, int] | None:
         return None
     supplementary = bool(found["supp"] or found["e"] or found["after"] or found["s0"])
     return _kind(found["kind"]), supplementary, int(found["n0"])
+
+
+def names_title(where: str) -> bool:
+    """Whether `where` says the item is addressed in the paper's title: "Title" or "the
+    title", case, white space and a closing stop aside. "Title and abstract" goes on naming
+    the Abstract, as a heading is matched (`_names`)."""
+    return " ".join(where.strip().rstrip(_CLOSING).lower().split()) in _TITLE_WHERE
 
 
 def _names(where: str, title: str) -> bool:
@@ -134,10 +152,16 @@ class Manuscript:
         named = display_named(where)
         return named is not None and any(part.caption == named for part in self.parts)
 
+    def names_paper_title(self, where: str) -> bool:
+        """Whether `where` names the paper's title, and the title was read here."""
+        return names_title(where) and any(part.paper_title for part in self.parts)
+
     def _named(self, where: str) -> list[_Part]:
-        display = display_named(where)
+        display, title = display_named(where), names_title(where)
+        # A heading titled "Title" is named as before, beside the paper's title.
         return [part for part in self.parts
-                if (part.caption is None and _names(where, part.title))
+                if (part.paper_title and title)
+                or (part.caption is None and not part.paper_title and _names(where, part.title))
                 or (part.caption is not None and part.caption == display)]  # fmt: skip
 
     def judged(self, quote: str | None, where: str) -> Placed | None:
@@ -190,12 +214,17 @@ def read(
     texts: Sequence[str],
     namespace: Mapping[str, object],
     captions: Iterable[Caption] = (),
+    title: str | None = None,
 ) -> Manuscript:
     """The manuscript `texts`, each a document as it prints in Markdown, the main text and
-    the supplement (`documents`, or a LaTeX manuscript's `printed_document`), and the
-    `captions` of its displays, read for quotes. `namespace` gives each value binding's
-    display, as `load_namespace` does."""
-    parts = [part for text in texts for part in _sections(text, namespace)]
+    the supplement (`documents`, or a LaTeX manuscript's `printed_document`), the `captions`
+    of its displays and its `title`, `paper.yaml`'s, read for quotes. `namespace` gives each
+    value binding's display, as `load_namespace` does."""
+    parts = []
+    if title and title.strip():
+        folded = _folded(title, namespace)
+        parts.append(_Part("", None, folded, folded, paper_title=True))
+    parts += [part for text in texts for part in _sections(text, namespace)]
     for caption in captions:
         folded = _folded(caption.text, namespace)
         parts.append(_Part("", (caption.kind, caption.supplementary, caption.number), folded,
@@ -207,7 +236,8 @@ def of_project(project, namespace: Mapping[str, object] | None, results) -> Manu
     """A project's manuscript read for quotes: the main text and the supplement, each its
     Markdown files joined as the build prints them, with the captions of the displays it
     places; or a LaTeX manuscript's two documents as they print in Markdown, as G5 reads its
-    headings (step 8). The values are loaded where `namespace` or `results` is not given."""
+    headings (step 8). Either way with the title `paper.yaml` gives, which the build prints.
+    The values are loaded where `namespace` or `results` is not given."""
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     if namespace is None or results is None:
@@ -216,17 +246,19 @@ def of_project(project, namespace: Mapping[str, object] | None, results) -> Manu
         loaded, found, _literature, _report = load_namespace(project)
         namespace = loaded if namespace is None else namespace
         results = found if results is None else results
+    title = project.paper.get("title")
+    title = title if isinstance(title, str) else None
     folder = project.path("manuscript")
     if manuscript_format(folder) == LATEX:
         from manuscript_guard.text.latex.printed import printed_document
 
         return read([printed_document(folder, supplementary=part, quoting=True)
-                     for part in (False, True)], namespace)  # fmt: skip
+                     for part in (False, True)], namespace, title=title)  # fmt: skip
     from manuscript_guard.contracts._schema import read_text
 
     texts = documents({path.relative_to(folder).as_posix(): read_text(path)
                        for path in source_files(folder)})  # fmt: skip
-    return read(texts, namespace, captions(project, texts, results))
+    return read(texts, namespace, captions(project, texts, results), title)
 
 
 def captions(project, texts: Sequence[str], results) -> list[Caption]:

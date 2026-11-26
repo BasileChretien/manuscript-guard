@@ -50,7 +50,8 @@ An item answered with `where` also quotes the sentence there that addresses it, 
 A heading alone is satisfied by any manuscript, since every paper has a Methods; the sentence
 is what a reviewer checks. G5 looks for the quote under the heading `where` names, its
 subsections included, in the main text and in the supplement, and in the caption of the table
-or figure where `where` names one ("Table 1", "Figure S2"). It is found as G7 finds a passage
+or figure where `where` names one ("Table 1", "Figure S2"). Where `where` is `Title`, it looks
+in the title `paper.yaml` gives, which the build prints. It is found as G7 finds a passage
 in a source: curly quotes, dashes, white space and case folded, whole words, and `...` for
 words left out. Copy it from the Markdown with its bindings as written, or from the built
 document with the values it prints:

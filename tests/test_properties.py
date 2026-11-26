@@ -11518,11 +11518,13 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
     """G5 (Basile, 2026-11-12): an answer's quote stands under the heading its `where` names,
     subsections included, in the main text or the supplement, the section carried on into
     the next file the build prints (round 1 of #651), or in the caption of the table
-    or figure it names, an emitted caption or a typed legend; found as a finding's quote is,
+    or figure it names, an emitted caption or a typed legend, or in paper.yaml's title where
+    `where` says "Title" (2026-11-26); found as a finding's quote is,
     folded as G7 folds a quote, markup out, whole words, pieces in order where words are left
     out, its bindings as written or each value's display, not half of each. A quote under
-    another heading, under the parent's own text where `where` names a subsection, or in
-    another display's caption is said to stand there; a quote in a comment, with a word
+    another heading, under the parent's own text where `where` names a subsection, in
+    another display's caption or in the title is said to stand there, and so is a heading's
+    quote where `where` names the title; a quote in a comment, with a word
     changed, inside a word or with its pieces out of order stands nowhere; three words, or
     none, are no quote."""
     given, ways = drawn
@@ -23601,6 +23603,20 @@ def _any_table_s_caption_is_the_one_where_names(patch: pytest.MonkeyPatch) -> No
                   else (named(where)[0], False, 1))  # fmt: skip
 
 
+def _title_names_no_part_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "names_title", lambda where: False)
+
+
+def _the_paper_s_title_is_not_read_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    read = checklist_quotes.read
+    patch.setattr(checklist_quotes, "read", lambda texts, namespace, captions=(), title=None:
+                  read(texts, namespace, captions))  # fmt: skip
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -26828,6 +26844,14 @@ BROKEN = {
     ),
     "any table's caption is the one a checklist's answer names": (
         _any_table_s_caption_is_the_one_where_names,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's `where: Title` names no part": (
+        _title_names_no_part_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the paper's title is not read for a checklist answer's quote": (
+        _the_paper_s_title_is_not_read_for_a_checklist_quote,
         test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
     ),
     "a finding's quote is found as characters, not as words": (

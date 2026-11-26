@@ -8,7 +8,8 @@ it.
 Producing it as a build artefact reverses that. Every item must say either where it is
 addressed or why it does not apply, and "n/a" is not a reason. Where an item points at a
 section, the section has to exist, and the item quotes the sentence there that addresses it
-(`checklist_quotes.py`): a heading alone is satisfied by any manuscript.
+(`checklist_quotes.py`): a heading alone is satisfied by any manuscript. An item addressed in
+the title points at "Title", and its quote is held to `paper.yaml`'s title.
 
 The item lists themselves are retrieved from each guideline's own site and stored with
 their source. None is written from memory: a checklist whose items are approximately right
@@ -421,6 +422,7 @@ def _check_completion(
 
         if where and not (
             _points_somewhere_real(where, known_headings)
+            or _names_the_title(project, where)
             or (quoting is not None and quoting.manuscript.names_display(where))
         ):
             report = report.with_findings(
@@ -523,7 +525,9 @@ def _quote_findings(label: str, entry: dict, where: str, quoting: _Quoting, path
     message = f"{label}: the quote {_first_words(quote)!r} is not under {searched}"
     if placed.elsewhere:
         message += f"; it stands under {' and '.join(placed.elsewhere)}"
-        hint = (f"point `where` at {placed.elsewhere[0]}, where the sentence is, or quote "
+        at = ("`Title`" if placed.elsewhere[0] == checklist_quotes.TITLE_SHOWN
+              else placed.elsewhere[0])  # fmt: skip
+        hint = (f"point `where` at {at}, where the sentence is, or quote "
                 f"the sentence under {where!r} that addresses the item")  # fmt: skip
     else:
         hint = ("copy the sentence as the manuscript has it, its bindings as written or the "
@@ -531,6 +535,15 @@ def _quote_findings(label: str, entry: dict, where: str, quoting: _Quoting, path
                 "addresses the item, it is not addressed yet")  # fmt: skip
     return [Finding(gate=GATE, code="checklist-quote-not-found", severity=severity, path=path,
                     message=message, context=quote[:140], hint=hint)]  # fmt: skip
+
+
+def _names_the_title(project: Project, where: str) -> bool:
+    """Whether `where` says "Title" and `paper.yaml` gives the paper a title, which is where
+    the item is then addressed (`checklist_quotes.names_title`)."""
+    from manuscript_guard.gates.checklist_quotes import names_title
+
+    title = project.paper.get("title")
+    return names_title(where) and isinstance(title, str) and bool(title.strip())
 
 
 def _points_somewhere_real(where: str, known_headings: set[str]) -> bool:

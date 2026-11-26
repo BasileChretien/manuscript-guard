@@ -3969,6 +3969,20 @@ def _a_numbered_entry_is_no_entry(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(pdf_module, "_NUMBERED_ENTRY", re.compile(r"(?!)"))
 
 
+def _small_capitals_are_two_words(patch: pytest.MonkeyPatch) -> None:
+    """As at 8da72519a: "R EFERENCES", no heading, the reference list read as the text."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "CAPITALS", 0.0)
+
+
+def _an_open_paragraph_goes_on_into_smaller_type(patch: pytest.MonkeyPatch) -> None:
+    """As before pdf-pubh-C3: the next page's editorial history, set smaller, joined."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "_size", lambda block: 1.0)
+
+
 def _a_superscript_is_left_bare(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -26439,6 +26453,14 @@ BROKEN = {
     ),
     "a PDF's numbered entry of a journal's own style is no entry": (
         _a_numbered_entry_is_no_entry,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's heading in small capitals is two words": (
+        _small_capitals_are_two_words,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's open paragraph goes on into a block set smaller": (
+        _an_open_paragraph_goes_on_into_smaller_type,
         test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
     ),
     "a PDF's superscript citation is left a bare number": (

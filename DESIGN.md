@@ -29221,10 +29221,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     broken at the column's foot with it (against answer 3; main read the page no better).
     Accepted.
   - Two words poppler sets apart are read as one where the gap between them is under 0.03
-    of the line's height, as `pdftotext`'s text reading joins them; two words set touching
-    that are two, a typesetter's tight pair, are read as one. A thin space is a space.
-    Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`
-    and `tests/test_corruption.py::test_a_thin_space_a_pdf_sets_stays_a_space`.
+    of the line's height, as `pdftotext`'s text reading joins them, or under 0.1 where they
+    are set at two sizes, a tenth of the larger apart or more: small capitals, "R" and
+    "EFERENCES". Two words set touching that are two, a typesetter's tight pair, are read as
+    one, and so are two of two sizes a thin space apart. A thin space between two words of
+    one size is a space.
+    Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`,
+    `tests/test_corruption.py::test_a_thin_space_a_pdf_sets_stays_a_space`
+    and `tests/test_corruption.py::test_a_heading_set_in_small_capitals_is_one_word`.
+  - A paragraph left open at a column's or a page's foot goes on only into a block set at
+    its size, its lines' middle height within a tenth: the journal's editorial history set
+    smaller at the next page's head is a paragraph of its own, and so is a paragraph of the
+    text that a break carries into a block set at another size, a box's.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_open_at_a_page_s_foot_does_not_go_on_into_smaller_type`.
   - A display reaches only as far as its blocks stand one under the other, or beside, over
     some of its width, on its page: a table whose rows a page break cuts is two, the
     second read as the text's where it has no legend of its own. Accepted.

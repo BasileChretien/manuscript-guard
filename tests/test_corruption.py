@@ -3780,20 +3780,22 @@ def test_a_right_column_line_on_a_left_column_line_s_baseline_keeps_the_columns(
     assert staged.index("traumatic life events") < staged.index("TLE rose"), staged
 
 
-def _bbox_markup(lines: list[list[tuple[str, float]]], height: float = 12.1) -> str:
+def _bbox_markup(lines: list[list[tuple]], height: float = 12.1) -> str:
     """Poppler's `-bbox-layout` markup of one page whose lines hold these words, each
-    `(word, gap before it)`, set `height` points high, as a real paper's lines are."""
+    `(word, gap before it)`, set `height` points high, as a real paper's lines are, or
+    `(word, gap, its own height)`, on the line's foot."""
     from proof_pdf import width
 
     out = ['<doc><page width="595.0" height="842.0"><flow><block xMin="72.0" yMin="100.0" '
            'xMax="540.0" yMax="400.0">']
     for at, words in enumerate(lines):
         y0, x, said = 100.0 + 15.0 * at, 72.0, []
-        for word, gap in words:
+        for word, gap, *own in words:
+            high = own[0] if own else height
             x += gap
-            x1 = x + width(word, 10.0)
-            said.append(f'<word xMin="{x:.3f}" yMin="{y0:.3f}" xMax="{x1:.3f}" '
-                        f'yMax="{y0 + height:.3f}">{word}</word>')
+            x1 = x + width(word, 10.0 * high / height)
+            said.append(f'<word xMin="{x:.3f}" yMin="{y0 + height - high:.3f}" '
+                        f'xMax="{x1:.3f}" yMax="{y0 + height:.3f}">{word}</word>')
             x = x1
         out.append(f'<line xMin="72.0" yMin="{y0:.3f}" xMax="{x:.3f}" '
                    f'yMax="{y0 + height:.3f}">{"".join(said)}</line>')
@@ -4068,6 +4070,62 @@ def test_a_numbered_entry_after_a_statement_inside_the_list_stays_in_the_list(
     assert staged.index("# References") < staged.index("2. Coan J"), staged
     said = [f.code for f in run.language if f.message.split()[0] == "EN"]
     assert said == ["abbreviation-unused"], run.language
+
+
+def test_a_heading_set_in_small_capitals_is_one_word() -> None:
+    """The final fresh findings of #802, tex-cs-lg-B2 of the real-paper corpus, an IEEE
+    paper: its headings are set in small capitals, "R" at the heading's size and "EFERENCES"
+    smaller, half a point on, and poppler gives the two apart. Once two words were one only
+    under 0.03 of the line's height apart, the thin space's rule, "R EFERENCES" was no
+    heading, the reference list was read as the text, and its entries' "EMBC" and
+    "artefact" were G14's. Two words set at two sizes a tenth of their height apart or less
+    are one; two set at one size, a thin space apart, are two
+    (`test_a_thin_space_a_pdf_sets_stays_a_space`)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from manuscript_guard.auditing.pdf import heading_title
+    from manuscript_guard.auditing.pdf_layout import rebuilt
+
+    lines = [[("R", 0.0, 8.91), ("EFERENCES", 0.5, 7.13)],
+             [("V.", 0.0, 8.91), ("D", 5.48, 8.91), ("ISCUSSION", 0.5, 7.13),
+              ("AND", 2.98, 7.13), ("C", 2.99, 8.91), ("ONCLUSION", 0.5, 7.13)],
+             [("Of", 0.0), ("the", 2.5), ("cohort", 2.5), ("(N", 2.5), ("=", 1.03),
+              ("168).", 1.03)]]
+    texts = [row.text for row in rebuilt(_bbox_markup(lines)).rows]
+    assert texts == ["REFERENCES", "V. DISCUSSION AND CONCLUSION",
+                     "Of the cohort (N = 168)."], texts
+    assert heading_title(texts[0]) is not None, texts
+
+
+def test_a_paragraph_open_at_a_page_s_foot_does_not_go_on_into_smaller_type(
+    tmp_path: Path,
+) -> None:
+    """The final fresh findings of #802, pdf-pubh-C3 of the real-paper corpus, a JMIR paper:
+    its list of abbreviations ends a page with no stop, "UTB: unified theory of behavior",
+    and the next page opens on the journal's editorial history, set smaller, "Edited by G
+    Eysenbach; submitted 13.03.18", which went on with the list's last line: UTB was defined
+    as "unified theory of behavior Edited by G Eysenbach; ...". A paragraph left open goes on
+    only into a block set at its own size; a paragraph broken at a column's foot goes on as
+    before (`test_a_definition_a_pdf_s_column_and_a_legend_break_is_one`)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, TOP, Set, _set
+
+    first = _column(["Methods", "The unified theory of behavior (UTB) was read in each site.",
+                     *[_FULL] * 4, "We kept the UTB of each site.", "Abbreviations",
+                     "SMS: short message service", "UTB: unified theory of behavior"],
+                    LEFT, TOP, {7: 14.0, 8: 4.0}, justified=False)
+    history = ["Edited", "by", "G", "Eysenbach;", "submitted", "13.03.18;", "peer-reviewed",
+               "by", "D", "Levine;", "accepted", "01.07.18"]
+    second = [*_set(Set(tuple(history[:9]), size=7.8), LEFT, TOP),
+              *_set(Set(tuple(history[9:]), size=7.8), LEFT, TOP - 9.0),
+              *_column(["The authors published it in the journal.", *_UNSAID], LEFT,
+                       TOP - 40.0, justified=False)]
+    run, staged = _pieces_run(tmp_path, [first, second])
+    assert [f for f in run.language if "Edited" in f.message] == [], run.language
+    assert "unified theory of behavior\n\nEdited by" in staged, staged
 
 
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(

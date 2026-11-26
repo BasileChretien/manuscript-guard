@@ -61,6 +61,14 @@ POPPLER = "MANUSCRIPT_GUARD_POPPLER"
 #: the line's words' height: a word kerned in two, "T" and "U1_effect", touching. A thin
 #: space, a tenth of the height or so, "N = 168", "18 years", is a space.
 JOINED = 0.03
+#: Two words set at two sizes, their heights more than `SAME_SIZE` of the larger apart, are
+#: one where the gap between them is under this share of the line's height: a heading set
+#: in small capitals, "R" and "EFERENCES" half a point on (tex-cs-lg-B2). A paragraph left
+#: open goes on only into a block whose lines are set at its own size, so within
+#: `SAME_SIZE` (`_Flow.body`): a journal's editorial history set smaller at the next
+#: page's head is no part of the list of abbreviations that ended the page (pdf-pubh-C3).
+CAPITALS = 0.1
+SAME_SIZE = 0.1
 #: The top and the bottom share of a page a running head or foot stands in.
 BAND = 0.075
 #: A line in a page's band is a running one where its words, digits read alike, stand in
@@ -205,14 +213,23 @@ class Line:
         before its word."""
         heights = sorted(word.y1 - word.y0 for word in self.words)
         least = JOINED * heights[len(heights) // 2]
+        capitals = CAPITALS * heights[len(heights) // 2]
         for at, text in enumerate(texts):
             word = self.words[at]
-            close = at and not word.raised and word.x0 - self.words[at - 1].x1 < least
+            gap = word.x0 - self.words[at - 1].x1 if at else 0.0
+            close = at and not word.raised and (gap < least or (
+                gap < capitals and not _sized_alike(word.y1 - word.y0,
+                                                    self.words[at - 1].y1 - self.words[at - 1].y0)))
             yield text if not at or close else " " + text
 
     @property
     def height(self) -> float:
         return self.y1 - self.y0
+
+
+def _sized_alike(one: float, other: float) -> bool:
+    """Whether two heights are one size's, within `SAME_SIZE` of the larger."""
+    return abs(one - other) <= SAME_SIZE * max(one, other)
 
 
 @dataclass
@@ -624,6 +641,12 @@ def _kind(block: Block, height: float, width: float) -> str:
     return "small" if block.height < SMALL * height else "body"
 
 
+def _size(block: Block) -> float:
+    """The size a block is set at: its lines' middle height."""
+    heights = sorted(line.height for line in block.lines)
+    return heights[len(heights) // 2]
+
+
 def goes_on(block: Block) -> bool:
     """Whether a body block after one that ended mid-sentence goes on with its paragraph:
     whatever it opens with, "the Marlin surrogate oil" then "(MSO) and CEWAF" on a real
@@ -685,6 +708,8 @@ class _Flow:
     #: height of its last line.
     open: int | None = None
     open_height: float = 0.0
+    #: The open paragraph's block's size, its lines' middle height (`_size`).
+    open_size: float = 0.0
     #: The display being read, its paragraph, its legend's height, and the page, the foot
     #: of its lowest block so far and the left and right of its blocks.
     display: int | None = None
@@ -776,7 +801,8 @@ class _Flow:
         paragraph that ends. `edge` is a block of one line's measure (`_edge`)."""
         self.flush_held()
         self.display = None
-        joined = self.open is not None and kind == "body" and goes_on(block)
+        joined = (self.open is not None and kind == "body" and goes_on(block)
+                  and _sized_alike(_size(block), self.open_size))  # fmt: skip
         if joined:
             current = self.open
         else:
@@ -800,6 +826,7 @@ class _Flow:
                     self.pending = []
         self.open = last if kind == "body" and not ended else None
         self.open_height = block.lines[-1].height
+        self.open_size = _size(block)
         if self.open is None:
             self.rows += self.pending
             self.pending = []

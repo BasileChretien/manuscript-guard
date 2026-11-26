@@ -2092,6 +2092,11 @@ LAYOUT_ENTRY = 6.0
 LAYOUT_LABELS = ("titled", "em")
 #: The surnames a reference list's entries open with, one for each entry.
 LAYOUT_AUTHORS = ("Adam", "Bowlby", "Coan", "Dozier", "Ellis", "Frank")
+#: A journal's editorial history, which opens the back matter's page set at this size, a
+#: little smaller than the text and not as small as a display's (pdf-pubh-C3, JMIR).
+LAYOUT_HISTORY = 7.8
+LAYOUT_EDITED = ("Edited", "by", "K", "Adam;", "submitted", "13.03.18;", "peer-reviewed", "by",
+                 "D", "Levine;", "accepted", "01.07.18.")
 #: Words of the back matter page's Conclusion, a line and more of a column.
 LAYOUT_CONCLUSION = "and the records of each of the sites were read in each week of the cohort "
 #: The text's size, at which the legend at a column's foot is set, and the space that sets
@@ -2229,7 +2234,9 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
         stream.extend([("lines", lines[:cut]), ("break", len(blocks) - 1), ("lines", lines[cut:])])
 
     def heading(title: str) -> None:
-        blocks.append(("heading", title))
+        from proof_pdf import said
+
+        blocks.append(("heading", said(title)))
         stream.append(("lines", [{"words": (title,), "justified": False, "raised": ()}]))
 
     heading("Methods")
@@ -2258,8 +2265,13 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
         paragraph([*_sentence(draw, words), "Then", "the", *long.split(), LINE_END, *rest])
         paragraph([*_sentence(draw, words), "The", short, "rose.", *_sentence(draw, words)],
                   gap=LAYOUT_REMNANT if number == remnant else 0.0)
-    heading("Discussion")
+    # In small capitals, "D" at the heading's size and the rest smaller, half a point on.
+    heading("D`ISCUSSION")
     paragraph([*_sentence(draw, words), "The", restated[0], "and", "the", renamed[0], "held."])
+    # A paragraph left open at the page's foot, as a list of abbreviations ends with no stop;
+    # the next page opens on the journal's editorial history, set smaller (`_back_matter`).
+    paragraph([*_sentence(draw, words), "The", "abbreviations", "are", "those", "of", "each",
+               "site", "and", "of", "the", "cohort"])
     back = _back_matter(draw, words)
     # The page across whose top a table is set; the break at whose column's foot a display
     # stands, and whether it is a figure's. A figure's drawing stands at the top of the
@@ -2367,6 +2379,7 @@ def _back_matter(draw: st.DrawFn, words: st.SearchStrategy[str]) -> dict[str, An
     a gutter from its end, as a page of two columns sets one (pdf-psych-C1). Gives the
     columns' lines and what G6 and G14 are to read: the Conclusion, the statements, each
     whole, before the list's heading, and the list after it, an entry to a paragraph."""
+    from proof_pdf import AROUND
     from proof_pdf import BODY_LEADING as LEADING
 
     authors = draw(st.permutations(LAYOUT_AUTHORS))
@@ -2405,16 +2418,22 @@ def _back_matter(draw: st.DrawFn, words: st.SearchStrategy[str]) -> dict[str, An
     # first statement's heading on the second's baseline, its paragraph on the fourth's.
     conclusion = [*_sentence(draw, words), *(LAYOUT_CONCLUSION * 3).split(),
                   *_sentence(draw, words)]  # fmt: skip
-    left = [title("Conclusion", 0.0), *lines(conclusion), title("References"),
+    # The journal's editorial history at the page's head, set smaller than the text, and no
+    # part of the paragraph the page before left open.
+    history = [{"words": tuple(line), "size": LAYOUT_HISTORY}
+               for line in _wrapped(list(LAYOUT_EDITED), LAYOUT_HISTORY)]  # fmt: skip
+    above = len(history) * LAYOUT_HISTORY * 1.22 + AROUND
+    left = [*history, title("Conclusion", 0.0), *lines(conclusion), title("References"),
             *(line for said in entries[:before] for line in lines(said, LAYOUT_ENTRY))]
-    right = [title("Ethics statement", 2 * LEADING), *lines([*wide, *ethics], LEADING),
+    right = [title("Ethics statement", above + 2 * LEADING), *lines([*wide, *ethics], LEADING),
              title("Supplementary material"), *lines(online), *lines(address, LAYOUT_ENTRY),
              *(line for said in entries[before:] for line in lines(said, LAYOUT_ENTRY))]
 
     def read(said: list[str]) -> tuple[str, str]:
         return ("paragraph", " ".join(_line_text(line) for line in lines(said)))
 
-    blocks = [("heading", "Conclusion"), read(conclusion),
+    blocks = [("paragraph", " ".join(_line_text(line) for line in history)),
+              ("heading", "Conclusion"), read(conclusion),
               ("heading", "Ethics statement"), read([*wide, *ethics]),
               ("heading", "Supplementary material"), read(online), read(address),
               ("heading", "References"), *(read(said) for said in entries)]

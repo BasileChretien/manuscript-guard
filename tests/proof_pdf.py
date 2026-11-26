@@ -227,17 +227,21 @@ COLUMN, BODY, BODY_LEADING, AROUND = 230.0, 9.0, 11.0, 14.0
 ACROSS = RIGHT - LEFT + COLUMN
 
 
-#: Inside a word `laid_out` sets, a thin space (`THIN` points wide, read as a space) and a
+#: Inside a word `laid_out` sets, a thin space (`THIN` points wide, read as a space), a
 #: word kerned in two (its second part `KERN` points on and set `KERNED` times the size, so
-#: that poppler gives two words, read as one): "(N~=~168)", "co^hort".
-THIN_MARK, KERN_MARK = "~", "^"
+#: that poppler gives two words, read as one), and small capitals (the rest `CAPS_GAP`
+#: points on, set `CAPS` times the size, read as one word): "(N~=~168)", "co^hort",
+#: "D`ISCUSSION".
+THIN_MARK, KERN_MARK, CAPS_MARK = "~", "^", "`"
 THIN, KERN, KERNED = 1.2, 0.04, 1.08
-_MARKS = re.compile(f"([{re.escape(THIN_MARK + KERN_MARK)}])")
+CAPS_GAP, CAPS = 0.5, 0.8
+_MARKS = re.compile(f"([{re.escape(THIN_MARK + KERN_MARK + CAPS_MARK)}])")
 
 
 def said(word: str) -> str:
-    """A word `laid_out` sets, as pdftotext reads it: a thin space a space, a kern nothing."""
-    return word.replace(THIN_MARK, " ").replace(KERN_MARK, "")
+    """A word `laid_out` sets, as pdftotext reads it: a thin space a space, a kern and small
+    capitals nothing."""
+    return word.replace(THIN_MARK, " ").replace(KERN_MARK, "").replace(CAPS_MARK, "")
 
 
 def _parts(word: str, size: float) -> list[tuple[str, float, float]]:
@@ -245,7 +249,8 @@ def _parts(word: str, size: float) -> list[tuple[str, float, float]]:
     pieces = _MARKS.split(word)
     out = [(pieces[0], size, 0.0)]
     for mark, part in zip(pieces[1::2], pieces[2::2], strict=True):
-        out.append((part, size * KERNED, KERN) if mark == KERN_MARK else (part, size, THIN))
+        out.append((part, size * KERNED, KERN) if mark == KERN_MARK else
+                   (part, size * CAPS, CAPS_GAP) if mark == CAPS_MARK else (part, size, THIN))
     return out
 
 

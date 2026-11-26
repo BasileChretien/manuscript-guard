@@ -28,7 +28,7 @@ a document built before it compares as it did.
 local title = nil
 local live = false
 
--- The heading's identifier, which the docx writer makes a bookmark: what tells the heading
+-- The heading's bookmark, an empty span at its start: what tells the heading
 -- this build added from one the author wrote, to `docxtext.blocks` as it reads a document
 -- back (`docxtext.BUILT_HEADING`).
 local BUILT = 'mg-references'
@@ -126,7 +126,11 @@ local function Pandoc(doc)
     return nil
   end
   if not headed(blocks, at) then
-    blocks:insert(at, pandoc.Header(1, pandoc.Inlines(title), pandoc.Attr(BUILT, { 'unnumbered' })))
+    -- The bookmark as the build writes a paragraph's identifier: an empty span with the id,
+    -- which the docx writer makes a bookmark; a heading's own identifier it does not.
+    local inlines = pandoc.Inlines({ pandoc.Span({}, pandoc.Attr(BUILT)) })
+    inlines:extend(pandoc.Inlines(title))
+    blocks:insert(at, pandoc.Header(1, inlines, pandoc.Attr('', { 'unnumbered' })))
   end
   doc.blocks = blocks
   return doc

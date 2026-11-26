@@ -30766,8 +30766,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `build/references_heading.lua` gives it the bookmark `mg-references`, and a document read
   back passes that paragraph over (`docxtext.BUILT_HEADING`), so that `import` reads a document
   built before the heading as it did, and a co-author's rewording of it changes nothing.
-  Where Word drops the bookmark, as it does when the heading's words are selected whole and
-  typed over, the heading comes back as one without an identifier that the build compared with
+  Where Word drops the bookmark, as it drops a paragraph's identifier when the paragraph is cut
+  and pasted, the heading comes back as one without an identifier that the build compared with
   does not hold, and `import` lists it among the paragraphs that came back different and were
   not compared, though it is in no paragraph of the source. Accepted.
 - **No heading is added over a reference list placed inside another block.** A `::: {#refs}`

@@ -84,7 +84,7 @@ NARRATIVE_LUA = Path(__file__).with_name("narrative.lua")
 # so a reader can see where the caption ends. See the file's header and `build/styles.py`.
 FIGURE_CAPTION_LUA = Path(__file__).with_name("figure_caption.lua")
 # Ours, run on every docx build that cites: a heading over the reference list, unless the
-# author wrote one. After citeproc offline, before zotero_word.lua live. See the file's header.
+# author wrote one. Before citeproc offline, and zotero_word.lua live. See the file's header.
 REFERENCES_HEADING_LUA = Path(__file__).with_name("references_heading.lua")
 #: The heading over the reference list where the journal's profile names none.
 REFERENCES_HEADING = "References"
@@ -390,18 +390,14 @@ def references_heading(project) -> str:
     return REFERENCES_HEADING
 
 
-def _references_filter(project, *, live: bool) -> list[str]:
+def _references_filter(project) -> list[str]:
     """The arguments that run `references_heading.lua`, with the heading in the metadata as
-    JSON in hexadecimal, as narrative.lua takes its names; `live` where the bibliography is
-    a field the filter is to make a place for."""
+    JSON in hexadecimal, as narrative.lua takes its names."""
     title = json.dumps(references_heading(project), ensure_ascii=False).encode("utf-8").hex()
-    arguments = [
+    return [
         f"--lua-filter={REFERENCES_HEADING_LUA.resolve()}",
         f"--metadata=mg-references-heading:{title}",
     ]
-    if live:
-        arguments.append("--metadata=mg-references-live:true")
-    return arguments
 
 
 def _zotero_version() -> str | None:
@@ -667,7 +663,7 @@ def build_document(
             # and no heading over one. The heading goes first: the field takes the place of the
             # `refs` div it is put before.
             if cites:
-                command += _references_filter(project, live=True)
+                command += _references_filter(project)
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         elif mode == PLAIN:
             # No citeproc and no Zotero: a citation prints as the source writes it, a
@@ -682,7 +678,7 @@ def build_document(
                 ]
             # As the live build has them, which this one stands in for.
             if cites:
-                command += _references_filter(project, live=True)
+                command += _references_filter(project)
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         else:
             bib = project.path("literature") / "references.bib"
@@ -690,6 +686,10 @@ def build_document(
                 raise BuildError(
                     f"{bib} does not exist; run `manuscript-guard sync-bib` with Zotero open"
                 )
+            # Before citeproc, which runs where it stands among the filters: the list is given
+            # its place, under the author's heading of it where there is one, and its heading.
+            if cites:
+                command += _references_filter(project)
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:
                 command += [f"--csl={relative_to_root(project, csl.resolve())}"]
@@ -698,10 +698,6 @@ def build_document(
                 # the style. The working directory stays first, as it is by default.
                 folder = relative_to_root(project, csl.resolve().parent)
                 command += [f"--resource-path=.{os.pathsep}{folder}"]
-            # After citeproc, which runs where it stands among the filters: the list is then
-            # in its `refs` div, and the heading goes over it.
-            if cites:
-                command += _references_filter(project, live=False)
 
         finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
     if finished.returncode != 0:

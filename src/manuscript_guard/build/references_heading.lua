@@ -8,17 +8,17 @@ field goes in the same place (`zotero_word.lua`). So a manuscript that did not e
 own "# References" built into a document whose references followed the last statement as if
 they were part of it.
 
-Run after citeproc on an offline build, and before `zotero_word.lua` on a live one, this
-filter puts a first-level heading, unnumbered, before the reference list, titled as the
+Run before citeproc on an offline build, and before `zotero_word.lua` on a live one, this
+filter first gives the list its place where the manuscript writes no `refs` div: under the
+author's own heading of a reference list with nothing under it, wherever it stands (the end
+of main.md in a paper of several files, with others printed after it), or else at the end.
+It then puts a first-level heading, unnumbered, before the list, titled as the
 `mg-references-heading` metadata says: JSON written in hexadecimal, as `narrative.lua` takes
 its names, so that the command line carries any title. It adds none where the author wrote
-one: where the block before the list, comments aside, is a heading, which is also where
-citeproc puts the list of a manuscript that ends with a heading and nothing under it; where
-that block is a paragraph of a reference list's name in bold, as a paper brought in from Word
-heads it; or where the section the list stands in is headed as a reference list. With `mg-references-live`
-set, a manuscript with no `refs` div is given one at its end, where `zotero_word.lua` then puts
-the bibliography field; without it, as after citeproc, a list that holds nothing gets no
-heading. A `refs` div inside another block is the author's arrangement and is left as it is.
+one: where the block before the list, comments aside, is a heading or a paragraph in bold
+alone, of any words, as a paper brought in from Word heads its list ("**References**"); or
+where the section the list stands in is headed as a reference list. A `refs` div inside
+another block is the author's arrangement and is left as it is.
 
 The heading is the build's, never the source's: it carries the bookmark `mg-references`, and a
 document read back passes it over, so that `import` finds it in no paragraph of the source and
@@ -26,17 +26,25 @@ a document built before it compares as it did.
 ]]
 
 local title = nil
-local live = false
 
--- The heading's bookmark, an empty span at its start: what tells the heading
--- this build added from one the author wrote, to `docxtext.blocks` as it reads a document
--- back (`docxtext.BUILT_HEADING`).
+-- The heading's bookmark, an empty span at its start: what tells the heading this build
+-- added from one the author wrote, to `docxtext.blocks` as it reads a document back, and to
+-- the marked-up copy (`docxtext.BUILT_HEADING`).
 local BUILT = 'mg-references'
 
 -- What a heading that already heads a reference list is called, its number taken off.
 local NAMES = {
   'references?', 'reference list', 'list of references', 'bibliography', 'literature cited',
   'works cited', 'cited literature', 'literature',
+}
+
+-- A section's number, in the forms headings are numbered: "(7)", "7", "7.", "7.1", "6.2.",
+-- "7)", "VI", "VI.", "iv)", "A.", "b)". The first that matches is taken off.
+local NUMBERS = {
+  '^%(%w+%)%s+',
+  '^%d+[%.%d]*[.)]?%s+',
+  '^[ivxlcdm]+[.)]?%s+',
+  '^%a[.)]%s+',
 }
 
 local function decoded(hex)
@@ -48,9 +56,7 @@ end
 
 local function Meta(meta)
   local given = meta['mg-references-heading']
-  live = meta['mg-references-live'] ~= nil
   meta['mg-references-heading'] = nil
-  meta['mg-references-live'] = nil
   if given == nil then return meta end
   local ok, text = pcall(decoded, pandoc.utils.stringify(given))
   if not ok or type(text) ~= 'string' then
@@ -61,10 +67,15 @@ local function Meta(meta)
 end
 
 local function folded(text)
-  local plain = pandoc.text.lower(text)
-  -- "6. References", "VI References", "References:"
-  plain = plain:gsub('^%s*[%divxlc]+[.)]?%s+', ''):gsub('[%s:.]+$', ''):gsub('^%s+', '')
-  return plain
+  local plain = pandoc.text.lower(text):gsub('^%s+', '')
+  for _, number in ipairs(NUMBERS) do
+    local without, taken = plain:gsub(number, '', 1)
+    if taken > 0 then
+      plain = without
+      break
+    end
+  end
+  return (plain:gsub('[%s:.]+$', ''))
 end
 
 local function names_a_list(header)
@@ -76,23 +87,22 @@ local function names_a_list(header)
   return false
 end
 
--- A block the document does not print: an HTML comment, a fence for another format.
+-- A block the document does not print: an HTML comment, a fence for another format, and the
+-- empty div the build puts between two files (`document._BETWEEN_FILES`).
 local function unprinted(block)
+  if block.t == 'Div' then return #block.content == 0 and block.identifier == '' end
   return block.t == 'RawBlock' and block.format ~= 'openxml'
 end
 
--- A paragraph that is only a reference list's name in bold or italics, as a paper brought in
--- from Word heads its list: "**References**".
--- The build's paragraph identifier is an empty span before the text (`roundtrip.tag`), and
--- is passed over.
+-- A paragraph that is only words in bold, of any words, as a heading is of any. The build's
+-- paragraph identifier is an empty span before the text (`roundtrip.tag`), and is passed over.
 local function labelled(block)
   if block.t ~= 'Para' and block.t ~= 'Plain' then return false end
   local shown = {}
   for _, inline in ipairs(block.content) do
     if not (inline.t == 'Span' and #inline.content == 0) then shown[#shown + 1] = inline end
   end
-  if #shown ~= 1 or (shown[1].t ~= 'Strong' and shown[1].t ~= 'Emph') then return false end
-  return names_a_list(shown[1])
+  return #shown == 1 and shown[1].t == 'Strong'
 end
 
 local function headed(blocks, at)
@@ -107,6 +117,23 @@ local function headed(blocks, at)
   return false
 end
 
+-- The last heading of a reference list that has nothing under it before the next heading of
+-- its level or above, comments aside: where the author meant the list to go.
+local function waiting(blocks)
+  local found = nil
+  for index, block in ipairs(blocks) do
+    if block.t == 'Header' and names_a_list(block) then
+      local after = index + 1
+      while after <= #blocks and unprinted(blocks[after]) do after = after + 1 end
+      local next = blocks[after]
+      if next == nil or (next.t == 'Header' and next.level <= block.level) then
+        found = index
+      end
+    end
+  end
+  return found
+end
+
 local function Pandoc(doc)
   if FORMAT ~= 'docx' or title == nil then return nil end
   local blocks = doc.blocks
@@ -119,11 +146,15 @@ local function Pandoc(doc)
     doc:walk({ Div = function(div)
       if div.identifier == 'refs' then nested = true end
     end })
-    if nested or not live then return nil end
+    if nested then return nil end
+    local under = waiting(blocks)
+    if under ~= nil then
+      blocks:insert(under + 1, pandoc.Div({}, pandoc.Attr('refs')))
+      doc.blocks = blocks
+      return doc
+    end
     blocks:insert(pandoc.Div({}, pandoc.Attr('refs')))
     at = #blocks
-  elseif not live and #blocks[at].content == 0 then
-    return nil
   end
   if not headed(blocks, at) then
     -- The bookmark as the build writes a paragraph's identifier: an empty span with the id,

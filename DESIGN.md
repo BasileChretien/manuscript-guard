@@ -30772,8 +30772,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   not compared, though it is in no paragraph of the source. Accepted.
 - **No heading is added over a reference list placed inside another block.** A `::: {#refs}`
   div within another div is the author's arrangement, and the build adds no heading over it,
-  nor makes a place for a live build's bibliography field at the end. Pinned by
+  nor makes a place for the list elsewhere. Pinned by
   `tests/test_references_heading.py::test_a_list_inside_another_block_gets_no_heading`.
+- **The place and the heading are given before citeproc formats the list.** The filter runs
+  before citeproc, so that the list it places under an author's empty heading of it is filled
+  there; it cannot see whether citeproc will print an entry, and a document whose every
+  citation names a key the bibliography lacks, which `check` fails, built with
+  `--skip-checks`, has the heading over an empty list. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

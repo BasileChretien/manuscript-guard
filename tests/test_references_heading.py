@@ -116,18 +116,66 @@ def test_an_authors_own_heading_over_the_list_is_the_only_one(
 
 @needs_pandoc
 @pytest.mark.parametrize("mode", MODES)
-def test_a_list_under_its_name_in_bold_gets_no_heading(
-    project: Path, mode: str, tmp_path: Path, monkeypatch
+@pytest.mark.parametrize("label", ["References", "Literaturverzeichnis", "References and notes"])
+@pytest.mark.parametrize("div", ["\n::: {#refs}\n:::\n", ""], ids=["div", "no div"])
+def test_a_list_under_a_bold_label_gets_no_heading(
+    project: Path, mode: str, label: str, div: str, tmp_path: Path, monkeypatch
 ) -> None:
-    """A paper brought in from Word heads its list with its name in bold, not a heading."""
+    """A paper brought in from Word heads its list with a paragraph in bold, of whatever
+    words, as a heading heads it whatever its words: before the `refs` div, or last where the
+    list is put at the end."""
     _stub_zotero_lua(tmp_path, monkeypatch)
     path = project / "manuscript" / "main.md"
-    text = path.read_text(encoding="utf-8") + "\n**References**\n\n::: {#refs}\n:::\n"
+    text = path.read_text(encoding="utf-8") + f"\n**{label}**\n{div}"
     path.write_text(text, encoding="utf-8", newline="\n")
     paragraphs = _built(project, mode)
     start = _list_starts(paragraphs)
-    assert paragraphs[start - 1][1] == "References"
+    assert paragraphs[start - 1][1] == label
     assert "References" not in _headings(paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("after", ["", "\n<!-- the list is filled in by the build -->\n"],
+                         ids=["bare", "comment"])  # fmt: skip
+def test_an_empty_reference_heading_before_later_files_takes_the_list(
+    project: Path, mode: str, after: str, tmp_path: Path, monkeypatch
+) -> None:
+    """With no `refs` div, citeproc and the bibliography field go at the end of the document,
+    after every file printed after main.md: an author's heading of the list with nothing under
+    it, wherever it stands, is where the list goes, and no heading is added."""
+    _stub_zotero_lua(tmp_path, monkeypatch)
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8") + "\n# References\n" + after
+    path.write_text(text, encoding="utf-8", newline="\n")
+    (project / "manuscript" / "zz_appendix.md").write_text(
+        "# Appendix\n\nMore of the work.\n", encoding="utf-8", newline="\n"
+    )
+    paragraphs = _built(project, mode)
+    start = _list_starts(paragraphs)
+    assert _headings(paragraphs).count("References") == 1
+    assert _headings(paragraphs[:start])[-1] == "References"
+    assert "Appendix" in _headings(paragraphs[start:])
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "heading", ["7.1 References", "6.2. References", "A. References", "VI. References",
+                "(7) References", "7) References", "iv) Bibliography"],
+)  # fmt: skip
+def test_a_numbered_heading_of_the_list_is_read_by_its_words(
+    project: Path, heading: str
+) -> None:
+    """The section the list stands in is a reference list's however its heading is numbered."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8") + (
+        f"\n# {heading}\n\nIn the order they are cited.\n\n::: {{#refs}}\n:::\n"
+    )
+    path.write_text(text, encoding="utf-8", newline="\n")
+    paragraphs = _built(project, OFFLINE)
+    headings = _headings(paragraphs)
+    assert _headings(paragraphs[: _list_starts(paragraphs)])[-1] == heading
+    assert "References" not in headings
 
 
 @needs_pandoc
@@ -290,7 +338,7 @@ def test_a_document_built_before_the_heading_comes_back_with_no_edit(
     source = project / "manuscript" / "main.md"
     before = source.read_bytes()
     with monkeypatch.context() as patched:
-        patched.setattr(builder, "_references_filter", lambda _project, *, live: [])
+        patched.setattr(builder, "_references_filter", lambda _project: [])
         assert main(["build", str(project), "--offline"]) == 0
     assert "References" not in _headings(_paragraphs(project / "build" / "manuscript.docx"))
     capsys.readouterr()
@@ -301,23 +349,52 @@ def test_a_document_built_before_the_heading_comes_back_with_no_edit(
 
 
 @needs_pandoc
-def test_the_heading_renamed_in_word_is_not_written_into_the_source(
-    project: Path, tmp_path: Path, capsys
+@pytest.mark.parametrize("typed", ["Reference list", "References (to be updated)"])
+def test_the_heading_changed_in_word_is_said_and_not_written_into_the_source(
+    project: Path, tmp_path: Path, capsys, typed: str
 ) -> None:
-    """The heading is no paragraph of the source, so a co-author's rewording of it has
-    nowhere to go: it is read back as the build's, as a document's reference list is, and is
-    not merged as text. The profile's `references.heading` is where it is named."""
+    """The heading is no paragraph of the source, so what a co-author types into it has
+    nowhere to go: it is not merged as text, and import says so, and where the heading's
+    words come from."""
     from manuscript_guard.cli import main
 
     source = project / "manuscript" / "main.md"
     before = source.read_bytes()
     assert main(["build", str(project), "--offline"]) == 0
-    returned = _returned(project, tmp_path, {">References<": ">Reference list<"})
+    returned = _returned(project, tmp_path, {">References<": f">{typed}<"})
     capsys.readouterr()
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     said = capsys.readouterr().out
-    assert "Reference list" not in said, said
+    assert f'came back as "{typed}"' in said, said
+    assert "nothing of it is applied" in said and "references.heading" in said, said
     assert source.read_bytes() == before
+
+
+@needs_pandoc
+@pytest.mark.parametrize("form", ["tracked", "highlighted"])
+def test_the_marked_up_copy_does_not_mark_the_builds_heading(
+    project: Path, tmp_path: Path, monkeypatch, form: str
+) -> None:
+    """The copy marked against a document the journal received, built before the heading,
+    shows nothing inserted: the heading is the build's, and is kept in the copy as it is."""
+    from manuscript_guard.markedup import write
+
+    proj, _ = load_project(project)
+    namespace, results, _lit, _ = load_namespace(proj)
+    assembled, _ = assemble(proj, namespace, results)
+    old, new = tmp_path / "received.docx", tmp_path / "revision.docx"
+    with monkeypatch.context() as patched:
+        patched.setattr(builder, "_references_filter", lambda _project: [])
+        build_document(proj, assembled, mode=OFFLINE, output=old, stamp=False)
+    build_document(proj, assembled, mode=OFFLINE, output=new, stamp=False)
+    assert "References" not in _headings(_paragraphs(old))
+    made = write(old, new, tmp_path / "marked.docx", date="2026-11-26", form=form)
+    assert "blocks inserted" not in made.counts, made.counts
+    xml = zipfile.ZipFile(made.path).read("word/document.xml").decode("utf-8")
+    heading = next(p for p in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)
+                   if 'w:name="mg-references"' in p)  # fmt: skip
+    assert "References" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", heading, re.S))
+    assert "<w:ins " not in heading and "w:highlight" not in heading, heading
 
 
 def test_the_builds_heading_is_not_read_back(tmp_path: Path) -> None:

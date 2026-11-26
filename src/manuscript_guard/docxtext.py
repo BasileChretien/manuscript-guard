@@ -983,6 +983,20 @@ def fields_of(document: Path) -> dict[str, list[str]]:
     return found
 
 
+def built_heading(element: ET.Element) -> bool:
+    """Whether a `w:p` is the heading the build put over the reference list
+    (`BUILT_HEADING`): what `blocks` and the marked-up copy pass over."""
+    return element.tag == W + "p" and any(
+        node.get(W + "name") == BUILT_HEADING for node in element.iter(W + "bookmarkStart")
+    )
+
+
+def built_heading_text(document: Path) -> str | None:
+    """What the heading the build put over the reference list says, tracked changes accepted;
+    None where the document has none (`BUILT_HEADING`)."""
+    return next((p.text for p in paragraphs_of(document) if p.built and not p.table), None)
+
+
 def blocks(document: Path, fields: FieldReading | None = None) -> list[Block]:
     """The body as a reader sees it once every tracked change is accepted.
 

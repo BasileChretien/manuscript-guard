@@ -477,6 +477,17 @@ def _limit(project: Path, given: int | None = None) -> int:
     return time_limit(loaded, given)[0]
 
 
+def _bare(tmp_path: Path) -> Path:
+    """A project with nothing to re-run: what refuses an R or a limit refuses before that."""
+    root = tmp_path / "bare"
+    root.mkdir()
+    (root / "paper.yaml").write_text(
+        'schema: manuscript-guard/paper/1\ntitle: "B"\nenglish_variant: en-GB\n',
+        encoding="utf-8",
+    )
+    return root
+
+
 def _with_verify_setting(project: Path, block: str) -> None:
     paper = project / "paper.yaml"
     paper.write_text(paper.read_text(encoding="utf-8") + f"\nverify: {block}\n",
@@ -501,17 +512,17 @@ def test_the_rscript_named_runs_an_r_script_the_flag_over_the_variable(
 
 
 def test_a_variable_naming_no_program_stops_verify_and_names_it(
-    project: Path, tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch
 ) -> None:
     from manuscript_guard.verify import RSCRIPT_VARIABLE
 
     monkeypatch.setenv(RSCRIPT_VARIABLE, str(tmp_path / "R-9.9.9" / "Rscript.exe"))
     with pytest.raises(VerifyError, match=RSCRIPT_VARIABLE):
-        run(project)
+        run(_bare(tmp_path))
 
 
-def test_an_rscript_given_that_is_not_there_stops_verify(project: Path, tmp_path: Path) -> None:
-    loaded, _ = load_project(project)
+def test_an_rscript_given_that_is_not_there_stops_verify(tmp_path: Path) -> None:
+    loaded, _ = load_project(_bare(tmp_path))
     with pytest.raises(VerifyError, match="--rscript"):
         verify(loaded, rscript=str(tmp_path / "Rscript.exe"))
 
@@ -674,10 +685,11 @@ def test_an_r_of_the_major_and_minor_renv_lock_pins_is_not_warned_of() -> None:
 
 
 def test_the_command_refuses_a_limit_that_is_no_number_and_an_r_that_is_not_there(
-    project: Path, tmp_path: Path, capsys
+    tmp_path: Path, capsys
 ) -> None:
     from manuscript_guard.cli import main
 
+    project = _bare(tmp_path)
     with pytest.raises(SystemExit) as stopped:
         main(["verify", str(project), "--timeout", "0"])
     assert stopped.value.code == 2

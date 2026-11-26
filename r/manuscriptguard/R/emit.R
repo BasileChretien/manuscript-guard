@@ -118,14 +118,57 @@ mg_check_display <- function(key, value, display) {
   invisible(NULL)
 }
 
+#' What makes a value no number to print, as a refusal says it
+#'
+#' "is NaN", "is NA" or "is infinite" for a number, whatever the display, since none renders
+#' it; "is NA" for a logical or a character NA where no `display` says what the paper prints
+#' in its place ("not estimable"), which was taken before, as Python takes None with one.
+#' NULL for a value that is one. Python's `missing_problem` is the same rule.
+#'
+#' Found writing a real paper (2026-11-26): with `digits`, a NaN stopped R with its own
+#' "missing value where TRUE/FALSE needed", in the session's language and naming no key, and
+#' a logical NA printed "FALSE".
+#' @noRd
+mg_missing_problem <- function(value, display = NULL) {
+  if (length(value) != 1) {
+    return(NULL)
+  }
+  if (is.numeric(value)) {
+    if (is.nan(value)) return("is NaN")
+    if (is.na(value)) return("is NA")
+    if (is.infinite(value)) return("is infinite")
+    return(NULL)
+  }
+  if (is.null(display) && (is.logical(value) || is.character(value)) && is.na(value)) {
+    return("is NA")
+  }
+  NULL
+}
+
+#' Refuse a value that is no number to print, naming its key, in Python's words
+#' @noRd
+mg_missing_refusal <- function(key, problem) {
+  stop(
+    key, ": the value ", problem, ", so there is no number to print. Find out why the ",
+    "analysis computed none (a model that did not converge, a share whose denominator is 0) ",
+    "and emit the key only where there is a value",
+    call. = FALSE
+  )
+}
+
 #' Display string for a value
 #'
 #' Mirrors the Python emitter exactly, with one concession to R: a double holding a whole
 #' number is treated as a count, because R has no integer literal that survives ordinary
 #' arithmetic. A quantity that really is 3.0 and should read "3.00" therefore needs an
-#' explicit `digits`.
+#' explicit `digits`. A value that is no number to print is refused first, before any
+#' arithmetic reads it (`mg_missing_problem`).
 #' @noRd
 mg_display <- function(key, value, display, digits) {
+  problem <- mg_missing_problem(value, display)
+  if (!is.null(problem)) {
+    mg_missing_refusal(key, problem)
+  }
   if (!is.null(display)) {
     display <- as.character(display)
     mg_check_display(key, value, display)
@@ -1722,6 +1765,13 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     } else {
       value(point_key, point, digits = digits, unit = unit, quoted = quoted)
     }
+    stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
+    # Before the bracket: a NaN brackets nothing, and the comparison stopped R in its own
+    # words, naming no key.
+    for (end in list(list(low, "low"), list(high, "high"))) {
+      problem <- mg_missing_problem(end[[1]])
+      if (!is.null(problem)) mg_missing_refusal(paste0(key, ".", stem, "_", end[[2]]), problem)
+    }
     if (!(low <= point && point <= high)) {
       stop(
         key, ": the interval does not bracket the estimate - ", format(low), " to ",
@@ -1729,7 +1779,6 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
         call. = FALSE
       )
     }
-    stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
     recorded <- if (is.null(level)) ci_level else level
     value(
       paste0(key, ".", stem, "_low"), low, digits = digits, unit = unit, quoted = quoted,
@@ -1838,6 +1887,11 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       if (!identical(row, HEADER)) entry$row <- as.integer(row)
       state$composed[[key]] <- c(state$composed[[key]], list(entry))
       return(cell$text)
+    }
+    # A logical NA printed "FALSE", and a NaN stopped R naming no cell.
+    problem <- mg_missing_problem(cell)
+    if (!is.null(problem)) {
+      mg_missing_refusal(where, problem)
     }
     if (is.logical(cell)) {
       return(if (isTRUE(cell)) "TRUE" else "FALSE")

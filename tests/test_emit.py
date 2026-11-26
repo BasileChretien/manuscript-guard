@@ -1632,3 +1632,63 @@ def test_an_authors_yaml_that_cannot_be_read_is_blamed_on_paper_yaml(
     em = emitter(scratch)
     em.value("n", 1)
     assert em.write().is_file()
+
+
+# ---------------------------------------------- a value that is no number to print (item 10)
+#
+# Found writing a real paper (2026-11-26): in R, `em$value(key, NaN, digits = 2)` stopped with
+# R's own "missing value where TRUE/FALSE needed", in the session's language and naming no key;
+# here, the same call printed "nan" into the fragment. Both now refuse, naming the key and what
+# the value is.
+
+NAN, INF = float("nan"), float("inf")
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        (lambda em: em.value("ror.point", NAN, digits=2), "ror.point: the value is NaN"),
+        (lambda em: em.value("ror.point", NAN, display="NaN"), "ror.point: the value is NaN"),
+        (lambda em: em.value("ror.point", INF, digits=2), "ror.point: the value is infinite"),
+        (lambda em: em.value("ror.point", -INF, digits=2), "ror.point: the value is infinite"),
+        (lambda em: em.parameter("alpha", NAN), "param.alpha: the value is NaN"),
+        (lambda em: em.interval("ror", NAN, 1.0, 2.0, digits=2), "ror.point: the value is NaN"),
+        (lambda em: em.interval("ror", 1.5, NAN, 2.0, digits=2), "ror.ci_low: the value is NaN"),
+        (lambda em: em.interval("ror", 1.5, 1.0, INF, digits=2),
+         "ror.ci_high: the value is infinite"),
+        (lambda em: em.table("t", ["a"], [[NAN]], digits=1),
+         "table 't' row 0 column 0: the value is NaN"),
+        (lambda em: em.table("t", ["a"], [[em.cell("{} (n)", (NAN, 1))]]),
+         "table 't' row 0 column 0: the value is NaN"),
+    ],
+)
+def test_a_value_that_is_no_number_is_refused_naming_its_key(scratch: Path, call, says) -> None:
+    with pytest.raises(DisplayError) as refused:
+        call(emitter(scratch))
+    message = str(refused.value)
+    assert message.startswith(says), message
+    assert "there is no number to print" in message
+    # The hint that `digits=` is missing is not what is wrong with it.
+    assert "Pass `digits=`" not in message
+
+
+def test_a_missing_value_with_a_display_is_still_what_the_paper_prints(scratch: Path) -> None:
+    """None with a display was taken before, and is: the author says what the paper prints
+    where there is no number. A NaN has no display, since none renders it."""
+    em = emitter(scratch)
+    em.value("ror.adjusted", None, display="not estimable")
+    assert em.document()["values"]["ror.adjusted"]["display"] == "not estimable"
+    with pytest.raises(DisplayError, match="ror.point: the value is NaN"):
+        em.value("ror.point", NAN, display="not estimable")
+
+
+def test_a_numpy_nan_is_refused_as_a_float_nan_is(scratch: Path) -> None:
+    numpy = pytest.importorskip("numpy")
+    with pytest.raises(DisplayError, match="ror.point: the value is NaN"):
+        emitter(scratch).value("ror.point", numpy.float32("nan"), digits=2)
+
+
+def test_pandas_na_is_refused_as_r_s_na_is(scratch: Path) -> None:
+    pandas = pytest.importorskip("pandas")
+    with pytest.raises(DisplayError, match="cohort.n: the value is NA"):
+        emitter(scratch).value("cohort.n", pandas.NA)

@@ -7,7 +7,10 @@ to know where a number came from — only the reporting does.
 
 from __future__ import annotations
 
+import math
+import numbers
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +23,50 @@ ATTESTED = "attested"
 
 class DisplayError(Exception):
     """A value cannot be rendered without the author deciding how."""
+
+
+class MissingValueError(DisplayError):
+    """A value that is no number to print: NaN, infinite, or missing with no display."""
+
+
+def missing_problem(value: object, display: str | None = None) -> str | None:
+    """What makes `value` no number to print, as a refusal says it: "is NaN", "is infinite",
+    and, where no `display` says what the paper prints in its place, "is NA" (pandas'); None
+    for a value that is one. None with no display is refused by `derive_display` as a value
+    of no type it formats, which it was before.
+
+    Found writing a real paper (2026-11-26): R stopped on `NaN` with `digits` in its own
+    words, "missing value where TRUE/FALSE needed", in the session's language and naming no
+    key, and this emitter printed "nan". A NaN or an infinity is refused whatever the
+    display, since none renders it; None with a display is the author saying what is
+    printed where there is no number ("not estimable"), and was taken before.
+    """
+    if isinstance(value, numbers.Real) and not isinstance(value, numbers.Integral):
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if math.isnan(number):
+            return "is NaN"
+        if math.isinf(number):
+            return "is infinite"
+        return None
+    if display is not None:
+        return None
+    pandas = sys.modules.get("pandas")
+    if pandas is not None and value is getattr(pandas, "NA", None):
+        return "is NA"
+    return None
+
+
+def missing_refusal(key: str, problem: str) -> MissingValueError:
+    """The refusal of a value that is no number to print, naming its key: the same words as
+    the R emitter's."""
+    return MissingValueError(
+        f"{key}: the value {problem}, so there is no number to print. Find out why the "
+        f"analysis computed none (a model that did not converge, a share whose denominator "
+        f"is 0) and emit the key only where there is a value"
+    )
 
 
 @dataclass(frozen=True)
@@ -99,7 +146,12 @@ def derive_display(key: str, value: object, display: str | None, digits: int | N
     than formatted with some default. Implicit rounding is exactly how the same quantity
     comes to be written 4.3 in the abstract and 4.28 in a table, and no downstream check
     can recover the author's intent once it is lost.
+
+    A value that is no number to print is refused first (`missing_problem`).
     """
+    problem = missing_problem(value, display)
+    if problem is not None:
+        raise missing_refusal(key, problem)
     if display is not None:
         _check_display_matches(key, value, display)
         return display

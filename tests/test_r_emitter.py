@@ -2796,3 +2796,72 @@ def test_r_refuses_the_steps_python_refuses(tmp_path: Path, call: str, refusal: 
     )
     out = _run_r(script, root)
     assert out.returncode != 0 and refusal in out.stderr, out.stderr
+
+
+# A value that is no number to print (item 10). Found writing a real paper (2026-11-26): with
+# `digits`, a NaN stopped R with its own "missing value where TRUE/FALSE needed", in the
+# session's language and naming no key; a logical NA in a table printed "FALSE". The words
+# are the Python emitter's (`contracts/values.py`, `missing_refusal`).
+NO_NUMBER_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+%(call)s
+"""
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        ('em$value("ror.point", NaN, digits = 2)', "ror.point: the value is NaN"),
+        ('em$value("ror.point", NA_real_, digits = 2)', "ror.point: the value is NA"),
+        ('em$value("ror.point", NA_real_, display = "not estimable")',
+         "ror.point: the value is NA"),
+        ('em$value("ror.point", Inf, digits = 2)', "ror.point: the value is infinite"),
+        ('em$value("ror.point", -Inf, digits = 2)', "ror.point: the value is infinite"),
+        ('em$value("cohort.n", NA_integer_)', "cohort.n: the value is NA"),
+        ('em$value("cohort.flag", NA)', "cohort.flag: the value is NA"),
+        ('em$value("cohort.site", NA_character_)', "cohort.site: the value is NA"),
+        ('em$parameter("alpha", NaN)', "param.alpha: the value is NaN"),
+        ('em$interval("ror", NaN, 1, 2, digits = 2)', "ror.point: the value is NaN"),
+        ('em$interval("ror", 1.5, NaN, 2, digits = 2)', "ror.ci_low: the value is NaN"),
+        ('em$interval("ror", 1.5, 1, Inf, digits = 2)', "ror.ci_high: the value is infinite"),
+        ('em$table("t", list("a"), list(list(NaN)), digits = 1)',
+         "table 't' row 0 column 0: the value is NaN"),
+        ('em$table("t", list("a"), list(list(NA)))', "table 't' row 0 column 0: the value is NA"),
+        ('em$table("t", list("a"), list(list(em$cell("{} (n)", list(NaN, 1)))))',
+         "table 't' row 0 column 0: the value is NaN"),
+    ],
+)
+def test_r_refuses_a_value_that_is_no_number_naming_its_key(
+    tmp_path: Path, call: str, says: str
+) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(
+        NO_NUMBER_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), "call": call},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0, out.stdout
+    assert says in out.stderr and "there is no number to print" in out.stderr, out.stderr
+
+
+def test_r_still_prints_what_the_author_says_where_a_logical_na_has_a_display(
+    tmp_path: Path,
+) -> None:
+    """A logical NA with a display was taken before, as Python takes None with one."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "kept.R"
+    script.write_text(
+        NO_NUMBER_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                       "call": 'em$value("ror.adjusted", NA, display = "not estimable")\n'
+                               "em$write()"},
+        encoding="utf-8",
+    )  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "kept.json").read_text(encoding="utf-8"))["values"]
+    assert values["ror.adjusted"]["display"] == "not estimable"

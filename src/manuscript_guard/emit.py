@@ -35,7 +35,14 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.contracts.project import find_root
-from manuscript_guard.contracts.values import DisplayError, check_string_value, derive_display
+from manuscript_guard.contracts.values import (
+    DisplayError,
+    MissingValueError,
+    check_string_value,
+    derive_display,
+    missing_problem,
+    missing_refusal,
+)
 from manuscript_guard.datasets import NAME as DATASET_NAME
 from manuscript_guard.datasets import dataset_digest, declare, pin_of, slug
 from manuscript_guard.paths import lockfiles
@@ -190,6 +197,8 @@ def _cell(
         wanted = digits.get(column) if isinstance(digits, dict) else digits
         try:
             shown = derive_display(where, cell, None, wanted)
+        except MissingValueError:
+            raise
         except DisplayError as exc:
             raise DisplayError(
                 f"{exc}. Pass `digits=` to table() — an int for every column, or a "
@@ -2202,13 +2211,19 @@ class Emitter:
         else:
             self.value(point_key, point, digits=digits, unit=unit, quoted=quoted)
 
+        stem = f"ci{_level_slug(level)}" if level else "ci"
+        # Before the bracket: a NaN brackets nothing, and the refusal said the arguments
+        # were in the wrong order.
+        for end, bound in ((low, "low"), (high, "high")):
+            problem = missing_problem(end)
+            if problem is not None:
+                raise missing_refusal(f"{key}.{stem}_{bound}", problem)
         if not low <= point <= high:
             raise DisplayError(
                 f"{key}: the interval does not bracket the estimate — {low!r} to {high!r} "
                 f"around {point!r}. Check the order of the arguments"
             )
 
-        stem = f"ci{_level_slug(level)}" if level else "ci"
         for end, bound in ((low, "low"), (high, "high")):
             self.value(
                 f"{key}.{stem}_{bound}", end, digits=digits, unit=unit, quoted=quoted,

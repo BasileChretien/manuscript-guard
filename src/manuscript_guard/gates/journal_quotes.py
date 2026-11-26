@@ -45,6 +45,7 @@ from __future__ import annotations
 import codecs
 import difflib
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -574,38 +575,26 @@ def _blocks_invalid(document: dict) -> list[str]:
 
 #: What a browser lays out as a block of its own: each starts a line of the stored text, so
 #: that a page saved with no line breaks in it is not stored as one line. Every other element
-#: is inline and joins the words around it, as the browser shows them.
+#: is inline and joins the words around it, as the browser shows them, but for the links of a
+#: navigation bar (`_Shown`).
 _BLOCKS = frozenset({
-    "address", "article", "aside", "blockquote", "body", "caption", "dd", "details", "dialog",
-    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
-    "h4", "h5", "h6", "header", "html", "legend", "li", "main", "menu", "nav", "ol", "p", "pre",
-    "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+    "address", "article", "aside", "blockquote", "body", "caption", "center", "dd", "details",
+    "dialog", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1",
+    "h2", "h3", "h4", "h5", "h6", "header", "html", "legend", "li", "main", "menu", "nav", "ol",
+    "optgroup", "option", "p", "pre", "section", "summary", "table", "tbody", "td", "tfoot",
+    "th", "thead", "tr", "ul",
 })  # fmt: skip
 #: What a browser does not show as the page, with all it holds: what it runs and styles with,
 #: what it keeps for a script to use, the tab's title, and what it shows only where scripts do
 #: not run, which is where a bot check's page keeps its words.
 _UNSHOWN = frozenset({"script", "style", "template", "title", "noscript"})
-#: Elements that have no end tag.
-_VOID = frozenset({
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
-    "source", "track", "wbr",
-})  # fmt: skip
-#: Elements whose end tag may be left out, each with the end tags that close it unwritten:
-#: a hidden one is hidden until then, or until the next of its kind.
-_CLOSED_BY = {
-    "p": _BLOCKS - {"p"},
-    "li": frozenset({"ul", "ol", "menu", "body", "html"}),
-    "dt": frozenset({"dl", "body", "html"}),
-    "dd": frozenset({"dl", "body", "html"}),
-    "tr": frozenset({"table", "tbody", "thead", "tfoot", "body", "html"}),
-    "td": frozenset({"tr", "table", "tbody", "thead", "tfoot", "body", "html"}),
-    "th": frozenset({"tr", "table", "tbody", "thead", "tfoot", "body", "html"}),
-    "option": frozenset({"select", "optgroup", "datalist", "body", "html"}),
-}
-#: An inline style that hides an element.
-_NOT_SHOWN = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden", re.IGNORECASE)
-#: The character set a page declares, in `<meta charset>` or `<meta http-equiv>`'s content.
-_CHARSET = re.compile(rb"""<meta[^>]+?charset\s*=\s*["']?\s*([A-Za-z0-9_.:-]+)""", re.IGNORECASE)
+#: The character set a page declares: in `<meta charset>`, in `<meta http-equiv>`'s content,
+#: or in XHTML's XML declaration.
+_CHARSET = re.compile(
+    rb"""<meta[^>]+?charset\s*=\s*["']?\s*([A-Za-z0-9_.:-]+)"""
+    rb"""|<\?xml[^>]+?encoding\s*=\s*["']([A-Za-z0-9_.:-]+)""",
+    re.IGNORECASE,
+)
 #: What WHATWG's encoding standard reads each of these as: windows-1252.
 _AS_1252 = frozenset({"iso-8859-1", "iso8859-1", "latin1", "latin-1", "l1", "us-ascii", "ascii"})
 
@@ -618,43 +607,34 @@ class AnotherPageStored(PageRefused):
     """A different page is stored where this one would go: replaced only when asked."""
 
 
-def _hidden(attrs: list[tuple[str, str | None]]) -> bool:
-    """Whether an element's attributes hide it: `hidden`, or a style of `display: none` or
-    `visibility: hidden`. Not `aria-hidden`, which hides from a screen reader only."""
-    return any(name == "hidden" or (name == "style" and value and _NOT_SHOWN.search(value))
-               for name, value in attrs)  # fmt: skip
-
-
 class _Shown(HTMLParser):
-    """The text a browser shows of a page: each block on a line of its own, inline elements
-    joining their words, entities read as the characters they are (`convert_charrefs`), and
-    nothing of a comment, of `_UNSHOWN` or of a hidden element (`_hidden`). An element
-    hidden whose end tag may be left out is hidden until an end tag that closes it
-    (`_CLOSED_BY`) or the next of its kind."""
+    """The text of a page, as a browser shows it opened out: each block on a line of its own,
+    inline elements joining their words and the links of a navigation bar kept apart, entities
+    read as the characters they are (`convert_charrefs`), and nothing of a comment or of
+    `_UNSHOWN`. The words of a section folded away are kept, `hidden`, `hidden="until-found"`
+    or `display: none`: a guidelines page folds its sections in accordions and tabs, and the
+    author opens one and copies a quote from it."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self._skipping: str | None = None
         self._depth = 0
+        self._navigation = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if self._skipping is not None:
-            if tag != self._skipping or tag in _VOID:
-                return
-            if not (tag in _CLOSED_BY and self._depth == 1):
+            if tag == self._skipping:
                 self._depth += 1
-                return
-            self._skipping = None
-        if tag in _VOID:
-            if tag in ("br", "hr"):
-                self.parts.append("\n")
             return
-        if tag in _UNSHOWN or _hidden(attrs):
+        if tag in _UNSHOWN:
             self._skipping, self._depth = tag, 1
             return
-        if tag in _BLOCKS:
+        self._navigation += tag == "nav"
+        if tag in _BLOCKS or tag in ("br", "hr"):
             self.parts.append("\n")
+        elif tag == "a" and self._navigation:
+            self.parts.append(" ")
 
     def handle_endtag(self, tag: str) -> None:
         if self._skipping is not None:
@@ -662,13 +642,13 @@ class _Shown(HTMLParser):
                 self._depth -= 1
                 if not self._depth:
                     self._skipping = None
-                return
-            if self._depth == 1 and tag in _CLOSED_BY.get(self._skipping, ()):
-                self._skipping = None
-            else:
-                return
-        if tag in _BLOCKS or tag in ("br", "hr"):
+            return
+        if tag == "nav" and self._navigation:
+            self._navigation -= 1
+        if tag in _BLOCKS:
             self.parts.append("\n")
+        elif tag == "a" and self._navigation:
+            self.parts.append(" ")
 
     def handle_data(self, data: str) -> None:
         if self._skipping is None:
@@ -676,40 +656,58 @@ class _Shown(HTMLParser):
 
 
 def _decoded(raw: bytes) -> str:
-    """A web page's text, in the character set it declares: a byte-order mark, else its
-    `<meta>`'s charset (`_CHARSET`, in its first 4096 bytes), else UTF-8. A character that is
-    not in it is read as U+FFFD, as a browser shows it."""
+    """A web page's text, read as a browser reads it. A byte-order mark says what the bytes
+    are. Bytes that are UTF-8 are read as UTF-8, whatever a declaration left stale by a page
+    converted since says. Otherwise the page's declared character set (`_CHARSET`, in its
+    first 4096 bytes), UTF-16 read as UTF-8 since bytes it is declared in are not UTF-16
+    (WHATWG's encoding standard) and Latin-1's names as windows-1252; with no declaration, or
+    a name Python does not know, windows-1252. A byte not in it is read as U+FFFD."""
     if raw.startswith(codecs.BOM_UTF8):
         return raw[3:].decode("utf-8", errors="replace")
     if raw[:2] in (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE):
         return raw.decode("utf-16", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
     declared = _CHARSET.search(raw[:4096])
-    if declared:
-        name = declared.group(1).decode("ascii").lower()
-        try:
-            return raw.decode("cp1252" if name in _AS_1252 else name, errors="replace")
-        except LookupError:
-            pass
-    return raw.decode("utf-8", errors="replace")
+    name = (declared.group(1) or declared.group(2)).decode("ascii").lower() if declared else ""
+    if name.startswith("utf-16"):
+        name = "utf-8"
+    elif name in _AS_1252 or not name:
+        name = "cp1252"
+    try:
+        return raw.decode(name, errors="replace")
+    except LookupError:
+        return raw.decode("cp1252", errors="replace")
 
 
-def page_text(path: Path) -> str:
+def page_text(path: Path, *, any_text: bool = False) -> str:
     """The text of a journal's page as the profile stores it, from the file the author has:
     a page saved from a browser as a web page (.html, .htm, .xhtml) or printed to PDF, or
-    the text itself, under any other name.
+    its text (.txt, .md, a file with no suffix); with `any_text`, as `--reread` reads, any
+    other file as UTF-8 text too.
 
-    A web page is read in the character set it declares (`_decoded`), and keeps what a
-    browser shows of it (`_Shown`): no script, style, comment, title, `<template>` or
-    `<noscript>`, and no hidden element; each block on a line of its own, and inline
-    markup joining its words, so that "Follow the <a>ICMJE recommendations</a>." is the
-    sentence the author copies; a block's end is a line's, and the page has no empty line. A
-    PDF is read in reading order (`literature.sources._read_pdf`), one column after the other,
-    a run of empty lines between its paragraphs read as one. Each line of either has its white
-    space folded to one space. Text is kept as it is written, with LF line endings.
+    A web page is read in the character set a browser reads it in (`_decoded`), and keeps
+    its words as a browser shows it opened out (`_Shown`): no script, style, comment, title,
+    `<template>` or `<noscript>`, and each section folded away kept; each block on a line of
+    its own, and inline markup joining its words, so that "Follow the <a>ICMJE
+    recommendations</a>." is the sentence the author copies; a block's end is a line's, and
+    the page has no empty line. A PDF is read in reading order
+    (`literature.sources._read_pdf`), one column after the other, a run of empty lines between
+    its paragraphs read as one. Each line of either has its white space folded to one space.
+    Text is kept as it is written, with LF line endings.
 
-    Raises UnreadableSource for a PDF nothing here reads, and UnicodeDecodeError for a file
-    that is neither a web page nor a PDF and is not UTF-8 text."""
-    from manuscript_guard.literature.sources import HTML_SUFFIXES, PDF_SUFFIXES, _read_pdf
+    Raises UnreadableSource for a file of another kind without `any_text` (a page saved as a
+    single file, .mhtml or .mht, a .rtf, a Word document), and for a PDF nothing here reads;
+    UnicodeDecodeError for text that is not UTF-8."""
+    from manuscript_guard.literature.sources import (
+        HTML_SUFFIXES,
+        PDF_SUFFIXES,
+        TEXT_SUFFIXES,
+        UnreadableSource,
+        _read_pdf,
+    )
 
     suffix = path.suffix.lower()
     if suffix in HTML_SUFFIXES:
@@ -721,8 +719,13 @@ def page_text(path: Path) -> str:
         return "\n".join(kept) + "\n" if kept else ""
     if suffix in PDF_SUFFIXES:
         text = _read_pdf(path, layout=False)
-    else:
+    elif suffix in TEXT_SUFFIXES or not suffix or any_text:
         return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    else:
+        raise UnreadableSource(
+            f"{path.name}: a {suffix} file is not a page this reads; save the page from your "
+            "browser as \"Webpage, HTML only\", or print it to PDF"
+        )
     lines: list[str] = []
     for line in (" ".join(line.split()) for line in text.splitlines()):
         if line or (lines and lines[-1]):
@@ -746,10 +749,14 @@ class Stored:
 
 
 def _inside(path: Path, root: Path) -> bool:
-    """Whether `path`, its links and `..` followed, is under `root`."""
+    """Whether `path` is under `root` as it is written, its `..` taken off as text and no link
+    followed: a `page_file` or a journal's name leading out of the project is refused, and a
+    sources folder the author has linked to a shared one is not."""
+    written = os.path.normcase(os.path.abspath(path))
+    base = os.path.normcase(os.path.abspath(root))
     try:
-        return path.resolve().is_relative_to(root.resolve())
-    except OSError:
+        return os.path.commonpath([written, base]) == base
+    except ValueError:  # on another drive
         return False
 
 
@@ -761,9 +768,10 @@ def store_page(project: Project, saved: Path, slug: str, page: str | None = None
     with `replace`, the same text being no change.
 
     For a page the journal's site keeps from a script behind a bot check: the author saves
-    it from their own browser, and this stores it. Only ever under the project's root: a
-    `page_file` or a journal's name that leads out of it (`../`, a path of its own) is
-    refused, since a page was only read from there before it was written there.
+    it from their own browser, and this stores it. Only ever under the project's root, as the
+    path is written (`_inside`): a `page_file` or a journal's name that leads out of it
+    (`../`, a path of its own) is refused, since a page was only read from there before it
+    was written there.
 
     Raises PageRefused where the profile cannot be read, the place is outside the project,
     the file holds no text or the page cannot be written; AnotherPageStored where another

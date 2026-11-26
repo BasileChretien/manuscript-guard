@@ -52,7 +52,7 @@ def _saved_html(path: Path) -> Path:
         "<style>p { margin: 3500px; }</style>"
         "<script>var limit = '<p>should not exceed 9999 words</p>';</script></head><body>"
         "<!-- a comment with > inside it: no more than 12 figures -->"
-        "<div hidden>Cookie settings 7</div><template><p>Accept 8</p></template>"
+        "<template><p>Accept 8</p></template>"
         "<noscript>Enable JavaScript 9</noscript>"
         f"<nav><ul><li>Home</li><li>Submit</li></ul></nav><main>{paragraphs}</main>"
         "</body></html>",
@@ -77,7 +77,7 @@ def test_a_page_saved_as_html_is_stored_as_its_text(journal_project: Path, capsy
     # The page's words, each paragraph a line of its own; nothing it does not show.
     assert "Abstracts should not exceed 300 words." in stored.splitlines()
     assert "Home" in stored.splitlines()
-    for hidden in ("9999", "3500px", "12 figures", "<p", "&#160;", "&nbsp;", "Cookie", "Accept",
+    for hidden in ("9999", "3500px", "12 figures", "<p", "&#160;", "&nbsp;", "Accept",
                    "JavaScript", "Instructions for authors"):
         assert hidden not in stored, hidden
     assert stored.endswith("\n") and "\n\n\n" not in stored and "\r" not in stored
@@ -170,16 +170,21 @@ def test_a_new_journal_s_page_is_stored_with_its_template(journal_project: Path,
         # rule to.
         ("blocked.html", "<html><head><script>challenge()</script></head><body></body></html>",
          "no text"),
-        # A real Cloudflare challenge: its words are in the title, a <noscript> and hidden
-        # elements, none of which a browser shows as the page.
+        # A real Cloudflare challenge: its words are in the title and a <noscript>, which a
+        # browser does not show as the page, and its script.
         ("challenge.html",
          "<html><head><title>Just a moment...</title></head><body>"
          "<noscript>Enable JavaScript and cookies to continue</noscript>"
-         "<div hidden><p>Verifying you are human</p></div>"
          "<template><p>Checking your browser</p></template>"
-         "<div style='display: none'>Ray ID 8f</div><span style=\"visibility:hidden\">x</span>"
          "<script>challenge()</script></body></html>", "no text"),
-        ("page.docx", b"PK\x03\x04\x14\x00\x08\x00\xff\xfe\x00", "UTF-8"),
+        # What a browser saves besides a web page, HTML only: text inside, but not the page's.
+        ("page.mhtml", "MIME-Version: 1.0\nContent-Type: multipart/related\n\n=E2=80=99 words=\n",
+         "HTML only"),
+        ("page.mht", "MIME-Version: 1.0\n\nAbstracts should not exceed 300 words.\n", "HTML only"),
+        ("page.rtf", "{\\rtf1\\ansi Abstracts should not exceed 300 words.}", "HTML only"),
+        ("page.doc", "Abstracts should not exceed 300 words.", "HTML only"),
+        ("page.docx", b"PK\x03\x04\x14\x00\x08\x00\xff\xfe\x00", "HTML only"),
+        ("page.webarchive", "bplist00 Abstracts should not exceed 300 words.", "HTML only"),
     ],
 )  # fmt: skip
 def test_a_file_with_no_page_in_it_is_refused(
@@ -345,3 +350,103 @@ def test_a_page_that_cannot_be_written_is_said_so(journal_project: Path, capsys)
     assert main(["journal", str(journal_project), "--store", str(saved), "--replace"]) == 2
     err = capsys.readouterr().err
     assert "could not be written" in err and "cannot be read" not in err
+
+
+def test_what_a_folded_section_holds_is_kept(journal_project: Path) -> None:
+    """A guidelines page folds its sections in accordions and tabs, `hidden` until opened:
+    the author opens one and copies a quote from it, so its words are the page's."""
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    saved = journal_project.parent / "page.html"
+    saved.write_text(
+        "<html><body><section><button>Word limits</button>"
+        "<div hidden>Abstracts should not exceed 300 words.</div>"
+        "<div hidden='until-found'>Cite no more than 50 references.</div>"
+        "<div style='display:none'>Include no more than four figures.</div>"
+        "</section></body></html>",
+        encoding="utf-8",
+    )
+    assert page_text(saved).splitlines() == [
+        "Word limits", "Abstracts should not exceed 300 words.",
+        "Cite no more than 50 references.", "Include no more than four figures.",
+    ]
+
+
+def test_items_a_browser_shows_apart_are_kept_apart(journal_project: Path) -> None:
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    saved = journal_project.parent / "page.html"
+    saved.write_text(
+        "<html><body><nav><a href='/'>Home</a><a href='/submit'>Submit</a></nav>"
+        "<select><option>English<option>French</select><center>Centred text</center>"
+        "</body></html>",
+        encoding="utf-8",
+    )
+    lines = page_text(saved).splitlines()
+    assert lines[0].split() == ["Home", "Submit"]
+    assert lines[1:] == ["English", "French", "Centred text"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "read"),
+    [
+        # A byte-order mark says what the bytes are, whatever the page declares.
+        (b"\xef\xbb\xbf<meta charset='windows-1252'><p>caf\xc3\xa9</p>", "café"),
+        (b"\xff\xfe" + "<p>café</p>".encode("utf-16-le"), "café"),
+        (b"\xfe\xff" + "<p>café</p>".encode("utf-16-be"), "café"),
+        # Bytes that are UTF-8 are read as UTF-8, under a declaration left stale.
+        (b"<meta charset='iso-8859-1'><p>\xe2\x89\xa4 5 \xe2\x80\x93 caf\xc3\xa9</p>",
+         "\u2264 5 \u2013 café"),
+        # A page declaring UTF-16 in its bytes is not UTF-16 (WHATWG): read as UTF-8.
+        (b"<meta charset='utf-16'><p>Abstracts should not exceed 300 words.</p>",
+         "Abstracts should not exceed 300 words."),
+        # XHTML declares its encoding in its XML declaration.
+        (b"<?xml version='1.0' encoding='windows-1252'?><html><p>caf\xe9</p></html>", "café"),
+        # A name Python does not know, and no declaration at all: windows-1252.
+        (b"<meta charset='x-no-such-set'><p>caf\xe9</p>", "café"),
+        (b"<p>caf\xe9 \x96 na\xefve</p>", "café \u2013 naïve"),
+    ],
+    ids=["utf8-bom", "utf16le-bom", "utf16be-bom", "stale-meta", "utf16-meta", "xml-decl",
+         "unknown-name", "undeclared"],
+)  # fmt: skip
+def test_a_page_s_character_set_is_read_as_a_browser_reads_it(
+    journal_project: Path, raw: bytes, read: str
+) -> None:
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    saved = journal_project.parent / "page.html"
+    saved.write_bytes(raw)
+    assert page_text(saved) == read + "\n"
+
+
+def test_a_sources_folder_linked_elsewhere_is_stored_through(
+    journal_project: Path, capsys
+) -> None:
+    """A team keeps its journals' pages in a shared folder, linked in as the sources folder:
+    the path as the profile writes it stays in the project, and the page goes through the
+    link, as the profile reads it."""
+    import os
+
+    sources = journal_project / PAGE.parent
+    shared = journal_project.parent / "shared-pages"
+    shared.mkdir()
+    for path in sources.iterdir():
+        path.unlink()
+    sources.rmdir()
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(shared), str(sources))
+    else:
+        sources.symlink_to(shared, target_is_directory=True)
+    saved = _saved_html(journal_project.parent / "page.html")
+    assert main(["journal", str(journal_project), "--store", str(saved)]) == 0
+    assert (shared / PAGE.name).is_file()
+    assert _quotes_said(journal_project) == set()
+
+
+def test_a_saved_page_that_is_not_there_is_said_so(journal_project: Path, capsys) -> None:
+    missing = journal_project.parent / "missing.html"
+    assert main(["journal", str(journal_project), "--store", str(missing)]) == 2
+    err = capsys.readouterr().err
+    assert "does not exist" in err and "cannot be read" not in err

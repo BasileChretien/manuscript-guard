@@ -3028,7 +3028,7 @@ def _reread(project, new: Path, page: str | None = None) -> int:
     try:
         # A page saved from a browser, as a web page or printed to PDF, is read as `--store`
         # stores it, so that the two compare as one text; any other file as UTF-8 text.
-        text = page_text(new)
+        text = page_text(new, any_text=True)
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
         return 2
@@ -3102,6 +3102,9 @@ def _store(project, args: argparse.Namespace) -> int:
         print("manuscript-guard: --store needs the journal whose page it is: give --template "
               "<slug> to start its profile with the page, or set target_journal in paper.yaml",
               file=sys.stderr)  # fmt: skip
+        return 2
+    if not args.store.exists():
+        print(f"manuscript-guard: {args.store} does not exist", file=sys.stderr)
         return 2
     try:
         stored = store_page(project, args.store, slug, args.page, replace=args.replace)

@@ -10,6 +10,7 @@ the repository, and found through `MANUSCRIPT_GUARD_CORPUS` or `--corpus`.
     python tools/corpus.py tie <judged-run> <keyed-run>   # once: report/ties.yaml
     python tools/corpus.py unjudged <run> --name BATCH [--base RUN]   # a packet for two judges
     python tools/corpus.py agree <batch>   # the two judges' verdicts side by side
+    python tools/corpus.py counts <run> [--heldout FOLDER RUN --milestone N]   # the page's
 
 The layout of a corpus, and how its findings are judged, are in docs/corpus.md. Every judged
 finding is in one of four states in a run: reported (its gate and code, as a warning or a
@@ -24,7 +25,9 @@ has a time limit, none runs with its working folder inside `corpus/`, and the bu
 papers under `python -I`. The matching of the four states is in `tools/corpus_match.py`,
 and the pairing by the key every finding carries from #706 on, with `tie`, in
 `tools/corpus_keys.py`; the packing of the findings with no verdict for two judges, and
-the reading of their verdicts, in `tools/corpus_judging.py`.
+the reading of their verdicts, in `tools/corpus_judging.py`. `counts` writes the counts the
+false-alarm page is drawn from, `docs/false-alarms.yaml`, the one file it writes inside the
+checkout, of counts only (`tools/corpus_counts.py`, `tools/false_alarms.py`).
 """
 
 from __future__ import annotations
@@ -41,7 +44,8 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import corpus_judging  # noqa: E402 - beside this file, in tools/, which is no package
+import corpus_counts  # noqa: E402 - beside this file, in tools/, which is no package
+import corpus_judging  # noqa: E402
 import corpus_keys  # noqa: E402
 import corpus_match  # noqa: E402,F401 - the matching, which the tests reach through this
 import corpus_run  # noqa: E402
@@ -52,6 +56,8 @@ from corpus_match import (  # noqa: E402
     states,
 )
 from corpus_run import CorpusError, checkouts, in_a_checkout, load_json  # noqa: E402,F401
+from false_alarms import CountsError  # noqa: E402
+from false_alarms import check as check_counts  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV = "MANUSCRIPT_GUARD_CORPUS"
@@ -982,6 +988,35 @@ def fresh(root: Path, new_name: str, base: Run) -> dict:
     return corpus_judging.fresh(root, *_measured(root, new_name), base)
 
 
+COUNTS = ROOT / "docs" / "false-alarms.yaml"
+
+
+def counts(root: Path, run_name: str, out: Path = COUNTS,
+           heldout: tuple[str, str] | None = None, milestone: int | None = None) -> dict:
+    """The counts the false-alarm page is drawn from, of a run and the verdicts paired in it
+    as `measure` pairs them, written to `out`. The held-out set is counted only where it is
+    named, at a milestone; otherwise its section stays as it stands (Basile, 2026-11-25).
+    What is written is held to counts only (`false_alarms.check`) before it is written."""
+    if (heldout is None) != (milestone is None):
+        raise CorpusError("count the held-out set with both --heldout and --milestone")
+    run = open_run(root, run_name)
+    document = {"tuning": corpus_counts.tuning(root, run, measure(root, run_name, run=run))}
+    old = corpus_counts.read(out)
+    if heldout is not None:
+        held_root = corpus_root(heldout[0])
+        held_run = open_run(held_root, heldout[1])
+        document["heldout"] = corpus_counts.heldout(
+            held_root, held_run, measure(held_root, held_run.name, run=held_run), milestone)
+    elif "heldout" in old:
+        document["heldout"] = old["heldout"]
+    try:
+        check_counts(document)
+    except CountsError as exc:
+        raise CorpusError(f"the counts would hold more than counts: {exc}") from None
+    corpus_counts.write(out, document)
+    return document
+
+
 def _outside_the_checkout(*paths: str | None) -> None:
     """The reports quote the corpus's papers, which are not this repository's to publish: a
     file of them inside the checkout is one `git add` from a commit, so none is written."""
@@ -1033,6 +1068,13 @@ def main(argv: list[str] | None = None) -> int:
     p_un.add_argument("--settled", type=float, default=corpus_judging.SETTLED)
     p_un.add_argument("--min-judged", type=int, default=corpus_judging.MIN_JUDGED)
     sub.add_parser("agree", help="set two judges' verdicts side by side").add_argument("batch")
+    p_counts = sub.add_parser("counts", help="the false-alarm page's counts, counts only")
+    p_counts.add_argument("run")
+    p_counts.add_argument("--heldout", nargs=2, metavar=("FOLDER", "RUN"),
+                          help="count the held-out set too, in this run, at a milestone")
+    p_counts.add_argument("--milestone", type=int, help="the held-out measure's number")
+    p_counts.add_argument("--out", default=str(COUNTS),
+                          help="where to write them (default: docs/false-alarms.yaml)")
     for p in (p_measure, p_gate, p_tie):
         p.add_argument("--out", help="write the Markdown here, not to standard output")
         p.add_argument("--json", help="write the same as JSON here")
@@ -1050,6 +1092,13 @@ def main(argv: list[str] | None = None) -> int:
             _outside_the_checkout(args.out, args.json)
             result = tie(root, args.judged_run, args.keyed_run)
             _write(corpus_keys.render_tie(result), result, args.out, args.json)
+            return 0
+        if args.command == "counts":
+            said = counts(root, args.run, Path(args.out),
+                          tuple(args.heldout) if args.heldout else None, args.milestone)
+            print(f"wrote {args.out}: {len(said['tuning']['strata'])} rows of "
+                  f"{len(said['tuning']['papers'])} papers; draw the page with "
+                  "python tools/false_alarms.py")  # fmt: skip
             return 0
         if args.command in ("unjudged", "agree"):
             _write(judging(root, args), {}, None, None)

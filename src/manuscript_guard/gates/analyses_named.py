@@ -117,6 +117,8 @@ def _word(word: str) -> str:
     """One word of a name, an "'s" at its end there or not ("Fisher's", "Fisher")."""
     if word.endswith("'s"):
         return re.escape(word[:-2]) + "(?:'s|s')?"
+    if word.endswith("'"):
+        return re.escape(word[:-1]) + "'?"  # "Fleiss' kappa", "Fleiss kappa"
     return re.escape(word)
 
 
@@ -130,16 +132,24 @@ def named_in(text: str, starts: list[int], kinds: list[str | None]
     read = claims.readable(text)
     breaks = [found.start() for found in re.finditer("\n", text)]
     found = []
-    for method in methods():
-        loose = method.loose.finditer(read) if method.loose is not None else ()
-        for match, parts in [*((one, (METHODS, RESULTS)) for one in method.pattern.finditer(read)),
-                             *((one, _LOOSE_PARTS) for one in loose)]:
-            line = bisect_right(breaks, match.start() - 1) + 1
-            part = kinds[bisect_right(starts, line) - 1]
-            if part in parts:
-                found.append((method.id, line, match.start(), text[match.start():match.end()],
-                              part))  # fmt: skip
+    full = [(method, one) for method in methods() for one in method.pattern.finditer(read)]
+    loose = _loose(read, {one.start() for _method, one in full})
+    for method, match, parts in [*((method, one, (METHODS, RESULTS)) for method, one in full),
+                                 *((method, one, _LOOSE_PARTS) for method, one in loose)]:
+        line = bisect_right(breaks, match.start() - 1) + 1
+        part = kinds[bisect_right(starts, line) - 1]
+        if part in parts:
+            found.append((method.id, line, match.start(), text[match.start():match.end()],
+                          part))  # fmt: skip
     return sorted(found, key=lambda one: (one[2], one[0]))
+
+
+def _loose(read: str, taken: set[int]) -> list[tuple[Method, re.Match[str]]]:
+    """Each loose name `read` holds (`in_methods`), but where a full name starts (`taken`):
+    there it is that full name's first word, "Wilcoxon" of "Wilcoxon signed-rank", which names
+    the one test (round 2 of #826)."""
+    return [(method, one) for method in methods() if method.loose is not None
+            for one in method.loose.finditer(read) if one.start() not in taken]  # fmt: skip
 
 
 def paper_parts(text: str, walk: Walk) -> tuple[list[int], list[str | None]]:

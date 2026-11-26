@@ -23415,6 +23415,12 @@ def _a_name_too_loose_for_the_results_names_nothing_in_the_methods(
     patch.setattr(analyses_gate, "_LOOSE_PARTS", ())
 
 
+def _a_loose_name_counts_where_a_full_name_starts(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #826: "Wilcoxon signed-rank" in the Methods named Mann-Whitney's test too.
+    real = analyses_gate._loose
+    patch.setattr(analyses_gate, "_loose", lambda read, taken: real(read, set()))
+
+
 def _a_method_written_as_maths_is_not_read(patch: pytest.MonkeyPatch) -> None:
     # Round 1 of #826: a Methods' "$¦chi^2$ test" named nothing.
     real = analyses_gate.pattern
@@ -27716,6 +27722,10 @@ BROKEN = {
     ),
     "a name too loose for the Results names nothing in the Methods": (
         _a_name_too_loose_for_the_results_names_nothing_in_the_methods,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a loose name counts where a full name starts": (
+        _a_loose_name_counts_where_a_full_name_starts,
         test_a_method_is_read_where_the_methods_and_the_results_name_it,
     ),
     "a method written as maths is not read": (

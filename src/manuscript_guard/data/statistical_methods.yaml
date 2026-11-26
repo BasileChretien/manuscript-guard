@@ -32,9 +32,10 @@ schema: manuscript-guard/statistical-methods/1
 # Erring towards finding a name in the Methods is deliberate: a warning that is wrong costs
 # the author's trust, and the review panel's statistics remit reads what the list does not.
 #
-# A word another field uses for something else is no name: "kappa" alone ("kappa light
-# chains", "NF-kappa B") and "propensity" alone ("reporting propensity") are left out, and the
-# kappa statistic and the propensity score are named whole (round 1 of #826).
+# A word another field uses for something else names the method in the Methods only
+# (`in_methods`): "kappa" alone ("kappa light chains", "NF-kappa B") and "propensity" alone
+# ("reporting propensity"), and the kappa statistic and the propensity score are named whole
+# in the Results (rounds 1 and 2 of #826).
 #
 # Not here: the measures a paper estimates (an odds ratio, a hazard ratio, a sensitivity),
 # which a paper names in the Methods as a matter of course and a Results sentence restates;
@@ -153,6 +154,7 @@ methods:
     name: a kappa statistic
     names: ["Cohen's kappa", "Fleiss' kappa", "weighted kappa", "kappa statistic",
             "kappa coefficient", "kappa value", "Cohen's κ", "κ statistic", "κ coefficient"]
+    in_methods: ["kappa", "κ"]
   - id: intraclass
     name: the intraclass correlation
     names: ["intraclass correlation", "intra-class correlation", "ICC"]
@@ -216,6 +218,7 @@ methods:
     name: a propensity score
     names: ["propensity score", "propensity-matched", "propensity matching",
             "propensity weighting"]
+    in_methods: ["propensity"]
   - id: inverse-probability
     name: inverse probability weighting
     names: ["inverse probability", "inverse-probability", "IPTW", "IPW"]

@@ -14288,9 +14288,14 @@ ANALYSIS_PLACES = {
     "discussion": None, "the supplement's methods": "methods",
     "the supplement's results": "results", "the supplement's tables": None,
     "a name loose enough for the methods only": "methods",
+    "a full name the loose one opens": "methods",
 }  # fmt: skip
-#: What the Methods write in that place, and the methods it names.
-ANALYSIS_LOOSE = ("the Wilcoxon test", ("mann-whitney", "wilcoxon-signed-rank"))
+#: What the Methods write in those two places, and the methods each names.
+ANALYSIS_LOOSE = {
+    "a name loose enough for the methods only": (
+        "the Wilcoxon test", ("mann-whitney", "wilcoxon-signed-rank")),
+    "a full name the loose one opens": ("the Wilcoxon rank-sum test", ("mann-whitney",)),
+}  # fmt: skip
 #: The plain names a place is planted with, and their methods.
 ANALYSIS_PLAIN = (("Fisher's exact test", "fisher-exact"), ("Holm's correction", "holm"),
                   ("a bootstrap", "bootstrap"))  # fmt: skip
@@ -14322,11 +14327,13 @@ def analysis_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, set[tuple[str,
              "the supplement's methods": "s methods", "the supplement's results": "s results",
              "the supplement's tables": "s tables",
              "a name loose enough for the methods only": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods"))),
+             "a full name the loose one opens": draw(st.sampled_from(
                  ("methods", "pilot", "s methods")))}  # fmt: skip
     for kind in draw(st.permutations(tuple(ANALYSIS_PLACES))):
         tag = next(tags)
-        if kind == "a name loose enough for the methods only":
-            name, named = ANALYSIS_LOOSE
+        if kind in ANALYSIS_LOOSE:
+            name, named = ANALYSIS_LOOSE[kind]
         else:
             name, method = draw(st.sampled_from(ANALYSIS_PLAIN))
             named = (method,)

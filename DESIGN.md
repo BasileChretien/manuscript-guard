@@ -18344,9 +18344,10 @@ to fix is pinned until the fix lands, and the fix changes its test.
     (round 1 of #826). Accepted.
   - A word another field uses for something else is read as the method where the list keeps
     it: "E-value" in a sequence search, "imputed" genotypes. "Kappa" and "propensity" alone
-    are left out for that reason, and a name too loose to say which method the Results
-    used, "the Wilcoxon test", names each it may be in the Methods and none in the Results,
-    where it is not warned of. Pinned by
+    name their methods in the Methods only for that reason, so a Results "(κ = 0.52)" is
+    not read; and a name too loose to say which method the Results used, "the Wilcoxon
+    test", names each it may be in the Methods, unless it opens a full name there, and none
+    in the Results, where it is not warned of. Pinned by
     `tests/test_corruption.py::test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning`.
   - An emitted table's caption is not read, nor a figure's text: a method named only there
     is not looked for in the Methods. Accepted.

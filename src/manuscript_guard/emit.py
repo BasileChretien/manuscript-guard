@@ -341,11 +341,12 @@ def digests_once() -> Iterator[None]:
 
 def _taken(path: Path, suffixes: frozenset[str]) -> tuple[str, ...] | None:
     """Every spelling of this file's digest, from one reading of it in this run; None outside
-    a run. A file whose line endings are content has one, its bytes' own; a text file has its
-    four, all hashed from the bytes read once (`_spellings`). Taken whole, they answer every
-    record compared with the file later in the run, a stale one or one in another spelling,
-    without reading it again: the three a text file's first record does not need cost three
-    hashes of bytes already in memory, and no reading."""
+    a run. A file whose line endings are content has one, its bytes' own, and so has a text
+    file in UTF-16 with a byte-order mark; any other text file has four, all taken from the
+    bytes read once (`_spellings`). Taken whole, they answer every record compared with the
+    file later in the run, a stale one or one in another spelling, without reading it again:
+    the three a text file's first record does not need cost two more full-size copies of its
+    bytes, with CRLF and with CR, and three more hashes, and no reading."""
     memo = _RUN_DIGESTS.get()
     if memo is None:
         return None

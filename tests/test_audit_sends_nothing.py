@@ -13,15 +13,18 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote_plus, urlsplit
 
 import pytest
 
 #: Run `manuscript-guard <args>` with every connection refused and recorded, then print, on
-#: the last line, what was tried and which modules of `manuscript_guard.panel` were loaded.
+#: the last line, what was tried, the address of each request `urllib` was asked to send,
+#: and which modules of `manuscript_guard.panel` were loaded.
 GUARD = r"""
-import json, socket, sys
+import json, socket, sys, urllib.request
 
 tried = []
+urls = []
 
 def refuse(*args, **kwargs):
     tried.append(repr(args)[:120])
@@ -32,6 +35,14 @@ socket.create_connection = refuse
 socket.socket.connect = refuse
 socket.socket.connect_ex = refuse
 
+opened = urllib.request.OpenerDirector.open
+
+def recorded(self, address, *args, **kwargs):
+    urls.append(address if isinstance(address, str) else address.full_url)
+    return opened(self, address, *args, **kwargs)
+
+urllib.request.OpenerDirector.open = recorded
+
 from manuscript_guard import cli
 
 try:
@@ -40,7 +51,7 @@ except SystemExit as stop:
     code = stop.code
 panel = sorted(name for name in sys.modules if name.split(".")[:2] == ["manuscript_guard", "panel"])
 print()
-print(json.dumps({"tried": tried, "panel": panel, "code": code}))
+print(json.dumps({"tried": tried, "urls": urls, "panel": panel, "code": code}))
 """
 
 PAPER = """\
@@ -56,12 +67,18 @@ We followed 120 patients for a year.
 
 ## Results
 
-Of the 120 patients, 30 (25.0%) had the outcome (Smith 2020).
+Of the 120 patients, 30 (25.0%) had the outcome (Smith 2020; Jones 2019).
 
 ## References
 
 1. Smith A. A study of the outcome. J Test. 2020;1:1-2. doi:10.5555/12345678
+2. Jones B, Lee C. Weekly outcome counts in a regional cohort of adults. Epidemiol Test.
+   2019;4:10-20.
 """
+
+#: The hosts the lookups may ask, which the audit page's policy names too (tests/test_web.py).
+REGISTRIES = {"api.crossref.org", "api.openalex.org", "api.datacite.org", "doi.org",
+              "eutils.ncbi.nlm.nih.gov"}  # fmt: skip
 
 
 def _audit(tmp_path: Path, *args: str) -> dict:
@@ -98,3 +115,24 @@ def test_the_guard_sees_the_connections_the_lookups_try(tmp_path: Path) -> None:
     seen = _audit(tmp_path, "--lookup")
     assert seen["tried"], "the lookups opened no connection the guard could see"
     assert seen["panel"] == []
+
+
+def test_the_lookups_send_identifiers_and_the_title_of_an_entry_with_none(
+    tmp_path: Path,
+) -> None:
+    """What docs/editorial-office.md, docs/refereeing.md and the audit page say `--lookup`
+    sends: each DOI and PubMed ID, and for an article with neither, the words of its title,
+    its first author's family name and its year, to Crossref. Never a sentence of the
+    paper's own. (Round 1 of #822: the pages said that no title or name was ever sent.)"""
+    seen = _audit(tmp_path, "--lookup")
+    asked = [unquote_plus(url) for url in seen["urls"]]
+    assert asked, "the lookups asked nothing"
+    assert {urlsplit(url).hostname for url in asked} <= REGISTRIES, asked
+    assert any("10.5555/12345678" in url for url in asked), asked
+    searched = [url for url in asked if "query.bibliographic=" in url]
+    assert searched, asked
+    for url in searched:
+        assert "Weekly outcome counts in a regional cohort of adults" in url, url
+        assert "Jones" in url and "2019" in url, url
+    own = ("had the outcome", "followed 120 patients", "A cohort of 120 patients")
+    assert [url for url in asked for words in own if words in url] == []

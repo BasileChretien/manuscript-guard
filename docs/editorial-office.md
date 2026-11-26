@@ -11,11 +11,13 @@ editor then does with it is in [For editors and reviewers](refereeing.md).
   report every time, and no part of the check asks a model anything.
 - **The manuscript stays on the editor's computer.** There is no account, no server and no
   upload. The check runs in the editor's browser or in a terminal on the editor's computer.
-- **One thing can be sent, and only when the editor asks.** Ticking *Check the reference
-  list for retracted and unregistered works* on the page, or adding `--lookup` on the
-  command line, sends the DOIs and PubMed IDs of the reference list to the public registries
-  (Crossref, OpenAlex, DataCite, doi.org and PubMed), to learn whether each cited work
-  exists and whether it was retracted. It never sends a sentence, a title or a name.
+- **Only the reference list can be looked up, and only when the editor asks.** Ticking
+  *Check the reference list for retracted and unregistered works* on the page, or adding
+  `--lookup` on the command line, asks the public registries (Crossref, OpenAlex, DataCite,
+  doi.org and PubMed) whether each cited work exists and whether it was retracted. They are
+  sent each DOI and PubMed ID the list gives, and, for an article, book or chapter that gives
+  neither, the words of its title, its first author's family name and its year, which go to
+  Crossref. No sentence of the paper is sent, and nothing of it outside the reference list.
 - **Free and open source.** manuscript-guard is under the MIT licence. Nothing in it is
   paid, and it needs no subscription or key.
 
@@ -73,8 +75,9 @@ bear on it:
 
 - The report quotes the manuscript, so it is as confidential as the paper: an editor should
   not paste it into a chatbot.
-- The DOIs a paper cites are a weak fingerprint of it. An office that wants nothing at all
-  to leave can ask its editors to leave the lookups off.
+- Together, what the lookups send about a reference list points to the paper that cites
+  it. An office that wants nothing at all to leave can ask its editors to leave the lookups
+  off.
 
 An office that allows it might say so in one sentence, for example: *Editors and reviewers
 may check a manuscript with manuscript-guard's audit on their own computer, with the

@@ -421,6 +421,23 @@ def _check_completion(
             )
             continue
 
+        titled = _several_titles(where, reason, quoting)
+        if titled:
+            # Which `\title` prints is not guessed at, and the quote is held to none.
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="checklist-location-unknown",
+                    severity=WARN,
+                    message=f"{label} points at the title, and the manuscript sets "
+                    f"\\title in {len(titled)} places TeX reads: {'; '.join(titled)}",
+                    path=path,
+                    hint="keep one \\title, the one the paper prints: which of them it is "
+                    "cannot be told from the source",
+                )
+            )
+            continue
+
         if where and not (
             _points_somewhere_real(where, known_headings)
             or _names_the_title(project, where)
@@ -536,6 +553,17 @@ def _quote_findings(label: str, entry: dict, where: str, quoting: _Quoting, path
                 "addresses the item, it is not addressed yet")  # fmt: skip
     return [Finding(gate=GATE, code="checklist-quote-not-found", severity=severity, path=path,
                     message=message, context=quote[:140], hint=hint)]  # fmt: skip
+
+
+def _several_titles(where: str, reason: str, quoting: _Quoting | None) -> tuple[str, ...]:
+    """Where each `\\title` stands, for an answer whose `where` names the title in a LaTeX
+    manuscript that sets several TeX reads (round 2 of #813); nothing otherwise, and nothing
+    for an item excluded with a reason, which points at no title."""
+    from manuscript_guard.gates.checklist_quotes import names_title
+
+    if not where or reason or quoting is None or not names_title(where):
+        return ()
+    return quoting.manuscript.title_places
 
 
 def _names_the_title(project: Project, where: str) -> bool:

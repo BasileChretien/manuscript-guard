@@ -11534,6 +11534,24 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
         assert got == expected, (kind, item, got)
 
 
+from generated import LATEX_TITLES, latex_titles  # noqa: E402
+
+
+@holds(20, latex_titles())
+def test_a_latex_title_is_each_one_tex_reads_where_it_stands(
+    drawn: list[tuple[str, dict[str, str], list[list[Any]]]],
+) -> None:
+    """G5, round 2 of #813: the titles a LaTeX manuscript's main text sets that TeX reads, in
+    the entry file or in a file its preamble inputs, past a CAS option, each as the body
+    prints it, its `\\emph` its word and its `--` an en dash, its notes left out, braces and
+    all; not one in a comment or in `\\iffalse`; and both of two, each at its file and line,
+    for G5 not to choose between."""
+    read = READINGS["latex titles"]()
+    assert {kind for kind, _files, _titles in drawn} == set(LATEX_TITLES)
+    for kind, files, titles in drawn:
+        assert read(files) == titles, (kind, files)
+
+
 from generated import finding_places  # noqa: E402
 
 
@@ -23630,6 +23648,21 @@ def _the_paper_s_title_is_folded_as_raw_lowered_text(patch: pytest.MonkeyPatch) 
     patch.setattr(checklist_quotes, "_title_part", raw)
 
 
+def _only_the_first_latex_title_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    titles = printed.printed_titles
+    patch.setattr(printed, "printed_titles", lambda folder: titles(folder)[:1])
+
+
+def _a_latex_title_tex_does_not_read_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    passed = printed._passed_over
+    patch.setattr(printed, "_passed_over", lambda reading: (lambda at: True,
+                                                            passed(reading)[1]))  # fmt: skip
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -26870,6 +26903,14 @@ BROKEN = {
     "the paper's title is folded as raw lowered text for a checklist answer's quote": (
         _the_paper_s_title_is_folded_as_raw_lowered_text,
         test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "only the first of a LaTeX manuscript's titles is kept": (
+        _only_the_first_latex_title_is_kept,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
+    ),
+    "a LaTeX title in a comment or in iffalse is read": (
+        _a_latex_title_tex_does_not_read_is_read,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
     ),
     "a finding's quote is found as characters, not as words": (
         _a_quote_is_found_as_characters,

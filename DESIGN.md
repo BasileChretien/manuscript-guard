@@ -2315,10 +2315,12 @@ The result is compiled and packed by the code above, and checked three times:
   Word copies, and `submit` says so in a note (step 10).
 - A LaTeX manuscript's `\title` is not compared with paper.yaml's title, where a Markdown
   file's header title is (`two-titles`), and the PDF prints the `\title` (round 1 of step
-  13). So G5 holds a checklist answer's quote under `where: Title` to the `\title{}` as the
-  reader prints the body, its `\thanks` left out, and to paper.yaml's title only where no
-  file of the main text sets one (round 1 of #813). A class's `\subtitle` or `\shorttitle` is
-  not read as part of it.
+  13). So G5 holds a checklist answer's quote under `where: Title` to the one `\title{}` of the
+  main text TeX reads, as the reader prints the body, its `\thanks` and `\footnote` left out,
+  and to paper.yaml's title only where no file of the main text sets one (round 1 of #813).
+  Where TeX reads several, in two files or in a conditional's two branches, it names where
+  each stands and holds the quote to none, since which prints cannot be told from the source
+  (round 2). A class's `\subtitle` or `\shorttitle` is not read as part of it.
 - G7's text recycling places a passage that runs on past an `\input` at its first file only,
   ending on its first line there (step 13).
 - G7's text recycling does not compare a caption `\subfloat[...]` takes in its option, nor a

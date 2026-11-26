@@ -18,11 +18,14 @@ an emitted table's caption, numbered as the build numbers it (`display_numbers`)
 `where` is "Title" or "the title" (`names_title`), in the title the document prints as well:
 READUS-PV's items 1a and 1b are addressed there, and on the bisphosphonates paper
 (2026-11-25) they pointed at no heading. For a Markdown manuscript that is `paper.yaml`'s
-`title`, with its `short_title`, which the Word build prints as the subtitle under it; for
-a LaTeX one, the `\\title{}` of the main text as the reader prints the body, its `\\thanks`
-note left out (`latex.printed.printed_title`), and `paper.yaml`'s title only where no file
-sets one (round 1 of #813). The title is read after the sections and captions, so that a
-quote it shares with a section is said to stand in the section first.
+`title`, not its `short_title`, which the submission prints apart as the running title
+(round 2 of #813); for a LaTeX one, the one `\\title{}` of the main text TeX reads, as the
+reader prints the body, its notes left out (`latex.printed.printed_titles`), and
+`paper.yaml`'s title only where no file sets one (round 1). Where TeX reads several, in two
+files or in a conditional's two branches, which prints cannot be told: no title is read,
+and G5 names where each stands (`Manuscript.title_places`). The title is read after the
+sections and captions, so that a quote it shares with a section is said to stand in the
+section first.
 
 **How it is found.** As a review finding's quote is found in the manuscript
 (`anchoring.stands`), which is as G7 finds a passage in a work's source
@@ -40,7 +43,7 @@ A quote holds `QUOTE_WORDS` words or more: a word or two is found in any paper.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from manuscript_guard.anchoring import QUOTE_WORDS, _written, plain, words
@@ -152,9 +155,12 @@ def _stands(quote: str, read: tuple[str, str]) -> bool:
 
 @dataclass(frozen=True)
 class Manuscript:
-    """The manuscript's sections and captions, as a checklist's quotes are looked for."""
+    """The manuscript's sections and captions, as a checklist's quotes are looked for; and,
+    where a LaTeX manuscript sets several `\\title`s TeX reads, where each stands ("main.tex
+    line 3"), no title being read then."""
 
     parts: tuple[_Part, ...]
+    title_places: tuple[str, ...] = ()
 
     def names_display(self, where: str) -> bool:
         """Whether `where` names a display with a caption read here."""
@@ -246,21 +252,20 @@ def _title_part(title: str, namespace: Mapping[str, object], named: str = TITLE_
 
 
 def _yaml_title(project) -> str | None:
-    """The title block the Word build prints from `paper.yaml`: the title, and the short
-    title under it as the subtitle (`build.document._front_matter`), one after the other."""
-    said = [project.paper.get(key) for key in ("title", "short_title")]
-    printed = [text for text in said if isinstance(text, str) and text.strip()]
-    return "\n\n".join(printed) if printed else None
+    """`paper.yaml`'s title, which the build prints as the title; not the short title, which
+    the submission prints apart as the running title (round 2 of #813)."""
+    said = project.paper.get("title")
+    return said if isinstance(said, str) and said.strip() else None
 
 
 def of_project(project, namespace: Mapping[str, object] | None, results) -> Manuscript:
     """A project's manuscript read for quotes: the main text and the supplement, each its
     Markdown files joined as the build prints them, with the captions of the displays it
     places; or a LaTeX manuscript's two documents as they print in Markdown, as G5 reads its
-    headings (step 8). With the title the document prints: paper.yaml's and its subtitle for
-    Markdown, which the Word build prints, and for LaTeX the main text's `\\title{}`, or
-    paper.yaml's title where no file sets one (round 1 of #813). The values are loaded where
-    `namespace` or `results` is not given."""
+    headings (step 8). With the title the document prints: paper.yaml's for Markdown, and for
+    LaTeX the one `\\title{}` of the main text TeX reads, or paper.yaml's title where no file
+    sets one (round 1 of #813); where TeX reads several, none, and where each stands (round
+    2). The values are loaded where `namespace` or `results` is not given."""
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     if namespace is None or results is None:
@@ -271,17 +276,18 @@ def of_project(project, namespace: Mapping[str, object] | None, results) -> Manu
         results = found if results is None else results
     folder = project.path("manuscript")
     if manuscript_format(folder) == LATEX:
-        from manuscript_guard.text.latex.printed import printed_document, printed_title
+        from manuscript_guard.text.latex.printed import printed_document, printed_titles
 
-        typed = printed_title(folder)
-        title, named = (None, TITLE_SHOWN) if typed is None else (
-            typed[0], f"the \\title in {typed[1]}")  # fmt: skip
-        if title is None:
-            given = project.paper.get("title")
-            title = given if isinstance(given, str) else None
-        return read([printed_document(folder, supplementary=part, quoting=True)
-                     for part in (False, True)], namespace, title=title,
-                    title_named=named)  # fmt: skip
+        typed = printed_titles(folder)
+        title, named, places = _yaml_title(project), TITLE_SHOWN, ()
+        if len(typed) == 1:
+            title, named = typed[0].text, f"the \\title in {typed[0].path}"
+        elif typed:
+            title, places = None, tuple(f"{one.path} line {one.line}" for one in typed)
+        manuscript = read([printed_document(folder, supplementary=part, quoting=True)
+                           for part in (False, True)], namespace, title=title,
+                          title_named=named)  # fmt: skip
+        return replace(manuscript, title_places=places)
     from manuscript_guard.contracts._schema import read_text
 
     texts = documents({path.relative_to(folder).as_posix(): read_text(path)

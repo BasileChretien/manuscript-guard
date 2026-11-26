@@ -209,6 +209,26 @@ def _latex_documents() -> Reading:
     return documents
 
 
+@reading("latex titles")
+def _latex_titles() -> Reading:
+    # `printed_titles` came with a checklist's `where: Title` (round 2 of #813), so that a
+    # base without it has no such reading.
+    from manuscript_guard.text.latex.printed import printed_titles
+
+    def titles(files: dict[str, str]) -> list[list[Any]]:
+        """Each `\\title` of the main text TeX reads, as `[text, file, line]`, its text as the
+        body prints it: the folder written out as the files give it."""
+        with tempfile.TemporaryDirectory() as folder:
+            manuscript = Path(folder) / "manuscript"
+            for name, text in files.items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(text.encode("utf-8"))
+            return [[one.text, one.path, one.line] for one in printed_titles(manuscript)]
+
+    return titles
+
+
 @reading("latex escaped")
 def _latex_escaped() -> Reading:
     from manuscript_guard.build.latex_values import NotPrintable, escaped

@@ -1240,16 +1240,17 @@ def test_title_and_abstract_still_names_the_abstract(project: Path) -> None:
     assert "'Abstract'" in found.message
 
 
-def test_the_subtitle_the_build_prints_is_part_of_the_title(project: Path) -> None:
-    """Round 1 of #813: the Word build prints paper.yaml's `short_title` as the subtitle under
-    the title, so a quote that runs from the title into it, or the subtitle alone, stands in
-    the title."""
-    loaded, _ = load_project(project)
-    assert loaded.paper["short_title"] == "Hepatic injury with example-drug"
-    for words in ("spontaneous reporting database Hepatic injury with example-drug",
-                  "Hepatic injury with example-drug"):  # fmt: skip
+def test_the_running_title_is_not_part_of_the_title(project: Path) -> None:
+    """Round 2 of #813: `short_title` is the running title, which the submission's title page
+    prints apart ("Running title."), so a quote it alone holds, or one that runs from the title
+    into it, does not stand in the title: an item addressed in the title is the title's."""
+    edit_yaml(project / "paper.yaml",
+              lambda d: d.update(short_title="A cohort study of hepatic injury"))  # fmt: skip
+    for words in ("A cohort study of hepatic injury",
+                  "spontaneous reporting database A cohort study"):  # fmt: skip
         quote(project, 0, where="Title", quote=words)
-        assert quote_findings(project, "submission") == [], words
+        assert [f.code for f in quote_findings(project, "submission")] == [
+            "checklist-quote-not-found"], words
 
 
 def test_a_misplaced_quote_in_a_section_and_the_title_is_pointed_at_the_section(

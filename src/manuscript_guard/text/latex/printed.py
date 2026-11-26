@@ -162,48 +162,61 @@ def printed_of(folder, *, supplementary: bool, quoting: bool = False,
     return printed(kept, quoting=quoting, compared=compared)
 
 
-#: `\\title`, which the title page prints, and `\\thanks`, its note, which prints as a footnote.
+#: `\\title`, which the title page prints, and its notes, `\\thanks` and `\\footnote`, which
+#: print as footnotes, a note's number in brackets or not.
 _TITLE = re.compile(r"\\title(?![A-Za-z@])")
-_THANKS = re.compile(r"\\thanks(?![A-Za-z@])\s*\{")
+_NOTE = re.compile(r"\\(?:thanks|footnote)(?![A-Za-z@])\s*(?:\[[^\]\n]*\]\s*)?\{")
 
 
-def printed_title(folder) -> tuple[str, str] | None:
-    """The title the main text's `\\title{}` prints, as the body is printed (its markup and
-    its macros as the reader reads them, its dashes typed, a binding `{{...}}`), with no
-    `\\thanks` note; and the path of the file that sets it. The last `\\title` LaTeX reads is
-    the one printed. None where no file of the main text sets one, or its argument does not
-    close (round 1 of #813)."""
+@dataclass(frozen=True)
+class TitleTyped:
+    """A `\\title{}` TeX prints: its text as the body is printed, its file and its line."""
+
+    text: str
+    path: str
+    line: int
+
+
+def printed_titles(folder) -> list[TitleTyped]:
+    """Each `\\title{}` of the main text that TeX reads, in the include tree's order: outside a
+    comment and what TeX does not read (`\\iffalse`, a skipped block), past a CAS template's
+    option, `\\title[mode = title]{...}`. Each is printed as the body is (its markup and its
+    macros as the reader reads them, its dashes typed, a binding `{{...}}`), with its notes,
+    `\\thanks` and `\\footnote`, left out. G5 holds a checklist's `where: Title` to the one
+    title, and names where each stands where there are several, since it cannot tell which
+    one prints: a conditional reads both its branches (round 2 of #813)."""
     from manuscript_guard.text.latex.structure import read_document
 
-    found = None
+    found = []
     for source in read_document(folder, supplementary=False).sources:
         if source.loose or source.path.lower().endswith(".sty"):
             continue
-        span = _title_span(source)
-        if span is not None:
-            found = (source, span)
-    if found is None:
-        return None
-    source, (start, end) = found
+        for command, start, end in _title_spans(source):
+            found.append(TitleTyped(_title_text(source, start, end), source.path,
+                                    source.text.count("\n", 0, command) + 1))  # fmt: skip
+    return found
+
+
+def _title_text(source: Source, start: int, end: int) -> str:
+    """The argument of a `\\title` between `start` and `end` as the body is printed, its notes
+    left out, its white space one space."""
     _read, comments = _passed_over(source.reading)
     kept, at = [], start
-    for opened, _brace, closed in _arguments(source.text, _THANKS, start, end, comments):
+    for opened, _brace, closed in _arguments(source.text, _NOTE, start, end, comments):
         kept.append((at, opened))
         at = closed + 1
     kept.append((at, end))
     pieces = _printed(source, 1, quoting=True, only=[(low, high) for low, high in kept
                                                      if low < high])  # fmt: skip
-    text = " ".join("".join(chunk for chunk, *_rest in pieces).split())
-    return (text, source.path) if text else None
+    return " ".join("".join(chunk for chunk, *_rest in pieces).split())
 
 
-def _title_span(source: Source) -> tuple[int, int] | None:
-    """Where the argument of the last `\\title` a file sets runs, inside its braces: past a
-    CAS template's option, `\\title[mode = title]{...}`; one in a comment or a branch TeX does
-    not read is passed over."""
+def _title_spans(source: Source) -> list[tuple[int, int, int]]:
+    """Each `\\title` a file sets that TeX reads: where its command starts, and where its
+    argument runs, inside its braces."""
     text = source.text
     read, comments = _passed_over(source.reading)
-    span = None
+    spans = []
     for found in _TITLE.finditer(text):
         if not read(found.start()):
             continue
@@ -212,8 +225,8 @@ def _title_span(source: Source) -> tuple[int, int] | None:
             continue
         closed = _closing(text, at, comments)
         if closed > at:
-            span = (at + 1, closed)
-    return span
+            spans.append((found.start(), at + 1, closed))
+    return spans
 
 
 def figure_captions(folder, *, supplementary: bool) -> list[tuple[str, int, str]]:
@@ -306,7 +319,7 @@ def _printed(
 ) -> list[Piece]:
     """One source's part of the view: its body, with each event written as Markdown, and
     `child()` where each file it inputs is printed; or, given `only`, those spans of it, as
-    the body is printed (`printed_title`)."""
+    the body is printed (`printed_titles`)."""
     reading = source.reading
     events: list[tuple[int, int, str | None]] = [(cut, cut, None) for cut in _cuts(source)]
     for heading in reading.headings:

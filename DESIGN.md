@@ -19634,12 +19634,22 @@ Added by the adversarial review, verified and **not** fixed:
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
   from a draft" (above) plans case reports, case series, diagnostic accuracy and qualitative
-  studies, and a narrative review, held to SANRA, could follow. The self-controlled designs have no reporting guideline, and
+  studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
+  sampling and measurement are found only by words those sections alone use (sampling,
+  recruitment, selection of participants, survey weights; measurement, instrument,
+  questionnaire, data collection): four rounds of review of #801 found looser patterns
+  taking other sections' headings, a confounding weight, a sample's size, a bias
+  assessment, and missing survey wordings. So a heading of their own in other words, "Study
+  sample", "Measures", "Covariate assessment" or "Probability weights", is refused and the
+  plan told it lacks the section, a false alarm chosen over a false pass (Basile,
+  2026-11-26); a heading that names its section exactly is planned. The self-controlled
+  designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
   Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_a_word_of_any_heading`,
   `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
+  `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
   `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,
   `tests/test_corruption.py::test_a_paper_whose_design_has_none_of_its_guidelines_is_told`

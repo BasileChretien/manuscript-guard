@@ -39715,11 +39715,18 @@ def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
 @pytest.mark.parametrize(
     ("heading", "section", "found"),
     [
-        ("## Study sample", "sampling", True),
+        ("## Sampling", "sampling", True),
         ("## Selection of participants", "sampling", True),
         ("## Participant selection", "sampling", True),
         ("## Survey weighting", "sampling", True),
+        ("## Survey weights", "sampling", True),
+        ("## Survey weight", "sampling", True),
         ("## Recruitment", "sampling", True),
+        ("## Sampling weights", "sampling", True),
+        ("## Sampling and sample size", "sampling", True),
+        ("## Study sample", "sampling", False),  # a false alarm (Known gaps)
+        ("## Weighting", "sampling", False),  # a false alarm (Known gaps)
+        ("## Probability weights", "sampling", False),  # a false alarm (Known gaps)
         ("## Sample size", "sampling", False),
         ("## Body weight", "sampling", False),
         ("## Non-response", "sampling", False),
@@ -39727,45 +39734,56 @@ def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
         ("## Propensity score weighting", "sampling", False),
         ("## Sample-size calculation", "sampling", False),
         ("## Size of the sample", "sampling", False),
-        ("## Measures", "measurement", True),
-        ("## Study measures", "measurement", True),
-        ("## Exposure assessment", "measurement", True),
+        ("## Size of the study sample", "sampling", False),
+        ("## Size of sample", "sampling", False),
+        ("## Blood samples", "sampling", False),
+        ("## Biological samples", "sampling", False),
+        ("## Sampling bias", "sampling", False),
+        ("## IPW weights", "sampling", False),
+        ("## Overlap weights", "sampling", False),
+        ("## Measurement", "measurement", True),
         ("## Questionnaire", "measurement", True),
+        ("## Instruments", "measurement", True),
+        ("## Data collection", "measurement", True),
+        ("## Outcome measurement", "measurement", True),
+        ("## Measures", "measurement", False),  # a false alarm (Known gaps)
+        ("## Covariate assessment", "measurement", False),  # a false alarm (Known gaps)
+        ("## Exposure assessment", "measurement", False),  # a false alarm (Known gaps)
         ("## Bias assessment", "measurement", False),
         ("## Quality assessment", "measurement", False),
         ("## Outcome measures", "measurement", False),
         ("## Measures to address bias", "measurement", False),
+        ("## Measures taken to minimise bias", "measurement", False),
+        ("## Outcome assessment", "measurement", False),
+        ("## Measures of association", "measurement", False),
+        ("## Effect measures", "measurement", False),
+        ("## Assessment of confounding", "measurement", False),
+        ("## Measurement bias", "measurement", False),
+        ("## Assessment of potential biases", "measurement", False),
+        ("## Instrumental variables", "measurement", False),
         ("## Non-response", "bias", True),
         ("## Selection bias", "bias", True),
-        # Round 3: every reported heading, each the way it should read.
-        ("## Measures taken to minimise bias", "measurement", False),
-        ("## Measures for reducing bias", "measurement", False),
-        ("## Covariate assessment", "measurement", True),
-        ("## Assessment of depressive symptoms", "measurement", True),
-        ("## Exposure and outcome measures", "measurement", True),
-        ("## Outcome assessment", "measurement", False),
-        ("## Assessment of the outcome", "measurement", False),
-        ("## Weighting", "sampling", True),
-        ("## Survey design and weighting", "sampling", True),
-        ("## Weights and variance estimation", "sampling", True),
-        ("## Size of the study sample", "sampling", False),
-        ("## Size of sample", "sampling", False),
+        ("## Sampling bias", "bias", True),
+        ("## Measurement bias", "bias", True),
+        ("## Confounding", "sampling", False),
+        ("## Missing data", "sampling", False),
+        ("## Sensitivity analyses", "sampling", False),
+        ("## Statistical analysis", "sampling", False),
+        ("## Outcome", "measurement", False),
+        ("## Sample size", "measurement", False),
     ],
 )  # fmt: skip
 def test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses(
     project: Path, heading: str, section: str, found: bool
 ) -> None:
-    """Round 1 of #801: the sampling pattern missed "Study sample" and STROBE 6a's own
-    "Selection of participants", and the measurement pattern a survey's usual "Measures", so
-    such a plan was told it said nothing about them. "Sample size" is not sampling, nor is a
-    body weight, and non-response is a bias, not the way people were sampled. Round 2: G12
-    reads every heading for every section, so the widened patterns took other sections'
-    headings, a weighting that adjusts for confounding, a sample-size calculation, a bias or
-    quality assessment, the outcome's measures, and passed a plan that lacked the section.
-    Round 3, both ways (Basile, 2026-11-26): a heading about bias is the bias's and one that
-    names the outcome alone is the outcome's, while any other assessment, measure or
-    instrument is measurement; a survey's weights are sampling, a weighting that adjusts for
-    confounding is not, nor is any wording of a sample's size."""
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"). G12 reads every heading for every section, and four rounds of review
+    of #801 found, each time, headings that a pattern over a heading's words read wrong both
+    ways: a weighting that adjusts for confounding or a sample's size taken for sampling, a
+    bias assessment or the outcome's measures for measurement, and survey wordings missed.
+    So these two sections are found only by words they alone use (Basile, 2026-11-26), and
+    a heading of their own in other words ("Study sample", "Measures", "Covariate
+    assessment") is refused: a false alarm, rather than a plan that lacks the section passed."""
     _paper_has(project, study_type="cross-sectional")
     assert section in _plan_asked(project)
     plan = project / "design" / "plan.md"

@@ -298,7 +298,10 @@ def test_a_live_build_says_why_zotero_cannot_make_its_fields_before_pandoc_runs(
     from manuscript_guard.build import document
     from manuscript_guard.zotero import client
 
-    def nothing_there(*_args, **_kwargs):
+    asked: list[object] = []
+
+    def nothing_there(target, *_args, **_kwargs):
+        asked.append(target)
         raise urllib.error.HTTPError(client.ENDPOINT, 404, "Not Found", {}, None)
 
     monkeypatch.setattr(client, "_ping", lambda timeout: ping)
@@ -310,6 +313,8 @@ def test_a_live_build_says_why_zotero_cannot_make_its_fields_before_pandoc_runs(
     with pytest.raises(document.ZoteroNotReady, match=said) as caught:
         build_document(proj, assembled, mode=LIVE)
     assert "--offline" in str(caught.value)
+    # Better BibTeX is asked where Zotero answered its ping, and only there.
+    assert bool(asked) == ping
 
 
 def test_a_live_build_refuses_keys_the_library_does_not_hold_and_names_them(
@@ -402,7 +407,9 @@ def test_the_instruction_for_a_key_several_items_carry_comes_only_with_one() -> 
     assert "several items in it carry 1 cited key (@b)" in why
 
 
-def test_no_test_asks_the_zotero_of_the_machine_it_runs_on(monkeypatch) -> None:
+def test_no_test_asks_the_zotero_of_the_machine_it_runs_on(
+    monkeypatch, zotero_forgotten
+) -> None:
     """Rounds 1 and 2 of #811: every test that builds offline asked 127.0.0.1:23119 what a
     live build would meet, and G7's ping and lookup in every `check` asked the real library
     where Zotero was open. conftest.py sets MANUSCRIPT_GUARD_NO_ZOTERO for the run and every

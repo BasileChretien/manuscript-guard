@@ -323,7 +323,10 @@ def test_a_timeout_says_zotero_is_busy_not_that_it_is_not_running(monkeypatch) -
 
 
 def test_a_refused_connection_asks_whether_zotero_is_running(monkeypatch) -> None:
-    def refused(*_args, **_kwargs):
+    asked: list[object] = []
+
+    def refused(target, *_args, **_kwargs):
+        asked.append(target)
         raise urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
 
     monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
@@ -331,6 +334,7 @@ def test_a_refused_connection_asks_whether_zotero_is_running(monkeypatch) -> Non
     with pytest.raises(ZoteroUnavailable) as caught:
         client.rpc("item.search", [""], timeout=1)
     assert "Is Zotero running" in str(caught.value)
+    assert len(asked) == 1, "the refusal came from the fake, not from the switch"
 
 
 # ---------------------------------------------------------------- G7 with Zotero running

@@ -15,9 +15,14 @@ prints them (`documents`). Where `where` names a table or a
 figure ("Table 1", "Figure S2", "eTable 1"), in that display's caption as well: a legend typed
 as a paragraph that opens with the display's pointer, as G2 reads one (`opening_pointer`), and
 an emitted table's caption, numbered as the build numbers it (`display_numbers`). Where
-`where` is "Title" or "the title" (`names_title`), in the paper's title as well, `paper.yaml`'s,
-which the build prints and a Markdown manuscript does not hold: READUS-PV's items 1a and 1b
-are addressed there, and on the bisphosphonates paper (2026-11-25) they pointed at no heading.
+`where` is "Title" or "the title" (`names_title`), in the title the document prints as well:
+READUS-PV's items 1a and 1b are addressed there, and on the bisphosphonates paper
+(2026-11-25) they pointed at no heading. For a Markdown manuscript that is `paper.yaml`'s
+`title`, with its `short_title`, which the Word build prints as the subtitle under it; for
+a LaTeX one, the `\\title{}` of the main text as the reader prints the body, its `\\thanks`
+note left out (`latex.printed.printed_title`), and `paper.yaml`'s title only where no file
+sets one (round 1 of #813). The title is read after the sections and captions, so that a
+quote it shares with a section is said to stand in the section first.
 
 **How it is found.** As a review finding's quote is found in the manuscript
 (`anchoring.stands`), which is as G7 finds a passage in a work's source
@@ -86,11 +91,13 @@ class _Part:
     own: tuple[str, str]
     enclosed: tuple[str, str]
     paper_title: bool = False
+    #: How a finding names the paper's title: where it was read from.
+    named: str = TITLE_SHOWN
 
     @property
     def shown(self) -> str:
         if self.paper_title:
-            return TITLE_SHOWN
+            return self.named
         if self.caption is not None:
             kind, supplementary, number = self.caption
             return f"the caption of {Caption(kind, supplementary, number, '').label}"
@@ -99,11 +106,13 @@ class _Part:
 
 @dataclass(frozen=True)
 class Placed:
-    """Where a quote was looked for and whether it stands there; where it stands instead."""
+    """Where a quote was looked for and whether it stands there; where it stands instead,
+    and whether the first of those is the paper's title, which no section holds then."""
 
     under: bool
     searched: tuple[str, ...]
     elsewhere: tuple[str, ...]
+    in_title: bool = False
 
 
 def display_named(where: str) -> tuple[str, bool, int] | None:
@@ -152,10 +161,6 @@ class Manuscript:
         named = display_named(where)
         return named is not None and any(part.caption == named for part in self.parts)
 
-    def names_paper_title(self, where: str) -> bool:
-        """Whether `where` names the paper's title, and the title was read here."""
-        return names_title(where) and any(part.paper_title for part in self.parts)
-
     def _named(self, where: str) -> list[_Part]:
         display, title = display_named(where), names_title(where)
         # A heading titled "Title" is named as before, beside the paper's title.
@@ -179,9 +184,10 @@ class Manuscript:
         searched = tuple(dict.fromkeys(part.shown for part in named))
         if any(_stands(quote, part.enclosed) for part in named):
             return Placed(True, searched, ())
-        own = [part.shown for part in self.parts if _stands(quote, part.own)]
-        found = own or [part.shown for part in self.parts if _stands(quote, part.enclosed)]
-        return Placed(False, searched, tuple(dict.fromkeys(found)))
+        own = [part for part in self.parts if _stands(quote, part.own)]
+        found = own or [part for part in self.parts if _stands(quote, part.enclosed)]
+        return Placed(False, searched, tuple(dict.fromkeys(part.shown for part in found)),
+                      bool(found) and found[0].paper_title)  # fmt: skip
 
 
 def _sections(text: str, namespace: Mapping[str, object]) -> Iterable[_Part]:
@@ -215,29 +221,46 @@ def read(
     namespace: Mapping[str, object],
     captions: Iterable[Caption] = (),
     title: str | None = None,
+    title_named: str = TITLE_SHOWN,
 ) -> Manuscript:
     """The manuscript `texts`, each a document as it prints in Markdown, the main text and
     the supplement (`documents`, or a LaTeX manuscript's `printed_document`), the `captions`
-    of its displays and its `title`, `paper.yaml`'s, read for quotes. `namespace` gives each
-    value binding's display, as `load_namespace` does."""
-    parts = []
-    if title and title.strip():
-        folded = _folded(title, namespace)
-        parts.append(_Part("", None, folded, folded, paper_title=True))
-    parts += [part for text in texts for part in _sections(text, namespace)]
+    of its displays and its `title` as the document prints it, named `title_named` where a
+    finding says where a quote stands, read for quotes. `namespace` gives each value
+    binding's display, as `load_namespace` does. The title comes last, so that a quote a
+    section holds as well is said to stand in the section first."""
+    parts = [part for text in texts for part in _sections(text, namespace)]
     for caption in captions:
         folded = _folded(caption.text, namespace)
         parts.append(_Part("", (caption.kind, caption.supplementary, caption.number), folded,
                            folded))  # fmt: skip
+    if title and title.strip():
+        parts.append(_title_part(title, namespace, title_named))
     return Manuscript(tuple(parts))
+
+
+def _title_part(title: str, namespace: Mapping[str, object], named: str = TITLE_SHOWN) -> _Part:
+    """The paper's title as a part a quote may stand in, folded as a section is."""
+    folded = _folded(title, namespace)
+    return _Part("", None, folded, folded, paper_title=True, named=named)
+
+
+def _yaml_title(project) -> str | None:
+    """The title block the Word build prints from `paper.yaml`: the title, and the short
+    title under it as the subtitle (`build.document._front_matter`), one after the other."""
+    said = [project.paper.get(key) for key in ("title", "short_title")]
+    printed = [text for text in said if isinstance(text, str) and text.strip()]
+    return "\n\n".join(printed) if printed else None
 
 
 def of_project(project, namespace: Mapping[str, object] | None, results) -> Manuscript:
     """A project's manuscript read for quotes: the main text and the supplement, each its
     Markdown files joined as the build prints them, with the captions of the displays it
     places; or a LaTeX manuscript's two documents as they print in Markdown, as G5 reads its
-    headings (step 8). Either way with the title `paper.yaml` gives, which the build prints.
-    The values are loaded where `namespace` or `results` is not given."""
+    headings (step 8). With the title the document prints: paper.yaml's and its subtitle for
+    Markdown, which the Word build prints, and for LaTeX the main text's `\\title{}`, or
+    paper.yaml's title where no file sets one (round 1 of #813). The values are loaded where
+    `namespace` or `results` is not given."""
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     if namespace is None or results is None:
@@ -246,19 +269,24 @@ def of_project(project, namespace: Mapping[str, object] | None, results) -> Manu
         loaded, found, _literature, _report = load_namespace(project)
         namespace = loaded if namespace is None else namespace
         results = found if results is None else results
-    title = project.paper.get("title")
-    title = title if isinstance(title, str) else None
     folder = project.path("manuscript")
     if manuscript_format(folder) == LATEX:
-        from manuscript_guard.text.latex.printed import printed_document
+        from manuscript_guard.text.latex.printed import printed_document, printed_title
 
+        typed = printed_title(folder)
+        title, named = (None, TITLE_SHOWN) if typed is None else (
+            typed[0], f"the \\title in {typed[1]}")  # fmt: skip
+        if title is None:
+            given = project.paper.get("title")
+            title = given if isinstance(given, str) else None
         return read([printed_document(folder, supplementary=part, quoting=True)
-                     for part in (False, True)], namespace, title=title)  # fmt: skip
+                     for part in (False, True)], namespace, title=title,
+                    title_named=named)  # fmt: skip
     from manuscript_guard.contracts._schema import read_text
 
     texts = documents({path.relative_to(folder).as_posix(): read_text(path)
                        for path in source_files(folder)})  # fmt: skip
-    return read(texts, namespace, captions(project, texts, results), title)
+    return read(texts, namespace, captions(project, texts, results), _yaml_title(project))
 
 
 def captions(project, texts: Sequence[str], results) -> list[Caption]:

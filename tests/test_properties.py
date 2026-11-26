@@ -23617,6 +23617,19 @@ def _the_paper_s_title_is_not_read_for_a_checklist_quote(patch: pytest.MonkeyPat
                   read(texts, namespace, captions))  # fmt: skip
 
 
+def _the_paper_s_title_is_folded_as_raw_lowered_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    part = checklist_quotes._title_part
+
+    def raw(title: str, namespace, named: str = checklist_quotes.TITLE_SHOWN):
+        lowered = title.lower()
+        return dataclasses.replace(part(title, namespace, named), own=(lowered, lowered),
+                                   enclosed=(lowered, lowered))  # fmt: skip
+
+    patch.setattr(checklist_quotes, "_title_part", raw)
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -26852,6 +26865,10 @@ BROKEN = {
     ),
     "the paper's title is not read for a checklist answer's quote": (
         _the_paper_s_title_is_not_read_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the paper's title is folded as raw lowered text for a checklist answer's quote": (
+        _the_paper_s_title_is_folded_as_raw_lowered_text,
         test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
     ),
     "a finding's quote is found as characters, not as words": (

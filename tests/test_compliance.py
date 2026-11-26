@@ -1240,6 +1240,30 @@ def test_title_and_abstract_still_names_the_abstract(project: Path) -> None:
     assert "'Abstract'" in found.message
 
 
+def test_the_subtitle_the_build_prints_is_part_of_the_title(project: Path) -> None:
+    """Round 1 of #813: the Word build prints paper.yaml's `short_title` as the subtitle under
+    the title, so a quote that runs from the title into it, or the subtitle alone, stands in
+    the title."""
+    loaded, _ = load_project(project)
+    assert loaded.paper["short_title"] == "Hepatic injury with example-drug"
+    for words in ("spontaneous reporting database Hepatic injury with example-drug",
+                  "Hepatic injury with example-drug"):  # fmt: skip
+        quote(project, 0, where="Title", quote=words)
+        assert quote_findings(project, "submission") == [], words
+
+
+def test_a_misplaced_quote_in_a_section_and_the_title_is_pointed_at_the_section(
+    project: Path,
+) -> None:
+    """Round 1 of #813: the sentence that addresses the item is the section's, so the hint
+    names the section; the title is named only where no section holds the quote."""
+    quote(project, 0, where="Introduction",
+          quote="Disproportionality analysis of a synthetic spontaneous reporting database")
+    (found,) = quote_findings(project)
+    assert found.message.endswith("it stands under 'Abstract' and the title in paper.yaml")
+    assert "point `where` at 'Abstract'" in found.hint
+
+
 def test_one_sentence_may_be_quoted_for_two_items(project: Path) -> None:
     """Known gaps: nothing holds a quote to one item."""
     sentence = "Confidence intervals were derived from the standard error of the log odds ratio"

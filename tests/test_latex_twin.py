@@ -252,6 +252,77 @@ def test_g8r_reads_the_twins_checklist_answers_as_the_examples(
     ]
 
 
+#: The twin's `\title`, as `main.tex` writes it.
+_TWIN_TITLE = ("\\title{Reporting of hepatic injury with example-drug: a disproportionality "
+               "analysis of a synthetic spontaneous reporting database}")  # fmt: skip
+
+
+def _title_answer(twin: Path, quote: str) -> list[tuple[str, str]]:
+    """What G5 says, at submission, of the checklist's first item answered `where: Title`
+    with `quote`: each finding's code and message."""
+    import yaml
+
+    from manuscript_guard.gates import check_reporting
+
+    path = twin / "reporting" / "DEMO-OBS.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["items"][0].update(where="Title", quote=quote)
+    path.write_bytes(yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode())
+    found = check_reporting(load_project(twin)[0], stage="submission").findings
+    return [(f.code, f.message) for f in found if f.code.startswith("checklist-")]
+
+
+def test_a_latex_answer_in_the_title_is_held_to_the_title_main_tex_prints(twin: Path) -> None:
+    """Round 1 of #813: the PDF prints `\\title{}`, not paper.yaml's title, which `init
+    --latex` copies once and the author then edits in main.tex. The quote is held to the
+    `\\title` as the reader prints the body, its markup and its dashes folded and its note left
+    out; paper.yaml's title, which no document prints, is not found."""
+    main = twin / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    assert _TWIN_TITLE in text
+    main.write_bytes(text.replace(_TWIN_TITLE, (
+        "\\title{Hepatic injury with \\emph{example-drug} -- a disproportionality\\\\ "
+        "analysis\\thanks{Funded by no grant of any kind.} of synthetic reports}")).encode())
+    assert _title_answer(twin, "Hepatic injury with example-drug \N{EN DASH} a "
+                               "disproportionality analysis of synthetic reports") == []
+    said = _title_answer(twin, "Reporting of hepatic injury with example-drug: a "
+                               "disproportionality analysis")  # fmt: skip
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+    assert "is not under the \\title in main.tex" in said[0][1]
+    note = _title_answer(twin, "Funded by no grant of any kind")
+    assert [code for code, _message in note] == ["checklist-quote-not-found"]
+
+
+def test_the_title_read_is_the_one_tex_prints_past_a_comment_and_an_option(
+    tmp_path: Path,
+) -> None:
+    """A `\\title` in a comment prints nothing, and a CAS template's `\\title[mode = title]`
+    prints its argument; with none, there is no title to read."""
+    from manuscript_guard.text.latex.printed import printed_title
+
+    folder = tmp_path / "manuscript"
+    shutil.copytree(TWIN, folder)
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_bytes(text.replace(_TWIN_TITLE, (
+        f"% {_TWIN_TITLE}\n\\title[mode = title]{{A title the CAS class prints}}")).encode())
+    assert printed_title(folder) == ("A title the CAS class prints", "main.tex")
+    main.write_bytes(text.replace(_TWIN_TITLE + "\n", "").encode())
+    assert printed_title(folder) is None
+
+
+def test_a_latex_manuscript_with_no_title_command_is_held_to_paper_yaml_s(twin: Path) -> None:
+    """Where no file of the main text sets a `\\title`, the title is paper.yaml's."""
+    main = twin / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_bytes(text.replace(_TWIN_TITLE + "\n", "").encode())
+    assert _title_answer(twin, "Reporting of hepatic injury with example-drug: a "
+                               "disproportionality analysis") == []  # fmt: skip
+    said = _title_answer(twin, "Hepatic injury with example-drug in a cohort study")
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+    assert "is not under the title in paper.yaml" in said[0][1]
+
+
 def test_g7_reads_the_twins_quotations_and_cited_statements_as_the_examples(
     project: Path, tmp_path: Path
 ) -> None:

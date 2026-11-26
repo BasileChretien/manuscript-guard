@@ -9,7 +9,8 @@ Producing it as a build artefact reverses that. Every item must say either where
 addressed or why it does not apply, and "n/a" is not a reason. Where an item points at a
 section, the section has to exist, and the item quotes the sentence there that addresses it
 (`checklist_quotes.py`): a heading alone is satisfied by any manuscript. An item addressed in
-the title points at "Title", and its quote is held to `paper.yaml`'s title.
+the title points at "Title", and its quote is held to the title the document prints: a
+Markdown manuscript's from `paper.yaml`, a LaTeX one's `\\title{}`.
 
 The item lists themselves are retrieved from each guideline's own site and stored with
 their source. None is written from memory: a checklist whose items are approximately right
@@ -525,8 +526,8 @@ def _quote_findings(label: str, entry: dict, where: str, quoting: _Quoting, path
     message = f"{label}: the quote {_first_words(quote)!r} is not under {searched}"
     if placed.elsewhere:
         message += f"; it stands under {' and '.join(placed.elsewhere)}"
-        at = ("`Title`" if placed.elsewhere[0] == checklist_quotes.TITLE_SHOWN
-              else placed.elsewhere[0])  # fmt: skip
+        # A section first; the title only where no section holds the quote (round 1 of #813).
+        at = "`Title`" if placed.in_title else placed.elsewhere[0]
         hint = (f"point `where` at {at}, where the sentence is, or quote "
                 f"the sentence under {where!r} that addresses the item")  # fmt: skip
     else:

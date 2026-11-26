@@ -6104,6 +6104,8 @@ _QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
 _TITLE_WHERE = ("Title", "title", "The title", "the Title", "Title.", " TITLE ")
 #: How G5 names the title, where a quote stands in it.
 _TITLE_SHOWN = "the title in paper.yaml"
+#: Where the title holds a word with a dash after it, and the dashes it may be.
+_TITLE_DASHED, _DASHED_AS = 5, ("{}\N{EN DASH}x", "{}\N{EM DASH}y")
 
 
 @st.composite
@@ -6115,7 +6117,8 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
     their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
     one set by the typographer, drawn white space between words, two value bindings in A1's
     paragraph, a comment and a figure's legend typed under B, and two emitted tables'
-    captions; the paper's title, `paper.yaml`'s, of words of its own with drawn white space;
+    captions; the paper's title, `paper.yaml`'s, of words of its own with drawn white space,
+    a word in emphasis or code, one set by the typographer and one with a dash after it;
     and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
     time, each with what G5 finds of it: None for no quote, else whether it stands under what
     its `where` names and the parts it stands under instead.
@@ -6152,8 +6155,12 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         shown[para_a1[at]] = values[ref]
     comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
     captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
-    in_title = [word() for _ in range(10)]
+    # The title holds one of each kind a paragraph does, a word marked up and one set by the
+    # typographer, and a dash; paper.yaml's title holds no binding, which the build leaves
+    # as typed.
+    in_title = paragraph()[:10]
     in_title[0] = in_title[0].capitalize()
+    in_title[_TITLE_DASHED] = draw(st.sampled_from(_DASHED_AS)).format(in_title[_TITLE_DASHED])
     files = {
         # First by path, and printed after `main.md`, as the main text's other files are.
         "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
@@ -6188,7 +6195,9 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
         "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),
         "in a figure's legend": ("Figure 1", " ".join(run(legend, 4, 6)), found),
-        "in the title": (draw(st.sampled_from(_TITLE_WHERE)), " ".join(run(in_title)), found),
+        # As typed from the page: its markup, typography and dash each folded.
+        "in the title": (draw(st.sampled_from(_TITLE_WHERE)),
+                         " ".join(_as_typed(w) for w in in_title[:6]), found),
         "under another heading": (b, " ".join(para_a[5:10]), under_a),
         "the parent's own text": (a1, " ".join(para_a[5:10]), under_a),
         "another display's caption": ("Table 2", " ".join(run(captions[0], 4, 6)),

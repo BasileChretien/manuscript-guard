@@ -162,6 +162,60 @@ def printed_of(folder, *, supplementary: bool, quoting: bool = False,
     return printed(kept, quoting=quoting, compared=compared)
 
 
+#: `\\title`, which the title page prints, and `\\thanks`, its note, which prints as a footnote.
+_TITLE = re.compile(r"\\title(?![A-Za-z@])")
+_THANKS = re.compile(r"\\thanks(?![A-Za-z@])\s*\{")
+
+
+def printed_title(folder) -> tuple[str, str] | None:
+    """The title the main text's `\\title{}` prints, as the body is printed (its markup and
+    its macros as the reader reads them, its dashes typed, a binding `{{...}}`), with no
+    `\\thanks` note; and the path of the file that sets it. The last `\\title` LaTeX reads is
+    the one printed. None where no file of the main text sets one, or its argument does not
+    close (round 1 of #813)."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    found = None
+    for source in read_document(folder, supplementary=False).sources:
+        if source.loose or source.path.lower().endswith(".sty"):
+            continue
+        span = _title_span(source)
+        if span is not None:
+            found = (source, span)
+    if found is None:
+        return None
+    source, (start, end) = found
+    _read, comments = _passed_over(source.reading)
+    kept, at = [], start
+    for opened, _brace, closed in _arguments(source.text, _THANKS, start, end, comments):
+        kept.append((at, opened))
+        at = closed + 1
+    kept.append((at, end))
+    pieces = _printed(source, 1, quoting=True, only=[(low, high) for low, high in kept
+                                                     if low < high])  # fmt: skip
+    text = " ".join("".join(chunk for chunk, *_rest in pieces).split())
+    return (text, source.path) if text else None
+
+
+def _title_span(source: Source) -> tuple[int, int] | None:
+    """Where the argument of the last `\\title` a file sets runs, inside its braces: past a
+    CAS template's option, `\\title[mode = title]{...}`; one in a comment or a branch TeX does
+    not read is passed over."""
+    text = source.text
+    read, comments = _passed_over(source.reading)
+    span = None
+    for found in _TITLE.finditer(text):
+        if not read(found.start()):
+            continue
+        at = _ahead(text, _options_end(text, found.end(), comments), comments)
+        if at < 0 or at >= len(text) or text[at] != "{":
+            continue
+        closed = _closing(text, at, comments)
+        if closed > at:
+            span = (at + 1, closed)
+    return span
+
+
 def figure_captions(folder, *, supplementary: bool) -> list[tuple[str, int, str]]:
     """Each caption LaTeX numbers a figure by, in a float that holds a figure, as the view G7's
     text recycling compares prints it, its citations `[@key]` and its bindings `{{...}}`: the
@@ -248,9 +302,11 @@ def _cuts(source: Source) -> list[int]:
 def _printed(
     source: Source, shallowest: int, child=lambda: [], quoting: bool = False, formula: str = "",
     compared: bool = False, pointing: bool = False,
+    only: list[tuple[int, int]] | None = None,
 ) -> list[Piece]:
     """One source's part of the view: its body, with each event written as Markdown, and
-    `child()` where each file it inputs is printed."""
+    `child()` where each file it inputs is printed; or, given `only`, those spans of it, as
+    the body is printed (`printed_title`)."""
     reading = source.reading
     events: list[tuple[int, int, str | None]] = [(cut, cut, None) for cut in _cuts(source)]
     for heading in reading.headings:
@@ -284,7 +340,7 @@ def _printed(
     events += _table_events(reading, placeholders)
     # A file that never reaches the body prints nothing but an abstract written in its
     # preamble, and the files it inputs are read.
-    ranges = _printed_ranges(reading)
+    ranges = _printed_ranges(reading) if only is None else only
     # An accent command prints its accented letter (`words.accented`).
     masked = accented(source.text, reading.masked)
 

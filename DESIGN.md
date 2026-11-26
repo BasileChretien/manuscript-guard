@@ -29151,17 +29151,34 @@ What papers converted from Word showed (see "What papers converted from Word sho
     classes", "Fig. 3 (a) Schematic", or where its block is set smaller than the text; a
     paragraph of the text that goes on in lower case, "Figure 2 (A) shows", "Table 1 (n =
     300) gives", is the text's, and so is a legend set at the text's size whose title opens
-    on a lower-case word or a number.
-    Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`
-    and `tests/test_corruption.py::test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_legend`.
+    on a lower-case word or a number. A dash before a capital after the label, "Figure
+    1—Title", "Figure 1 – Title", opens one as a stop does. A label opens a legend only
+    where its block opens a paragraph: a block that opens on one at the size and the left of
+    an open sentence's last line, and no further below it than 1.25 times the space that
+    paragraph's lines stand one below the other, is that sentence's line, as a double-spaced
+    manuscript sets "Table 1. Patients with"; a legend a line's space or more below it is
+    the display's.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`,
+    `tests/test_corruption.py::test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_legend`,
+    `tests/test_corruption.py::test_a_legend_whose_label_a_dash_follows_is_a_legend`,
+    `tests/test_corruption.py::test_a_label_opening_a_line_of_an_open_sentence_is_the_text_s`
+    and `tests/test_corruption.py::test_a_legend_set_apart_under_an_open_sentence_is_a_legend`.
+  - A sentence of the text set as a block of its own that opens on a label and a verb with a
+    capital, "Figure 2 Shows", "Table 1 Summarises", is read as a legend. Accepted.
   - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
     reference list are read as prose, as before (answer 9). Accepted.
-  - A statement of the back matter that a reference list's lines stand on both sides of in
-    reading order, as Frontiers sets them, is read before the list's heading, its heading and
-    the paragraph under it; a line between them under no heading, "Publisher's note", stays
-    with the list, and a statement under a title none of the statements' names is read where
-    it stands, inside the list.
-    Pinned by `tests/test_corruption.py::test_a_reference_list_the_statements_stand_inside_is_one_list`.
+  - A statement of the back matter that the reference list's entries stand on both sides of
+    in reading order, as Frontiers sets them, is read before the list's heading: its heading
+    and every line under it up to the next heading or the list's next entry, an entry being a
+    line, or the lines of its paragraph after it, of the shape the audit reads an entry by
+    (`audit.looks_like_reference`). A statement that ends with no stop, "online at:" and an
+    address, keeps no entry the rebuild read on with it. A statement with entries on one side
+    of it only, the list wholly before it or after it, is read where it stands, under its
+    own heading; an entry of a shape the audit does not read, and a statement under a title
+    none of the statements' names, are read as they stand, inside the list.
+    Pinned by `tests/test_corruption.py::test_a_reference_list_the_statements_stand_inside_is_one_list`,
+    `tests/test_corruption.py::test_a_statement_s_every_paragraph_goes_with_it_and_only_inside_the_list`
+    and `tests/test_corruption.py::test_a_statement_inside_the_list_takes_no_entry_with_it`.
   - Inside a band of a page, two columns are read left then right, each block by its centre:
     a page of three columns, or a block set across one column and part of the next, is read
     in that order. Accepted.
@@ -29189,6 +29206,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     "et al.", "vs.", so a paragraph that a line of that shape breaks is read as two, as main
     read every line as its own. A number after a stop is a superscript citation only after a
     letter or a bracket, so a decimal, "was 2.5", ends nothing. Accepted.
+  - A line that ends on an abbreviation's stop and a number, "shown in Fig. 2", "No. 3",
+    "vs. 12", is read as ending on a citation after a stop: a column whose last line ends so
+    ends its paragraph there, and the paragraph is not followed into the next column.
+    Accepted.
+  - A figure set across both columns at a page's foot has its own words in the band above its
+    legend. Read between the left column and the right, they are paragraphs of the text, and
+    a paragraph that crosses from one column to the other is split around them, a definition
+    broken at the column's foot with it (against answer 3; main read the page no better).
+    Accepted.
   - Two words poppler sets apart are read as one where the gap between them is under 0.03
     of the line's height, as `pdftotext`'s text reading joins them; two words set touching
     that are two, a typesetter's tight pair, are read as one. A thin space is a space.

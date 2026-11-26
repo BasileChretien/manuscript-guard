@@ -3905,6 +3905,63 @@ def _a_one_line_remnant_is_a_paragraph_of_its_own(patch: pytest.MonkeyPatch) -> 
     patch.setattr(pdf_layout._Flow, "remnant", lambda self, page, block: False)
 
 
+def _a_title_on_a_capital_opens_no_legend(patch: pytest.MonkeyPatch) -> None:
+    """As before pdf-biol-C3: "Fig. 2 Three pathways", set at the text's size, the text's."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "TITLED", re.compile(r"(?!)"))
+
+
+def _a_dash_after_a_label_opens_no_legend(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #802: "Table 1—Counts", "Table 1 – Counts" the text's."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "TIGHT", re.compile(pdf_layout._LABEL + r"(?:\s*[.:|]|\s*$)"))
+
+
+def _a_label_inside_an_open_sentence_opens_a_legend(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #802: a double-spaced line "Table 4. Patients" a legend."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout._Flow, "continues", lambda self, page, block: False)
+
+
+def _a_thin_space_is_no_space(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #802: two words a tenth of their height apart are one."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "JOINED", 0.2)
+
+
+def _a_kerned_word_is_two(patch: pytest.MonkeyPatch) -> None:
+    """Two words poppler gives touching are two: "co hort"."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "JOINED", 0.0)
+
+
+def _two_columns_lines_on_one_baseline_are_one(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #802: no page has columns for `_one_baseline` to keep apart."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "_columns_middle", lambda blocks: None)
+
+
+def _the_statements_stay_inside_the_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    patch.setattr(pdf_module, "_references_together", lambda rows: rows)
+
+
+def _a_statement_takes_the_entry_its_paragraph_goes_on_with(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #802: a statement runs to the next heading, entries and all."""
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    kept = pdf_module._opens_entry
+    patch.setattr(pdf_module, "_opens_entry", lambda rows, at: kept(rows, at) and (
+        at == 0 or rows[at - 1].paragraph != rows[at].paragraph))
+
+
 def _a_superscript_is_left_bare(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -26339,6 +26396,38 @@ BROKEN = {
     ),
     "a PDF's one-line remnant of a paragraph is a paragraph of its own": (
         _a_one_line_remnant_is_a_paragraph_of_its_own,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's legend whose title opens on a capital is the text's": (
+        _a_title_on_a_capital_opens_no_legend,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's legend whose label a dash follows is the text's": (
+        _a_dash_after_a_label_opens_no_legend,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's line opening on a label inside an open sentence is a legend": (
+        _a_label_inside_an_open_sentence_opens_a_legend,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's thin space is no space": (
+        _a_thin_space_is_no_space,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's word kerned in two is two words": (
+        _a_kerned_word_is_two,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "two columns' lines on one baseline of a PDF are one line": (
+        _two_columns_lines_on_one_baseline_are_one,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's statements inside its reference list stay inside it": (
+        _the_statements_stay_inside_the_reference_list,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's statement takes the list's entry its paragraph goes on with": (
+        _a_statement_takes_the_entry_its_paragraph_goes_on_with,
         test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
     ),
     "a PDF's superscript citation is left a bare number": (

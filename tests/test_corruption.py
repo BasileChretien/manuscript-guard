@@ -3904,7 +3904,7 @@ def test_a_reference_list_the_statements_stand_inside_is_one_list(tmp_path: Path
     right = ["Data availability statement", "The raw data are available on request.",
              "Ethics statement", "The study was approved by the board.",
              "Supplementary material", "The supplementary material is online.",
-             "Coan, J. (2008). A neuro-anatomical model of human attachment (NAMA).",
+             "Coan, J. (2008). A neuro-anatomical model of", "human attachment (NAMA).",
              "Dozier, M. (1999). Attachment in the NAMA. Guilford Press."]
     pieces = (_column(left, LEFT, TOP, {7: 14.0, 8: 4.0})
               + _column(right, RIGHT, TOP, {1: 4.0, 2: 14.0, 3: 4.0, 4: 14.0, 5: 4.0,
@@ -3929,6 +3929,112 @@ def test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_leg
     left = ["Results", "We saw three unbinding pathways, pathway 1 (P1) the first.",
             *[_FULL] * 4]
     legend = ["Fig. 2 Three pathways of the complex under load. In pathway 1 (P1) it",
+              "ruptured at high force."]
+    right = [*legend, "", "The P1 held in each of the sites.", *_UNSAID]
+    pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {3: 14.0}, justified=False)
+    run, _staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if f.message.split()[0] == "P1"] == [], run.language
+
+
+def test_a_label_opening_a_line_of_an_open_sentence_is_the_text_s(tmp_path: Path) -> None:
+    """Round 2 of the review of #802: a double-spaced manuscript sets each line in a block of
+    its own, and a sentence's line may open on a display's name and a stop, "Table 1.
+    Patients with". Its block was read as a legend, after the paragraph: the text read
+    "given in than the others", and the definition on that line stood in a display. A label
+    opens a legend only where its block opens a paragraph: the line before ends one, or the
+    block is set apart from it, on another page or column, at another size or further below
+    it than the paragraph's lines stand one below the other."""
+    texts = ["Results", "The characteristics of the cohort are given in",
+             "Table 1. Patients with chronic kidney disease (CKD) were older",
+             "than the others, and they were kept.",
+             "We kept the records of each of the schools, and the CKD held.",
+             "Discussion", "The records were kept in each of the sites, and the CKD held there."]
+    run, staged = _pieces_run(tmp_path, [_double_spaced(texts)])
+    assert "given in\nTable 1. Patients" in staged, staged
+    assert [f for f in run.language if f.message.split()[0] == "CKD"] == [], run.language
+
+
+def test_a_legend_set_apart_under_an_open_sentence_is_a_legend(tmp_path: Path) -> None:
+    """The same rule's other side: a table's legend set at the text's size a line's space
+    below a paragraph left open, a table in its way, is the table's, and the paragraph goes
+    on after it."""
+    texts = ["Results", "We read the records of each of the schools of the state, and",
+             "", "Table 1. Patients with the low dose (LD) of each site.",
+             "the trial stage held in each of the schools of the state.",
+             "We kept the records of each of the schools, and the LD held.",
+             "Discussion", "The records were kept in each of the sites, and the LD held there."]
+    pieces = _double_spaced(texts)
+    del pieces[2 * texts.index(""):2 * texts.index("") + 2]  # a line's space
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert "state, and\nthe trial stage held" in staged, staged
+
+
+def test_a_statement_s_every_paragraph_goes_with_it_and_only_inside_the_list(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of the review of #802: the statements of the back matter set inside the
+    reference list were moved before it by their heading and their first paragraph alone,
+    and moved where the list stood wholly before them: a second paragraph of "Supplementary
+    material" then stood under the References' heading, which G14 does not read. A
+    statement is moved whole, to the next heading or the list's next entry, and only where
+    the list's entries stand on both sides of it."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, TOP
+
+    texts = ["Conclusion", "The cohort was read and the records were kept.",
+             "References", "Adam, K. (1994). Suicidal behavior and attachment.",
+             "Bowlby, J. (1969). Attachment. New York: Basic Books.",
+             "Supplementary material", "The supplementary material is online.",
+             "The low dose (LD) was read in each site, and the LD held."]
+    pieces = _column(texts, LEFT, TOP, {2: 14.0, 3: 4.0, 5: 14.0, 6: 4.0, 7: 6.0},
+                     justified=False)  # fmt: skip
+    _run, staged = _pieces_run(tmp_path, [pieces])
+    second = staged.index("The low dose (LD)")
+    headings = [line for line in staged[:second].split("\n") if line.startswith("#")]
+    assert headings[-1] == "# Supplementary material", staged
+
+
+def test_a_statement_inside_the_list_takes_no_entry_with_it(tmp_path: Path) -> None:
+    """Round 2 of the review of #802, a Frontiers paper's statement: "found online at:" and
+    the address, no stop after it, left its paragraph open, the list's next entry went on
+    with it, and was moved before the list with the statement, read as the text's. A
+    statement ends at the list's next entry."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Conclusion", "The cohort was read and the records were kept.", *[_FULL] * 4,
+            "References", "Adam, K. (1994). Suicidal behavior and attachment.",
+            "Bowlby, J. (1969). Attachment. New York: Basic Books."]
+    right = ["Supplementary material", "The material for this article is online at:",
+             "https://doi.org/10.1/x#supplementary-material",
+             "Coan, J. (2008). A neuro-anatomical model of", "human attachment (NAMA).",
+             "Dozier, M. (1999). Attachment in the NAMA. Guilford Press."]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0, 8: 4.0})
+              + _column(right, RIGHT, TOP, {1: 4.0, 3: 6.0}, justified=False))  # fmt: skip
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "NAMA" in f.message] == [], run.language
+    assert staged.index("# References") < staged.index("Coan, J."), staged
+    assert staged.index("supplementary-material") < staged.index("# References"), staged
+
+
+@pytest.mark.parametrize("label", ["Fig. 2\N{EM DASH}Three", "Fig. 2 \N{EN DASH} Three"])
+def test_a_legend_whose_label_a_dash_follows_is_a_legend(tmp_path: Path, label: str) -> None:
+    """Round 2 of the review of #802: a legend set at the text's size whose label a dash
+    follows, "Figure 1\N{EM DASH}Title", "Figure 1 \N{EN DASH} Title", was read as the
+    text's, and its restatement of a definition was a redefinition. A dash after the label
+    opens a legend as a stop does."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Results", "We saw three unbinding pathways, pathway 1 (P1) the first.",
+            *[_FULL] * 4]
+    legend = [f"{label} pathways of the complex under load. In pathway 1 (P1) it",
               "ruptured at high force."]
     right = [*legend, "", "The P1 held in each of the sites.", *_UNSAID]
     pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {3: 14.0}, justified=False)

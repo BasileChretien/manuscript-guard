@@ -682,15 +682,17 @@ _SUPPLEMENTARY_STATEMENT = re.compile(
 
 
 def _references_together(rows: tuple) -> tuple:
-    """The rows with each statement of the back matter that a reference list's lines stand on
-    both sides of read before the list: a journal (Frontiers) that opens the list at the foot
-    of the left column and sets the statements at the head of the right, the list going on
-    under them. Each statement, its heading (`heading_title`, `names_statement`,
-    "Supplementary material") and the paragraph under it, is put before the list's heading,
-    so that the list is one section under its heading; what else stands between them, a
-    "Publisher's note" under no heading of the list, stays with the list. Where no heading
-    names the reference list, or no line of the list stands after the statements, the rows
-    as they are."""
+    """The rows with each statement of the back matter that the reference list's entries
+    stand on both sides of read before the list: a journal (Frontiers) that opens the list
+    at the foot of the left column and sets the statements at the head of the right, the
+    list going on under them. Each such statement, its heading (`heading_title`,
+    `names_statement`, "Supplementary material") and every line under it up to the next
+    heading or the list's next entry (`_opens_entry`), is put before the list's heading, so
+    that the list is one section under its heading; a statement that ends with no stop, "at:
+    https://...", leaves its paragraph open, and the entry that goes on with it stays with
+    the list. Where no heading names the reference list, the rows as they are, and so a
+    statement with the list's entries on one side of it alone, which stands after the list
+    or before it (round 2 of the review of #802)."""
     from manuscript_guard.text.sections import Section
 
     titles = [heading_title(row.text) for row in rows]
@@ -699,25 +701,54 @@ def _references_together(rows: tuple) -> tuple:
     if not lists:
         return rows
     first = lists[0]
+    stated = [at for at in range(first + 1, len(rows)) if titles[at] is not None and (
+        names_statement(titles[at]) or _SUPPLEMENTARY_STATEMENT.match(titles[at]))]
+    if not stated:
+        return rows
+    entries = [at > first and titles[at] is None and _opens_entry(rows, at)
+               for at in range(len(rows))]  # fmt: skip
     moved = []
-    for start in range(first + 1, len(rows)):
-        title = titles[start]
-        if title is None or not (names_statement(title) or _SUPPLEMENTARY_STATEMENT.match(title)):
+    start = stated[0]
+    while start < len(rows):
+        if start not in stated:
+            start += 1
             continue
         end = start + 1
-        if end < len(rows) and titles[end] is None:
-            paragraph = rows[end].paragraph
-            while end < len(rows) and titles[end] is None and rows[end].paragraph == paragraph:
-                end += 1
-        moved.append((start, end))
-    # Only where the list's lines stand after them.
-    if not moved or not any(titles[at] is None for at in range(moved[-1][1], len(rows))):
+        while end < len(rows) and titles[end] is None and not entries[end]:
+            end += 1
+        if any(entries[first:start]) and any(entries[end:]):
+            moved.append((start, end))
+        start = end
+    if not moved:
         return rows
     statements = [at for start, end in moved for at in range(start, end)]
     taken = set(statements)
     order = [*range(first), *statements, *(at for at in range(first, len(rows))
                                          if at not in taken)]  # fmt: skip
     return tuple(rows[at] for at in order)
+
+
+#: The most lines of one paragraph an entry of a reference list is read over, from its
+#: first (`_opens_entry`).
+ENTRY_LINES = 6
+
+
+def _opens_entry(rows: tuple, at: int) -> bool:
+    """Whether the row at `at` opens an entry of a reference list (`audit.looks_like_reference`):
+    alone, or with the rows after it of its paragraph, up to `ENTRY_LINES` in all, which a
+    numbered entry needs to reach its volume and pages."""
+    from manuscript_guard.audit import looks_like_reference
+
+    said = rows[at].text
+    if looks_like_reference(said):
+        return True
+    for after in range(at + 1, min(at + ENTRY_LINES, len(rows))):
+        if rows[after].paragraph != rows[at].paragraph:
+            return False
+        said += " " + rows[after].text
+        if looks_like_reference(said):
+            return True
+    return False
 
 
 #: Where the name `author` gives was read.

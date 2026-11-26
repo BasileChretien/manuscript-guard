@@ -11,6 +11,7 @@ as they do from a proof.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 #: The glyphs given codes from 128 up, by the name a PDF reader maps to the character.
@@ -226,6 +227,32 @@ COLUMN, BODY, BODY_LEADING, AROUND = 230.0, 9.0, 11.0, 14.0
 ACROSS = RIGHT - LEFT + COLUMN
 
 
+#: Inside a word `laid_out` sets, a thin space (`THIN` points wide, read as a space) and a
+#: word kerned in two (its second part `KERN` points on and set `KERNED` times the size, so
+#: that poppler gives two words, read as one): "(N~=~168)", "co^hort".
+THIN_MARK, KERN_MARK = "~", "^"
+THIN, KERN, KERNED = 1.2, 0.04, 1.08
+_MARKS = re.compile(f"([{re.escape(THIN_MARK + KERN_MARK)}])")
+
+
+def said(word: str) -> str:
+    """A word `laid_out` sets, as pdftotext reads it: a thin space a space, a kern nothing."""
+    return word.replace(THIN_MARK, " ").replace(KERN_MARK, "")
+
+
+def _parts(word: str, size: float) -> list[tuple[str, float, float]]:
+    """A word's parts, each `(text, size, gap before it)`."""
+    pieces = _MARKS.split(word)
+    out = [(pieces[0], size, 0.0)]
+    for mark, part in zip(pieces[1::2], pieces[2::2], strict=True):
+        out.append((part, size * KERNED, KERN) if mark == KERN_MARK else (part, size, THIN))
+    return out
+
+
+def _wide(word: str, size: float) -> float:
+    return sum(gap + width(part, at) for part, at, gap in _parts(word, size))
+
+
 @dataclass(frozen=True)
 class Set:
     """A line `laid_out` sets: its words, at `size`, justified to `width` where `justified`
@@ -247,7 +274,7 @@ class Set:
         """The line as pdftotext reads its words, a superscript a word after its own."""
         out = []
         for at, word in enumerate(self.words):
-            out.append(word)
+            out.append(said(word))
             out += [text for after, text in self.raised if after == at]
         return " ".join(out)
 
@@ -255,7 +282,7 @@ class Set:
 def _set(line: Set, x: float, y: float) -> list[Piece]:
     """The pieces of `line` set from (x, y): word by word, spread to its width where it is
     justified, a table's cells 12 points apart."""
-    widths = [width(word, line.size) for word in line.words]
+    widths = [_wide(word, line.size) for word in line.words]
     space = width(" ", line.size)
     if line.cells:
         space = 12.0
@@ -263,9 +290,13 @@ def _set(line: Set, x: float, y: float) -> list[Piece]:
         space = (line.width - sum(widths)) / (len(line.words) - 1)
     pieces, at = [], x
     for index, (word, wide) in enumerate(zip(line.words, widths, strict=True)):
-        pieces.append(Piece(at, y, word, size=line.size))
-        if line.twice:
-            pieces.append(Piece(at, y, word, size=line.size))
+        part_at = at
+        for part, size, gap in _parts(word, line.size):
+            part_at += gap
+            pieces.append(Piece(part_at, y, part, size=size))
+            if line.twice:
+                pieces.append(Piece(part_at, y, part, size=size))
+            part_at += width(part, size)
         at += wide
         for after, text in line.raised:
             if after == index:

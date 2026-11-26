@@ -93,6 +93,10 @@ SHORT_END = 18.0
 BASELINE = 2.0
 SAME_HEIGHT = 2.5
 GAP = 3.0
+#: A block that opens on a display's label goes on with the sentence left open on the line
+#: above it where it stands no further below that line than this many times the space the
+#: paragraph's lines stand one below the other (`_Flow.continues`).
+PITCH = 1.25
 #: A narrow short block stands right under a display, and is its own, where its top is
 #: within this many of the body's line heights below the display's lowest block.
 UNDER = 3.0
@@ -114,15 +118,17 @@ MARGIN_RUN = 3
 WORDY = 3
 
 #: A display's label at the start of a legend's first line: with a stop, a colon or a bar
-#: after it, or alone (`TIGHT`); or with a title after it that opens on a word of a capital
+#: after it, a dash before a capital, "Figure 1—Title", "Figure 1 – Title", or alone
+#: (`TIGHT`); or with a title after it that opens on a word of a capital
 #: and another letter, a bracket or panels' letters before it or not, "Fig. 2 Three
 #: classes", "Fig. 3 (a) Schematic" (`TITLED`), where a paragraph of the text goes on in
 #: lower case, "Figure 2 (A) shows", "Table 1 (n = 300) gives", "Figure 1 A and B show"
 #: (`_labelled`).
 _LABEL = (r"^(?:Supplementary\s+|Suppl\.?\s+|Extended\s+Data\s+)?"
           r"(?:Figure|Fig\.?|FIGURE|FIG\.?|Table|TABLE|Scheme|Box|Chart)\s*S?\d+[A-Za-z]?")
-LABEL = re.compile(_LABEL + r"(?:\s*[.:|]|\s+[A-Z(]|\s*$)")
-TIGHT = re.compile(_LABEL + r"(?:\s*[.:|]|\s*$)")
+_DASHED = r"\s*\N{EM DASH}\s*(?=[A-Z])|\s+[\N{EN DASH}-]\s*(?=[A-Z])"
+LABEL = re.compile(_LABEL + rf"(?:\s*[.:|]|{_DASHED}|\s+[A-Z(]|\s*$)")
+TIGHT = re.compile(_LABEL + rf"(?:\s*[.:|]|{_DASHED}|\s*$)")
 TITLED = re.compile(_LABEL + r"(?:\s*\([^)]{0,40}\))?"
                     r"(?:\s+[A-Z](?:\s*(?:,|and|&|-|\N{EN DASH})\s*[A-Z])*(?=\s))?"
                     r"\s+[A-Z][A-Za-z0-9]")
@@ -691,6 +697,10 @@ class _Flow:
     #: Narrow short blocks since the last paragraph, `(page, line)`: a figure's own words,
     #: if a legend follows.
     held: list[tuple[int, Line]] = field(default_factory=list)
+    #: The text's last line read, `(page, line)`, and how far below the line before it on
+    #: its page and in its column it stands, 0 where it is the first.
+    last: tuple[int, Line] | None = None
+    pitch: float = 0.0
 
     def sink(self) -> list:
         return self.pending if self.open is not None else self.rows
@@ -699,6 +709,7 @@ class _Flow:
         for page, line in self.held:
             self.paragraph += 1
             self.rows.append((line, page, self.paragraph, None))
+            self.spaced(page, line)
         self.held = []
 
     def legend(self, page: int, block: Block) -> None:
@@ -722,6 +733,21 @@ class _Flow:
             return False
         return not (self.under_display(page, block)
                     and abs(block.height - self.display_height) < LEGEND_SIZE)  # fmt: skip
+
+    def continues(self, page: int, block: Block) -> bool:
+        """Whether a block that opens on a display's label is a line of the sentence left
+        open, as a double-spaced manuscript sets each line in a block of its own and a line
+        may open "Table 1. Patients with": on the open paragraph's page, at its last line's
+        size and its left, and below that line by no more than `PITCH` times the space its
+        lines stand one below the other. A legend is set apart: on another page or column,
+        at another size, or further down."""
+        if self.open is None or self.last is None or self.pitch <= 0:
+            return False
+        at, line = self.last
+        first = block.lines[0]
+        return (at == page and abs(block.height - self.open_height) < LEGEND_SIZE
+                and abs(first.x0 - line.x0) <= 2 * line.height
+                and 0 < first.y0 - line.y0 <= PITCH * self.pitch)  # fmt: skip
 
     def under_display(self, page: int, block: Block) -> bool:
         """Whether `block` stands right under the display being read, or beside it: its top
@@ -763,6 +789,7 @@ class _Flow:
         ended = ends[-1] if edge is not None else STOP.search(block.lines[-1].text.strip())
         for at, (line, end) in enumerate(zip(block.lines, ends, strict=True)):
             self.rows.append((line, page, current, None))
+            self.spaced(page, line)
             last = current
             if end:
                 self.paragraph += 1
@@ -777,6 +804,16 @@ class _Flow:
             self.rows += self.pending
             self.pending = []
 
+    def spaced(self, page: int, line: Line) -> None:
+        """`line` the text's last read, and the space it stands below the one before it, on
+        the same page and in the same column (`continues`)."""
+        if self.last is not None:
+            at, before = self.last
+            same = (at == page and abs(line.x0 - before.x0) <= 2 * line.height
+                    and line.y0 > before.y0)  # fmt: skip
+            self.pitch = line.y0 - before.y0 if same else 0.0
+        self.last = (page, line)
+
     def read(self, page: int, block: Block, figure_next: bool = False,
              edge: float | None = None) -> None:
         """`block` read where it stands: a legend opens a display; a block of the display
@@ -784,6 +821,8 @@ class _Flow:
         stand above (`figure_next`: the next block that is not one is a figure's legend);
         any other is the text's."""
         kind = _kind(block, self.height, self.width)
+        if kind == "legend" and self.continues(page, block):
+            kind = "body"
         if kind == "legend":
             self.legend(page, block)
         elif kind == "fragment" and figure_next and not self.under_display(page, block):

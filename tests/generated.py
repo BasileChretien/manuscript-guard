@@ -2078,8 +2078,26 @@ LAYOUT_FORMS = (
     ("TS", "total score", "trial stage"),
     ("PV", "peak volume", "pulse velocity"),
 )
-#: The forced end of a line, in a paragraph's words as `pdf_layouts` draws them.
+#: The forced end of a line, in a paragraph's words as `pdf_layouts` draws them, at a
+#: column's foot, and inside a column (`LINE_BREAK`).
 LINE_END = "|"
+LINE_BREAK = "||"
+#: The space above each line of a paragraph set double-spaced, each line a block of its own.
+LAYOUT_DOUBLE = 13.0
+#: The space above each entry of a reference list, which sets it apart as a block of its own.
+LAYOUT_ENTRY = 6.0
+#: The labels a legend at a column's foot, set at the text's size, opens with: a title on a
+#: capital after the number, or an em dash before it. An en dash with a space on each side is
+#: `tests/test_corruption.py`'s: poppler reads it and the word after it as one word.
+LAYOUT_LABELS = ("titled", "em")
+#: The surnames a reference list's entries open with, one for each entry.
+LAYOUT_AUTHORS = ("Adam", "Bowlby", "Coan", "Dozier", "Ellis", "Frank")
+#: Words of the back matter page's Conclusion, a line and more of a column.
+LAYOUT_CONCLUSION = "and the records of each of the sites were read in each week of the cohort "
+#: The text's size, at which the legend at a column's foot is set, and the space that sets
+#: that legend apart from the text above it.
+BODY_SIZE = 9.0
+LAYOUT_APART = 14.0
 #: Where a display is set in each example: across both columns at a page's top, at a
 #: column's foot, before the next column's text goes on, and at a column's top. Each
 #: example has one of each, in the order a reader meets them where two stand in one
@@ -2104,7 +2122,7 @@ def _wrapped(words: list[str], size: float, measure: float | None = None) -> lis
     measure = measure or COLUMN
     lines: list[list[str]] = [[]]
     for word in words:
-        if word == LINE_END:
+        if word in (LINE_END, LINE_BREAK):
             lines[-1].append(word)
             lines.append([])
             continue
@@ -2117,11 +2135,13 @@ def _wrapped(words: list[str], size: float, measure: float | None = None) -> lis
     return lines
 
 
-def _paragraph_lines(words: list[str], raised: dict[int, str] | None = None) -> list[dict]:
+def _paragraph_lines(words: list[str], raised: dict[int, str] | None = None,
+                     double: bool = False) -> list[dict]:  # fmt: skip
     """A paragraph's lines as `laid_out` sets them (`proof_pdf.Set`'s fields): each justified
     but the last, one ended by `LINE_END` and one too short to be spread over the column
     as a typesetter spreads one, and each superscript `raised` holds, by the index of the
-    word it follows among the words (`LINE_END` counted), raised after it."""
+    word it follows among the words (`LINE_END` counted), raised after it; `LAYOUT_DOUBLE`
+    above each line where `double`. A line `LINE_BREAK` ends is not justified."""
     from proof_pdf import COLUMN, width
 
     raised = raised or {}
@@ -2129,21 +2149,25 @@ def _paragraph_lines(words: list[str], raised: dict[int, str] | None = None) -> 
     lines = _wrapped(words, 9.0)
     for number, line in enumerate(lines):
         forced = line[-1] == LINE_END
-        kept = [word for word in line if word != LINE_END]
+        broken = line[-1] == LINE_BREAK
+        kept = [word for word in line if word not in (LINE_END, LINE_BREAK)]
         marks = tuple((index, raised[at + index]) for index in range(len(kept))
                       if at + index in raised)  # fmt: skip
         full = width(" ".join(kept), 9.0) >= 0.8 * COLUMN
         out.append({"words": tuple(kept), "raised": marks, "forced": forced,
-                    "justified": number < len(lines) - 1 and not forced and full})  # fmt: skip
+                    "justified": number < len(lines) - 1 and not (forced or broken) and full,
+                    **({"gap": LAYOUT_DOUBLE} if double else {})})  # fmt: skip
         at += len(line)
     return out
 
 
 def _line_text(line: dict) -> str:
     """A line as pdftotext reads its words, as `proof_pdf.Set.text` says it."""
+    from proof_pdf import said
+
     out = []
     for at, word in enumerate(line["words"]):
-        out.append(word)
+        out.append(said(word))
         out += [text for after, text in line.get("raised", ()) if after == at]
     return " ".join(out)
 
@@ -2168,7 +2192,13 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
     ends there, its rest a remnant of one short line, "(TS) held.", that the column sets as
     a block of its own. The Methods define two forms the legends speak of: the tables'
     legends restate one, the figure's gives the other another meaning. A sentence
-    "Studies have shown" cites by a superscript after a word.
+    "Studies have shown" cites by a superscript after a word. The Methods set a thin space,
+    "(N = 168)", and a word kerned in two, "co" and "hort"; a paragraph set double-spaced,
+    each line a block of its own, has a line that opens on a display's label inside its
+    sentence, "Table 4. Patients"; the legend at a column's foot is set at the text's size
+    and opens on a title on a capital or a dash (`LAYOUT_LABELS`), the one at a column's
+    top on "Fig." or "Figure"; and a third page sets a reference list with the back
+    matter's statements inside it (`_back_matter`).
 
     Gives the pages (each `(across, left, right)`, each line a dict of `proof_pdf.Set`'s
     fields), the head, and `blocks`: what G6 and G14 are to read, in order, each
@@ -2181,9 +2211,10 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
     stream: list[tuple] = []
 
     def paragraph(text: list[str], raised: dict[int, str] | None = None,
-                  gap: float = 0.0) -> None:
-        plain = [word for word in text if word != LINE_END]
-        lines = _paragraph_lines(text, {at: said for at, said in (raised or {}).items()})
+                  gap: float = 0.0, double: bool = False) -> None:
+        plain = [word for word in text if word not in (LINE_END, LINE_BREAK)]
+        lines = _paragraph_lines(text, {at: said for at, said in (raised or {}).items()},
+                                 double)  # fmt: skip
         if gap:
             lines[0] = {**lines[0], "gap": gap}
         blocks.append(("paragraph", " ".join(_line_text(line) for line in lines)))
@@ -2206,8 +2237,16 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
     methods = [*_sentence(draw, words), "The", *restated[1].split(), f"({restated[0]})",
                "was", "read.", "The", *renamed[1].split(), f"({renamed[0]})", "was", "read.",
                "Studies", "have", "shown", "that", shown, "rose", "among", "older", "women.",
+               "The", "co^hort", "(N~=~168)", "was", "at", "least", "18~years", "old.",
                *_sentence(draw, words)]  # fmt: skip
     paragraph(methods, {methods.index("rose"): "2-4"})
+    # A paragraph set double-spaced, each line a block of its own, whose second line opens on
+    # a display's label inside its sentence; its first line is wide, as a line inside a
+    # sentence is, and not a narrow block, a figure's words.
+    paragraph(["The", "counts", "of", "the", "records", "of", "each", "site", "are", "given",
+               "in", LINE_BREAK, "Table", "4.", "Patients", "with", "the", "longest", "stay",
+               "were", "older", "than", "the", "others.", *_sentence(draw, words)],
+              double=True)  # fmt: skip
     # One of the three ends just after its break, a remnant of one short line at the next
     # column's top, which a little space sets apart from the paragraph after it.
     remnant = draw(st.sampled_from((0, 1, 2)))
@@ -2221,6 +2260,7 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
                   gap=LAYOUT_REMNANT if number == remnant else 0.0)
     heading("Discussion")
     paragraph([*_sentence(draw, words), "The", restated[0], "and", "the", renamed[0], "held."])
+    back = _back_matter(draw, words)
     # The page across whose top a table is set; the break at whose column's foot a display
     # stands, and whether it is a figure's. A figure's drawing stands at the top of the
     # second page's left column, so that its text starts far below the right column's, where
@@ -2229,8 +2269,10 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
     foot, top = draw(st.sampled_from((0, 1, 2))), 1
     figures = {"top", *(("foot",) if draw(st.booleans()) else ())}
     size = draw(st.sampled_from((7.0, 7.5, 8.0)))
+    labels = {"foot": draw(st.sampled_from(LAYOUT_LABELS)),
+              "top": draw(st.sampled_from(("Fig.", "Figure")))}
     floats = {where: _display(draw, words, number, where in figures, size, restated, renamed,
-                              where)
+                              where, labels.get(where))
               for number, where in enumerate(LAYOUT_FLOATS, 1)}  # fmt: skip
     columns: list[list[dict]] = [[]]
     met: dict[int, list[str]] = {}
@@ -2250,25 +2292,40 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
             met.setdefault(item[1], []).append("top")
     across = floats["across"]["lines"]
     pages = [(across if page == 0 else [], columns[0], columns[1]),
-             (across if page == 1 else [], columns[2], columns[3])]
+             (across if page == 1 else [], columns[2], columns[3]),
+             ([], back["left"], back["right"])]
     ordered: list[tuple] = [floats["across"]["block"]] if page == 0 else []
     for at, block in enumerate(blocks):
         ordered.append(block)
         ordered += [floats[where]["block"] for where in met.get(at, ())]
+    ordered += back["blocks"]
     head = f"Journal of Fictional Studies {draw(st.integers(2001, 2030))}"
     return {"pages": pages, "head": head, "blocks": ordered,
             "forms": {"restated": restated[0], "renamed": renamed[0]}}
 
 
 def _display(draw: st.DrawFn, words: st.SearchStrategy[str], number: int, figure: bool,
-             size: float, restated: tuple, renamed: tuple, where: str) -> dict[str, Any]:
+             size: float, restated: tuple, renamed: tuple, where: str,
+             label: str | None = None) -> dict[str, Any]:  # fmt: skip
     """A display's lines as `laid_out` sets them, and its block as G14 is to read it: a
     table's legend over a row of its cells and a note, or a figure's own words over its
     legend; a table's legend restates the Methods' first form, a figure's gives the second
     another meaning. One across both columns is wrapped to both and long enough to cross
-    the page's middle."""
-    label = f"{'Figure' if figure else 'Table'} {number}."
+    the page's middle. The one at a column's foot is set at the text's size and opens on a
+    label of `LAYOUT_LABELS`, its title on a capital, "Fig. 1 Counts", "Table 1—Counts",
+    "Table 1 – Counts"; the one at a column's top opens on `label`, "Fig." or "Figure"."""
+    name = ("Fig." if label == "Fig." or (where == "foot" and figure) else
+            "Figure" if figure else "Table")  # fmt: skip
     title = draw(words).split()
+    if where == "foot":
+        title = [(title or ["counts"])[0].capitalize(), *title[1:]]
+        size = BODY_SIZE
+    if where == "foot":
+        label_words = {"titled": [name, f"{number}", title[0]],
+                       "em": [name, f"{number}—{title[0]}"]}[label or "titled"]
+        title = title[1:]
+    else:
+        label_words = [name, f"{number}."]
     said = ([*title, "by", "the", *renamed[2].split(), f"({renamed[0]})."] if figure
             else [*title, "by", "the", *restated[1].split(), f"({restated[0]})."])  # fmt: skip
     if where == "across":
@@ -2276,7 +2333,11 @@ def _display(draw: st.DrawFn, words: st.SearchStrategy[str], number: int, figure
                 "among", "older", "women", "and", "younger", "men", *said[len(title):]]
     measure = LAYOUT_ACROSS if where == "across" else None
     legend = [{"words": tuple(line), "size": size}
-              for line in _wrapped([label, *said], size, measure)]  # fmt: skip
+              for line in _wrapped([*label_words, *said], size, measure)]  # fmt: skip
+    if where == "foot":
+        # Set at the text's size, it stands apart from the text above it.
+        legend[0] = {**legend[0], "gap": LAYOUT_APART}
+        size = draw(st.sampled_from((7.0, 7.5, 8.0)))
     if figure:
         own = [{"words": (word,), "size": 6.5} for word in ("Weeks", "Count")]
         if where == "top":
@@ -2285,13 +2346,73 @@ def _display(draw: st.DrawFn, words: st.SearchStrategy[str], number: int, figure
         lines = [*own, {**legend[0], "gap": 14.0}, *legend[1:]]
         shown = [*legend, *own]
     else:
+        # Under a legend at the text's size, which the space around a display already sets
+        # apart from its cells.
         row = {"words": (restated[0], "12", "14"), "size": size, "cells": True,
-               "gap": LAYOUT_CELLS}
+               "gap": 0.0 if where == "foot" else LAYOUT_CELLS}
         note = {"words": ("Note.", "Counts", "by", "site."), "size": size, "gap": LAYOUT_CELLS}
         lines = [*legend, row, note]
         shown = [*legend, row, note]
     return {"lines": lines, "block": ("display", tuple(_line_text(line) for line in shown),
                                       "figure" if figure else "table")}  # fmt: skip
+
+
+def _back_matter(draw: st.DrawFn, words: st.SearchStrategy[str]) -> dict[str, Any]:
+    """A third page, as Frontiers sets one: the reference list opens at the left column's
+    foot, under its heading, after the Conclusion, and the right column's head sets the back
+    matter's statements, the list going on under them: a statement of one paragraph, "Ethics
+    statement", one of two, "Supplementary material", whose second ends with an address and
+    no stop, so that the list's next entry goes on with it where it is set. The first
+    statement's heading is a block of its own on the baseline of a line of the Conclusion,
+    a gutter from its end, as a page of two columns sets one (pdf-psych-C1). Gives the
+    columns' lines and what G6 and G14 are to read: the Conclusion, the statements, each
+    whole, before the list's heading, and the list after it, an entry to a paragraph."""
+    from proof_pdf import BODY_LEADING as LEADING
+
+    authors = draw(st.permutations(LAYOUT_AUTHORS))
+    before = draw(st.integers(1, 3))
+
+    def entry(at: int) -> list[str]:
+        title = (draw(words).split() or ["records"])[:3]
+        year = draw(st.integers(1960, 2024))
+        return [f"{authors[at]},", "K.", f"({year}).", title[0].capitalize(), *title[1:],
+                "of", "the", "cohort."]
+
+    def lines(said: list[str], gap: float = 0.0) -> list[dict]:
+        out = [{key: value for key, value in line.items() if key != "forced"}
+               for line in _paragraph_lines(said)]  # fmt: skip
+        if gap:
+            out[0] = {**out[0], "gap": gap}
+        return out
+
+    def title(said: str, gap: float = LAYOUT_APART) -> dict:
+        return {"words": tuple(said.split()), "justified": False, "raised": (), "gap": gap}
+
+    entries = [entry(at) for at in range(before + 2)]
+    # Each a line wide at least, as a statement is, and not a narrow block, a figure's words.
+    wide = ["The", "records", "of", "each", "of", "the", "sites", "were", "read"]
+    ethics = [*wide, *draw(words).split(), "and", "the", "study", "was", "approved."]
+    online = [*wide, *draw(words).split(), "and", "the", "records", "were", "kept."]
+    address = [*wide, *draw(words).split(), "and", "the", "material", "is", "online", "at",
+               "https://doi.org/10.1/x#supplementary-material"]
+    # Lines enough that the second and the fourth under the heading are full, and the
+    # first statement's heading on the second's baseline, its paragraph on the fourth's.
+    conclusion = [*_sentence(draw, words), *(LAYOUT_CONCLUSION * 3).split(),
+                  *_sentence(draw, words)]  # fmt: skip
+    left = [title("Conclusion", 0.0), *lines(conclusion), title("References"),
+            *(line for said in entries[:before] for line in lines(said, LAYOUT_ENTRY))]
+    right = [title("Ethics statement", 2 * LEADING), *lines([*wide, *ethics], LEADING),
+             title("Supplementary material"), *lines(online), *lines(address, LAYOUT_ENTRY),
+             *(line for said in entries[before:] for line in lines(said, LAYOUT_ENTRY))]
+
+    def read(said: list[str]) -> tuple[str, str]:
+        return ("paragraph", " ".join(_line_text(line) for line in lines(said)))
+
+    blocks = [("heading", "Conclusion"), read(conclusion),
+              ("heading", "Ethics statement"), read([*wide, *ethics]),
+              ("heading", "Supplementary material"), read(online), read(address),
+              ("heading", "References"), *(read(said) for said in entries)]
+    return {"left": left, "right": right, "blocks": blocks}
 
 
 #: A contributions statement and the initials it names in brackets in the paper, which

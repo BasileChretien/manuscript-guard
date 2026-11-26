@@ -111,17 +111,80 @@ worker.onerror = (event) => {
     + "changes, reload the page.");
 };
 
-// Which release this page is, at the top, where a reader sees that it moved on.
-fetch("manifest.json").then((answer) => answer.json()).then((manifest) => {
+// Which release this page is, at the top, where a reader sees that it moved on. A page a
+// journal's host built is built when the host builds it, and says which release runs it.
+const manifestRead = fetch("manifest.json").then((answer) => answer.json());
+manifestRead.then((manifest) => {
   const version = $("version");
-  version.textContent = `manuscript-guard ${manifest.manuscript_guard}, rebuilt with each new release (`;
-  const link = add(version, "a", "what changed");
+  version.textContent = manifest.host
+    ? `Run by manuscript-guard ${manifest.manuscript_guard} (`
+    : `manuscript-guard ${manifest.manuscript_guard}, rebuilt with each new release (`;
+  const link = add(version, "a", manifest.host ? "what this release changed" : "what changed");
   link.href = manifest.sources["manuscript-guard"].replace("/tree/", "/releases/tag/");
   version.append(")");
 }).catch((error) => { $("version").textContent += ` (its version could not be read: ${error.message})`; });
 
+// A page a journal's host built (web/build.py --host): its name, logo, accent and contact,
+// and the journals it offers, from manifest.json and the host's files, each set as text,
+// never as markup. Each journal's profile is fetched before the page says Ready, so that a
+// reader who turns the network off, as the page invites, still has it.
+const journals = new Map();
+// The journal a link names, ?journal=<slug>: nothing else of the address is read, and the
+// page never writes to it.
+const wanted = new URLSearchParams(location.search).get("journal") || "";
+const hostLoaded = manifestRead.then(async (manifest) => {
+  const host = manifest.host;
+  if (host) {
+    document.title = `Check your paper · ${host.name}`;
+    $("kicker").textContent = `${host.name} · paper check-up`;
+    if (host.logo) {
+      $("hostlogo").src = host.logo;
+      $("hostlogo").hidden = false;
+    }
+    if (host.style) {
+      const style = document.createElement("link");
+      style.rel = "stylesheet";
+      style.href = host.style;
+      document.head.append(style);
+    }
+    if (host.contact) {
+      $("contact").textContent = `${host.name}: ${host.contact.text} `;
+      const link = add($("contact"), "a", host.contact.shown);
+      link.href = host.contact.link;
+      $("contact").hidden = false;
+    }
+    const loaded = await Promise.all(host.journals.map(async (journal) => {
+      const answer = await fetch(journal.file);
+      if (!answer.ok) throw new Error(`${journal.name}'s rules (${journal.file}) could not be loaded`);
+      const data = await answer.arrayBuffer();
+      return { ...journal, data, text: new TextDecoder().decode(data) };
+    }));
+    const other = $("journal").querySelector('option[value="other"]');
+    for (const journal of loaded) {
+      journals.set(journal.slug, journal);
+      const option = document.createElement("option");
+      option.value = journal.slug;
+      option.textContent = journal.name;
+      other.before(option);
+    }
+    $("journalpick").hidden = !journals.size;
+  }
+  if (wanted && journals.has(wanted)) {
+    $("journal").value = wanted;
+    journalPicked();
+  } else if (wanted) {
+    // Said as text, and no longer than a slug can be.
+    $("journalnote").textContent = journals.size
+      ? `This page offers no journal "${wanted.slice(0, 64)}": choose yours from the list.`
+      : `This page offers no journal's own rules, so "${wanted.slice(0, 64)}" was not chosen: `
+        + 'type its rules under "For a journal".';
+    $("journalnote").hidden = false;
+  }
+});
+window.mgJournals = journals;  // what web/test/browser.mjs reads
+
 const booting = performance.now();
-const booted = ask("boot").then((boot) => {
+const booted = Promise.all([ask("boot"), hostLoaded]).then(([boot]) => {
   loaded();
   const seconds = ((performance.now() - booting) / 1000).toFixed(1);
   const sent = boot.loaded.reduce((sum, r) => sum + (r.sent || 0), 0);
@@ -135,12 +198,14 @@ const booted = ask("boot").then((boot) => {
     `Loaded ${boot.loaded.length} files from ${location.host}, ${megabytes(sent)} over the network ` +
     `(nothing if they were already in this browser's cache).\n` +
     listRequests("Requests to any other host while loading:", boot.loaded);
-  for (const id of ["paper", "tracked", "against", "english", "known", "noabstract", "noresults",
-    "results", "lookup", "design", "wholenumbers", "binary", "nonnegative", "mincount", "run",
-    "example"]) {
+  for (const id of ["journal", "paper", "tracked", "against", "english", "known", "noabstract",
+    "noresults", "results", "lookup", "design", "wholenumbers", "binary", "nonnegative",
+    "mincount", "run", "example"]) {
     $(id).disabled = false;
   }
-  for (const box of $("journalbox").querySelectorAll("input, select, textarea, button")) {
+  // The authors' boxes among them, wherever a journal chosen has put them.
+  for (const box of [...$("journalbox").querySelectorAll("input, select, textarea, button"),
+    ...$("blindbox").querySelectorAll("input, button, textarea")]) {
     box.disabled = false;
   }
   window.mgReady = true;
@@ -193,8 +258,9 @@ dropBox.addEventListener("drop", (event) => {
   }
   const [file] = event.dataTransfer.files;
   if (!file) return;
-  if (!/\.(docx|md)$/i.test(file.name)) {
-    say(`${file.name} is not a .docx or a .md file: drop or choose the paper itself.`);
+  if (!/\.(docx|md|zip|tar\.gz|tgz)$/i.test(file.name)) {
+    say(`${file.name} is not a .docx, a .md, or a LaTeX project's .zip or .tar.gz: drop or `
+      + "choose the paper itself.");
     return;
   }
   const chosen = new DataTransfer();
@@ -462,20 +528,43 @@ function authorsForm() {
   const set = authors.some((one) => Object.values(one).some(Boolean)) || affiliations.length;
   return set ? { authors, affiliations } : null;
 }
+// The journal the page offers that the reader chose, or a link chose (web/build.py --host),
+// in place of the form and of a profile of the reader's: its profile as the host gave it.
+const offered = () => journals.get($("journal").value) || null;
 async function journalChosen() {
-  const journalFile = $("jfile").files[0] ? await read($("jfile").files[0]) : null;
+  const chosen = offered();
+  const journalFile = !chosen && $("jfile").files[0] ? await read($("jfile").files[0]) : null;
   const authorsFile = !$("blindbox").hidden && $("authorsfile").files[0]
     ? await read($("authorsfile").files[0]) : null;
-  return { journal: journalFile ? null : journalForm(), journalFile,
+  return { journal: chosen || journalFile ? null : journalForm(), journalFile,
+    offered: chosen ? { file: chosen.file, data: chosen.data } : null,
     authors: authorsFile ? null : authorsForm(), authorsFile };
 }
 // The authors' boxes, for a blind review or a profile of the reader's own, whose review the
-// page cannot see.
+// page cannot see; for a journal the page offers, where its profile says its review is blind.
+const BLIND = ["double", "triple"];
 const blindShown = () => {
-  $("blindbox").hidden = !(["double", "triple"].includes($("jblinding").value) || $("jfile").files.length);
+  const chosen = offered();
+  $("blindbox").hidden = chosen ? !BLIND.includes(chosen.blinding)
+    : !(BLIND.includes($("jblinding").value) || $("jfile").files.length);
 };
 $("jblinding").addEventListener("change", blindShown);
 $("jfile").addEventListener("change", blindShown);
+// A journal the page offers, chosen: its rules shown as the check reads them, the form for
+// another journal put away, and the authors' boxes under the list; "Another journal" opens
+// the form. Nothing of the choice is kept between visits.
+function journalPicked() {
+  const chosen = offered();
+  $("journalrules").hidden = !chosen;
+  $("journaltext").textContent = chosen ? chosen.text : "";
+  $("journalbox").hidden = Boolean(chosen);
+  if ($("journal").value === "other") $("journalbox").open = true;
+  if (chosen) $("journalpick").after($("blindbox"));
+  else $("jblinding").closest("label").after($("blindbox"));
+  $("journalnote").hidden = true;
+  blindShown();
+}
+$("journal").addEventListener("change", journalPicked);
 // A row of boxes for one more author.
 $("addauthor").addEventListener("click", () => {
   const number = $("authorrows").children.length + 1;

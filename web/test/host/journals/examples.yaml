@@ -1,0 +1,30 @@
+schema: manuscript-guard/journal/1
+
+# INVENTED FOR web/test/check.py. There is no such journal, and these are not any real
+# journal's instructions.
+
+name: "Journal of Invented Examples"
+publisher: "Society of Invented Examples"
+source_url: "https://example.invalid/examples/instructions"
+retrieved_on: 2026-11-25
+retrieved_by: "invented for the hosted audit page's test"
+blinding: single
+
+limits:
+  abstract_words: 200
+  tables: 1
+
+structure:
+  required_sections:
+    - Introduction
+    - Methods
+    - Results
+    - Discussion
+
+required_statements:
+  - id: funding
+    pattern: '(?im)^#+\s*(funding|financial support)'
+    why: "Funding must be declared, including where there was none."
+  - id: data-availability
+    pattern: '(?im)^#+\s*data availability'
+    why: "Every research article states where its data can be had."

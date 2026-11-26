@@ -22,7 +22,9 @@
 <main>
   <header class="hero">
     <div class="hero-text">
-      <p class="kicker">manuscript-guard · paper check-up</p>
+      <!-- On a page a journal's host built (web/build.py --host), its logo and its name, which
+           app.js sets from manifest.json, as text. -->
+      <p class="kicker"><img id="hostlogo" class="hostlogo" alt="" hidden><span id="kicker">manuscript-guard · paper check-up</span></p>
       <h1>Give your paper a friendly check-up</h1>
       <p class="lead">Drop your manuscript here. In a minute or two you get the report a careful
         co-author would write: numbers that do not add up, abbreviations, spelling and
@@ -52,7 +54,7 @@
 
   <ol class="how" aria-label="How it works">
     <li><span class="num">1</span><span><strong>Drop your paper</strong>
-      A Word file (.docx) or Markdown (.md).</span></li>
+      A Word file (.docx), Markdown (.md), or a LaTeX project as a .zip or .tar.gz.</span></li>
     <li><span class="num">2</span><span><strong>We read it here</strong>
       On this computer, in this browser tab.</span></li>
     <li><span class="num">3</span><span><strong>Read your report</strong>
@@ -71,12 +73,30 @@
     </div>
 
     <form id="form">
+      <!-- Shown on a page a journal's host built with its journals (web/build.py --host,
+           app.js): the journal whose profile the paper is held to, as the host gave it. A link
+           may choose one, ?journal=<slug>, and nothing else of the address is read. -->
+      <div id="journalpick" class="journalpick" hidden>
+        <label><span class="field">Which journal are you submitting to?</span>
+          <span class="help">The paper is held to its rules: its limits, the sections and
+            statements it requires, and for a blind review each place an author is
+            named.</span>
+          <select id="journal" name="journal" disabled>
+            <option value="">None: check the paper alone</option>
+            <option value="other">Another journal: type its rules under "For a journal"</option>
+          </select></label>
+        <details id="journalrules" class="rules" hidden>
+          <summary>Its rules, as the check reads them</summary>
+          <pre id="journaltext"></pre></details>
+      </div>
+      <p id="journalnote" class="note" role="status" hidden></p>
       <label class="drop">
         <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path class="fill-card stroke-teal" d="M12 4h17l9 9v29a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path class="stroke-teal" d="M29 4v9h9M24 34V20M18 26l6-6 6 6"/></svg>
         <span class="field">The paper</span>
-        <span class="help">Drop your .docx or .md file here, or click to choose it.</span>
+        <span class="help">Drop your .docx or .md file, or your LaTeX project as a .zip or
+          .tar.gz, here, or click to choose it.</span>
         <span id="chosen" class="chosen" hidden></span>
-        <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
+        <input id="paper" name="paper" type="file" accept=".docx,.md,.zip,.gz,.tgz" required disabled></label>
       <!-- Shown for a .docx only: the copy is of a Word document (app.js). -->
       <label id="trackedbox" class="tick" hidden><input id="tracked" type="checkbox" disabled>
         <span><span class="field">Also make a copy with the corrections as tracked changes</span>
@@ -341,16 +361,16 @@
           units are written, and phrasing to look at.</li>
         <li>The reference list: each entry read, and with the box ticked, each DOI and PubMed
           ID looked up for a retraction.</li>
-        <li>With a journal's rules typed in "For a journal": its limits, the sections and
-          statements it requires, what a .docx holds besides its text, and in a blind review
-          each place an author is named.</li>
+        <li>With a journal's rules, one this page offers or those typed in "For a journal": its
+          limits, the sections and statements it requires, what a .docx holds besides its
+          text, and in a blind review each place an author is named.</li>
       </ul>
     </details>
     <details>
       <summary>What does it not check?</summary>
       <ul>
-        <li>PDFs, LaTeX projects, figures and reproducibility packages. The command line reads
-          them, with the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
+        <li>PDFs, figures and reproducibility packages. The command line reads them, with
+          the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
         <li>Whether a number is right. A number found in the outputs may be there by chance,
           and the report says how often that would happen.</li>
       </ul>
@@ -372,6 +392,9 @@
   </section>
 
   <footer>
+    <!-- On a page a journal's host built, its contact line: its words and one link, set as
+         text by app.js. The page sends nothing to it. -->
+    <p id="contact" class="contact" hidden></p>
     <p id="versions"></p>
     <p>Licences: manuscript-guard, <a href="licences/manuscript-guard-MIT.txt">MIT</a>;
       pandoc, <a href="licences/pandoc-GPL-2.0.txt">GPL-2.0-or-later</a>

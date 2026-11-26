@@ -116,6 +116,17 @@ details.options summary { font-weight: 600; }
 fieldset.statements { border: 0; padding: 0; margin: 0; display: grid; gap: .45rem; }
 fieldset.statements legend { padding: 0; margin-bottom: .2rem; }
 .statement { display: grid; grid-template-columns: minmax(11rem, auto) 1fr; gap: .3rem .8rem; align-items: center; }
+/* A page a journal's host built: its logo beside its name, the journals it offers above the
+   paper's box, the rules of the one chosen, and a link that named no journal it offers. The
+   host's accent comes from host/host.css (web/build.py), which sets --teal alone. */
+.kicker { display: flex; align-items: center; gap: .5rem; }
+.hostlogo { height: 2rem; width: auto; max-width: 10rem; }
+.hostlogo[hidden], .journalpick[hidden], .note[hidden], details.rules[hidden],
+.contact[hidden], details.options[hidden] { display: none; }
+.journalpick { display: grid; gap: .5rem; }
+details.rules pre { max-height: 20rem; overflow: auto; margin: .5rem 0 0; }
+.note { margin: 0; padding: .5rem .8rem; border-radius: 10px; background: var(--brass-soft); }
+.contact { color: var(--ink); }
 .authorrows { display: grid; gap: .6rem; }
 .author { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; }
 summary { cursor: pointer; }

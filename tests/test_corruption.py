@@ -13976,6 +13976,25 @@ def test_a_key_two_scripts_publish_is_defined_twice_unless_one_software_version(
         assert _second_fragment(project, values) == [f"results key {key!r} is defined twice"]
 
 
+def test_a_software_record_two_scripts_write_otherwise_is_defined_twice(project: Path) -> None:
+    """Round 1 of #821: one record is the same in every field, or the second's other fields
+    were dropped without a word. A record of the same version written otherwise is still
+    `duplicate-key`, and the message names how each fragment wrote it, not two versions."""
+    first = json.loads((project / "results" / "01_disproportionality.json")
+                       .read_text(encoding="utf-8"))["values"]  # fmt: skip
+    python = first["software.python"]
+    shown = python["display"]
+    said = _second_fragment(project, {"software.python": {**python, "display": f"Python {shown}"}})
+    assert said == [f"'software.python' is recorded as {shown!r} in 01_disproportionality.json "
+                    f"and 'Python {shown}' in 02_trials.json, differing in display"]
+    for field, other in (("quoted", False), ("unit", "release"), ("label", False),
+                         ("same_as", "software.r"), ("digits", 1)):  # fmt: skip
+        said = _second_fragment(project, {"software.python": {**python, field: other}})
+        assert said == [f"'software.python' is recorded as {shown!r} in "
+                        f"01_disproportionality.json and {shown!r} in 02_trials.json, "
+                        f"differing in {field}"], field
+
+
 # ------------------------------------------------- the plan's Software section
 
 

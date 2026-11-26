@@ -6,9 +6,10 @@ freshness gate say *which* script is stale rather than merely that something is.
 
 A key defined by two fragments is an error. Last-one-wins would make the value of a number
 depend on filesystem ordering. One record is not: the version of a piece of software that
-two scripts each record with `software()`, the same in both, is the same fact twice, and
-the first fragment keeps it (`_same_software`). Two versions of it are still an error,
-since the Methods can name only one.
+two scripts each record with `software()`, the same in every field, is the same fact twice,
+and the first fragment keeps it (`_same_software`), the others listed in `Results.shared`.
+Two versions of it are still an error, since the Methods can name only one, and so is one
+version written otherwise in any field.
 """
 
 from __future__ import annotations
@@ -142,6 +143,10 @@ class Results:
     flows: dict[str, dict] = field(default_factory=dict)
     # How each family of p values is corrected for multiple comparisons, by family.
     corrections: dict[str, dict] = field(default_factory=dict)
+    # A software record more than one fragment writes the same, by key: the fragments after
+    # the first, which keeps it (`_same_software`). A package that holds one of them and not
+    # the first shows the version from it (`deposit.companion.held_first`).
+    shared: dict[str, tuple[Path, ...]] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -163,32 +168,36 @@ def _is_software(key: str, role: object) -> bool:
     return role == _SOFTWARE and key.startswith(f"{_SOFTWARE}.")
 
 
-def _same_software(kept: Value, key: str, spec: dict) -> bool:
-    """Whether a second fragment's `spec` for `key` records the version `kept` holds: a
-    software record in both, of the same value and display. Every script that ran R may
-    say which R it ran; one version is one record."""
-    return (
-        _is_software(key, kept.role)
-        and _is_software(key, spec.get("role"))
-        and spec.get("value") == kept.value
-        and spec.get("display", spec.get("value")) == kept.display
-    )
+def _same_software(key: str, first: dict, spec: dict) -> bool:
+    """Whether a second fragment's `spec` for `key` is the record the first fragment wrote,
+    `first`: a software record in both, the same in every field, so that nothing of the
+    second is dropped unsaid (round 1 of #821). Every script that ran R may say which R it
+    ran; one version is one record."""
+    return (_is_software(key, first.get("role")) and _is_software(key, spec.get("role"))
+            and spec == first)  # fmt: skip
 
 
-def _defined_twice(key: str, spec: dict, kept: Value, path: Path) -> Finding:
-    """`duplicate-key` for a second fragment's `key`: for software, with the version each
-    fragment recorded, since the Methods can name only one."""
-    if _is_software(key, kept.role) and _is_software(key, spec.get("role")):
-        return Finding(
-            gate="G0",
-            code="duplicate-key",
-            message=f"{key!r} is {kept.display} in {kept.source.name} and "
-            f"{spec.get('display', spec.get('value'))} in {path.name}: two versions of one "
-            f"piece of software",
-            path=path,
-            context=f"also recorded in {kept.source.name}",
-            hint="run both scripts with one version, or record it from one script only",
-        )
+def _shown(spec: dict) -> str:
+    """A record's display, as a message names it: its value where it gives none."""
+    return str(spec.get("display", spec.get("value")))
+
+
+def _defined_twice(key: str, spec: dict, first: dict, kept: Value, path: Path) -> Finding:
+    """`duplicate-key` for a second fragment's `key`, the first fragment having written
+    `first` and kept `kept`: for software, with how each fragment recorded it, and as two
+    versions only where the values differ, since the Methods can name only one."""
+    if _is_software(key, first.get("role")) and _is_software(key, spec.get("role")):
+        if spec.get("value") != first.get("value"):
+            said = (f"{key!r} is {_shown(first)} in {kept.source.name} and {_shown(spec)} in "
+                    f"{path.name}: two versions of one piece of software")  # fmt: skip
+            hint = "run both scripts with one version, or record it from one script only"
+        else:
+            fields = sorted(name for name in {*first, *spec} if first.get(name) != spec.get(name))
+            said = (f"{key!r} is recorded as {_shown(first)!r} in {kept.source.name} and "
+                    f"{_shown(spec)!r} in {path.name}, differing in {', '.join(fields)}")
+            hint = "record it with software() in both scripts, or from one script only"
+        return Finding(gate="G0", code="duplicate-key", message=said, path=path,
+                       context=f"also recorded in {kept.source.name}", hint=hint)  # fmt: skip
     return Finding(
         gate="G0",
         code="duplicate-key",
@@ -231,6 +240,10 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     reports: list[Report] = []
     values: dict[str, Value] = {}
     owner: dict[str, Path] = {}
+    # Each key's record as the fragment that keeps it wrote it, and the fragments after it
+    # that write the same software record (`_same_software`).
+    written: dict[str, dict] = {}
+    shared: dict[str, list[Path]] = {}
     fragments: list[Fragment] = []
     tables: dict[str, Table] = {}
     code_lists: dict[str, list] = {}
@@ -272,9 +285,11 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
 
         for key, spec in document["values"].items():
             if key in owner:
-                if _same_software(values[key], key, spec):
+                if _same_software(key, written[key], spec):
+                    shared.setdefault(key, []).append(path)
                     continue
-                reports.append(Report((_defined_twice(key, spec, values[key], path),)))
+                reports.append(Report((_defined_twice(key, spec, written[key], values[key],
+                                                      path),)))  # fmt: skip
                 continue
             try:
                 display = derive_display(
@@ -286,6 +301,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 )
                 continue
             owner[key] = path
+            written[key] = spec
             values[key] = Value(
                 key=key,
                 value=spec["value"],
@@ -361,6 +377,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     results = Results(
         values, tuple(fragments), tables, code_lists, variables, models, steps,
         tuple(relations), flows, corrections,
+        {key: tuple(paths) for key, paths in shared.items()},
     )
     return results, merged
 

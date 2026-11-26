@@ -538,6 +538,33 @@ def test_a_hand_edited_render_record_is_no_match_and_no_crash(project: Path) -> 
     assert "data:image/svg+xml" not in figure and "Not shown" in figure
 
 
+def test_a_software_record_two_fragments_share_is_shown_from_one_the_package_holds(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #821: a version two scripts record is kept once, by the first fragment as
+    `check` reads them. Where the package withholds that one and holds the other, the page
+    shows the version from the one it holds, and prints `[withheld]` only where it holds
+    neither."""
+    from types import SimpleNamespace
+
+    from manuscript_guard.contracts.results import Results
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.deposit.companion import held_first
+
+    first, second = tmp_path / "results" / "01_cohort.json", tmp_path / "results" / "05_rct.json"
+    value = Value(key="software.r", value="4.6.1", display="4.6.1", origin="results",
+                  source=first, label=True, role="software")  # fmt: skip
+    results = Results({"software.r": value}, (), shared={"software.r": (second,)})
+    project = SimpleNamespace(root=tmp_path)
+
+    def source(held: set[str]) -> Path | None:
+        return held_first(project, results, frozenset(held)).values["software.r"].source
+
+    assert source({"results/05_rct.json"}) == second
+    assert source({"results/01_cohort.json", "results/05_rct.json"}) == first
+    assert source(set()) == first
+
+
 def test_a_figure_a_record_ties_to_a_withheld_file_is_not_shown(project: Path) -> None:
     from manuscript_guard.deposit.companion import companion_html
 

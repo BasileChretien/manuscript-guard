@@ -1392,6 +1392,8 @@ def test_one_version_two_scripts_record_is_one_record(
     software = results.values["software.python"]
     assert software.display == platform.python_version()
     assert software.source.name == "other.json", "the first fragment, as `check` reads them"
+    # The other fragments that declare it, for a package that holds one and not the first.
+    assert [path.name for path in results.shared["software.python"]] == ["run.json"]
 
 
 def test_two_versions_two_scripts_record_are_a_key_defined_twice(

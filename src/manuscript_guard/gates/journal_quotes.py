@@ -33,12 +33,18 @@ A profile a year old is read against the page again (`reread`, `journal --reread
 with `--page` for a block's page of its own, each read on its own):
 what changed between the stored page and the new one, and which rules' quotes are no longer
 on it, which are the rules to read again.
+
+A page the journal's site keeps from a script, behind a bot check, is saved by the author
+from their own browser, as a web page or printed to PDF: `journal --store <file>` stores its
+text where the profile reads its page (`store_page`, `page_text`), and `--reread` reads the
+same files.
 """
 
 from __future__ import annotations
 
 import difflib
 import hashlib
+import html
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -563,6 +569,131 @@ def _blocks_invalid(document: dict) -> list[str]:
     return [f"{'/'.join(str(p) for p in error.absolute_path)}: {error.message}"
             for error in validator.iter_errors(document)
             if error.absolute_path and error.absolute_path[0] in PAGED_BLOCKS]  # fmt: skip
+
+
+#: What a browser lays out as a block of its own: each starts a line of the stored text, so
+#: that a page saved with no line breaks in it is not stored as one line.
+_BLOCK = re.compile(
+    r"</?(?:address|article|aside|blockquote|br|caption|dd|div|dl|dt|figcaption|figure|footer"
+    r"|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|td|th|tr|ul)\b[^>]*>",
+    re.IGNORECASE,
+)
+_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+class PageRefused(Exception):
+    """A file `store_page` does not store: no page's text is in it, or another is stored."""
+
+
+def page_text(path: Path) -> str:
+    """The text of a journal's page as the profile stores it, from the file the author has:
+    a page saved from a browser as a web page (.html, .htm, .xhtml) or printed to PDF, or
+    the text itself.
+
+    A web page loses what it does not show: its scripts, its styles, its comments and its
+    tags, a block of the page starting a line (`_BLOCK`), and its entities are read as the
+    characters they are. A PDF is read in reading order (`literature.sources._read_pdf`),
+    one column after the other. Each line of either has its white space folded to one space,
+    and runs of empty lines are one. Text is kept as it is written, with LF line endings.
+
+    Raises UnreadableSource for a file there is no reader for, or a PDF nothing here reads,
+    and UnicodeDecodeError for text that is not UTF-8."""
+    from manuscript_guard.literature.sources import (
+        _SCRIPT,
+        _TAG,
+        HTML_SUFFIXES,
+        PDF_SUFFIXES,
+        TEXT_SUFFIXES,
+        UnreadableSource,
+        _read_pdf,
+    )
+
+    suffix = path.suffix.lower()
+    if suffix in TEXT_SUFFIXES or not suffix:
+        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    if suffix in HTML_SUFFIXES:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        raw = _BLOCK.sub("\n", _COMMENT.sub(" ", _SCRIPT.sub(" ", raw)))
+        text = html.unescape(_TAG.sub(" ", raw))
+    elif suffix in PDF_SUFFIXES:
+        text = _read_pdf(path, layout=False)
+    else:
+        raise UnreadableSource(
+            f"{path.name}: no reader for {suffix}; save the page as a web page (HTML only) "
+            "or print it to PDF"
+        )
+    lines: list[str] = []
+    for line in (" ".join(line.split()) for line in text.splitlines()):
+        if line or (lines and lines[-1]):
+            lines.append(line)
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+@dataclass(frozen=True)
+class Stored:
+    """A page `store_page` stored, or found stored already."""
+
+    path: Path
+    digest: str
+    lines: int
+    #: The blocks whose page of their own it is, () for the instructions page.
+    blocks: tuple[str, ...]
+    #: False where the same text was stored already, and nothing was written.
+    written: bool
+
+
+def store_page(project: Project, saved: Path, slug: str, page: str | None = None, *,
+               replace: bool = False) -> Stored:  # fmt: skip
+    """Write the text of `saved` (`page_text`) where the profile of `slug` reads its page:
+    its `page_file`, or else `profiles/journals/sources/<slug>.txt`; with `page`, the page
+    of its own a block names, as `reread` takes it. A page already stored is replaced only
+    with `replace`, the same text being no change.
+
+    For a page the journal's site keeps from a script behind a bot check: the author saves
+    it from their own browser, and this stores it. Raises PageRefused where the file holds
+    no text, or another page is stored and `replace` is not given; LookupError where `page`
+    is no page of the profile's; and what `page_text` raises."""
+    from manuscript_guard.gates.journal import profile_path
+
+    named = profile_path(project, slug)
+    try:
+        document = read_structured(named) if named else {}
+    except ContractError:
+        document = {}
+    document = document if isinstance(document, dict) else {}
+    pages = pages_of(project, slug, document)
+    chosen = pages[0] if page is None else next(
+        (one for one in pages if _same(one.path, project.root / page)), None)  # fmt: skip
+    if chosen is None:
+        raise LookupError(f"{page} is no page of the profile; its pages: "
+                          f"{', '.join(_where(one.path, project) for one in pages)}")  # fmt: skip
+    text = page_text(saved)
+    if not any(character.isalpha() for character in text):
+        raise PageRefused(
+            f"{saved.name} holds no text: it is not the journal's page. A page saved while a "
+            "bot check stood in its place is the check's page; open the page in a browser, "
+            "wait until it shows the instructions, and save it then. A PDF of scanned pages "
+            "has no text to read."
+        )
+    blocks = () if chosen.instructions else chosen.blocks
+    digest = page_digest(text)
+    try:
+        old = chosen.path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        old = None
+    if old is not None and page_digest(old) == digest:
+        return Stored(chosen.path, digest, text.count("\n"), blocks, False)
+    if chosen.path.exists() and not replace:
+        raise PageRefused(
+            f"another page is stored at {_where(chosen.path, project)}, and every quote of the "
+            f"profile is held to it. Read the two against each other first, with `manuscript-"
+            f"guard journal --reread \"{saved}\"`, then store this one with --replace"
+        )
+    chosen.path.parent.mkdir(parents=True, exist_ok=True)
+    chosen.path.write_bytes(text.encode("utf-8"))
+    return Stored(chosen.path, digest, text.count("\n"), blocks, True)
 
 
 def _same(one: Path, other: Path) -> bool:

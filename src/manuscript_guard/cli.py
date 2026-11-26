@@ -3022,12 +3022,18 @@ def cmd_compare(args: argparse.Namespace) -> int:
 def _reread(project, new: Path, page: str | None = None) -> int:
     """`journal --reread`: the stored page against the page read again, and the rules whose
     quotes it no longer holds. Writes nothing: adopting the page is the author's."""
-    from manuscript_guard.gates.journal_quotes import DIFF_LINES, reread
+    from manuscript_guard.gates.journal_quotes import DIFF_LINES, page_text, reread
+    from manuscript_guard.literature.sources import UnreadableSource
 
     try:
-        text = new.read_text(encoding="utf-8")
+        # A page saved from a browser, as a web page or printed to PDF, is read as `--store`
+        # stores it, so that the two compare as one text.
+        text = page_text(new)
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
+        return 2
+    except UnreadableSource as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     try:
         found = reread(project, text, page)
@@ -3060,11 +3066,52 @@ def _reread(project, new: Path, page: str | None = None) -> int:
     inside = stored.is_relative_to(project.root)
     where = stored.relative_to(project.root).as_posix() if inside else str(stored)
     print(
-        f"Read the difference for rules the page added, too. To adopt the page, save it over "
-        f"{where}, then record page_sha256: {found.digest}{dated} in the "
+        f"Read the difference for rules the page added, too. To adopt the page, store it over "
+        f"{where} with `journal --store {new} --replace"
+        + (f" --page {where}" if found.blocks else "")
+        + f"`, then record page_sha256: {found.digest}{dated} in the "
         + (f"profile's {', '.join(found.blocks)}." if found.blocks else "profile.")
     )
     return 1 if gone else 0
+
+
+def _store(project, args: argparse.Namespace) -> int:
+    """`journal --store`: the text of a page the author saved, where the profile reads its
+    page, and the digest to record of it. The journal is `--template`'s where it is given,
+    the profile just started, and otherwise paper.yaml's target journal."""
+    from manuscript_guard.gates.journal_quotes import PageRefused, store_page
+    from manuscript_guard.literature.sources import UnreadableSource
+
+    slug = args.template or project.target_journal
+    if not slug:
+        print("manuscript-guard: --store needs the journal whose page it is: give --template "
+              "<slug> to start its profile with the page, or set target_journal in paper.yaml",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    try:
+        stored = store_page(project, args.store, slug, args.page, replace=args.replace)
+    except (PageRefused, LookupError, UnreadableSource) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"manuscript-guard: {args.store} cannot be read: {exc}", file=sys.stderr)
+        return 2
+    inside = stored.path.is_relative_to(project.root)
+    where = stored.path.relative_to(project.root).as_posix() if inside else str(stored.path)
+    whose = f"profile's {', '.join(stored.blocks)}" if stored.blocks else "profile"
+    if not stored.written:
+        print(f"{where} already holds this page, unchanged; its page_sha256 is "
+              f"{stored.digest}")  # fmt: skip
+        return 0
+    print(f"stored {where}: the text of {args.store.name}, {stored.lines} lines")
+    print(
+        "\nRead it before filling the profile from it: it is the page every rule's quote is "
+        f"held to. Then record in the {whose}:\n"
+        f"  page_sha256: {stored.digest}\n"
+        f"  retrieved_on: {date.today().isoformat()}\n"
+        "  source_url: the address of the page you saved"
+    )
+    return 0
 
 
 def cmd_journal(args: argparse.Namespace) -> int:
@@ -3077,12 +3124,22 @@ def cmd_journal(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
 
-    if args.page and not args.reread:
-        print("manuscript-guard: --page names the page --reread reads again; give it with "
-              "--reread <file>", file=sys.stderr)  # fmt: skip
+    if args.page and not (args.reread or args.store):
+        print("manuscript-guard: --page names the page --reread reads again or --store "
+              "stores; give it with --reread <file> or --store <file>",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    if args.replace and not args.store:
+        print("manuscript-guard: --replace goes with --store <file>", file=sys.stderr)
+        return 2
+    if args.reread and args.store:
+        print("manuscript-guard: --reread reads a page against the stored one and --store "
+              "stores it; give one at a time", file=sys.stderr)  # fmt: skip
         return 2
     if args.reread:
         return _reread(project, args.reread, args.page)
+    if args.store and not args.template:
+        return _store(project, args)
 
     if args.template:
         source = SHIPPED_JOURNALS / "TEMPLATE.yaml"
@@ -3093,6 +3150,8 @@ def cmd_journal(args: argparse.Namespace) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         print(f"created {target}")
+        if args.store and _store(project, args):
+            return 2
         print(
             "\nFill it by reading the journal's own instructions page — the comments say what\n"
             "each field means and what to do when the page is silent. The answer to that last\n"
@@ -7471,7 +7530,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     journal = sub.add_parser(
         "journal",
-        help="list journal profiles, or start one from the annotated template",
+        help="list journal profiles, start one from the annotated template, or store or "
+        "read again the journal's page",
         description="No journal profile ships with the toolkit, deliberately: author "
         "guidelines change without announcement, so a rule compiled in would eventually be "
         "wrong and would be wrong silently. Every profile is read from the journal's own "
@@ -7491,11 +7551,26 @@ def build_parser() -> argparse.ArgumentParser:
         "and which rules quote words it no longer has; writes nothing",
     )
     journal.add_argument(
+        "--store",
+        metavar="FILE",
+        type=Path,
+        help="the journal's page as you saved it from your browser, a web page (.html, HTML "
+        "only) or printed to PDF, or its text: store its text where the profile reads its "
+        "page, and print the page_sha256 to record; for a page behind a bot check. The "
+        "journal is --template's, given with it, or else paper.yaml's target_journal",
+    )
+    journal.add_argument(
+        "--replace",
+        action="store_true",
+        help="with --store: replace another page stored there, once --reread has shown you "
+        "the difference",
+    )
+    journal.add_argument(
         "--page",
         metavar="FILE",
-        help="with --reread: the page of its own a block of the profile names (its page_file, "
-        "as the profile writes it) that FILE is read again in place of; without it, the "
-        "instructions page",
+        help="with --reread or --store: the page of its own a block of the profile names (its "
+        "page_file, as the profile writes it) that FILE is read again in place of, or stored "
+        "as; without it, the instructions page",
     )
     journal.set_defaults(func=cmd_journal)
 

@@ -277,7 +277,7 @@ def _staged_paragraphs(paper: Path, pdf) -> _Staged:
 #: A short form broken at a line's end: its first part, ending on a capital or a digit,
 #: and the hyphen; and its rest at the next line's start, a capital or a digit first.
 _BROKEN_FORM = re.compile(r"(\S*[A-Z0-9])-$")
-_FORM_REST = re.compile(r"[A-Z0-9][A-Za-z0-9]*(?=\W|$)")
+_FORM_REST = re.compile(r"[A-Z0-9][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*(?=[^\w-]|$)")
 
 
 def _joined(texts: list[str], cited: list[str], paragraphs: tuple[int, ...],

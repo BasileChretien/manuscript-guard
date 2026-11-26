@@ -2090,8 +2090,9 @@ LAYOUT_FLOATS = ("foot", "across", "top")
 LAYOUT_ACROSS = 484.0
 LAYOUT_DRAWING = 220.0
 #: The space above a table's row of cells and above its note, which sets each apart from
-#: its legend as a table's rules do.
+#: its legend as a table's rules do; and above the paragraph after a remnant of one line.
 LAYOUT_CELLS = 8.0
+LAYOUT_REMNANT = 10.0
 
 
 def _wrapped(words: list[str], size: float, measure: float | None = None) -> list[list[str]]:
@@ -2163,9 +2164,11 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
     which page the one across is drawn. A
     paragraph that crosses a break is broken inside a definition, its long form at the end
     of the column's last line and the short form in brackets opening the next column's
-    text, "(TS) was read", which no lower-case letter opens. The Methods define two forms
-    the legends speak of: the tables' legends restate one, the figure's gives the other
-    another meaning. A sentence "Studies have shown" cites by a superscript after a word.
+    text, "(TS) was read", which no lower-case letter opens; one of the three, which drawn,
+    ends there, its rest a remnant of one short line, "(TS) held.", that the column sets as
+    a block of its own. The Methods define two forms the legends speak of: the tables'
+    legends restate one, the figure's gives the other another meaning. A sentence
+    "Studies have shown" cites by a superscript after a word.
 
     Gives the pages (each `(across, left, right)`, each line a dict of `proof_pdf.Set`'s
     fields), the head, and `blocks`: what G6 and G14 are to read, in order, each
@@ -2177,9 +2180,12 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
     # The column's lines as they are set: ("lines", lines) or ("break", the block broken).
     stream: list[tuple] = []
 
-    def paragraph(text: list[str], raised: dict[int, str] | None = None) -> None:
+    def paragraph(text: list[str], raised: dict[int, str] | None = None,
+                  gap: float = 0.0) -> None:
         plain = [word for word in text if word != LINE_END]
         lines = _paragraph_lines(text, {at: said for at, said in (raised or {}).items()})
+        if gap:
+            lines[0] = {**lines[0], "gap": gap}
         blocks.append(("paragraph", " ".join(_line_text(line) for line in lines)))
         if LINE_END not in text:
             stream.append(("lines", [{key: value for key, value in line.items()
@@ -2202,13 +2208,17 @@ def pdf_layouts(draw: st.DrawFn) -> dict[str, Any]:
                "Studies", "have", "shown", "that", shown, "rose", "among", "older", "women.",
                *_sentence(draw, words)]  # fmt: skip
     paragraph(methods, {methods.index("rose"): "2-4"})
+    # One of the three ends just after its break, a remnant of one short line at the next
+    # column's top, which a little space sets apart from the paragraph after it.
+    remnant = draw(st.sampled_from((0, 1, 2)))
     for number, (short, long, _other) in enumerate(crossing):
         if number == 1:
             heading("Results")
-        paragraph([*_sentence(draw, words), "Then", "the", *long.split(), LINE_END,
-                   f"({short})", "was", "read", "in", "each", "site.",
-                   *_sentence(draw, words)])  # fmt: skip
-        paragraph([*_sentence(draw, words), "The", short, "rose.", *_sentence(draw, words)])
+        rest = ([f"({short})", "held."] if number == remnant else
+                [f"({short})", "was", "read", "in", "each", "site.", *_sentence(draw, words)])
+        paragraph([*_sentence(draw, words), "Then", "the", *long.split(), LINE_END, *rest])
+        paragraph([*_sentence(draw, words), "The", short, "rose.", *_sentence(draw, words)],
+                  gap=LAYOUT_REMNANT if number == remnant else 0.0)
     heading("Discussion")
     paragraph([*_sentence(draw, words), "The", restated[0], "and", "the", renamed[0], "held."])
     # The page across whose top a table is set; the break at whose column's foot a display

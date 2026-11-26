@@ -3899,6 +3899,12 @@ def _nothing_a_page_repeats_is_taken_out(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(pdf_layout, "_margin", lambda page: set())
 
 
+def _a_one_line_remnant_is_a_paragraph_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout._Flow, "remnant", lambda self, page, block: False)
+
+
 def _a_superscript_is_left_bare(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -26329,6 +26335,10 @@ BROKEN = {
     ),
     "nothing a PDF's pages repeat is taken out": (
         _nothing_a_page_repeats_is_taken_out,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's one-line remnant of a paragraph is a paragraph of its own": (
+        _a_one_line_remnant_is_a_paragraph_of_its_own,
         test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
     ),
     "a PDF's superscript citation is left a bare number": (

@@ -3672,6 +3672,220 @@ def test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs(tmp_path
     assert printed == list(range(61, 61 + len(texts))), printed
 
 
+def _pieces_run(tmp_path: Path, pages: list) -> tuple:
+    """G6 and G14 on a PDF of `pages` of `proof_pdf.Piece`s, its lines rebuilt, and the
+    Markdown they read; skipped where the pdftotext found gives no word's place."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import knows_word_places, pdf
+
+    from manuscript_guard.auditing import gates
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf(pages))
+    pdf_module._REBUILT.clear()
+    run = gates.run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    return run, gates._staged_pdf(paper, True).files["main.md"]
+
+
+def _double_spaced(texts: list[str], first: int = 61) -> list:
+    """A page set double-spaced, each line numbered in the left margin."""
+    from proof_pdf import Piece
+
+    pieces = []
+    for number, text in enumerate(texts, first):
+        y = 760.0 - 27.0 * (number - first)
+        pieces += [Piece(34.0, y, str(number), size=9.0), Piece(72.0, y, text, size=11.0)]
+    return pieces
+
+
+def _column(texts: list[str], x: float, top: float, gaps: dict[int, float] | None = None,
+            justified: bool = True) -> list:
+    """A column of lines from `top` down, each justified to a column's width but a short
+    one, `gaps` points more above the lines they name."""
+    from proof_pdf import BODY_LEADING, COLUMN, Set, _set, width
+
+    pieces, y = [], top
+    for at, text in enumerate(texts):
+        y -= (gaps or {}).get(at, 0.0)
+        full = justified and width(text, 9.0) > 0.8 * COLUMN
+        pieces += _set(Set(tuple(text.split()), justified=full), x, y)
+        y -= BODY_LEADING
+    return pieces
+
+
+def test_a_double_spaced_paragraph_s_short_last_line_is_its_own(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: a double-spaced manuscript sets each line in a block of
+    its own, and a paragraph's last line short and narrow, "(SIDM) held.", was held as a
+    narrow fragment and given a paragraph of its own while the paragraph before it was left
+    open: the long form and its short form stood in two paragraphs, a blank line inside the
+    sentence. The line goes on with the paragraph its line before left open."""
+    texts = ["Methods", "We read the records of each of the schools of the state and",
+             "the school-based intervention decision-making", "(SIDM) held.",
+             "We kept the records of each of the schools and their staff, and the SIDM held.",
+             "Results", "The records were kept in each of the sites, and the SIDM held there."]
+    run, staged = _pieces_run(tmp_path, [_double_spaced(texts)])
+    assert [f for f in run.language if "SIDM" in f.message] == [], run.language
+    assert "decision-making\n(SIDM) held." in staged, staged
+
+
+#: A line of words that says nothing, a column wide once justified.
+_FULL = "and the records of the cohort were kept in each site"
+
+
+def test_a_one_line_remnant_at_a_column_s_top_goes_on_with_its_paragraph(tmp_path: Path) -> None:
+    """The same in two columns: a paragraph's last line set at the next column's top as a
+    block of its own, "(TS) held.", the column's next paragraph a little below it."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Methods", *[_FULL] * 4, "and the records were read, then the trial stage"]
+    right = ["(TS) held.", "The TS rose in each of the sites.", *_UNSAID]
+    pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {1: 14.0})
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "TS" in f.message.split()[:2]] == [], run.language
+    assert "trial stage\n(TS) held." in staged, staged
+
+
+def test_a_right_column_line_on_a_left_column_line_s_baseline_keeps_the_columns(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of the review of #802, pdf-psych-C1 and pdf-pubh-C2 of the real-paper corpus:
+    a heading of the right column set as a block of one line on the baseline of a line of
+    the left column, a gutter apart, was made one line with it; the left column's block then
+    reached across the page's middle, was read as a band of its own, and the left column's
+    blocks below it were read after the whole right column. A definition there was used
+    before it in the right column, "TLE is used here, and defined later". Two lines the
+    page's middle parts are two columns' lines."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Methods", *[_FULL] * 6, "Results", "The traumatic life events (TLE) were read.",
+            *[_FULL] * 3]
+    right = [_FULL, _FULL, "The TLE rose in each of the sites.", _FULL, "Analyses",
+             *[_FULL] * 3]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0})
+              + _column(right, RIGHT, TOP, {4: 11.0, 5: 11.0}))  # fmt: skip
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "TLE" in f.message.split()[:2]] == [], run.language
+    assert staged.index("traumatic life events") < staged.index("TLE rose"), staged
+
+
+def _bbox_markup(lines: list[list[tuple[str, float]]], height: float = 12.1) -> str:
+    """Poppler's `-bbox-layout` markup of one page whose lines hold these words, each
+    `(word, gap before it)`, set `height` points high, as a real paper's lines are."""
+    from proof_pdf import width
+
+    out = ['<doc><page width="595.0" height="842.0"><flow><block xMin="72.0" yMin="100.0" '
+           'xMax="540.0" yMax="400.0">']
+    for at, words in enumerate(lines):
+        y0, x, said = 100.0 + 15.0 * at, 72.0, []
+        for word, gap in words:
+            x += gap
+            x1 = x + width(word, 10.0)
+            said.append(f'<word xMin="{x:.3f}" yMin="{y0:.3f}" xMax="{x1:.3f}" '
+                        f'yMax="{y0 + height:.3f}">{word}</word>')
+            x = x1
+        out.append(f'<line xMin="72.0" yMin="{y0:.3f}" xMax="{x:.3f}" '
+                   f'yMax="{y0 + height:.3f}">{"".join(said)}</line>')
+    return "".join([*out, "</block></flow></page></doc>"])
+
+
+def test_a_thin_space_a_pdf_sets_stays_a_space() -> None:
+    """Round 1 of the review of #802, pdf-multi-C1 and pdf-psych-C1 of the real-paper
+    corpus: poppler gives the words a thin space parts, "N", "=" and "168", "18" and
+    "years", a gap of about 1 point on lines 12.1 points high, and the rebuild read that as
+    no space, so the notation was said to be wrongly spaced. Only words set with no gap
+    between them are one: a word kerned in two, "T" then "U1_effect" 0.04 points on, still
+    is (`test_a_word_a_pdf_kerns_in_two_is_one_word`). Read from poppler's markup as it gives
+    those lines, so that it needs no poppler."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from manuscript_guard.auditing.pdf_layout import rebuilt
+
+    space, thin = 2.5, 1.03
+    lines = [[("Of", 0.0), ("the", space), ("cohort", space), ("(N", space), ("=", thin),
+              ("168),", thin), ("each", space), ("was", space), ("at", space),
+              ("least", space), ("18", space), ("years", thin), ("old.", space)],
+             [("In", 0.0), ("U1", space), ("(T", space), ("U1_effect", 0.04), ("=", space),
+              (".06).", space)]]
+    texts = [row.text for row in rebuilt(_bbox_markup(lines)).rows]
+    assert texts == ["Of the cohort (N = 168), each was at least 18 years old.",
+                     "In U1 (TU1_effect = .06)."], texts
+
+
+def test_a_hyphenated_short_form_a_pdf_breaks_at_a_line_s_end_is_one(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: "SARS-" at a line's end and "CoV-2) infection" on the
+    next were joined as "SARS-CoV" and "-2) infection". The rest of a broken short form is
+    taken with its own hyphens."""
+    left = ["Methods", *_UNSAID, "The severe acute respiratory syndrome",
+            "coronavirus 2 (SARS-", "CoV-2) infection was read.", "The SARS-CoV-2 held."]
+    _run, staged = _pieces_run(tmp_path, [_column(left, 56.0, 780.0, justified=False)])
+    assert "coronavirus 2 (SARS-CoV-2\n) infection was read." in staged, staged
+
+
+def test_a_paragraph_opening_on_a_display_s_name_is_the_text_s(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: a paragraph of the text that opens on a display's name
+    and a capital or a bracket, "Figure 2 (A) shows", set as a block of its own as a
+    double-spaced manuscript sets each line, was read as a legend, and its redefinition of a
+    form the text defines as the display's, asked rather than warned of. A label followed by
+    no stop is a legend's only where its block is set smaller than the text."""
+    texts = ["Results", "We read the low dose (LD) of each of the schools of the state.",
+             "Figure 2 (A) shows the light dose (LD) for each of the schools.",
+             "We kept the records of each of the schools, and the LD held.",
+             "Discussion", "The records were kept in each of the sites, and the LD held there."]
+    run, _staged = _pieces_run(tmp_path, [_double_spaced(texts)])
+    said = [(f.code, bool(f.question)) for f in run.language if f.message.split()[0] == "LD"]
+    assert said == [("abbreviation-redefined", False)], run.language
+
+
+def test_a_number_ending_a_ragged_line_is_the_text_s(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: on a page set ragged right, the longest line ending on
+    a number, "aged 18 to 65", lost its number, taken for the line's number in the margin. A
+    number at a line's end is the margin's only where a gap of an em at least parts it from
+    the line's words."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import Piece
+
+    texts = ["Methods", "We read the records of each of the schools,",
+             "of the women and men in each of the schools aged 18 to 65", "and their staff.",
+             "Results", "We kept them all."]
+    pieces = [Piece(72.0, 760.0 - 14.0 * at, text, size=11.0) for at, text in enumerate(texts)]
+    run, _staged = _pieces_run(tmp_path, [pieces])
+    lines = run.places.text.split("\n")
+    at = next(k for k, line in enumerate(lines) if "aged 18" in line)
+    assert lines[at].endswith("aged 18 to 65"), lines[at]
+    assert run.places.places[at].printed is None, run.places.places[at]
+
+
+def test_a_decimal_at_a_column_s_foot_leaves_its_paragraph_open(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: a stop and the digits after it at a line's end were
+    read as a superscript citation after a stop, so a column whose last line ended "the mean
+    was 2.5" was read as ended there, and its paragraph was not followed into the next
+    column. A citation after a stop follows a letter or a bracket."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Methods", *[_FULL] * 3, "and the trial stage was read: the mean was 2.5"]
+    right = ["in each of the sites, and it held.", *_UNSAID]
+    _run, staged = _pieces_run(tmp_path, [_column(left, LEFT, TOP) + _column(right, RIGHT, TOP)])
+    assert "was 2.5\nin each of the sites" in staged, staged
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

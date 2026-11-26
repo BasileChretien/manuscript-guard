@@ -58,8 +58,9 @@ from pathlib import Path
 POPPLER = "MANUSCRIPT_GUARD_POPPLER"
 
 #: Two words poppler sets apart are one where the gap between them is under this share of
-#: the line's words' height: a word kerned in two, "T" and "U1_effect".
-JOINED = 0.1
+#: the line's words' height: a word kerned in two, "T" and "U1_effect", touching. A thin
+#: space, a tenth of the height or so, "N = 168", "18 years", is a space.
+JOINED = 0.03
 #: The top and the bottom share of a page a running head or foot stands in.
 BAND = 0.075
 #: A line in a page's band is a running one where its words, digits read alike, stand in
@@ -95,6 +96,9 @@ GAP = 3.0
 #: A narrow short block stands right under a display, and is its own, where its top is
 #: within this many of the body's line heights below the display's lowest block.
 UNDER = 3.0
+#: A page is set in two columns where a block of this many lines stands on each side of
+#: its middle.
+COLUMN_LINES = 3
 #: A superscript is set below this share of its line's height, its foot this share of the
 #: height above the line's foot.
 RAISED_HEIGHT = 0.8
@@ -109,11 +113,14 @@ MARGIN_RUN = 3
 #: set the text's edges.
 WORDY = 3
 
-#: A display's label at the start of a legend's first line.
-LABEL = re.compile(
-    r"^(?:Supplementary\s+|Suppl\.?\s+|Extended\s+Data\s+)?"
-    r"(?:Figure|Fig\.?|FIGURE|FIG\.?|Table|TABLE|Scheme|Box|Chart)\s*S?\d+[A-Za-z]?"
-    r"(?:\s*[.:|]|\s+[A-Z(]|\s*$)")
+#: A display's label at the start of a legend's first line: with a stop, a colon or a bar
+#: after it, or alone (`TIGHT`), or with a capital or a bracket after it, "Fig. 2 Three
+#: classes", which a legend set smaller than the text opens on and a paragraph of the
+#: text, "Figure 2 (A) shows", does too (`_labelled`).
+_LABEL = (r"^(?:Supplementary\s+|Suppl\.?\s+|Extended\s+Data\s+)?"
+          r"(?:Figure|Fig\.?|FIGURE|FIG\.?|Table|TABLE|Scheme|Box|Chart)\s*S?\d+[A-Za-z]?")
+LABEL = re.compile(_LABEL + r"(?:\s*[.:|]|\s+[A-Z(]|\s*$)")
+TIGHT = re.compile(_LABEL + r"(?:\s*[.:|]|\s*$)")
 #: A label that is a figure's, whose own words above it are its.
 FIGURE = re.compile(r"^(?:Supplementary\s+)?(?:Figure|Fig|FIGURE|FIG|Scheme|Chart)\b")
 #: A number alone, as a margin numbers a line.
@@ -123,7 +130,7 @@ PAGE_NUMBER = re.compile(r"^(?:page\s+)?\d{1,4}(?:\s*(?:of|/)\s*\d{1,4})?$", re.
 #: A line that ends a sentence: on a stop, a bracket or a quotation mark after it, or a
 #: superscript citation after the stop.
 STOP = re.compile(r"[.!?:;][)\]\"'\N{RIGHT SINGLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}]*$"
-                  r"|[.!?]\s*\d{1,3}(?:[,\N{EN DASH}-]\d{1,3})*$")
+                  r"|(?<=[A-Za-z)\]])[.!?]\s*\d{1,3}(?:[,\N{EN DASH}-]\d{1,3})*$")
 #: A superscript citation's words: numbers, commas and dashes.
 CITATION = re.compile(r"^\d{1,3}(?:[,\N{EN DASH}\N{EM DASH}-]\d{1,3})*,?$")
 #: What a superscript citation follows: a word of three letters or more, or a stop.
@@ -405,10 +412,13 @@ def _margin(page: Page) -> set[int]:
                 line.number = int(number.text.strip("()"))
     for line in body:
         first, last = line.words[0], line.words[-1]
-        if LONE_NUMBER.match(first.text) and first.x1 < left - 1:
+        apart = line.height  # an em: a margin's number stands so far from the line's words
+        if (LONE_NUMBER.match(first.text) and first.x1 < left - 1
+                and line.words[1].x0 - first.x1 >= apart):  # fmt: skip
             line.number = int(first.text.strip("()"))
             line.words = line.words[1:]
-        elif LONE_NUMBER.match(last.text) and last.x0 > right + 1:
+        elif (LONE_NUMBER.match(last.text) and last.x0 > right + 1
+              and last.x0 - line.words[-2].x1 >= apart):  # fmt: skip
             line.number = int(last.text.strip("()"))
             line.words = line.words[:-1]
     return gone
@@ -481,6 +491,7 @@ def _one_baseline(blocks: list[Block]) -> list[Block]:
     where those are lines of blocks of one line or of its own block. Never two lines of
     blocks of several lines, which two columns' lines are."""
     owner = {id(line): block for block in blocks for line in block.lines}
+    middle = _columns_middle(blocks)
     lines = sorted((line for block in blocks for line in block.lines),
                    key=lambda line: (round(line.y1), line.x0))  # fmt: skip
     gone: set[int] = set()
@@ -495,6 +506,8 @@ def _one_baseline(blocks: list[Block]) -> list[Block]:
             block = owner[id(other)]
             if not (len(block.lines) == 1 or block is owner[id(line)]):
                 continue
+            if middle is not None and line.x1 <= middle <= other.x0:
+                continue  # the page's middle parts two columns' lines
             if (abs(other.height - line.height) < SAME_HEIGHT
                     and 0 <= other.x0 - line.x1 < GAP * line.height):  # fmt: skip
                 line.words = [*line.words, *other.words]
@@ -509,6 +522,18 @@ def _one_baseline(blocks: list[Block]) -> list[Block]:
         if block.lines:
             kept.append(block)
     return kept
+
+
+def _columns_middle(blocks: list[Block]) -> float | None:
+    """The middle of a page set in two columns, or None for a page that is not: a block of
+    `COLUMN_LINES` lines or more stands wholly on each side of the middle of the text."""
+    if not blocks:
+        return None
+    middle = (min(block.x0 for block in blocks) + max(block.x1 for block in blocks)) / 2
+    tall = [block for block in blocks if len(block.lines) >= COLUMN_LINES]
+    if any(block.x1 < middle for block in tall) and any(block.x0 > middle for block in tall):
+        return middle
+    return None
 
 
 def ordered(blocks: list[Block]) -> list[Block]:
@@ -567,9 +592,18 @@ def _usual_width(pages: list[Page]) -> float:
     return widths.most_common(1)[0][0] if widths else 250.0
 
 
+def _labelled(block: Block, height: float) -> bool:
+    """Whether a block opens on a display's label: one with a stop, a colon or a bar after
+    it, or alone (`TIGHT`); one with a capital or a bracket after it only where the block is
+    set smaller than the text's lines (`height`), as a legend is and a paragraph of the
+    text that opens "Figure 2 (A) shows" is not."""
+    first = block.lines[0].text
+    return bool(TIGHT.match(first) or (LABEL.match(first) and block.height < height - SMALLER))
+
+
 def _kind(block: Block, height: float, width: float) -> str:
     """"legend", "fragment" (narrow and short), "small" or "body"."""
-    if LABEL.match(block.lines[0].text):
+    if _labelled(block, height):
         return "legend"
     if (block.x1 - block.x0 < NARROW * width and len(block.lines) <= FRAGMENT_LINES
             and all(len(line.text) < SHORT_LINE for line in block.lines)):  # fmt: skip
@@ -586,9 +620,8 @@ def goes_on(block: Block) -> bool:
     return heading_title(block.lines[0].text) is None
 
 
-def _figure_legend(block: Block) -> bool:
-    first = block.lines[0].text
-    return bool(LABEL.match(first) and FIGURE.match(first))
+def _figure_legend(block: Block, height: float) -> bool:
+    return _labelled(block, height) and bool(FIGURE.match(block.lines[0].text))
 
 
 def _ends(block: Block, edge: float | None = None) -> list[bool]:
@@ -635,8 +668,10 @@ class _Flow:
     #: The displays met while a paragraph is open across a break: read after it.
     pending: list[tuple[Line, int, int, int | None]] = field(default_factory=list)
     paragraph: int = 0
-    #: The paragraph a body block ended in mid-sentence, open across the break.
+    #: The paragraph a body block ended in mid-sentence, open across the break, and the
+    #: height of its last line.
     open: int | None = None
+    open_height: float = 0.0
     #: The display being read, its paragraph, its legend's height, and the page, the foot
     #: of its lowest block so far and the left and right of its blocks.
     display: int | None = None
@@ -670,6 +705,16 @@ class _Flow:
         sink += [(line, page, self.paragraph, self.display) for line in block.lines]
         sink += [(line, at, self.paragraph, self.display) for at, line in self.held]
         self.held = []
+
+    def remnant(self, page: int, block: Block) -> bool:
+        """Whether a narrow short block is the rest of the paragraph left open: set at the
+        height of that paragraph's last line, and not at a display's size under or beside
+        it. A double-spaced manuscript sets a paragraph's short last line as a block of its
+        own; a two-column paper may set one at a column's top."""
+        if self.open is None or abs(block.height - self.open_height) >= LEGEND_SIZE:
+            return False
+        return not (self.under_display(page, block)
+                    and abs(block.height - self.display_height) < LEGEND_SIZE)  # fmt: skip
 
     def under_display(self, page: int, block: Block) -> bool:
         """Whether `block` stands right under the display being read, or beside it: its top
@@ -720,6 +765,7 @@ class _Flow:
                     self.rows += self.pending
                     self.pending = []
         self.open = last if kind == "body" and not ended else None
+        self.open_height = block.lines[-1].height
         if self.open is None:
             self.rows += self.pending
             self.pending = []
@@ -735,6 +781,8 @@ class _Flow:
             self.legend(page, block)
         elif kind == "fragment" and figure_next and not self.under_display(page, block):
             self.held += [(page, line) for line in block.lines]
+        elif kind == "fragment" and self.remnant(page, block):
+            self.body(page, block, "body", edge)
         elif self.of_display(kind, block, page):
             self.sink().extend((line, page, self.display_paragraph, self.display)
                                for line in block.lines)  # fmt: skip
@@ -779,7 +827,8 @@ def rebuilt(text: str) -> Layout:
                 line.line = counted
             after = next((one for one, kind in zip(read[at + 1:], kinds[at + 1:], strict=True)
                           if kind != "fragment"), None)  # fmt: skip
-            flow.read(page.number, block, after is not None and _figure_legend(after),
+            flow.read(page.number, block,
+                      after is not None and _figure_legend(after, flow.height),
                       _edge(block, read))
     flow.flush_held()
     flow.rows += flow.pending

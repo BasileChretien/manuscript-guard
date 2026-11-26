@@ -256,7 +256,8 @@ any is asked, and neither is a number that does not fit:
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests
 on reading a sentence or rounding (the author, 2026-10-28). `--json` prints the report in the shape `check --json` gives,
 each finding with its section and whether `--strict` counts it; `ok` is what `--strict`
-would say.
+would say. The report and `--json` name a file with forward slashes on every system,
+`journals/examples.yaml` on Windows too, as the [audit page](audit-page.md) does.
 
 **Keys.** Each finding `check --json`, `audit --json` and `compare --json` print has a
 `key`, `gate|code|subject|digest`, by which the findings of two runs can be paired. The

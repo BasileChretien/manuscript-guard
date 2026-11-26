@@ -3,7 +3,8 @@
 A journal sends its editors and referees manuscripts in confidence. `manuscript-guard audit`
 reads one on your own computer and sends nothing of it anywhere: the checks run here, with no
 model. This page is about reading a paper someone else wrote. For your own, see
-[Auditing a paper you already wrote](audit.md).
+[Auditing a paper you already wrote](audit.md). For a journal's office deciding whether to
+allow it, see [For an editorial office](editorial-office.md).
 
 ## Keep it away from a model
 
@@ -11,17 +12,19 @@ Journals and publishers forbid putting a submitted manuscript into an AI tool th
 keep it confidential. The audit's report quotes the manuscript's lines, so the same holds for
 the report: do not paste it into a chat with a model, and do not let a coding agent run the
 audit or read its output. Run it yourself, in a terminal no agent can read. When `--journal`,
-`--authors`, `--design`, `--cited`, `--package` or `--report-draft` is given, the audit says
+`--authors`, `--design`, `--cited`, `--package`, `--report-draft`, `--editor` or `--letter` is given, the audit says
 so on stderr, and the plugin's hook asks you before an agent runs it. The paper-audit skill tells an agent to stop on a paper you were sent to review
 or to handle, and to give you the commands instead. `compare`, which sets a revision beside
 the version before it, says the same every time it runs, and the hook asks about it too.
 
 What leaves the machine: nothing, unless you ask. `--lookup` asks Crossref, OpenAlex,
-DataCite, doi.org and PubMed about each DOI and PMID of the reference list, and with
-`--cited` asks Europe PMC for each cited work's abstract by its PMID or DOI; it sends those
-identifiers and nothing else, never a sentence, a title or a name. `--lookup --dry-run` lists
-what it would send. The set of DOIs a paper cites is a weak fingerprint of it, and a contact
-address you set in the environment for the registries names you to them.
+DataCite, doi.org and PubMed about each DOI and PMID of the reference list, asks Crossref
+for each article, book or chapter that gives neither by the words of its title, its first
+author's family name and its year, and with `--cited` asks Europe PMC for each cited work's
+abstract by its PMID or DOI. It sends nothing else: no sentence of the paper, and nothing of
+it outside the reference list. `--lookup --dry-run` lists what it would send. Together, what
+it sends about the reference list points to the paper that cites it, and a contact address
+you set in the environment for the registries names you to them.
 
 ## A referee
 
@@ -264,6 +267,30 @@ without them. `--details` lists every place of the copyediting and of what was r
 part. `--editor` changes nothing of what the audit finds or of what `--strict` counts, and the
 PDF, the copies with comments and the report draft stay the full report's. The audit page does
 not give the editor's report yet.
+
+**The letter to the authors.** `--letter FILE.md` writes, besides the report, the draft of the
+letter that returns the paper to its authors before review, made from the editor's report
+whether or not `--editor` is given:
+
+```bash
+manuscript-guard audit paper.docx --journal journal.yaml --lookup --letter letter.md
+```
+
+Its first line says it is a draft, to read, change and delete before sending. What the
+editor's report would ask the authors stands under "Please correct or answer before review",
+and what it would have you look at before you decide under "Please check", after a line
+saying that each may be right as it stands. Each kind is asked once, in a sentence written for
+the authors (`src/manuscript_guard/data/letter.yaml`) rather than the editor's own: "A
+citation names no entry of the reference list. Please check the citation and the list." Under
+it stands each place it was found, with what the editor's report says there and the words it
+quotes. No place names the journal's profile, which is your file and not theirs. What is for
+copyediting, what the check read and the self-citation counts are left to the report. Where
+neither part holds anything, the letter says the checks raised no point to put to the authors
+before review. The same files give the same letter, and it is written to a file that is not
+there yet, never over one and never over the report draft's. It quotes the manuscript, so
+keep it as you keep the manuscript. Its "Please check" points include the signs that need a
+person, a retracted work or text no reader sees among them, worded as questions: whether to
+send each is yours to decide.
 
 ## A revision
 

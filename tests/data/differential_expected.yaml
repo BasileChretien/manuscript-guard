@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: plan sections asked
+    why: >-
+      a cross-sectional study is a design of `data/study_types.yaml`, the first one added by
+      DESIGN.md's "One set of plan questions": a plan whose paper.yaml names it is asked for
+      its sampling, measurement, bias, sample size, confounding, missing data and sensitivity
+      analyses, each from its STROBE item, where main read `study_type: cross-sectional` as no
+      design of its table and refused it
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,

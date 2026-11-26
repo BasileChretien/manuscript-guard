@@ -77,7 +77,8 @@ each new item's `where`, and keeps the quotes already written.
 
 G5 warns where a declared design has none of its
 guidelines: a trial is reported with CONSORT, a cohort study with STROBE, RECORD or TARGET, a
-case-control or self-controlled study with STROBE or RECORD, a disproportionality analysis
+case-control, cross-sectional or self-controlled study with STROBE or RECORD, a
+disproportionality analysis
 with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
 `study_type: other` is a design none of these is. MDAR and SAGER belong to no one design, so
 no design asks for them: a project that follows one names it in `reporting_guideline` beside

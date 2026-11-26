@@ -11424,6 +11424,24 @@ file must end in `.md`, must not exist and must not be a file the command reads,
 with mode "x". Both options are reader options (`READER_FLAGS`): the notice prints and the
 hook asks.
 
+### The letter to the authors (2026-11-25)
+
+An editor who returns a paper before review writes a letter, and the editor's report
+(`auditing.editor`) already says what to ask the authors and what to look at first. So
+`--letter FILE.md` (`auditing.letter`) drafts it from that report, with or without
+`--editor`: the kinds of "Ask the authors" under "Please correct or answer before review",
+and those of "Look at before you decide" under "Please check", introduced as points that
+may be right as they stand (Basile, 2026-11-25, who chose to put them in, worded so, over
+leaving them to the editor, and to build the letter on the editor's parts rather than on a
+sorting of its own). The editor's report says each kind to the editor, a sign "there to steer
+the review" among them; the letter says it to the authors, in a sentence of its own from
+`data/letter.yaml`, which has one for every kind of the two parts and no other
+(`tests/test_audit_letter.py`); a finding no kind names takes the one for any. Under each
+kind stands each place, as the editor's report says it, and up to 200 characters of what
+the finding quotes; a place in the journal's profile is left out, as the authors do not have
+that file. It is a function of the report, as the report draft is, written by the same rule
+(`draft.refused`, mode "x"), never to the report draft's file, and a reader option.
+
 ## A revision read beside the version before it
 
 `compare OLD NEW` is the one new command of the editor and referee layer (decision 1): a referee
@@ -30761,6 +30779,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A finding of the first two parts is said in its own message, except a number of the
     Abstract not found, said as the number and the words around it, and a question, said as
     a referee's draft says it; a message that names an option or a gate shows it there.
+    Accepted.
+- **The letter asks what the editor's report parts, and in English.** Its parts and kinds are
+  the editor's report's, so what that report puts in a kind the letter asks in that kind's
+  sentence, and a finding of a code no kind names is asked as "Please look at this point."
+  with its own message. Pinned by
+  `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
+  - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):

@@ -5399,6 +5399,11 @@ def test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warnin
     _swap(project, "by a Wilcoxon test", "by a Wilcoxon signed-rank test, and Cohen's kappa")
     line = _line_of(project, "Free kappa light chains rose")
     assert _unexplained(project) == [("wilcoxon-signed-rank", "main.md", line)]
+    # Round 3: and the other way round.
+    _swap(project, "Wilcoxon rank-sum test, and", "Wilcoxon signed-rank test, and")
+    _swap(project, "by a Wilcoxon signed-rank test, and Cohen",
+          "by a Wilcoxon rank-sum test, and Cohen")
+    assert _unexplained(project) == [("mann-whitney", "main.md", line)]
 
 
 def test_an_analysis_the_supplement_s_results_name_is_held_to_the_methods(project: Path) -> None:

@@ -58,7 +58,7 @@ methods:
     in_methods: ["Wilcoxon"]
   - id: wilcoxon-signed-rank
     name: the Wilcoxon signed-rank test
-    names: ["signed-rank"]
+    names: ["signed-rank", "Wilcoxon signed-rank", "Wilcoxon matched-pairs"]
     in_methods: ["Wilcoxon"]
   - id: kruskal-wallis
     name: the Kruskal-Wallis test

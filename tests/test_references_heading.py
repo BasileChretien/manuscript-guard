@@ -116,22 +116,126 @@ def test_an_authors_own_heading_over_the_list_is_the_only_one(
 
 @needs_pandoc
 @pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("label", ["References", "Literaturverzeichnis", "References and notes"])
+@pytest.mark.parametrize(
+    "label", ["References", "Literaturverzeichnis", "References and notes", "Bibliografía",
+              "Références", "Referências"],
+)  # fmt: skip
+@pytest.mark.parametrize("mark", ["**", "*"], ids=["bold", "italics"])
 @pytest.mark.parametrize("div", ["\n::: {#refs}\n:::\n", ""], ids=["div", "no div"])
-def test_a_list_under_a_bold_label_gets_no_heading(
-    project: Path, mode: str, label: str, div: str, tmp_path: Path, monkeypatch
+def test_a_list_under_its_name_in_bold_or_italics_gets_no_heading(
+    project: Path, mode: str, label: str, mark: str, div: str, tmp_path: Path, monkeypatch
 ) -> None:
-    """A paper brought in from Word heads its list with a paragraph in bold, of whatever
-    words, as a heading heads it whatever its words: before the `refs` div, or last where the
-    list is put at the end."""
+    """A paper brought in from Word heads its list with its name alone in bold or in
+    italics, in English or another language: before the `refs` div, or last where the list is
+    put at the end."""
     _stub_zotero_lua(tmp_path, monkeypatch)
     path = project / "manuscript" / "main.md"
-    text = path.read_text(encoding="utf-8") + f"\n**{label}**\n{div}"
+    text = path.read_text(encoding="utf-8") + f"\n{mark}{label}{mark}\n{div}"
     path.write_text(text, encoding="utf-8", newline="\n")
     paragraphs = _built(project, mode)
     start = _list_starts(paragraphs)
     assert paragraphs[start - 1][1] == label
     assert "References" not in _headings(paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("last", ["**Word count: 3412**", "*Accepted for publication.*"])
+def test_a_last_paragraph_in_bold_of_other_words_is_no_label(
+    project: Path, mode: str, last: str, tmp_path: Path, monkeypatch
+) -> None:
+    """A paragraph in bold or italics that names no reference list, last in the document, is
+    not the list's heading: the list gets its own."""
+    _stub_zotero_lua(tmp_path, monkeypatch)
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + f"\n{last}\n", encoding="utf-8",
+                    newline="\n")  # fmt: skip
+    paragraphs = _built(project, mode)
+    start = _list_starts(paragraphs)
+    assert paragraphs[start - 1] == ("Heading1", "References")
+
+
+@needs_pandoc
+def test_an_empty_section_named_literature_does_not_take_the_list(project: Path) -> None:
+    """"Literature" alone names a section of an outline as often as a reference list, so an
+    empty "2.1 Literature" before "2.2 Methods" is not where the list goes."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8") + (
+        "\n# 2.1 Literature\n\n# 2.2 Notes\n\nThe notes of the work.\n"
+    )
+    path.write_text(text, encoding="utf-8", newline="\n")
+    paragraphs = _built(project, OFFLINE)
+    start = _list_starts(paragraphs)
+    assert paragraphs[start - 1] == ("Heading1", "References")
+    assert _headings(paragraphs[:start])[-2] == "2.2 Notes"
+
+
+_NO_LIST_STYLE = """<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="note" version="1.0">
+  <info><title>Notes only</title><id>notes-only</id>
+    <updated>2026-11-26T00:00:00+00:00</updated></info>
+  <citation><layout><text variable="title"/></layout></citation>
+</style>
+"""
+
+
+@needs_pandoc
+def test_a_style_with_no_bibliography_gets_no_heading(project: Path) -> None:
+    """A note style that prints no reference list: citeproc prints nothing in the `refs` div,
+    and the build puts no heading over nothing."""
+    styles = project / "profiles" / "journals" / "styles"
+    styles.mkdir(parents=True, exist_ok=True)
+    style = styles / "notes-only.csl"
+    style.write_text(_NO_LIST_STYLE, encoding="utf-8", newline="\n")
+    proj, _ = load_project(project)
+    namespace, results, _lit, _ = load_namespace(proj)
+    assembled, _ = assemble(proj, namespace, results)
+    result = build_document(proj, assembled, mode=OFFLINE, csl=style)
+    assert "References" not in _headings(_paragraphs(result.output))
+
+
+def test_a_dependent_style_is_read_by_its_parent(tmp_path: Path) -> None:
+    """A dependent style holds no bibliography of its own; its parent, kept beside it by
+    `style`, says whether there is one. A style that does not read is taken to have one."""
+    parent = tmp_path / "notes-only.csl"
+    parent.write_text(_NO_LIST_STYLE, encoding="utf-8")
+    dependent = tmp_path / "journal.csl"
+    dependent.write_text(
+        '<?xml version="1.0" encoding="utf-8"?><style xmlns="http://purl.org/net/xbiblio/csl" '
+        'class="note" version="1.0"><info><title>J</title><id>j</id><link '
+        'href="http://www.zotero.org/styles/notes-only" rel="independent-parent"/>'
+        "</info></style>",
+        encoding="utf-8",
+    )
+    assert builder.prints_a_list(parent) is False
+    assert builder.prints_a_list(dependent) is False
+    parent.write_text(_NO_LIST_STYLE.replace(
+        "</style>", "<bibliography><layout><text variable=\"title\"/></layout></bibliography>"
+        "</style>"), encoding="utf-8")  # fmt: skip
+    assert builder.prints_a_list(dependent) is True
+    parent.unlink()
+    assert builder.prints_a_list(dependent) is True
+    (tmp_path / "broken.csl").write_text("<style", encoding="utf-8")
+    assert builder.prints_a_list(tmp_path / "broken.csl") is True
+
+
+@needs_pandoc
+def test_a_suppressed_bibliography_gets_no_heading(tmp_path: Path) -> None:
+    """`suppress-bibliography`, which tells citeproc to print no list, is honoured."""
+    import json
+    import subprocess
+
+    source = tmp_path / "m.md"
+    source.write_text("Text.\n", encoding="utf-8")
+    out = tmp_path / "m.docx"
+    title = json.dumps("References").encode("utf-8").hex()
+    subprocess.run(
+        [shutil.which("pandoc"), str(source), "-o", str(out),
+         f"--lua-filter={builder.REFERENCES_HEADING_LUA}",
+         f"--metadata=mg-references-heading:{title}", "--metadata=suppress-bibliography:true"],
+        check=True, capture_output=True,
+    )  # fmt: skip
+    assert "References" not in _headings(_paragraphs(out))
 
 
 @needs_pandoc
@@ -142,8 +246,9 @@ def test_an_empty_reference_heading_before_later_files_takes_the_list(
     project: Path, mode: str, after: str, tmp_path: Path, monkeypatch
 ) -> None:
     """With no `refs` div, citeproc and the bibliography field go at the end of the document,
-    after every file printed after main.md: an author's heading of the list with nothing under
-    it, wherever it stands, is where the list goes, and no heading is added."""
+    after every file printed after main.md: an author's heading of the list with nothing printed
+    under it before the next heading of its level or above, as at the end of main.md where the
+    next file opens with a heading, is where the list goes, and no heading is added."""
     _stub_zotero_lua(tmp_path, monkeypatch)
     path = project / "manuscript" / "main.md"
     text = path.read_text(encoding="utf-8") + "\n# References\n" + after
@@ -338,7 +443,7 @@ def test_a_document_built_before_the_heading_comes_back_with_no_edit(
     source = project / "manuscript" / "main.md"
     before = source.read_bytes()
     with monkeypatch.context() as patched:
-        patched.setattr(builder, "_references_filter", lambda _project: [])
+        patched.setattr(builder, "_references_filter", lambda _project, _csl=None: [])
         assert main(["build", str(project), "--offline"]) == 0
     assert "References" not in _headings(_paragraphs(project / "build" / "manuscript.docx"))
     capsys.readouterr()
@@ -384,7 +489,7 @@ def test_the_marked_up_copy_does_not_mark_the_builds_heading(
     assembled, _ = assemble(proj, namespace, results)
     old, new = tmp_path / "received.docx", tmp_path / "revision.docx"
     with monkeypatch.context() as patched:
-        patched.setattr(builder, "_references_filter", lambda _project: [])
+        patched.setattr(builder, "_references_filter", lambda _project, _csl=None: [])
         build_document(proj, assembled, mode=OFFLINE, output=old, stamp=False)
     build_document(proj, assembled, mode=OFFLINE, output=new, stamp=False)
     assert "References" not in _headings(_paragraphs(old))
@@ -395,6 +500,59 @@ def test_the_marked_up_copy_does_not_mark_the_builds_heading(
                    if 'w:name="mg-references"' in p)  # fmt: skip
     assert "References" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", heading, re.S))
     assert "<w:ins " not in heading and "w:highlight" not in heading, heading
+
+
+@needs_pandoc
+def test_a_profile_heading_changed_since_sending_is_said_as_typed(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Known gaps: the note compares the returned heading with a fresh build, so a heading
+    the profile renamed after the document was sent is said as one a co-author typed."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _returned(project, tmp_path)
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(profile.read_text(encoding="utf-8").replace(
+        'references:\n  style_name: "Vancouver"',
+        'references:\n  heading: "Literature cited"\n  style_name: "Vancouver"'),
+        encoding="utf-8", newline="\n")  # fmt: skip
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    said = capsys.readouterr().out
+    assert 'came back as "References", and the build wrote "Literature cited"' in said, said
+
+
+@needs_pandoc
+def test_the_marked_up_copy_puts_a_deletion_at_the_end_below_the_heading(
+    project: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """Known gaps: the build's heading is written where the copy's walk reaches it, so a
+    paragraph deleted at the end of the text, received before the heading, is shown deleted
+    below it."""
+    from manuscript_guard.markedup import write
+
+    path = project / "manuscript" / "main.md"
+    revision = path.read_text(encoding="utf-8")
+    path.write_text(revision + "\nThe extra last words.\n", encoding="utf-8", newline="\n")
+    old, new = tmp_path / "received.docx", tmp_path / "revision.docx"
+    for text, output, filtered in ((None, old, False), (revision, new, True)):
+        if text is not None:
+            path.write_text(text, encoding="utf-8", newline="\n")
+        proj, _ = load_project(project)
+        namespace, results, _lit, _ = load_namespace(proj)
+        assembled, _ = assemble(proj, namespace, results)
+        with monkeypatch.context() as patched:
+            if not filtered:
+                patched.setattr(builder, "_references_filter", lambda _project, _csl=None: [])
+            build_document(proj, assembled, mode=OFFLINE, output=output, stamp=False)
+    made = write(old, new, tmp_path / "marked.docx", date="2026-11-26", form="tracked")
+    xml = zipfile.ZipFile(made.path).read("word/document.xml").decode("utf-8")
+    paragraphs = re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)
+    heading = next(i for i, p in enumerate(paragraphs) if 'w:name="mg-references"' in p)
+    deleted = next(i for i, p in enumerate(paragraphs) if "extra last words" in p)
+    assert "<w:del " in paragraphs[deleted]
+    assert deleted > heading
 
 
 def test_the_builds_heading_is_not_read_back(tmp_path: Path) -> None:

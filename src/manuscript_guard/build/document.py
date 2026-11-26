@@ -390,14 +390,45 @@ def references_heading(project) -> str:
     return REFERENCES_HEADING
 
 
-def _references_filter(project) -> list[str]:
+def _references_filter(project, csl: Path | None = None) -> list[str]:
     """The arguments that run `references_heading.lua`, with the heading in the metadata as
-    JSON in hexadecimal, as narrative.lua takes its names."""
+    JSON in hexadecimal, as narrative.lua takes its names; none where the style an offline
+    build formats with, `csl`, prints no reference list (`prints_a_list`)."""
+    if csl is not None and not prints_a_list(csl):
+        return []
     title = json.dumps(references_heading(project), ensure_ascii=False).encode("utf-8").hex()
     return [
         f"--lua-filter={REFERENCES_HEADING_LUA.resolve()}",
         f"--metadata=mg-references-heading:{title}",
     ]
+
+
+#: CSL's namespace, which a style's elements are in.
+_CSL = "{http://purl.org/net/xbiblio/csl}"
+
+
+def prints_a_list(style: Path, *, parent: bool = True) -> bool:
+    """Whether a CSL style prints a reference list: an independent style has a
+    `<bibliography>`; a dependent one says by its parent's, which `style` keeps beside it as
+    `<parent>.csl`. A note style may have none, and then citeproc fills the `refs` div with
+    nothing. A style that does not read, or whose parent is not there, is taken to print one,
+    as the build did before it asked."""
+    from manuscript_guard.safexml import UnsafeDocument, parse_xml
+
+    try:
+        root = parse_xml(style.read_bytes(), what=style.name)
+    except (OSError, UnsafeDocument, ValueError):
+        return True
+    if root.find(f"{_CSL}bibliography") is not None:
+        return True
+    link = next((node for node in root.iter(f"{_CSL}link")
+                 if node.get("rel") == "independent-parent"), None)  # fmt: skip
+    if link is None:
+        return False
+    named = style.with_name(str(link.get("href", "")).rstrip("/").rsplit("/", 1)[-1] + ".csl")
+    if not parent or not named.is_file() or named == style:
+        return True
+    return prints_a_list(named, parent=False)
 
 
 def _zotero_version() -> str | None:
@@ -689,7 +720,7 @@ def build_document(
             # Before citeproc, which runs where it stands among the filters: the list is given
             # its place, under the author's heading of it where there is one, and its heading.
             if cites:
-                command += _references_filter(project)
+                command += _references_filter(project, csl)
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:
                 command += [f"--csl={relative_to_root(project, csl.resolve())}"]

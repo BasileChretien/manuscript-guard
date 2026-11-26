@@ -10,15 +10,17 @@ they were part of it.
 
 Run before citeproc on an offline build, and before `zotero_word.lua` on a live one, this
 filter first gives the list its place where the manuscript writes no `refs` div: under the
-author's own heading of a reference list with nothing under it, wherever it stands (the end
-of main.md in a paper of several files, with others printed after it), or else at the end.
-It then puts a first-level heading, unnumbered, before the list, titled as the
-`mg-references-heading` metadata says: JSON written in hexadecimal, as `narrative.lua` takes
-its names, so that the command line carries any title. It adds none where the author wrote
-one: where the block before the list, comments aside, is a heading or a paragraph in bold
-alone, of any words, as a paper brought in from Word heads its list ("**References**"); or
-where the section the list stands in is headed as a reference list. A `refs` div inside
-another block is the author's arrangement and is left as it is.
+author's own last heading of a reference list with nothing printed under it before the next
+heading of its level or above (the end of main.md in a paper of several files, where the next
+opens with a heading), or else at the end. It then puts a first-level heading, unnumbered,
+before the list, titled as the `mg-references-heading` metadata says: JSON written in
+hexadecimal, as `narrative.lua` takes its names, so that the command line carries any title.
+It adds none where the author wrote one: where the block before the list, comments aside, is
+a heading, or a paragraph of only a reference list's name in bold or in italics, as a paper
+brought in from Word heads its list ("**References**", "*Bibliographie*"); or where the
+section the list stands in is headed as a reference list. A `refs` div inside another block
+is the author's arrangement and is left as it is, and a document whose metadata sets
+`suppress-bibliography`, which citeproc prints no list for, gets no heading.
 
 The heading is the build's, never the source's: it carries the bookmark `mg-references`, and a
 document read back passes it over, so that `import` finds it in no paragraph of the source and
@@ -32,10 +34,14 @@ local title = nil
 -- the marked-up copy (`docxtext.BUILT_HEADING`).
 local BUILT = 'mg-references'
 
--- What a heading that already heads a reference list is called, its number taken off.
+-- What a heading that already heads a reference list is called, its number taken off, in
+-- English and in the languages a paper brought in from Word is most often headed in. Not
+-- "literature" alone, which names a section of an outline as often.
 local NAMES = {
-  'references?', 'reference list', 'list of references', 'bibliography', 'literature cited',
-  'works cited', 'cited literature', 'literature',
+  'references?', 'reference list', 'list of references', 'references and notes',
+  'bibliography', 'literature cited', 'works cited', 'cited literature',
+  'références', 'bibliographie', 'literaturverzeichnis', 'literatur', 'referencias',
+  'bibliografía', 'riferimenti', 'riferimenti bibliografici', 'bibliografia', 'referências',
 }
 
 -- A section's number, in the forms headings are numbered: "(7)", "7", "7.", "7.1", "6.2.",
@@ -57,7 +63,7 @@ end
 local function Meta(meta)
   local given = meta['mg-references-heading']
   meta['mg-references-heading'] = nil
-  if given == nil then return meta end
+  if given == nil or meta['suppress-bibliography'] == true then return meta end
   local ok, text = pcall(decoded, pandoc.utils.stringify(given))
   if not ok or type(text) ~= 'string' then
     error('references_heading.lua: the title of the reference list could not be read')
@@ -94,7 +100,7 @@ local function unprinted(block)
   return block.t == 'RawBlock' and block.format ~= 'openxml'
 end
 
--- A paragraph that is only words in bold, of any words, as a heading is of any. The build's
+-- A paragraph that is only a reference list's name in bold or in italics. The build's
 -- paragraph identifier is an empty span before the text (`roundtrip.tag`), and is passed over.
 local function labelled(block)
   if block.t ~= 'Para' and block.t ~= 'Plain' then return false end
@@ -102,7 +108,8 @@ local function labelled(block)
   for _, inline in ipairs(block.content) do
     if not (inline.t == 'Span' and #inline.content == 0) then shown[#shown + 1] = inline end
   end
-  return #shown == 1 and shown[1].t == 'Strong'
+  if #shown ~= 1 or (shown[1].t ~= 'Strong' and shown[1].t ~= 'Emph') then return false end
+  return names_a_list(shown[1])
 end
 
 local function headed(blocks, at)

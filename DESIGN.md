@@ -30814,9 +30814,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_references_heading.py::test_a_list_inside_another_block_gets_no_heading`.
 - **The place and the heading are given before citeproc formats the list.** The filter runs
   before citeproc, so that the list it places under an author's empty heading of it is filled
-  there; it cannot see whether citeproc will print an entry, and a document whose every
-  citation names a key the bibliography lacks, which `check` fails, built with
-  `--skip-checks`, has the heading over an empty list. Accepted.
+  there. It adds none where the style the offline build formats with has no `<bibliography>`,
+  its own or its parent's (`document.prints_a_list`), or where the metadata sets
+  `suppress-bibliography`; it cannot see whether citeproc will print an entry otherwise, and a
+  document whose every citation names a key the bibliography lacks, which `check` fails, built
+  with `--skip-checks`, has the heading over an empty list. A live build's style is Zotero's,
+  read by nothing here, and its bibliography field gets the heading whatever the style.
+  Accepted.
+- **An author's empty heading of the list takes it only where the next printed block is a
+  heading of its level or above.** Where the manuscript has no `refs` div, the list goes under
+  the last heading of a reference list with nothing printed under it before such a heading,
+  comments and the build's empty div between files aside. Where the next file opens with a
+  paragraph, a table, a lower heading or a page break, the heading is not empty to the build:
+  the list goes at the end with a heading of its own, and the document prints that file's
+  opening under the author's "References", as pandoc reads it. Accepted.
+- **The note `import` gives of the heading compares it with a fresh build.** The returned
+  heading is held to the one the source builds now, not to the one the document was sent
+  with: a heading the journal profile renamed after the document was sent is said as words a
+  co-author typed. Pinned by
+  `tests/test_references_heading.py::test_a_profile_heading_changed_since_sending_is_said_as_typed`.
+- **The marked-up copy writes the build's heading where its walk reaches it.** A paragraph
+  deleted at the end of the text, in a document received before the heading, is shown deleted
+  below the heading rather than above it. Pinned by
+  `tests/test_references_heading.py::test_the_marked_up_copy_puts_a_deletion_at_the_end_below_the_heading`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

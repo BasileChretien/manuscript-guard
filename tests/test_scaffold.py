@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -715,8 +714,10 @@ _MOVED = "paths:\n  build: out\n  literature: refs\n"
      {".gitattributes": ["* text=auto eol=lf"]}),
     ({".gitattributes": "* text=auto\n* eol=lf\n*.svg binary\n"}, {}),
     ({".gitattributes": "* text=auto eol=lf\n*.svg binary\n"}, {}),
-    # A `*` line below a binary line undoes it, and is not said: a false pass.
-    ({".gitattributes": "*.docx binary\n* text=auto eol=lf\n*.svg binary\n"}, {}),
+    # A `*` line below a binary line undoes it: the binary line is asked again, at the end
+    # (round 3 of #815).
+    ({".gitattributes": "*.docx binary\n* text=auto eol=lf\n*.svg binary\n"},
+     {".gitattributes": ["*.docx binary"]}),
     # The folders are build/ and literature/sources/* whatever `paths:` names.
     ({".gitignore": "out/\nrefs/sources/*\n", "paper.yaml": _MOVED},
      {".gitignore": ["build/", "literature/sources/*"]}),
@@ -801,37 +802,9 @@ def _git_text(root: Path, path: str) -> str:
     return said.strip().rsplit(": ", 1)[-1]
 
 
-#: The words of `.gitattributes` that set `text` or `eol`, which taking them off a line drops.
-_TEXT_OR_EOL = re.compile(r"^[-!]?(?:text|eol)(?:=.*)?$|^binary$")
-
-
-def _followed(attributes: str, said: str) -> str:
-    """`.gitattributes` with the advice `_say_git_lines` printed for it taken literally: a line
-    changed and moved where it says, `text` and `eol` taken off the lines it names, the eol
-    line added at the top where it says so, and the rest of the lines it lists added at the
-    end."""
-    lines = attributes.splitlines()
-    listed = said.split(":\n\n", 1)[1].split("\n\n")[0].splitlines() if ":\n\n" in said else []
-    changed = re.search(r"Change its line `([^`]*)` to `([^`]*)`", said)
-    off = re.search(r"[Tt]ake `text` and `eol` off ((?:`[^`]*`(?:, | and )?)+)", said)
-    if changed or off:
-        if changed:
-            at = lines.index(changed[1])
-            if "move it to the top of the file" in said:
-                lines = [changed[2], *lines[:at], *lines[at + 1:]]
-            else:
-                lines[at] = changed[2]
-        for named in re.findall(r"`([^`]*)`", off[1]) if off else []:
-            kept = [w for w in named.split() if not _TEXT_OR_EOL.match(w)]
-            lines = [" ".join(kept) if line == named else line for line in lines]
-            lines = [line for line in lines if line != "*"]
-        return "\n".join([*lines, *listed]) + "\n"
-    added_on_top = re.search(r"Add `([^`]*)` at the top of the file", said)
-    if added_on_top:
-        rest = [line for line in listed if line != added_on_top[1]]
-        return "\n".join([added_on_top[1], *lines, *rest]) + "\n"
-    assert "Add these lines to it" in said, said
-    return "\n".join([*lines, *listed]) + "\n"
+def _files_of(pattern: str) -> str:
+    """A path a `.gitattributes` pattern `*.ext` holds."""
+    return "files/x" + pattern[1:]
 
 
 @pytest.mark.parametrize("attributes", [
@@ -845,30 +818,38 @@ def _followed(attributes: str, said: str) -> str:
     "* text\n*.docx binary\n* eol=crlf\n",
     "* text=auto eol=lf\n*.svg binary\n* -text\n*.docx binary\n",
     "* text=auto\n* eol=lf\n*.docx binary\n",
-    # Only `*` lines.
+    "*.docx binary\n* text=auto eol=lf\n",
+    "* -text\n",
+    "* binary\n",
+    "* -text\n*.docx binary\n",
+    "* text eol=lf\n* -text\n",
+    "*  text  eol=crlf\n*.png binary\n",
     "* text=auto eol=lf\n",
     "* text\n* eol=crlf\n",
-], ids=["svg above the * line", "a * line that sets text above an svg line",
-        "binary lines only", "neither", "an svg line that sets nothing",
-        "a * line checking out crlf", "a * line below a binary line", "two * lines",
-        "a later -text", "eol on a line of its own", "only * lines, no svg line",
+], ids=["svg above the * line", "a * line that sets text above an svg line", "binary lines only",
+        "neither", "an svg line that sets nothing", "a * line checking out crlf",
+        "a * line below a binary line", "two * lines", "a later -text",
+        "eol on a line of its own", "a binary line undone below", "only * -text",
+        "only * binary", "* -text and a binary line", "* text eol=lf then * -text",
+        "a line spaced as its author wrote it", "only * lines, no svg line",
         "only * lines, crlf"])  # fmt: skip
-def test_init_s_gitattributes_advice_taken_as_printed_keeps_svgs_and_binaries_as_bytes(
+def test_init_s_gitattributes_advice_applied_keeps_svgs_and_binaries_as_bytes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], attributes: str
 ) -> None:
-    """Rounds 1 and 2 of #815: git reads a later line over an earlier one, attribute by
+    """Rounds 1 to 3 of #815: git reads a later line over an earlier one, attribute by
     attribute, so `* text=auto eol=lf` added at the end cancels every `*.svg binary` and
-    `*.docx binary` above it, and an existing `*` line that sets `text` or `eol` otherwise,
-    standing below the added one, cancels it (`* text eol=crlf` went on checking text out
-    with CRLF). What `_say_git_lines` prints, taken literally, leaves the SVG and each binary
-    file unnormalised, a script and the .docx of a file with no rule for it read as `auto`,
-    text checked out as LF, and nothing more to ask; `init` asks for `*.svg binary` exactly
-    where git normalises the SVG."""
+    `*.docx binary` above it, an existing `*` line that sets `text` or `eol` otherwise
+    cancels one added above it (`* text eol=crlf` went on checking text out with CRLF), and
+    a `* -text` that keeps an SVG's bytes stops keeping them once it is rewritten. The
+    advice is applied by the function `init` decides it with (`rewrite_attributes`), and the
+    file it gives leaves the SVG and every file a binary line names unnormalised, a script
+    and a .docx no line names `auto`, text checked out as LF, and nothing more to ask; what
+    `_say_git_lines` prints says the same, each line quoted as the file writes it."""
     import shutil
     import subprocess
 
     from manuscript_guard.cli import _say_git_lines
-    from manuscript_guard.scaffold import git_lines_to_add
+    from manuscript_guard.scaffold import attributes_advice, git_lines_to_add, rewrite_attributes
 
     if shutil.which("git") is None:
         pytest.skip("git is not installed")
@@ -876,21 +857,33 @@ def test_init_s_gitattributes_advice_taken_as_printed_keeps_svgs_and_binaries_as
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     (root / ".gitattributes").write_bytes(attributes.encode("utf-8"))
+    lines = attributes.splitlines()
+    advice = attributes_advice(lines)
     wanted = git_lines_to_add(root)
-    asked = wanted.get(".gitattributes", [])
-    assert ("*.svg binary" in asked) == (_git_text(root, "figures/forest.svg") != "unset")
+    assert wanted.get(".gitattributes", []) == list(advice.wanted)
     _say_git_lines(wanted, root)
     said = capsys.readouterr().out
-    followed = _followed(attributes, said) if asked else attributes
-    (root / ".gitattributes").write_bytes(followed.encode("utf-8"))
-    assert _git_text(root, "figures/forest.svg") == "unset", (said, followed)
-    docx = _git_text(root, "build/manuscript.docx")
-    assert docx == ("unset" if "*.docx binary" in attributes else "auto"), (said, followed)
-    assert _git_text(root, "analysis/01.py") == "auto", (said, followed)
+    if advice.change is not None and lines[advice.change] != "* text=auto eol=lf":
+        assert f"Change its line `{lines[advice.change]}`" in said, said
+    assert ("move it to the top of the file" in said) == advice.move_to_top, said
+    for at in advice.take_off:
+        assert f"`{lines[at]}`" in said, said
+    for line in advice.add_at_end:
+        assert line in said.split("\n"), said
+    rewritten = "\n".join(rewrite_attributes(lines, advice)) + "\n"
+    (root / ".gitattributes").write_bytes(rewritten.encode("utf-8"))
+    assert _git_text(root, "figures/forest.svg") == "unset", (said, rewritten)
+    named = {line.split()[0] for line in lines if line.split()[0] not in ("*", "*.svg")
+             and {"binary", "-text"} & set(line.split())}  # fmt: skip
+    for pattern in named:
+        assert _git_text(root, _files_of(pattern)) == "unset", (pattern, said, rewritten)
+    if "*.docx" not in named:
+        assert _git_text(root, "build/manuscript.docx") == "auto", (said, rewritten)
+    assert _git_text(root, "analysis/01.py") == "auto", (said, rewritten)
     eol = subprocess.run(["git", "-C", str(root), "check-attr", "eol", "--", "analysis/01.py"],
                          check=True, capture_output=True, text=True).stdout  # fmt: skip
-    assert eol.strip().endswith("eol: lf"), (said, followed)
-    assert git_lines_to_add(root) == {}, (said, followed)
+    assert eol.strip().endswith("eol: lf"), (said, rewritten)
+    assert git_lines_to_add(root) == {}, (said, rewritten)
 
 
 def _said_of_gitattributes(out: str) -> tuple[str, list[str]]:

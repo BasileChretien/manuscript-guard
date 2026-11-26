@@ -28717,12 +28717,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   not read (`[attr]keep -text -diff` with `*.svg keep` is answered with `*.svg binary`, a
   false alarm). The file needs `text=auto` and `eol=lf` from its `*` lines, so
   `* text eol=lf`, which sets `text` on every file, binary ones too, is asked to become
-  `* text=auto eol=lf` (finding 5), while the two set on separate lines count. An SVG's bytes
-  are kept where it ends with `text` unset or where the last line to set its `text` or `eol`
-  is the file's own `*.svg` line. So `figures/*.svg binary` or `*.SVG binary` is answered
-  with `*.svg binary` again, a false alarm; a later line for another pattern that holds SVGs
-  (`figures/* text`) undoes the `*.svg` line unread, a false pass; and a `*` line below a
-  `*.docx binary` undoes it unsaid, a false pass too. The folders are `build/` and
+  `* text=auto eol=lf` (finding 5), while the two set on separate lines count. Every line
+  asked for after the eol line is decided on the file as the advice leaves it (round 3): an
+  SVG is taken as kept where it ends with `text` unset or where the last line to set its
+  `text` or `eol` is the file's own `*.svg` line, so a file's own `*.svg text eol=lf` or
+  `*.svg text=auto` is taken as the author's choice though git then normalises those SVGs;
+  and a line that keeps a pattern's files as bytes (`*.docx binary`) and that a `*` line
+  below it undoes is asked for again, at the end. So `figures/*.svg binary` or
+  `*.SVG binary` is answered with `*.svg binary` again, a false alarm, and a later line for
+  another pattern that holds SVGs (`figures/* text`) undoes the `*.svg` line unread, a false
+  pass. The folders are `build/` and
   `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
   reason printed for `.gitignore` is one sentence that names both lines whichever is
   missing, so it can say the file does not leave out `build/` when `/build` does, or warn

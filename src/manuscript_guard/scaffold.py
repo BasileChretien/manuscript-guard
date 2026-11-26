@@ -555,18 +555,15 @@ def git_lines_to_add(root: Path) -> dict[str, list[str]]:
             wanted[".gitignore"] = missing
     attributes = _lines(root / ".gitattributes")
     if attributes is not None:
-        lines = _attribute_lines(attributes)
-        missing = [] if _state(lines, ("*",)) == ("auto", "lf") else [EOL_LINE]
-        if _svg_rule(lines) != KEPT:
-            missing.append(SVG_BINARY)
-        if missing:
-            wanted[".gitattributes"] = missing
+        advice = attributes_advice(attributes)
+        if advice.wanted:
+            wanted[".gitattributes"] = list(advice.wanted)
     return wanted
 
 
-#: What an existing `.gitattributes` decides of an SVG's bytes (`_svg_rule`): they are kept,
-#: by its own `*.svg` rule or by a `*` line that unsets `text`; its `*.svg` rule is undone by
-#: a `*` line below it; it has no rule for them.
+#: What an existing `.gitattributes` decides of a pattern's files' bytes (`_rule`): they are
+#: kept, by the pattern's own line or by a `*` line that unsets `text`; its own line is undone
+#: by a `*` line below it; it has no rule for them.
 KEPT, UNDONE, NONE = "kept", "undone", "none"
 
 
@@ -606,60 +603,135 @@ def _state(lines: list[list[str]], patterns: tuple[str, ...]) -> tuple[str | Non
     return state["text"], state["eol"]
 
 
-def _svg_rule(lines: list[list[str]]) -> str:
-    """What the file decides of an SVG's bytes, as git reads it, line over line and attribute
-    by attribute (rounds 1 and 2 of #815). They are kept where the SVG ends with `text`
-    unset (`*.svg binary`, or a later `* -text` or `* binary`), or where the last line to set
-    its `text` or `eol` is the file's own `*.svg` line (`*.svg text eol=lf` is the author's
-    choice). A `*.svg` line a `*` line below it overrides is undone. Only the patterns `*` and
-    `*.svg` are read; a line for another that holds SVGs (`figures/* text`) is not (Known
-    gaps)."""
+def _rule(lines: list[list[str]], pattern: str) -> str:
+    """What the file decides of the bytes of the files `pattern` holds, as git reads it, line
+    over line and attribute by attribute (rounds 1 to 3 of #815). They are kept where such a
+    file ends with `text` unset (`*.svg binary`, or a later `* -text` or `* binary`), or
+    where the last line to set its `text` or `eol` is the pattern's own line: `*.svg text
+    eol=lf` is taken as the author's choice, though git then normalises those files (Known
+    gaps). The pattern's own line a `*` line below it overrides is undone. Only `*` and the
+    pattern itself are read; a line for another that holds the same files (`figures/*
+    text`) is not (Known gaps)."""
     state: dict[str, str | None] = {"text": None, "eol": None}
     own = last = None
     for words in lines:
-        if words[0] not in ("*", "*.svg"):
+        if words[0] not in ("*", pattern):
             continue
         if _apply(state, words):
             last = words[0]
-            if words[0] == "*.svg":
+            if words[0] == pattern:
                 own = True
-    if state["text"] == "unset" or last == "*.svg":
+    if state["text"] == "unset" or last == pattern:
         return KEPT
     return UNDONE if own else NONE
 
 
 @dataclass(frozen=True)
 class AttributesAdvice:
-    """Where the lines `git_lines_to_add` asks of an existing `.gitattributes` go, as git reads
-    the file, line over line and attribute by attribute (rounds 1 and 2 of #815).
+    """What `init` asks of an existing `.gitattributes`, and where each line goes, as git reads
+    the file, line over line and attribute by attribute (rounds 1 to 3 of #815).
 
-    `own` says the file has lines for patterns of their own (`*.docx binary`, an `*.svg`
-    line), which a `*` line below them undoes, so the eol line goes above them. `setters` are
-    its `*` lines that set `text` or `eol`, in order: where there are any, the first is to be
-    changed to `* text=auto eol=lf`, `text` and `eol` taken off the others, since a line added
-    above them would be overridden by them; `setter_below_own` says a line for a pattern of
-    its own stands above the first, which then moves to the top. `svg_undone` says its own
-    `*.svg` rule is undone by a `*` line below it."""
+    `wanted` are the lines it lacks: `* text=auto eol=lf` where its `*` lines do not end
+    with `text=auto` and `eol=lf`, then `add_at_end`. Where a `*` line of its sets `text` or
+    `eol` already, the first (`change`, an index into the file's lines) is changed to the
+    eol line, rather than one added that it would override, and moved to the top where a
+    line for a pattern of its own stands above it (`move_to_top`); `text` and `eol` are taken
+    off the others (`take_off`). Where none does, the eol line is added at the top
+    (`add_on_top`). `add_at_end` are decided on the file as `rewrite_attributes` leaves it: a
+    line keeping a pattern's files as bytes that a `*` line below it undoes, again, and
+    `*.svg binary` where the SVG is not kept as bytes. `own` says the file has lines for
+    patterns of their own; `svg_undone`, that its own `*.svg` line is undone by a `*` line
+    below it."""
 
-    own: bool
-    setters: tuple[str, ...]
-    setter_below_own: bool
-    svg_undone: bool
+    wanted: tuple[str, ...] = ()
+    change: int | None = None
+    move_to_top: bool = False
+    add_on_top: bool = False
+    take_off: tuple[int, ...] = ()
+    add_at_end: tuple[str, ...] = ()
+    own: bool = False
+    svg_undone: bool = False
 
 
-def attributes_advice(root: Path) -> AttributesAdvice:
-    """How the lines `git_lines_to_add` asks of the `.gitattributes` at `root` go into it."""
-    lines = _attribute_lines(_lines(Path(root).resolve() / ".gitattributes") or [])
-    setters: list[str] = []
-    own = below = False
-    for words in lines:
-        if words[0] != "*":
-            own = True
-        elif _apply({"text": None, "eol": None}, words):
-            below = below or (own and not setters)
-            setters.append(" ".join(words))
-    return AttributesAdvice(own=own, setters=tuple(setters), setter_below_own=below,
-                            svg_undone=_svg_rule(lines) == UNDONE)  # fmt: skip
+def _entries(attributes: list[str]) -> list[tuple[int, list[str]]]:
+    """Each line of the file that sets attributes on a pattern, by its index, as its words."""
+    return [(at, line.split()) for at, line in enumerate(attributes)
+            if line.split() and not line.startswith(("#", "[attr]"))]  # fmt: skip
+
+
+def _unsets_text(words: list[str]) -> bool:
+    """Whether a line's attributes leave `text` unset: `binary`, `-text`."""
+    state: dict[str, str | None] = {"text": None, "eol": None}
+    _apply(state, words)
+    return state["text"] == "unset"
+
+
+def attributes_advice(attributes: list[str]) -> AttributesAdvice:
+    """What `init` asks of a `.gitattributes` whose lines, as read, are `attributes`: the eol
+    line, changed in or added, then each line still wanted on the file that leaves, at the
+    end (round 3 of #815: judged before the change, a `* -text` kept the SVG's bytes and the
+    advice then rewrote that line)."""
+    entries = _entries(attributes)
+    lines = [words for _at, words in entries]
+    change, move, on_top, off = None, False, False, ()
+    if _state(lines, ("*",)) != ("auto", "lf"):
+        setters = [at for at, words in entries
+                   if words[0] == "*" and _apply({"text": None, "eol": None}, words)]
+        if setters:
+            change, off = setters[0], tuple(setters[1:])
+            move = any(words[0] != "*" for at, words in entries if at < change)
+        else:
+            on_top = True
+    draft = AttributesAdvice(change=change, move_to_top=move, add_on_top=on_top, take_off=off)
+    left = _attribute_lines(rewrite_attributes(attributes, draft))
+    end: list[str] = []
+    for at, words in entries:
+        if words[0] in ("*", "*.svg") or not _unsets_text(words):
+            continue
+        line = attributes[at]
+        if line not in end and _rule(left, words[0]) != KEPT:
+            end.append(line)
+    if _rule(left, "*.svg") != KEPT:
+        end.append(SVG_BINARY)
+    eol = (EOL_LINE,) if change is not None or on_top else ()
+    return AttributesAdvice(
+        wanted=eol + tuple(end), change=change, move_to_top=move, add_on_top=on_top,
+        take_off=off, add_at_end=tuple(end), own=any(words[0] != "*" for words in lines),
+        svg_undone=_rule(lines, "*.svg") == UNDONE,
+    )
+
+
+def _without_text_or_eol(words: list[str]) -> list[str]:
+    """A line's words with what sets `text` or `eol` taken off: `binary`, which is
+    `-diff -merge -text`, keeps its `-diff -merge`."""
+    kept = [words[0]]
+    for word in words[1:]:
+        if word == "binary":
+            kept += ["-diff", "-merge"]
+        elif not (word in ("text", "-text", "!text", "eol", "-eol", "!eol")
+                  or word.startswith(("text=", "eol="))):  # fmt: skip
+            kept.append(word)
+    return kept
+
+
+def rewrite_attributes(attributes: list[str], advice: AttributesAdvice) -> list[str]:
+    """The `.gitattributes` whose lines are `attributes` with `advice` taken as `init` says it:
+    the eol line at the top or in place of the line it changes, `text` and `eol` taken off
+    the lines it names (a line left with no attribute goes), and the lines for its end
+    added there. What `attributes_advice` decides its last lines on, and what a test of the
+    advice applies (round 3 of #815)."""
+    out = [EOL_LINE] if advice.add_on_top or advice.move_to_top else []
+    for at, line in enumerate(attributes):
+        if at == advice.change:
+            if not advice.move_to_top:
+                out.append(EOL_LINE)
+        elif at in advice.take_off:
+            kept = _without_text_or_eol(line.split())
+            if len(kept) > 1:
+                out.append(" ".join(kept))
+        else:
+            out.append(line)
+    return [*out, *advice.add_at_end]
 
 
 def _lines(path: Path) -> list[str] | None:
@@ -667,6 +739,12 @@ def _lines(path: Path) -> list[str] | None:
         return [line.strip() for line in path.read_text("utf-8", errors="replace").splitlines()]
     except OSError:
         return None
+
+
+def read_lines(path: Path) -> list[str] | None:
+    """A git file's lines as `git_lines_to_add` reads them, each stripped of the white space
+    around it; None where it cannot be read."""
+    return _lines(path)
 
 
 def _sources_in_git(root: Path) -> bool:

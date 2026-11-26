@@ -6848,22 +6848,25 @@ def _say_git_lines(wanted: dict[str, list[str]], root: Path) -> None:
     so it says where they go: the eol line above the lines for patterns of their own, which
     a `*` line after them would undo (round 1 of #815), and, where a `*` line of the file's
     sets `text` or `eol` already, that line changed rather than another added, which it would
-    override (round 2)."""
-    from manuscript_guard.scaffold import EOL_LINE, SVG_BINARY, attributes_advice
+    override (round 2). What it says is `scaffold.attributes_advice`, the advice
+    `scaffold.rewrite_attributes` applies, each line quoted as the file writes it (round 3)."""
+    from manuscript_guard.scaffold import EOL_LINE, SVG_BINARY, attributes_advice, read_lines
 
     for name, lines in wanted.items():
-        why = _GIT_LINES.get(name) or ", and ".join(_ATTRIBUTE_LINES[line] for line in lines)
+        why = _GIT_LINES.get(name) or ", and ".join(
+            _ATTRIBUTE_LINES.get(line) or _BINARY_UNDONE.format(line=line) for line in lines)
         where = "Add these lines to it"
         if name == ".gitattributes":
-            advice = attributes_advice(root)
+            attributes = read_lines(Path(root) / name) or []
+            advice = attributes_advice(attributes)
             if advice.svg_undone and SVG_BINARY in lines:
                 why += ("; its own `*.svg` line stands above, and a `*` line below it that "
                         "sets `text` undoes it")
-            if EOL_LINE in lines and advice.setters:
+            if advice.change is not None:
                 print(f"\n{name} was already there and was left as it was, and {why}. "
-                      + _changed_attributes(advice, EOL_LINE, lines))
+                      + _changed_attributes(advice, attributes, EOL_LINE))
                 continue
-            if advice.own and EOL_LINE in lines:
+            if advice.own and advice.add_on_top:
                 where = (f"Add `{EOL_LINE}` at the top of the file, above its lines for "
                          "patterns of their own, which a `*` line below them undoes"
                          + (", and the others at its end" if len(lines) > 1 else ""))
@@ -6871,24 +6874,30 @@ def _say_git_lines(wanted: dict[str, list[str]], root: Path) -> None:
               f"{where}:\n\n" + "\n".join(lines))
 
 
-def _changed_attributes(advice, eol_line: str, lines: list[str]) -> str:
+#: Why a line keeping a pattern's files as bytes is asked again: a `*` line below undoes it.
+_BINARY_UNDONE = ("a `*` line below its `{line}` sets `text` and undoes it, so git "
+                  "normalises the files it keeps as bytes")  # fmt: skip
+
+
+def _changed_attributes(advice, attributes: list[str], eol_line: str) -> str:
     """What `init` asks of a `.gitattributes` whose `*` lines set `text` or `eol` otherwise:
     the first changed to the eol line, moved to the top where a line for a pattern of its own
     stands above it, `text` and `eol` taken off the others, which would override it, and the
-    rest of its lines added at the end (round 2 of #815)."""
-    first, *others = advice.setters
+    lines still wanted on the file that leaves added at its end (rounds 2 and 3 of #815).
+    Each line is quoted as the file writes it."""
+    first = attributes[advice.change]
     said = []
-    if first != eol_line or advice.setter_below_own:
+    if first != eol_line or advice.move_to_top:
         change = f"Change its line `{first}` to `{eol_line}`"
-        if advice.setter_below_own:
+        if advice.move_to_top:
             change += (", and move it to the top of the file, above its lines for patterns of "
                        "their own, which a `*` line below them undoes")
         said.append(change)
-    if others:
-        named = ", ".join(f"`{line}`" for line in others)
+    if advice.take_off:
+        named = ", ".join(f"`{attributes[at]}`" for at in advice.take_off)
         said.append(f"{'take' if said else 'Take'} `text` and `eol` off {named}, which "
                     f"would override it")  # fmt: skip
-    rest = [line for line in lines if line != eol_line]
+    rest = list(advice.add_at_end)
     tail = " Add these lines at its end:\n\n" + "\n".join(rest) if rest else ""
     return "; ".join(said) + "." + tail
 

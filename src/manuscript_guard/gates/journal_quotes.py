@@ -42,11 +42,12 @@ same files.
 
 from __future__ import annotations
 
+import codecs
 import difflib
 import hashlib
-import html
 import re
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
@@ -572,56 +573,156 @@ def _blocks_invalid(document: dict) -> list[str]:
 
 
 #: What a browser lays out as a block of its own: each starts a line of the stored text, so
-#: that a page saved with no line breaks in it is not stored as one line.
-_BLOCK = re.compile(
-    r"</?(?:address|article|aside|blockquote|br|caption|dd|div|dl|dt|figcaption|figure|footer"
-    r"|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|td|th|tr|ul)\b[^>]*>",
-    re.IGNORECASE,
-)
-_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+#: that a page saved with no line breaks in it is not stored as one line. Every other element
+#: is inline and joins the words around it, as the browser shows them.
+_BLOCKS = frozenset({
+    "address", "article", "aside", "blockquote", "body", "caption", "dd", "details", "dialog",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
+    "h4", "h5", "h6", "header", "html", "legend", "li", "main", "menu", "nav", "ol", "p", "pre",
+    "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+})  # fmt: skip
+#: What a browser does not show as the page, with all it holds: what it runs and styles with,
+#: what it keeps for a script to use, the tab's title, and what it shows only where scripts do
+#: not run, which is where a bot check's page keeps its words.
+_UNSHOWN = frozenset({"script", "style", "template", "title", "noscript"})
+#: Elements that have no end tag.
+_VOID = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+    "source", "track", "wbr",
+})  # fmt: skip
+#: Elements whose end tag may be left out, each with the end tags that close it unwritten:
+#: a hidden one is hidden until then, or until the next of its kind.
+_CLOSED_BY = {
+    "p": _BLOCKS - {"p"},
+    "li": frozenset({"ul", "ol", "menu", "body", "html"}),
+    "dt": frozenset({"dl", "body", "html"}),
+    "dd": frozenset({"dl", "body", "html"}),
+    "tr": frozenset({"table", "tbody", "thead", "tfoot", "body", "html"}),
+    "td": frozenset({"tr", "table", "tbody", "thead", "tfoot", "body", "html"}),
+    "th": frozenset({"tr", "table", "tbody", "thead", "tfoot", "body", "html"}),
+    "option": frozenset({"select", "optgroup", "datalist", "body", "html"}),
+}
+#: An inline style that hides an element.
+_NOT_SHOWN = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden", re.IGNORECASE)
+#: The character set a page declares, in `<meta charset>` or `<meta http-equiv>`'s content.
+_CHARSET = re.compile(rb"""<meta[^>]+?charset\s*=\s*["']?\s*([A-Za-z0-9_.:-]+)""", re.IGNORECASE)
+#: What WHATWG's encoding standard reads each of these as: windows-1252.
+_AS_1252 = frozenset({"iso-8859-1", "iso8859-1", "latin1", "latin-1", "l1", "us-ascii", "ascii"})
 
 
 class PageRefused(Exception):
-    """A file `store_page` does not store: no page's text is in it, or another is stored."""
+    """A file `store_page` does not store, or a place it does not store one."""
+
+
+class AnotherPageStored(PageRefused):
+    """A different page is stored where this one would go: replaced only when asked."""
+
+
+def _hidden(attrs: list[tuple[str, str | None]]) -> bool:
+    """Whether an element's attributes hide it: `hidden`, or a style of `display: none` or
+    `visibility: hidden`. Not `aria-hidden`, which hides from a screen reader only."""
+    return any(name == "hidden" or (name == "style" and value and _NOT_SHOWN.search(value))
+               for name, value in attrs)  # fmt: skip
+
+
+class _Shown(HTMLParser):
+    """The text a browser shows of a page: each block on a line of its own, inline elements
+    joining their words, entities read as the characters they are (`convert_charrefs`), and
+    nothing of a comment, of `_UNSHOWN` or of a hidden element (`_hidden`). An element
+    hidden whose end tag may be left out is hidden until an end tag that closes it
+    (`_CLOSED_BY`) or the next of its kind."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skipping: str | None = None
+        self._depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._skipping is not None:
+            if tag != self._skipping or tag in _VOID:
+                return
+            if not (tag in _CLOSED_BY and self._depth == 1):
+                self._depth += 1
+                return
+            self._skipping = None
+        if tag in _VOID:
+            if tag in ("br", "hr"):
+                self.parts.append("\n")
+            return
+        if tag in _UNSHOWN or _hidden(attrs):
+            self._skipping, self._depth = tag, 1
+            return
+        if tag in _BLOCKS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._skipping is not None:
+            if tag == self._skipping:
+                self._depth -= 1
+                if not self._depth:
+                    self._skipping = None
+                return
+            if self._depth == 1 and tag in _CLOSED_BY.get(self._skipping, ()):
+                self._skipping = None
+            else:
+                return
+        if tag in _BLOCKS or tag in ("br", "hr"):
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skipping is None:
+            self.parts.append(data)
+
+
+def _decoded(raw: bytes) -> str:
+    """A web page's text, in the character set it declares: a byte-order mark, else its
+    `<meta>`'s charset (`_CHARSET`, in its first 4096 bytes), else UTF-8. A character that is
+    not in it is read as U+FFFD, as a browser shows it."""
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw[3:].decode("utf-8", errors="replace")
+    if raw[:2] in (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE):
+        return raw.decode("utf-16", errors="replace")
+    declared = _CHARSET.search(raw[:4096])
+    if declared:
+        name = declared.group(1).decode("ascii").lower()
+        try:
+            return raw.decode("cp1252" if name in _AS_1252 else name, errors="replace")
+        except LookupError:
+            pass
+    return raw.decode("utf-8", errors="replace")
 
 
 def page_text(path: Path) -> str:
     """The text of a journal's page as the profile stores it, from the file the author has:
     a page saved from a browser as a web page (.html, .htm, .xhtml) or printed to PDF, or
-    the text itself.
+    the text itself, under any other name.
 
-    A web page loses what it does not show: its scripts, its styles, its comments and its
-    tags, a block of the page starting a line (`_BLOCK`), and its entities are read as the
-    characters they are. A PDF is read in reading order (`literature.sources._read_pdf`),
-    one column after the other. Each line of either has its white space folded to one space,
-    and runs of empty lines are one. Text is kept as it is written, with LF line endings.
+    A web page is read in the character set it declares (`_decoded`), and keeps what a
+    browser shows of it (`_Shown`): no script, style, comment, title, `<template>` or
+    `<noscript>`, and no hidden element; each block on a line of its own, and inline
+    markup joining its words, so that "Follow the <a>ICMJE recommendations</a>." is the
+    sentence the author copies; a block's end is a line's, and the page has no empty line. A
+    PDF is read in reading order (`literature.sources._read_pdf`), one column after the other,
+    a run of empty lines between its paragraphs read as one. Each line of either has its white
+    space folded to one space. Text is kept as it is written, with LF line endings.
 
-    Raises UnreadableSource for a file there is no reader for, or a PDF nothing here reads,
-    and UnicodeDecodeError for text that is not UTF-8."""
-    from manuscript_guard.literature.sources import (
-        _SCRIPT,
-        _TAG,
-        HTML_SUFFIXES,
-        PDF_SUFFIXES,
-        TEXT_SUFFIXES,
-        UnreadableSource,
-        _read_pdf,
-    )
+    Raises UnreadableSource for a PDF nothing here reads, and UnicodeDecodeError for a file
+    that is neither a web page nor a PDF and is not UTF-8 text."""
+    from manuscript_guard.literature.sources import HTML_SUFFIXES, PDF_SUFFIXES, _read_pdf
 
     suffix = path.suffix.lower()
-    if suffix in TEXT_SUFFIXES or not suffix:
-        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
     if suffix in HTML_SUFFIXES:
-        raw = path.read_text(encoding="utf-8", errors="replace")
-        raw = _BLOCK.sub("\n", _COMMENT.sub(" ", _SCRIPT.sub(" ", raw)))
-        text = html.unescape(_TAG.sub(" ", raw))
-    elif suffix in PDF_SUFFIXES:
+        shown = _Shown()
+        shown.feed(_decoded(path.read_bytes()))
+        shown.close()
+        folded = (" ".join(line.split()) for line in "".join(shown.parts).splitlines())
+        kept = [line for line in folded if line]
+        return "\n".join(kept) + "\n" if kept else ""
+    if suffix in PDF_SUFFIXES:
         text = _read_pdf(path, layout=False)
     else:
-        raise UnreadableSource(
-            f"{path.name}: no reader for {suffix}; save the page as a web page (HTML only) "
-            "or print it to PDF"
-        )
+        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
     lines: list[str] = []
     for line in (" ".join(line.split()) for line in text.splitlines()):
         if line or (lines and lines[-1]):
@@ -644,6 +745,14 @@ class Stored:
     written: bool
 
 
+def _inside(path: Path, root: Path) -> bool:
+    """Whether `path`, its links and `..` followed, is under `root`."""
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except OSError:
+        return False
+
+
 def store_page(project: Project, saved: Path, slug: str, page: str | None = None, *,
                replace: bool = False) -> Stored:  # fmt: skip
     """Write the text of `saved` (`page_text`) where the profile of `slug` reads its page:
@@ -652,23 +761,36 @@ def store_page(project: Project, saved: Path, slug: str, page: str | None = None
     with `replace`, the same text being no change.
 
     For a page the journal's site keeps from a script behind a bot check: the author saves
-    it from their own browser, and this stores it. Raises PageRefused where the file holds
-    no text, or another page is stored and `replace` is not given; LookupError where `page`
-    is no page of the profile's; and what `page_text` raises."""
+    it from their own browser, and this stores it. Only ever under the project's root: a
+    `page_file` or a journal's name that leads out of it (`../`, a path of its own) is
+    refused, since a page was only read from there before it was written there.
+
+    Raises PageRefused where the profile cannot be read, the place is outside the project,
+    the file holds no text or the page cannot be written; AnotherPageStored where another
+    page is stored and `replace` is not given; LookupError where `page` is no page of the
+    profile's; and what `page_text` raises, OSError among it."""
     from manuscript_guard.gates.journal import profile_path
 
     named = profile_path(project, slug)
     try:
         document = read_structured(named) if named else {}
-    except ContractError:
-        document = {}
-    document = document if isinstance(document, dict) else {}
+    except ContractError as exc:
+        raise PageRefused(f"{_where(named, project)} cannot be read, so where it stores its "
+                          f"page is not known: {exc}") from None  # fmt: skip
+    if not isinstance(document, dict):
+        raise PageRefused(f"{_where(named, project)} is not a profile, so where it stores its "
+                          "page is not known")  # fmt: skip
     pages = pages_of(project, slug, document)
     chosen = pages[0] if page is None else next(
         (one for one in pages if _same(one.path, project.root / page)), None)  # fmt: skip
     if chosen is None:
         raise LookupError(f"{page} is no page of the profile; its pages: "
                           f"{', '.join(_where(one.path, project) for one in pages)}")  # fmt: skip
+    if not _inside(chosen.path, project.root):
+        raise PageRefused(
+            f"{chosen.path} is outside the project, and a journal's page is stored only in it: "
+            "name a page_file under the project's folder, or a journal by its slug"
+        )
     text = page_text(saved)
     if not any(character.isalpha() for character in text):
         raise PageRefused(
@@ -686,13 +808,17 @@ def store_page(project: Project, saved: Path, slug: str, page: str | None = None
     if old is not None and page_digest(old) == digest:
         return Stored(chosen.path, digest, text.count("\n"), blocks, False)
     if chosen.path.exists() and not replace:
-        raise PageRefused(
+        raise AnotherPageStored(
             f"another page is stored at {_where(chosen.path, project)}, and every quote of the "
-            f"profile is held to it. Read the two against each other first, with `manuscript-"
-            f"guard journal --reread \"{saved}\"`, then store this one with --replace"
+            "profile is held to it. Read the two against each other first, then store this one "
+            "with --replace"
         )
-    chosen.path.parent.mkdir(parents=True, exist_ok=True)
-    chosen.path.write_bytes(text.encode("utf-8"))
+    try:
+        chosen.path.parent.mkdir(parents=True, exist_ok=True)
+        chosen.path.write_bytes(text.encode("utf-8"))
+    except OSError as exc:
+        raise PageRefused(f"{_where(chosen.path, project)} could not be written: "
+                          f"{exc.strerror or exc}") from None  # fmt: skip
     return Stored(chosen.path, digest, text.count("\n"), blocks, True)
 
 

@@ -3027,7 +3027,7 @@ def _reread(project, new: Path, page: str | None = None) -> int:
 
     try:
         # A page saved from a browser, as a web page or printed to PDF, is read as `--store`
-        # stores it, so that the two compare as one text.
+        # stores it, so that the two compare as one text; any other file as UTF-8 text.
         text = page_text(new)
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
@@ -3067,19 +3067,34 @@ def _reread(project, new: Path, page: str | None = None) -> int:
     where = stored.relative_to(project.root).as_posix() if inside else str(stored)
     print(
         f"Read the difference for rules the page added, too. To adopt the page, store it over "
-        f"{where} with `journal --store {new} --replace"
-        + (f" --page {where}" if found.blocks else "")
+        f"{where} with `"
+        + _journal_command(project, "--store", new, "--replace",
+                           *(("--page", where) if found.blocks else ()))
         + f"`, then record page_sha256: {found.digest}{dated} in the "
         + (f"profile's {', '.join(found.blocks)}." if found.blocks else "profile.")
     )
     return 1 if gone else 0
 
 
+def _journal_command(project, *words: object) -> str:
+    """A `journal` command to paste: the project's folder where it is not the one the command
+    is run from, and every path in double quotes, a name with a space in it among them."""
+    shown = ["manuscript-guard", "journal"]
+    try:
+        here = Path.cwd().resolve() == project.root.resolve()
+    except OSError:
+        here = False
+    if not here:
+        shown.append(f'"{project.root}"')
+    shown += [word if str(word).startswith("--") else f'"{word}"' for word in map(str, words)]
+    return " ".join(shown)
+
+
 def _store(project, args: argparse.Namespace) -> int:
     """`journal --store`: the text of a page the author saved, where the profile reads its
     page, and the digest to record of it. The journal is `--template`'s where it is given,
     the profile just started, and otherwise paper.yaml's target journal."""
-    from manuscript_guard.gates.journal_quotes import PageRefused, store_page
+    from manuscript_guard.gates.journal_quotes import AnotherPageStored, PageRefused, store_page
     from manuscript_guard.literature.sources import UnreadableSource
 
     slug = args.template or project.target_journal
@@ -3090,11 +3105,20 @@ def _store(project, args: argparse.Namespace) -> int:
         return 2
     try:
         stored = store_page(project, args.store, slug, args.page, replace=args.replace)
+    except AnotherPageStored as exc:
+        page = ("--page", args.page) if args.page else ()
+        print(f"manuscript-guard: {exc}:\n"
+              f"  {_journal_command(project, '--reread', args.store, *page)}\n"
+              f"  {_journal_command(project, '--store', args.store, '--replace', *page)}",
+              file=sys.stderr)  # fmt: skip
+        return 2
     except (PageRefused, LookupError, UnreadableSource) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     except (OSError, UnicodeDecodeError) as exc:
-        print(f"manuscript-guard: {args.store} cannot be read: {exc}", file=sys.stderr)
+        print(f"manuscript-guard: {args.store} cannot be read as a web page, a PDF or UTF-8 "
+              f"text: {exc}. Save the page as a web page (HTML only) or print it to PDF",
+              file=sys.stderr)  # fmt: skip
         return 2
     inside = stored.path.is_relative_to(project.root)
     where = stored.path.relative_to(project.root).as_posix() if inside else str(stored.path)
@@ -3147,11 +3171,13 @@ def cmd_journal(args: argparse.Namespace) -> int:
         if target.exists():
             print(f"{target} already exists; not overwriting", file=sys.stderr)
             return 2
+        # The page first: refused, it leaves no profile behind, and the same command can be
+        # run again once the page is saved right.
+        if args.store and _store(project, args):
+            return 2
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         print(f"created {target}")
-        if args.store and _store(project, args):
-            return 2
         print(
             "\nFill it by reading the journal's own instructions page — the comments say what\n"
             "each field means and what to do when the page is silent. The answer to that last\n"

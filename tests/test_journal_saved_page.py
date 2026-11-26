@@ -52,6 +52,8 @@ def _saved_html(path: Path) -> Path:
         "<style>p { margin: 3500px; }</style>"
         "<script>var limit = '<p>should not exceed 9999 words</p>';</script></head><body>"
         "<!-- a comment with > inside it: no more than 12 figures -->"
+        "<div hidden>Cookie settings 7</div><template><p>Accept 8</p></template>"
+        "<noscript>Enable JavaScript 9</noscript>"
         f"<nav><ul><li>Home</li><li>Submit</li></ul></nav><main>{paragraphs}</main>"
         "</body></html>",
         encoding="utf-8",
@@ -75,7 +77,8 @@ def test_a_page_saved_as_html_is_stored_as_its_text(journal_project: Path, capsy
     # The page's words, each paragraph a line of its own; nothing it does not show.
     assert "Abstracts should not exceed 300 words." in stored.splitlines()
     assert "Home" in stored.splitlines()
-    for hidden in ("9999", "3500px", "12 figures", "<p", "&#160;", "&nbsp;"):
+    for hidden in ("9999", "3500px", "12 figures", "<p", "&#160;", "&nbsp;", "Cookie", "Accept",
+                   "JavaScript", "Instructions for authors"):
         assert hidden not in stored, hidden
     assert stored.endswith("\n") and "\n\n\n" not in stored and "\r" not in stored
     # Every quote of the profile is on it.
@@ -167,15 +170,27 @@ def test_a_new_journal_s_page_is_stored_with_its_template(journal_project: Path,
         # rule to.
         ("blocked.html", "<html><head><script>challenge()</script></head><body></body></html>",
          "no text"),
-        ("page.docx", "PK", "no reader"),
+        # A real Cloudflare challenge: its words are in the title, a <noscript> and hidden
+        # elements, none of which a browser shows as the page.
+        ("challenge.html",
+         "<html><head><title>Just a moment...</title></head><body>"
+         "<noscript>Enable JavaScript and cookies to continue</noscript>"
+         "<div hidden><p>Verifying you are human</p></div>"
+         "<template><p>Checking your browser</p></template>"
+         "<div style='display: none'>Ray ID 8f</div><span style=\"visibility:hidden\">x</span>"
+         "<script>challenge()</script></body></html>", "no text"),
+        ("page.docx", b"PK\x03\x04\x14\x00\x08\x00\xff\xfe\x00", "UTF-8"),
     ],
 )  # fmt: skip
 def test_a_file_with_no_page_in_it_is_refused(
-    journal_project: Path, capsys, name: str, content: str, said: str
+    journal_project: Path, capsys, name: str, content, said: str
 ) -> None:
     (journal_project / PAGE).unlink()
     saved = journal_project.parent / name
-    saved.write_text(content, encoding="utf-8")
+    if isinstance(content, bytes):
+        saved.write_bytes(content)
+    else:
+        saved.write_text(content, encoding="utf-8")
     assert main(["journal", str(journal_project), "--store", str(saved)]) == 2
     assert said in capsys.readouterr().err
     assert not (journal_project / PAGE).exists()
@@ -189,3 +204,144 @@ def test_a_page_is_stored_for_a_journal_named(journal_project: Path, capsys) -> 
     saved = _saved_html(journal_project.parent / "page.html")
     assert main(["journal", str(journal_project), "--store", str(saved)]) == 2
     assert "--template" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("change", "page"),
+    [
+        (lambda d: d.update(page_file="../outside/page.txt"), None),
+        (lambda d: d.update(page_file="OUTSIDE"), None),
+        (lambda d: d.update(sharing={"page_file": "../sharing.txt", "source_url": "x"}),
+         "../sharing.txt"),
+    ],
+    ids=["page_file above the project", "page_file absolute", "a block's page_file"],
+)  # fmt: skip
+def test_a_page_is_never_stored_outside_the_project(
+    journal_project: Path, capsys, change, page: str | None
+) -> None:
+    """A page was only ever read from where the profile names it; once it is written there,
+    a `page_file` or a journal named out of the project must not take the write with it."""
+    import yaml
+
+    outside = journal_project.parent / "absolute-page.txt"
+    profile = journal_project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    change(document)
+    if document.get("page_file") == "OUTSIDE":
+        document["page_file"] = str(outside)
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    before = sorted(path for path in journal_project.parent.rglob("*") if path.is_file())
+    saved = _saved_html(journal_project.parent / "page.html")
+    before.append(saved)
+    argv = ["journal", str(journal_project), "--store", str(saved), "--replace"]
+    assert main([*argv, *(["--page", page] if page else [])]) == 2
+    assert "outside the project" in capsys.readouterr().err
+    after = sorted(path for path in journal_project.parent.rglob("*") if path.is_file())
+    assert after == sorted(before)
+
+
+def test_a_journal_named_out_of_the_project_stores_nothing(journal_project: Path, capsys) -> None:
+    paper = journal_project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "target_journal: demo-journal", "target_journal: ../../../../escaped"), encoding="utf-8")
+    saved = _saved_html(journal_project.parent / "page.html")
+    assert main(["journal", str(journal_project), "--store", str(saved)]) == 2
+    assert "outside the project" in capsys.readouterr().err
+    assert not list(journal_project.parent.parent.rglob("escaped.txt"))
+
+
+def test_inline_markup_joins_and_only_blocks_break_a_line(journal_project: Path) -> None:
+    """A link, a bold letter or a span inside a sentence is the sentence, as the browser shows
+    it and as the author copies a quote from it."""
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    saved = journal_project.parent / "page.html"
+    saved.write_text(
+        "<html><body><p>Follow the <a href='x'>ICMJE recommendations</a>.</p>"
+        "<p><b>W</b>ord count<br>no more than <span class='n'>4000</span> words</p>"
+        "<ul><li>Title<li>Abstract</ul><table><tr><td>Figures</td><td>6</td></tr></table>"
+        "</body></html>",
+        encoding="utf-8",
+    )
+    assert page_text(saved).splitlines() == [
+        "Follow the ICMJE recommendations.", "Word count", "no more than 4000 words",
+        "Title", "Abstract", "Figures", "6",
+    ]
+
+
+@pytest.mark.parametrize(
+    "declared",
+    ['<meta charset="windows-1252">',
+     '<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">'],
+)  # fmt: skip
+def test_a_page_s_declared_charset_is_read(journal_project: Path, declared: str) -> None:
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    saved = journal_project.parent / "page.html"
+    saved.write_bytes(f"<html><head>{declared}</head><body><p>R".encode("ascii")
+                      + "ésumé of the café".encode("cp1252") + b"</p></body></html>")
+    assert page_text(saved) == "Résumé of the café\n"
+
+
+def test_a_page_read_again_may_be_any_utf8_file(journal_project: Path, capsys) -> None:
+    """`--reread` read any UTF-8 file, whatever its name, and still does."""
+    again = journal_project.parent / "bmj-open-2026.11.26"
+    again.write_bytes((journal_project / PAGE).read_bytes())
+    assert main(["journal", str(journal_project), "--reread", str(again)]) == 0
+    assert "word for word" in capsys.readouterr().out
+
+
+def test_the_adopting_command_can_be_pasted(
+    journal_project: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """From another folder, and for a file whose name has a space in it."""
+    monkeypatch.chdir(journal_project.parent)
+    (journal_project / PAGE).unlink()
+    saved = _saved_html(journal_project.parent / "Instructions for authors.html")
+    assert main(["journal", str(journal_project), "--store", str(saved)]) == 0
+    capsys.readouterr()
+    saved.write_text(saved.read_text(encoding="utf-8").replace("300 words", "250 words"),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["journal", str(journal_project), "--reread", str(saved)]) == 1
+    out = capsys.readouterr().out
+    root = load_project(journal_project)[0].root
+    assert f'journal "{root}" --store "{saved}" --replace' in out
+    assert main(["journal", str(journal_project), "--store", str(saved)]) == 2
+    err = capsys.readouterr().err
+    assert f'journal "{root}" --reread "{saved}"' in err
+    assert f'journal "{root}" --store "{saved}" --replace' in err
+
+
+def test_a_store_refused_with_a_template_starts_no_profile(journal_project: Path, capsys) -> None:
+    """The page is stored first: refused, nothing is written, and the same command can be run
+    again once the page is saved right."""
+    empty = journal_project.parent / "blocked.html"
+    empty.write_text("<html><head><title>Just a moment...</title></head></html>",
+                     encoding="utf-8")  # fmt: skip
+    profile = journal_project / "profiles" / "journals" / "bmj-open.yaml"
+    argv = ["journal", str(journal_project), "--template", "bmj-open", "--store"]
+    assert main([*argv, str(empty)]) == 2
+    assert not profile.exists()
+    capsys.readouterr()
+    assert main([*argv, str(_saved_html(journal_project.parent / "page.html"))]) == 0
+    assert profile.is_file()
+
+
+def test_a_profile_that_cannot_be_read_is_said(journal_project: Path, capsys) -> None:
+    """Its `page_file` cannot be read either, so the page is not stored where it may not be."""
+    profile = journal_project / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text("limits: [\n", encoding="utf-8")
+    (journal_project / PAGE).unlink()
+    saved = _saved_html(journal_project.parent / "page.html")
+    assert main(["journal", str(journal_project), "--store", str(saved)]) == 2
+    assert "demo-journal.yaml" in capsys.readouterr().err
+    assert not (journal_project / PAGE).exists()
+
+
+def test_a_page_that_cannot_be_written_is_said_so(journal_project: Path, capsys) -> None:
+    (journal_project / PAGE).unlink()
+    (journal_project / PAGE).mkdir()
+    saved = _saved_html(journal_project.parent / "page.html")
+    assert main(["journal", str(journal_project), "--store", str(saved), "--replace"]) == 2
+    err = capsys.readouterr().err
+    assert "could not be written" in err and "cannot be read" not in err

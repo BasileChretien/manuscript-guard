@@ -20074,6 +20074,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
   `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
   and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
+- **An infinity in a results file.** A fragment holding an infinite value, an open end
+  printed as a comparator, carries a bare `Infinity`, as the Python emitter's always did and
+  the R emitter's now does: `check` reads it, and a strict JSON reader (R's
+  `jsonlite::fromJSON`, a browser's `JSON.parse`) refuses the file. Accepted.
+- **A plain display for an infinite value.** A fragment or a ledger entry whose value is
+  infinite and whose display is a plain number ("7.02"), taken at `main` before #812, is
+  G0 `no-display` at check time: an infinite value takes only a comparator on its side, or
+  "100+" above. Accepted.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",

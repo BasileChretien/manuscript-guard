@@ -2230,7 +2230,7 @@ class Emitter:
             # arguments were in the wrong order.
             problem = missing_problem(part)
             if problem is not None:
-                raise missing_refusal(part_key, problem, bound=part_key != point_key)
+                raise missing_refusal(part_key, problem, point=point_key)
             if part_key in self._values:
                 raise ValueError(f"{part_key!r} emitted twice by {self.script}")
         if not low <= point <= high:

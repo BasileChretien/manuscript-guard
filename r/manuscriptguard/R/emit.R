@@ -86,10 +86,15 @@ mg_check_display <- function(key, value, display) {
 
   if (!nzchar(parts[2]) && is.infinite(value)) {
     # A number's tolerance is infinite for an infinite value, so "7.02" was taken for an
-    # unbounded limit (round 2 of #812). A comparator on its side is what it prints.
+    # unbounded limit (round 2 of #812). A comparator on its side is what it prints, and
+    # "100+" above, whose "+" reads as a unit (round 3), as in Python.
+    if (value > 0 && identical(parts[7], "+")) {
+      return(invisible(NULL))
+    }
     stop(
       key, ": display '", display, "' is a number, and the value is infinite: an unbounded ",
-      "limit is printed as a comparator on its side, \">100\" above or \"<-100\" below",
+      "limit is printed as a comparator on its side, \">100\" or \"100+\" above, \"<-100\" ",
+      "below",
       call. = FALSE
     )
   }
@@ -140,7 +145,7 @@ mg_missing_spellings <- c("nan", "inf", "-inf", "null", "none")
 #' - "is infinite" with no display; with one, the display's own check decides, and an
 #'   unbounded limit printed as a comparator (">100") was taken before, and is;
 #' - "is NA" for a logical or a character NA with no display; with a display that spells a
-#'   missing value ("NA", "nan", "NULL"), that display is refused too, and with another it is
+#'   missing value ("nan", "NULL", "None"), that display is refused too, and with another it is
 #'   the author saying what is printed in its place ("not estimable"), taken before, as
 #'   Python takes None with one.
 #'
@@ -173,12 +178,17 @@ mg_missing_problem <- function(value, display = NULL) {
 #' Refuse a value that is no number to print, naming its key, in Python's words, ending in
 #' what to do for that problem
 #' @noRd
-mg_missing_refusal <- function(key, problem, bound = FALSE) {
-  then <- if (identical(problem, "is infinite") && bound) {
-    # interval() and control() take no display.
-    paste0("so there is no number to print. Emit this end on its own with em$value(\"", key,
-           "\", ..., display = \">100\"), a comparator on its side, or emit the key only ",
-           "where there is a value")
+mg_missing_refusal <- function(key, problem, point = NULL) {
+  then <- if (identical(problem, "is infinite") && !is.null(point)) {
+    # interval() and control() take no display: an open end is emitted with value(), and a
+    # control cannot have one (round 3 of #812), as Python says.
+    end <- if (endsWith(key, "_low")) "low" else "high"
+    shown <- if (identical(end, "low")) "<-100" else ">100"
+    bound <- if (identical(key, point)) paste0(sub("\\.point$", "", point), ".ci_high") else key
+    paste0("so there is no number to print. interval() and control() take no display: emit ",
+           "the estimate as em$value(\"", point, "\", ...) and each end as em$value(\"", bound,
+           "\", ..., display = \"", shown, "\", bounds = \"", point, "\", bound = \"", end,
+           "\"), an open end with a comparator on its side. A control cannot have an open end")
   } else if (identical(problem, "is infinite")) {
     paste0("so there is no number to print. Say with `display` what the paper prints in its ",
            "place, a comparator such as \">100\" for an unbounded limit, or emit the key ",
@@ -1816,7 +1826,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       # words, naming no key.
       problem <- mg_missing_problem(part[[2]])
       if (!is.null(problem)) {
-        mg_missing_refusal(part[[1]], problem, bound = !identical(part[[1]], point_key))
+        mg_missing_refusal(part[[1]], problem, point = point_key)
       }
       if (!is.null(state$values[[part[[1]]]])) {
         stop(part[[1]], " emitted twice by ", script_path, call. = FALSE)

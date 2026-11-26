@@ -117,5 +117,8 @@ em$write()
 ```
 
 The fragment lands in `results/`, and `manuscript-guard check` reads it like one from Python.
+A value that is infinite, an open end printed as a comparator (`display = ">100"`), is written
+as a bare `Infinity`, as the Python emitter writes it: `check` reads it, and a strict JSON
+reader, R's `jsonlite::fromJSON` or a browser's `JSON.parse`, refuses the file.
 
 [Back to the README](../README.md)

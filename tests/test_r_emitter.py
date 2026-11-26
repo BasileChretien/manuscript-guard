@@ -2948,6 +2948,7 @@ def test_r_takes_a_display_that_is_not_exactly_a_spelling_as_the_author_s(
         ("Inf", "7.02", False), ("Inf", "<100", False), ("Inf", "\\u2264100", False),
         ("-Inf", "<-100", True), ("-Inf", "\\u2264-100", True), ("-Inf", "<=-100", True),
         ("-Inf", "100", False), ("-Inf", "-100", False), ("-Inf", ">-100", False),
+        ("Inf", "100+", True), ("-Inf", "100+", False),
     ],
 )  # fmt: skip
 def test_r_takes_only_a_comparator_on_an_infinity_s_own_side(
@@ -2964,7 +2965,27 @@ def test_r_tells_an_infinite_bound_of_an_interval_to_go_through_value(tmp_path: 
     out, _root = _r_with(tmp_path, 'em$interval("ror", 1.5, 1, Inf, digits = 2)')
     assert out.returncode != 0
     assert "ror.ci_high: the value is infinite" in out.stderr
-    assert 'em$value("ror.ci_high", ..., display = ">100"' in out.stderr, out.stderr
+    assert ('em$value("ror.ci_high", ..., display = ">100", bounds = "ror.point", '
+            'bound = "high")') in out.stderr, out.stderr
+    assert "A control cannot have an open end" in out.stderr
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        ('em$interval("ror", Inf, 1, 2, digits = 2)', "ror.point"),
+        ('em$interval("ror", 1.5, -Inf, 2, digits = 2)', "ror.ci_low"),
+        ('em$control("control.x", 1.5, 1, Inf, digits = 2)', "control.x.ci_high"),
+    ],
+)
+def test_r_tells_an_infinite_point_or_end_how_to_emit_an_open_end(
+    tmp_path: Path, call: str, says: str
+) -> None:
+    out, _root = _r_with(tmp_path, call)
+    assert out.returncode != 0
+    assert f"{says}: the value is infinite" in out.stderr, out.stderr
+    assert "interval() and control() take no display" in out.stderr
+    assert "A control cannot have an open end" in out.stderr
 
 
 def test_r_writes_an_infinity_as_python_writes_it(tmp_path: Path) -> None:

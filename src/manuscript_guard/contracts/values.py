@@ -93,14 +93,19 @@ def spelled_missing(value: object, display: str | None) -> str | None:
     return None
 
 
-def missing_refusal(key: str, problem: str, *, bound: bool = False) -> MissingValueError:
+def missing_refusal(key: str, problem: str, *, point: str | None = None) -> MissingValueError:
     """The refusal of a value that is no number to print, naming its key: the same words as
-    the R emitter's, ending in what to do for that problem. A `bound` of an interval is
-    told to go through `value()`, since `interval()` and `control()` take no display."""
-    if problem == INFINITE and bound:
-        then = ("so there is no number to print. Emit this end on its own with "
-                f'value("{key}", ..., display=">100"), a comparator on its side, or emit the '
-                "key only where there is a value")  # fmt: skip
+    the R emitter's, ending in what to do for that problem. A part of an interval whose
+    estimate is `point` is told how to emit an open end with `value()`, since `interval()`
+    and `control()` take no display, and that a control cannot have one (round 3 of #812)."""
+    if problem == INFINITE and point is not None:
+        end = "low" if key.endswith("_low") else "high"
+        shown = "<-100" if end == "low" else ">100"
+        bound = key if key != point else f"{point.removesuffix('.point')}.ci_high"
+        then = ("so there is no number to print. interval() and control() take no display: "
+                f'emit the estimate as value("{point}", ...) and each end as value("{bound}", '
+                f'..., display="{shown}", bounds="{point}", bound="{end}"), an open end with a '
+                "comparator on its side. A control cannot have an open end")  # fmt: skip
     elif problem == INFINITE:
         then = ("so there is no number to print. Say with `display` what the paper prints in "
                 'its place, a comparator such as ">100" for an unbounded limit, or emit the '
@@ -422,10 +427,13 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
     compare = match.group("compare")
     if not compare and math.isinf(float(value)):
         # A number's tolerance is infinite for an infinite value, so "7.02" was taken for an
-        # unbounded limit (round 2 of #812). A comparator on its side is what it prints.
+        # unbounded limit (round 2 of #812). A comparator on its side is what it prints, and
+        # "100+" above, whose "+" reads as a unit (round 3).
+        if float(value) > 0 and match.group("unit") == "+":
+            return
         raise DisplayError(
             f"{key}: display {display!r} is a number, and the value is infinite: an "
-            f'unbounded limit is printed as a comparator on its side, ">100" above or '
+            f'unbounded limit is printed as a comparator on its side, ">100" or "100+" above, '
             f'"<-100" below'
         )
     if compare:

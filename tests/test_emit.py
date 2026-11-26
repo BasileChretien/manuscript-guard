@@ -1761,6 +1761,7 @@ def test_a_display_that_is_not_exactly_a_spelling_is_the_author_s(
         (INF, "7.02", False), (INF, "<100", False), (INF, "\u2264100", False),
         (-INF, "<-100", True), (-INF, "\u2264-100", True), (-INF, "<=-100", True),
         (-INF, "100", False), (-INF, "-100", False), (-INF, ">-100", False),
+        (INF, "100+", True), (-INF, "100+", False),
     ],
 )  # fmt: skip
 def test_an_infinity_takes_only_a_comparator_on_its_own_side(
@@ -1785,7 +1786,33 @@ def test_an_infinite_bound_of_an_interval_is_told_to_go_through_value(scratch: P
         emitter(scratch).interval("ror", 1.5, 1.0, INF, digits=2)
     message = str(refused.value)
     assert message.startswith("ror.ci_high: the value is infinite")
-    assert 'value("ror.ci_high", ..., display=">100"' in message, message
+    assert 'value("ror.ci_high", ..., display=">100", bounds="ror.point", bound="high")' \
+        in message, message
+    assert 'value("ror.point", ...)' in message and "A control cannot have an open end" in message
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        (lambda em: em.interval("ror", INF, 1.0, 2.0, digits=2), "ror.point"),
+        (lambda em: em.interval("ror", 1.5, -INF, 2.0, digits=2), "ror.ci_low"),
+        (lambda em: em.control("control.x", 1.5, 1.0, INF, digits=2), "control.x.ci_high"),
+    ],
+)
+def test_an_infinite_point_or_end_is_told_how_to_emit_an_open_end(
+    scratch: Path, call, says: str
+) -> None:
+    """Round 3 of #812: the advice named a `display` neither call takes, and an infinite
+    point was told to give one."""
+    with pytest.raises(DisplayError) as refused:
+        call(emitter(scratch))
+    message = str(refused.value)
+    assert message.startswith(f"{says}: the value is infinite"), message
+    assert "interval() and control() take no display" in message
+    assert "A control cannot have an open end" in message
+    if says == "ror.ci_low":
+        assert 'value("ror.ci_low", ..., display="<-100", bounds="ror.point", bound="low")' \
+            in message, message
 
 
 def test_an_infinity_is_written_as_json_reads_it_back(scratch: Path) -> None:

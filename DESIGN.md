@@ -9843,12 +9843,13 @@ findings (`auditing.gates.run_gates`, which both run), where the audit says what
 a PDF's reference list and which numbers of the Abstract it found nowhere the paper reports,
 and where `compare` says a sentence's claim changed; `check` never reads it. Measured on main
 at d056f71, the next two rows at 0949b4b, once the two judges had read the findings no
-verdict covered (`docs/corpus.md`, "Judging"), and the last at 77abd45db:
+verdict covered (`docs/corpus.md`, "Judging"), the last at 77abd45db, and `model-artefact`'s
+again at 27b5cfb:
 
 | Code | Read from | Judged | True | False ones from | In `audit` and `compare` | In `check` |
 |---|---|---|---|---|---|---|
 | `code-name-in-prose` (G14) | any format | 50 | 18 | 8 papers | INFO | warns, fails at submission |
-| `model-artefact` (G6), a bare placeholder | any format | 12 | 1 | 4 papers | INFO | fails from drafting |
+| `model-artefact` (G6), every rule | any format | 30 | 1 | 11 papers | INFO | fails from drafting |
 | `entries-not-told-apart` (G7) | any format | 13 | 13 | none | warning | not given |
 | `abstract-not-found` (audit) | any format | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
 | `claim-negation` (compare) | any format | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
@@ -9877,15 +9878,20 @@ now say the opposite was false mostly where a section was rewritten, its new neg
 of new sentences rather than a claim reversed; `reworded`, which reads one edit of a
 project's own text, keeps the warning.
 
-A bare placeholder is a finding of the two rules of `data/ai_writing.yaml` of the kind whose
-findings were judged: `placeholder-slot`, a thing named in brackets ("[url]", "[citation
-needed]"), and `placeholder-word`, a word that marks a gap ("xxxx", "XXX", "TBD"). A slot
-that tells the writer what to put ("[insert the date]", "[your name]", "[TO BE COMPLETED]")
-was never judged loud, and the bracket's rule also finds an instruction in brackets, "[fill
-in later]", so those still fail. So do a journal template's instruction to its authors
-(`placeholder-template`, Word's "Click or tap here to enter text." among them), an
-instruction left for the writer (`placeholder-filler`) and a model's markup or voice, in
-both reports, since such words have no innocent reading (Basile, 2026-10-21).
+`model-artefact` holds for every finding of the code, each rule of the `artefacts` section
+of `data/ai_writing.yaml` (Basile, 2026-11-25, "INFO in audit"). At d056f71 the row held for the bare placeholders alone, `placeholder-slot`
+("[url]", "[citation needed]") and `placeholder-word` ("xxxx", "TBD"), 1 true of 12; a slot
+that tells the writer what to put, an instruction left for the writer, a journal template's
+instruction to its authors and a model's markup or voice kept failing in both reports, since
+such words were taken to have no innocent reading (Basile, 2026-10-21). On the corpus at
+27b5cfb they had one: of the code's 30 judged findings in the reports the table is applied
+to (an audit, of a paper or of its own PDF, and `compare`), 1 was true, and the two still loud
+were a template's "Sample table title" and a "todo", both false (a chat assistant's register,
+the other kind that failed, had gone with #779). Unfilled placeholder text was right 1 time
+in 25, a chat assistant's register 0 in 4 and a template's instruction 0 in 1; `check`'s own
+13 judged were false too. So every finding of the code is a note in `audit` and
+`compare`, and `check` fails them from drafting as before, where a leftover is the author's
+own.
 `identifier-malformed` (13 true of 14) and `reference-field-missing` (41 of 41) were measured
 in `check`, where they wait for internal review; the audit gives neither, so neither is in
 the table. `check` keeps them waiting: they are right, but a reference list is still changing
@@ -17274,6 +17280,325 @@ whole of `check --json`, so a pull request that moves a key says so in
 a moved line keep every key, another subject moves it, and the ordinal counts in its
 sentence only, each beside a broken rule in `BROKEN`.
 
+## A paper's numbers are matched to an output's rows, a group at a time
+
+Designed 2026-11-25, not built. Basile asked on 2026-11-25 what would make the toolkit one
+that authors want to use when their only experience of AI is ChatGPT, their statistics are
+limited and research is not yet their trade. One answer was to compare a paper with the output
+of the program its numbers came from: SPSS, jamovi, Stata, GraphPad, a spreadsheet. He asked
+how that could work when every such file has its own columns, named by whoever made it. This
+section is the answer. It and the next were read twice by an Opus agent: against main at
+8f4629a2f before Basile answered their questions (seven findings, three of them blocking), and
+over the fixes and his answers (seven, one blocking). All were taken in. Nothing here is built
+before Basile says to start.
+
+**Basile's answers** (question boxes, 2026-11-25; each the recommendation):
+
+| Question | Answer |
+|---|---|
+| 1. Which groups are matched | those the audit reads today, and also a count with its share and a mean with its SD written in prose, each by a reader of its own, in a later pull request |
+| 2. When a group is "one number off" | for groups of three or more numbers only |
+| 3. What `--strict` counts | neither "apart" nor "one number off", until both are measured on real papers |
+| 4. Transforms | two, each named on the match: a per cent against a proportion times 100, and an estimate with its interval against their logarithms |
+| 5. A text file's lines | each line of a .txt or .log is a row, and the report says so |
+
+### Why `--against` cannot just read more formats
+
+`load_backing` in `audit.py` reads every number of every output into one set of texts: a CSV's
+rows are joined into one line, a JSON document's keys and values listed. A number of the paper
+is backed where each of its parts (`parts_of`), normalised, is in that set. Nothing is rounded,
+so an output that prints 1.8213 does not back a paper's 1.82, and a spreadsheet is named among
+the files not read. "Auditing existing papers, and saying what the audit is worth" (above)
+records what such a set was measured to be worth in this project's predecessor: with the
+analysis outputs as the backing set, 100% of integers up to 100 and 97% up to 1000 already
+matched, and of fifteen deliberately corrupted headline numbers it caught none.
+
+Reading .xlsx or an SPSS export into the same set would add files to a test that is weak by
+construction. What the set throws away is which numbers stand together. A program prints an
+estimate, its interval and its P on one row, and a paper prints them in one phrase; neither
+has to say what its columns are called for the two to be compared.
+
+### The rules
+
+1. **A group is matched with one row, or it is not matched.** A group is a set of numbers the
+   paper prints together. The audit reads two kinds of group in prose today: an estimate with
+   its interval and the P that follows it ("OR 1.8, 95% CI 1.2 to 2.7, P = 0.004",
+   `stats/intervals.py`), and a test statistic with its degrees of freedom and its P
+   (`stats/reported.py`). It reads a count with its share in a table's cells, and in prose only
+   where both counts are written ("12 of 40 (30%)", `stats/shares.py`); and a mean with its SD
+   only in the table rows the auditor names (`stats/granularity.py`, `auditing/skew.py`). A
+   count with its share written alone in prose ("52 (31.7%)") and a mean with its SD in prose
+   have no reader yet (answer 1). A group is matched where each of its numbers is a cell of its
+   own on the same row of the same table, in any columns.
+2. **No column's meaning is read.** Headers are anyone's, so the rule never asks what a column
+   is called or which one holds the lower bound. The words of the row (its label, its table's
+   title or its sheet) are shown beside the match, so that a reader sees at a glance that the
+   odds ratio for the sessions came from the row for age.
+3. **A printed number matches the cells that round to it** at its own number of places: 1.8
+   matches any cell from 1.75 to 1.85, both ends included, since programs round a half either
+   way. A P printed with a sign, as the audit already keeps it (`stats/reported.py`), matches
+   the cells on that side of its bound: "P < 0.001" matches R's 2e-16 and SPSS's .000, which
+   SPSS prints for a P under 0.0005, and a group whose P is printed so is matched on its correct
+   row rather than reported with one number off. A cell that carries a sign itself, as jamovi
+   prints "< .001", is a bound: it matches a P printed with the same sign that follows from it
+   (under "<", a bound no smaller than the cell's; under ">", one no larger), and a P printed
+   exactly that falls on the cell's side.
+4. **What a match is worth is measured for groups as it is for numbers.** For each shape of
+   group the paper holds (three numbers at one decimal place and one at three, say), the share
+   of a fixed grid of such groups that some row of the given outputs would match. The grid is
+   fixed, as `measure_discrimination`'s is, so the figure is the same on every run. It falls
+   where rows are long, as a row of raw data is.
+5. **The set stays for a number no group holds.** A count on its own ("164 took part") is
+   compared as today, with today's measure beside it. The groups come first in the report.
+
+### What it reports
+
+- Matched: the group and its row: the file, the sheet or table, the row's number and its
+  words. Listed in `--details` and on the page; not a finding.
+- Apart: each number of a group is somewhere in the outputs, and no row holds them all. The
+  set would have passed it.
+- One number off: a group of three or more numbers all but one of which stand on one row,
+  with no row holding them all: the row, and the number that differs ("2.7 here; 2.37 on that
+  row"). Not said of a pair, where one number matching by chance is common.
+- Not in the outputs: as today.
+
+Neither "apart" nor "one number off" counts for `--strict` until both are measured on
+real papers (answer 3), as #710 sets a code's severity in the audit by its precision on
+real papers.
+
+### Readers
+
+A reader turns an output file into tables of cells, each a value with its place, and does
+nothing else. No reader decides what a cell means.
+
+- CSV and TSV: one table, kept as rows rather than joined.
+- JSON: a list of objects is a table, one row for each object. In a results fragment, each
+  bound `em.interval` writes names its estimate (`bounds`, `bound`), and its `level` where one is
+  given or set as the emitter's `ci_level`; every level of an estimate's intervals names the
+  same estimate (the example writes a 95% and a 90% interval on `ror.point`). So a fragment's
+  rows are grouped by `bounds` and `level`: one row for each level, bounds with no level making
+  one, with the estimate on each. Every other value is a row of its own. A fragment
+  links no P to its estimate, so against a fragment a group's P is looked for among its values,
+  as a number no group holds is, and does not count towards "one number off".
+- .xlsx: each sheet a table, read from the workbook's XML through `safexml`, as a .docx is
+  read. A cell's stored value is read, not its displayed one, and rule 3 rounds it.
+- HTML: each table, titled by its caption or by the heading before it.
+- Text (.txt, .log): each line is a row, and the report says that its rows are lines
+  (answer 5).
+- Not read: SPSS's .spv, jamovi's .omv, Stata's .smcl and GraphPad's .pzfx, until each
+  format is read from its publisher's documentation. Each is named as not read, with the export
+  that is.
+
+### How we will know it works
+
+- The measurement that sank the set, repeated. A fixture paper and its outputs, each
+  headline number corrupted in turn, in three ways: a digit changed, the group taken from the
+  next row, one bound of an interval taken from another row. Counted: how many the groups
+  catch, and how many the set does. Recorded in this section, and each way of corrupting held
+  in `tests/test_corruption.py`.
+- Generated inputs. `tests/generated.py` draws outputs whose columns are shuffled, renamed
+  and padded with rows and columns of other numbers, and papers whose P values are printed with
+  a sign; `tests/readings.py` gains a reading of what the audit matches, so that the
+  old-against-new job compares it; a property holds that a group is matched wherever its row
+  is; and a broken matcher (one that ignores rows) is added to `BROKEN` in
+  `tests/test_properties.py` and to `CHANGED` in `tests/test_differential.py`, and fails under
+  a dozen seeds.
+- Real papers with their outputs. The corpus holds papers, not their outputs. A set of
+  published papers whose program output is deposited beside them (at OSF, or in a journal's
+  supplement) is still to be found; until it is, false alarms are measured on the example and
+  the fixtures only, and this section says so.
+- The matching reads text, so its pull request runs the corpus gate.
+
+### Pull requests, in order
+
+1. Readers. Output files become tables of cells (CSV and TSV kept as rows, JSON lists of
+   objects, .xlsx, HTML); the set is filled from the cells as it is today, so nothing an audit
+   reports changes but the files it can read. The page takes the same files.
+2. Groups. The matching, "apart" and "one number off", the measure by shape, and their
+   section first among the comparisons.
+3. Readers for a count with its share and a mean with its SD written in prose (answer 1),
+   each reading text, with its own generated inputs and its own run of the corpus gate.
+4. Transforms: a per cent against a proportion times 100, and an estimate with its interval
+   against their logarithms, each named on the match (answer 4).
+5. A text file's lines as rows (answer 5).
+
+### Not verified
+
+- What SPSS's and jamovi's exports to HTML and .xlsx hold, and whether they keep a table's
+  title; that jamovi prints a P under 0.001 as "< .001"; that Stata's printed tables put a
+  term's estimate, interval and P on one line.
+- That enough published papers deposit their program output for a measure of false alarms.
+
+## One set of plan questions, answered before the data or quoted from a draft
+
+Designed 2026-11-25, not built. In the same conversation as the section above, the other
+answer was a plan builder: the analysis plan asked of an author who has never written one, in
+words they understand, with neither a terminal nor an agent. Basile agreed, warned that it is
+hard to make well, and added that it "could also be used as a checker for those who already
+have a v1 paper". This section is that design. Nothing here is built before Basile says to
+start.
+
+**Basile's answers** (question boxes, 2026-11-25; each the recommendation):
+
+| Question | Answer |
+|---|---|
+| 1. An open item ("not decided yet") | a warning at every stage, as `plan-section-empty` is |
+| 2. Usual answers shown | where a section's source lists them, as that source's list, cited |
+| 3. A written paper's plan questions | asked whenever `audit --design` names a design |
+| 4. A plan from a written paper | also written by `plan write --after-results` into a project brought in from Word, headed as written after the results |
+| 5. Helping an author name the design | a sentence beside each option now; a series of questions only if authors watched using the page still choose the wrong design |
+
+### What exists
+
+- `REQUIRED` in `gates/design.py` names the seven sections every plan has (question, design,
+  population, exposure, outcome, analysis, deviations), each by the pattern its heading is
+  matched by. `data/study_types.yaml` adds, for each of seven designs, the sections a plan of
+  that design states (a cohort study's time zero and follow-up, confounding, missing data and
+  sensitivity analyses; a trial's estimand, sample size, randomisation, missing data,
+  sensitivity and interim analyses), each with what it has to say and the guideline item it
+  comes from, read on a stated date.
+- G12 holds `design/plan.md` to those sections (`plan-section-missing`, `plan-section-empty`),
+  which warn at every stage, as "The design gate warns and never blocks" (above) decided.
+  Several of G12's other checks (among them the registration, the controls, the held-out data,
+  the data sources and the reviews of the design) have findings that fail from one stage or
+  another, as `policy.py` and those checks set them. The plan is held to what came after it: `plan-changed-after-results`, the `planned-result-…` findings and
+  the registration's outcomes (`registration-…`).
+- `next` asks for the design first (`choose-study-type`), and the analysis-plan skill puts the
+  sections to the author through an agent.
+- `audit` asks no question of a plan. Its `--design` takes `observational` or `trial`, for the
+  causal words and the baseline tables.
+
+What is missing: questions a newcomer can answer, the designs newcomers write most, a way to
+answer with neither a terminal nor an agent, and a way to put the same questions to a paper
+already written.
+
+### The rules
+
+1. **One list of questions.** The seven sections of `REQUIRED` move into the file beside the
+   designs' own, so that `check`, `audit`, a new `plan` command, the page and the skill all
+   read one list. Each section gains two fields: `ask`, the question in plain words ("How will
+   you handle people with missing values?"), and `explain`, a sentence or two on why a reader
+   needs the answer. Both are the project's words, citing the section's item, and quote no
+   guideline whose page gives no licence, as the file already requires.
+2. **Two ways to answer.** Before the data, an answer is text, written under the section's
+   heading in `design/plan.md`. For a paper already written, an answer is a quote: the sentence
+   of the paper that answers the question, held to be in the paper as a reporting checklist's
+   quote is.
+3. **The tool asks and records; it chooses nothing.** It proposes no test, no model, no
+   adjustment set and no way of handling missing data. Where a section's own source lists the
+   usual answers, they may be shown as that source's list, cited (answer 2); otherwise the
+   answer is the author's text.
+4. **"Not decided yet" is an answer.** It names who is to decide, a role or a person the author
+   names, and is kept as an open item rather than left as an empty heading: a warning at every
+   stage, as `plan-section-empty` is (answer 1).
+5. **A plan made from a written paper says when it was made.** Its answers are quotes, it is
+   headed as written after the results, and nothing in it reads as a preregistration.
+
+### Asking a paper already written
+
+- `audit --design` takes each design of `study_types.yaml` as well as `observational` and
+  `trial`; each design says in the file which of the two it implies for the checks that read
+  them (a cohort study is observational).
+- Whenever `--design` names a design of the file (answer 3), a section "Questions of the plan"
+  asks the design's questions of the Methods. `observational` names none and asks nothing;
+  `trial` is one, so an audit run with `--design trial` today gains the section. Each section of
+  the file gains a third field, `finds`: what a sentence answering it is matched by, apart from
+  `heading`, since a sentence is not a heading. Where sentences match, the first three are
+  offered as candidates with their places; where none does, the question is said to be
+  unanswered: "No sentence of the Methods says how missing values were handled. A reviewer will
+  ask." It is a question for the author, and `--strict` does not count it.
+- A section's `finds` is measured on the corpus before it offers candidates. A pattern as broad
+  as "analysis" can match many sentences of a Methods section; a section whose first candidate
+  is the answer in fewer than half of the corpus's papers offers none, and its question stands
+  alone. A candidate is judged as the corpus's findings are, by two judges, which is a verdict
+  of a new kind for the corpus's ledger: the candidate is the answer, or it is not.
+- The page shows the same section, with each candidate as a choice and a box for another
+  sentence. The quotes chosen are saved as an answers file (below), which `audit` reads back
+  with `--plan-answers FILE` and holds to the paper.
+
+### Answering before the data
+
+- Two commands, neither of which waits for a person, so that an agent can drive them and a
+  script can run them: `manuscript-guard plan questions [--design T] [--json]` prints the
+  questions, and `manuscript-guard plan write ANSWERS` writes `design/plan.md` from an answers
+  file. `plan write` refuses where `design/plan.md` has text under any heading, rather than
+  merge into an author's plan. `plan write --after-results` takes an answers file of quotes
+  and writes its plan headed as written after the results, for a project brought in from
+  Word (answer 4).
+- The answers file (`manuscript-guard/plan-answers/1`) names the design and, for each
+  section's id, one of: `text`; `quote`, with its place in the paper; or `open`, with `who` and
+  a note.
+- The skill asks from the command. The analysis-plan skill reads `plan questions --json`
+  rather than its own copy of the sections, the list in its `SKILL.md` and
+  `references/study-designs.md`, so that the skill, the page and the command ask the same
+  questions in the same words.
+- The page. A form, one question at a time, run in the browser as the audit page is, with
+  nothing uploaded. It saves `plan.md`, the answers file and a PDF of the plan, made by the
+  writer that makes the audit's PDF, with the SHA-256 of `plan.md` printed on it.
+- The date. A plan is worth as much as the proof that it came before the results, and a file
+  made in a browser proves nothing about when. The PDF says so, and the page and `plan write`
+  say what does: a registration at OSF, which is free, public and dated, and which G12 already
+  looks up; or a commit pushed before the analysis is run. A project's own rule, the plan frozen
+  when the first results are written, is unchanged.
+
+### New designs
+
+Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic accuracy studies
+(STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
+guideline's own page on the day of its pull request, as the file requires, and
+`choose-study-type` offers the design. STROBE and STARD 2015 have recipes already; CARE, SRQR
+and COREQ need one each, with their licences read. A case series here is a descriptive series
+of patients, not the self-controlled case series, which `self-controlled` already covers
+(labelled "self-controlled design (case series or case-crossover)"); its label says so, and
+which guideline it answers to is read before its entry is written.
+
+`gates/design.py` names cross-sectional surveys, case series and reports, and qualitative
+studies among the studies `other` covers today. `other` stays, for a narrative review and the
+rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+may `set study_type` to a new design.
+
+`choose-study-type` also gains a sentence beside each option saying what makes a study that
+design, in the project's words, so that an author who does not know the name can recognise
+the study (answer 5).
+
+### How we will know it works
+
+- `finds` reads text: its pull request runs the corpus gate, and each section's candidates are
+  judged for the threshold above.
+- `tests/generated.py` draws Methods with each section's answer present, reworded, moved and
+  removed; `tests/readings.py` gains the audit's plan questions as a reading; a property holds
+  that a question is said to be unanswered exactly where its answer is gone; and a broken
+  `finds` is added to `BROKEN` and `CHANGED` and fails under a dozen seeds.
+- `tests/test_corruption.py` holds a paper whose sentence on missing data is cut, which the
+  audit must say is unanswered.
+- Moving `REQUIRED` into the file must change nothing G12 reports. The `check` reading of
+  `tests/readings.py` draws no plan today: the plan it checks is the one `init` writes. So the
+  first pull request adds drawn plans to that reading's inputs (each design's headings present,
+  reworded, missing and empty) before it moves anything, and the old-against-new job then
+  compares G12's findings on them.
+
+### Pull requests, in order
+
+1. The list. Drawn plans in the `check` reading first; then `REQUIRED` moved into
+   `study_types.yaml`, `ask` and `explain` for every section, and a sentence for each design in
+   `choose-study-type`.
+2. The new designs, one pull request each, with a recipe where one is lacking.
+3. A paper's plan questions in `audit`: `--design` takes the designs, `finds` is measured on
+   the corpus, and the page shows the section.
+4. `plan questions` and `plan write`, the answers file, open items in G12, and the skill
+   reading the command.
+5. The page's form and its PDF.
+
+### Not verified
+
+- The pages, items and licences of STROBE's checklist for cross-sectional studies, CARE, SRQR
+  and COREQ, and which guideline a case series answers to.
+- A published classification of study designs to take a series of questions from, should the
+  sentences beside the options not be enough (answer 5).
+- How an OSF registration is made from a plan file, and whether the page can link to it with
+  the plan attached.
+- How the corpus's ledger holds a verdict on a candidate, which is not a finding.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -22820,6 +23145,74 @@ Open, recorded as each change landed:
   `tests/test_audit_sections.py::test_an_entry_typed_as_a_markdown_heading_ends_the_list`,
   `tests/test_audit_sections.py::test_an_entry_word_numbers_styled_as_a_heading_ends_the_list`
   and `tests/test_properties.py::test_a_word_list_goes_on_over_an_entry_styled_as_a_heading`.
+- **A numbered list whose text holds no citation in brackets is reported only where the text
+  cites nothing by number and no author of the list with a year.** Where G7 reads no
+  bracketed citation in a Word or Markdown paper, a numbered list's entries are each
+  reported as never cited only if the text, the list blanked, holds none of these: a digit
+  raised as superscript (Unicode, `^3^`, `<sup>`, and in a .docx a run raised by its own
+  properties or by its character style, or a note's reference mark); a number of up to
+  three digits in parentheses, or a list or a range of them, with "and" before the last or
+  after "ref." or "refs" or not; digits right after a word's stop; a Markdown link whose
+  text is such a number, "[1](#B1)", not an image, "![1](img1.png)", read in the text as
+  typed outside what the mask hides; a citation field in a .docx; or an author cited with a
+  year whose surname is a word of an entry, in either's case and whatever apostrophe each
+  is typed with (`auditing.references.cites_by_number`, `numbered_link`, `cites_by_author`;
+  Basile, 2026-11-25, "Strict rule", then "Drop run-on digits"; rounds 1 and 2 of #790).
+  An author-and-year citation is read in its shape alone: a surname of two letters or more,
+  after particles such as "van der" or not, a possessive "'s" left off it, then "et al.",
+  a comma before it or not, or "and" or "&" and another, then a comma or a space and a year
+  of four digits, a letter after it or not, that closes its part, a ")", "]", ";", ",", ":"
+  or "p."/"pp." after it; in a group in parentheses or square brackets on one line or over
+  two ("(Smith et al., 2019)", "[Smith, 2019; Lee, 2020]", "(Smith 2019: 45)"), as a
+  Markdown link's text ("[Smith et al., 2019](#B12)"), or before a year in parentheses or
+  square brackets, in a sentence ("Smith et al.'s (2019)"). A list is held to every file of
+  the audit: a citation in any of them, a paper's sections in one and its list in another,
+  or a Word paper beside its supplement, keeps every file's list unreported
+  (`held_across`).
+  Pinned by `tests/test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number`.
+  - Each shape reads widely and keeps the list unreported where it is no citation: a unit
+    squared, "m²", an enumeration, "(1) the first", a stop before digits, "Fig.2".
+    Pinned by `tests/test_corruption.py::test_any_number_a_citation_may_be_keeps_a_list_with_no_marker_unreported`.
+  - A link whose text is a number cannot be told from a citation by its target: one to a
+    figure or a section, "[2](#fig2)", "[3](#sec3)", keeps the list unreported.
+    Accepted.
+  - An author and a year with no parenthesis or bracket around the year, "as Smith et al.
+    2019 showed", is no citation's shape, and a list with no other citation is reported.
+    Pinned by `tests/test_corruption.py::test_an_author_and_year_with_no_bracket_is_no_citation`.
+  - A title page's affiliation marks, "Smith J¹", "Smith J^1^", or a "1" Word raises after
+    an author's name, keep the list unreported, and do in most real papers: by the rule's
+    design, any number a citation may be is one.
+    Accepted.
+  - Digits typed straight onto a word are read as no citation, so a Word or Markdown paper
+    whose citation numbers are typed onto its words without being raised, "disease12", has
+    every entry reported as never cited; so has one that cites nothing and names things with
+    digits, "VGG16", "COVID-19", "3x3", as the paper of the real-paper corpus whose entry
+    #782 stopped reporting does.
+    Pinned by `tests/test_corruption.py::test_digits_typed_onto_a_word_are_no_citation_and_the_list_is_reported`.
+  - So has a Word or Markdown paper whose text was copied from a PDF, its superscript
+    citations become plain digits after a space, "disease 12.": a number after a space is
+    no citation's shape.
+    Accepted.
+  - An author cited with a year keeps the list unreported only where the citation has that
+    shape and its surname is a word of an entry: an author cited by a form the list spells
+    otherwise, "WHO" for its full name, one the list does not hold, a year alone in
+    parentheses, "(2019)", and a capitalised word before a year in no citation's shape,
+    "(N = 1998)", "(The 2019 cohort)", leave every entry reported.
+    Pinned by `tests/test_corruption.py::test_an_author_year_citation_of_no_author_of_the_list_keeps_nothing_unreported`.
+  - A PDF's text sets a superscript as plain digits, so any number after a word may be a
+    citation: a PDF's numbered list with no citation in brackets is never reported, nor is
+    a LaTeX paper's, whose `thebibliography` is held by key.
+    Pinned by `tests/test_corruption.py::test_a_pdf_s_numbered_list_with_no_marker_is_never_reported`.
+  - In a .docx, a run is read as raised where its own properties set it as superscript or,
+    where they set no alignment, its character style's do (`text.docx._raised_digit`); one
+    raised by its position (`w:position`), by its paragraph's style or by a character style
+    it is based on is read as text, and its digits after a space are a number alone.
+    Pinned by `tests/test_corruption.py::test_a_digit_raised_by_its_position_is_read_as_text`.
+  - A citation field is known by its code: those `citationfields.inserted` reads, Word's
+    own `CITATION`, Citavi's and Papers' (`citationfields.is_citation_field`). Another
+    reference manager's field, or a citation typed as plain text in a field of another
+    kind, is not one, and a list with no other citation is reported.
+    Accepted.
 - **An assistant's opener is read where a paragraph opens, and a line's last character
   decides whether one does.** `assistant-voice` passes over lower-case words on a line that
   carries on running prose from the line before, a line ending in a word, a number, a

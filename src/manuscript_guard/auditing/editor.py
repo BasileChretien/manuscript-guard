@@ -83,12 +83,20 @@ def _failed(item, _report) -> bool:
     return item.severity == FAIL
 
 
+#: G6's rules that find a bare placeholder: a thing named in brackets, "[url]"
+#: (`placeholder-slot`), and a word that marks a gap, "XXXX", "TBD" (`placeholder-word`).
+BARE_PLACEHOLDERS = frozenset({"placeholder-slot", "placeholder-word"})
+#: The words `placeholder-word` finds that tell the writer what to do rather than mark a gap,
+#: "TODO", "INSERT_SOURCE_URL": text left for the writer, asked of the authors.
+TO_DO = ("todo", "fixme", "insert_", "paste_")
+
+
 def _bare(item, _report) -> bool:
     """A bare placeholder ("XXXX", "[url]"), in a blinded submission often a detail taken out
-    for review (`measured.BARE_PLACEHOLDERS`)."""
-    from manuscript_guard.auditing.measured import BARE_PLACEHOLDERS, _rule
-
-    return _rule(item) in BARE_PLACEHOLDERS
+    for review: G6's rule is the part of the finding's subject before its colon
+    (`gates.writing`), "placeholder-word: xxxx"."""
+    rule, _, words = (getattr(item, "subject", None) or "").partition(":")
+    return rule in BARE_PLACEHOLDERS and not words.strip().lower().startswith(TO_DO)
 
 
 def _facts(item, report):

@@ -567,7 +567,8 @@ def test_an_attested_value_travels_with_the_attestation(project: Path) -> None:
 # quotes and passages the author recorded and never the stored copy itself, so a work with no
 # copy is one the co-author has to find for themselves, and the item says so in its own words.
 
-#: The example's two cited works, each with its full text stored.
+#: The example's two cited works. Each is stored under its filed name, and the ledger reads the
+#: signal's value from its abstract (`depth: abstract-only`), the cohort's from its full text.
 SIGNAL, COHORT = "fictionalClassSignal2019", "fictionalHepaticCohort2021"
 
 
@@ -577,6 +578,23 @@ def _sources(root: Path) -> Path:
 
 def _unstored_of(items: list[dict], key: str) -> list[dict]:
     return [entry for item in items for entry in item.get("unstored") or [] if entry["key"] == key]
+
+
+def _ledger_names(root: Path, key: str, written: str) -> None:
+    """Have the ledger name `written` as the source of the value quoted from `key`."""
+    ledger = root / "literature" / "ledger.yaml"
+    text = ledger.read_text(encoding="utf-8")
+    line = f"source_file: sources/{key}.txt"
+    assert text.count(line) == 1
+    ledger.write_text(text.replace(line, f"source_file: {written}"), encoding="utf-8")
+
+
+def _all_full_text(root: Path) -> None:
+    """The example with its one abstract-only value read from a full text."""
+    ledger = root / "literature" / "ledger.yaml"
+    text = ledger.read_text(encoding="utf-8")
+    assert text.count("depth: abstract-only") == 1
+    ledger.write_text(text.replace("depth: abstract-only", "depth: full-text"), encoding="utf-8")
 
 
 def test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so(project: Path) -> None:
@@ -608,11 +626,31 @@ def test_a_work_of_which_only_the_abstract_is_stored_says_so(project: Path) -> N
     assert f"Only the abstract of @{SIGNAL} is stored ({SIGNAL}.abstract.txt)" in entries[0]["says"]
 
 
+def test_a_file_the_ledger_reads_as_an_abstract_is_only_the_abstract(project: Path) -> None:
+    """Round 2 of #810: a file a ledger entry names counted as the work's full text whatever the
+    entry's `depth: abstract-only` said, so a work of which only the abstract is held, saved
+    under a name of its own, was said to be missing nothing. The depth says what the file is,
+    under the work's filed name too, as the example's own signal is."""
+    document = produced(project)
+    for group in ("claim", "literature"):
+        entries = _unstored_of(only(document, group), SIGNAL)
+        assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+        assert f"Only the abstract of @{SIGNAL} is stored ({SIGNAL}.txt)" in entries[0]["says"]
+    assert not _unstored_of(document["items"], COHORT)
+
+    sources = _sources(project)
+    (sources / f"{SIGNAL}.txt").rename(sources / "Signal 2019 abstract.txt")
+    _ledger_names(project, SIGNAL, '"sources/Signal 2019 abstract.txt"')
+    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    assert entries and all(entry["state"] == "only its abstract" for entry in entries)
+    assert "(Signal 2019 abstract.txt)" in entries[0]["says"]
+
+
 def test_a_copy_kept_out_of_git_is_said_to_be_on_another_computer(project: Path) -> None:
     from kept_away import keep_away
 
-    keep_away(project, f"{SIGNAL}.txt", SIGNAL)
-    entries = _unstored_of(only(produced(project), "claim"), SIGNAL)
+    keep_away(project, f"{COHORT}.txt", COHORT)
+    entries = _unstored_of(only(produced(project), "claim"), COHORT)
     assert entries
     assert entries[0]["state"] == "kept out of git, not on this computer"
     assert "not on the computer that built this page" in entries[0]["says"]
@@ -642,8 +680,9 @@ def test_storing_a_copy_later_keeps_the_answers_given_without_it(project: Path) 
     about a sentence is not asked again because the author has since stored the work."""
     from manuscript_guard.cli import _checking_items, load_project
 
-    copy = (_sources(project) / f"{SIGNAL}.txt").read_bytes()
-    (_sources(project) / f"{SIGNAL}.txt").unlink()
+    _all_full_text(project)
+    copy = (_sources(project) / f"{COHORT}.txt").read_bytes()
+    (_sources(project) / f"{COHORT}.txt").unlink()
     items = _checking_items(load_project(project)[0], None)
     said = [item for item in items.items if item.get("unstored")]
     assert said
@@ -652,7 +691,7 @@ def test_storing_a_copy_later_keeps_the_answers_given_without_it(project: Path) 
                                               statuses={i["id"]: "ok" for i in said})),
                        encoding="utf-8")  # fmt: skip
     import_answers(project, answers, items)
-    (_sources(project) / f"{SIGNAL}.txt").write_bytes(copy)
+    (_sources(project) / f"{COHORT}.txt").write_bytes(copy)
     again = _checking_items(load_project(project)[0], None)
     assert not any(item.get("unstored") for item in again.items)
     standing = status(project, again)
@@ -664,6 +703,7 @@ def test_build_lists_the_items_whose_work_has_no_copy_by_group_and_key(
 ) -> None:
     from manuscript_guard.cli import main
 
+    _all_full_text(project)
     capsys.readouterr()
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
     assert "no copy stored" not in capsys.readouterr().out
@@ -683,15 +723,34 @@ def test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held(project: Path) 
     """Round 1 of #810: a copy counted only under the work's filed name, so a PDF saved by hand
     as "sources/Smith 2020 NEJM.pdf", which the ledger names and G7 reads, was said on the
     value and on every sentence citing the work to be no copy at all."""
-    sources, ledger = _sources(project), project / "literature" / "ledger.yaml"
-    (sources / f"{SIGNAL}.txt").rename(sources / "Signal 2019 saved by hand.txt")
-    text = ledger.read_text(encoding="utf-8")
-    assert text.count(f"sources/{SIGNAL}.txt") == 1
-    named = text.replace(f"sources/{SIGNAL}.txt", "sources/Signal 2019 saved by hand.txt")
-    ledger.write_text(named, encoding="utf-8")
+    sources = _sources(project)
+    (sources / f"{COHORT}.txt").rename(sources / "Cohort 2021 saved by hand.txt")
+    _ledger_names(project, COHORT, '"sources/Cohort 2021 saved by hand.txt"')
     document = produced(project)
-    assert not _unstored_of(only(document, "literature"), SIGNAL)
-    assert not _unstored_of(only(document, "claim"), SIGNAL)
+    assert not _unstored_of(only(document, "literature"), COHORT)
+    assert not _unstored_of(only(document, "claim"), COHORT)
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".bib", ".docx"])
+def test_a_file_the_ledger_names_that_is_not_the_work_is_no_copy(
+    project: Path, suffix: str
+) -> None:
+    """Round 2 of #810: any file the ledger named counted, a table, a citation file or a Word
+    document among them, which G7 reads as no work or not at all (`source-unreadable`)."""
+    sources = _sources(project)
+    (sources / f"{COHORT}.txt").rename(sources / f"Cohort 2021 table 2{suffix}")
+    _ledger_names(project, COHORT, f'"sources/Cohort 2021 table 2{suffix}"')
+    entries = _unstored_of(only(produced(project), "claim"), COHORT)
+    assert entries and all(entry["state"] == "nothing stored" for entry in entries)
+
+
+def test_a_source_file_is_read_as_g7_reads_it_with_its_spaces_taken_off(project: Path) -> None:
+    """Round 2 of #810: G7 takes the spaces off a ledger's `source_file` before it finds the
+    file, and the page did not, so a copy G7 read was said here to be missing."""
+    sources = _sources(project)
+    (sources / f"{COHORT}.txt").rename(sources / "Cohort 2021 saved by hand.txt")
+    _ledger_names(project, COHORT, '" sources/Cohort 2021 saved by hand.txt "')
+    assert not _unstored_of(only(produced(project), "claim"), COHORT)
 
 
 def test_a_copy_the_record_lists_for_the_work_is_held(project: Path) -> None:
@@ -699,11 +758,11 @@ def test_a_copy_the_record_lists_for_the_work_is_held(project: Path) -> None:
 
     # The record's names are of letters, digits, `_`, `.` and `-` (its schema).
     sources = _sources(project)
-    (sources / f"{SIGNAL}.txt").rename(sources / "Signal_2019_saved_by_hand.txt")
-    record(project, "Signal_2019_saved_by_hand.txt", SIGNAL)
+    (sources / f"{COHORT}.txt").rename(sources / "Cohort_2021_saved_by_hand.txt")
+    record(project, "Cohort_2021_saved_by_hand.txt", COHORT)
     document = produced(project)
-    assert not _unstored_of(only(document, "claim"), SIGNAL)
-    assert not _unstored_of(only(document, "literature"), SIGNAL)
+    assert not _unstored_of(only(document, "claim"), COHORT)
+    assert not _unstored_of(only(document, "literature"), COHORT)
 
 
 def test_an_abstract_kept_out_of_git_is_only_the_abstract(project: Path) -> None:

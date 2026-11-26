@@ -29,6 +29,7 @@ items in its own file.
 
 from __future__ import annotations
 
+import os
 import re
 from bisect import bisect_right
 from collections.abc import Callable
@@ -453,25 +454,29 @@ def holdings(project, literature=None) -> Holdings:
     text is stored, and otherwise its state and what is to be said of it.
 
     A copy is a file of `literature/sources/` under the work's filed name that G7 reads
-    (`stored_files`), a file a ledger entry citing the work names as its `source_file` and G7
-    reads where it is (round 1 of #810: a PDF saved by hand under a name of its own was said to
-    be no copy), or a file `literature/sources.yaml` records as the work's. One the record lists
-    and git keeps out of the repository is on another computer, as in CI. An abstract alone is
-    a part of the work, not the work, whether it is here or away."""
+    (`stored_files`), a file a ledger entry citing the work names as its `source_file`, or a
+    file `literature/sources.yaml` records as the work's, each of the last two read as G7
+    reads a ledger's (`_named_copies`). One the record lists and git keeps out of the
+    repository is on another computer, as in CI. An abstract alone is a part of the work, not
+    the work, whether it is here or away: a file named `<key>.abstract.<suffix>`, or one every
+    ledger entry naming it reads at `depth: abstract-only`, whatever its name (round 2 of
+    #810)."""
     from manuscript_guard.literature.away import away
     from manuscript_guard.literature.sources import is_abstract, stored_files
 
-    root = project.path("literature")
-    folder = root / "sources"
+    folder = project.path("literature") / "sources"
     kept = away(project)
-    named = _named_copies(project, literature)
+    named, read_as_abstract = _named_copies(project, literature)
+
+    def an_abstract(path: Path) -> bool:
+        return is_abstract(path) or _same(path) in read_as_abstract
 
     def held(key: str) -> tuple[str, str] | None:
         files = (stored_files(folder, key) if folder.is_dir() else []) + named.get(key, [])
-        if any(not is_abstract(path) for path in files):
+        if any(not an_abstract(path) for path in files):
             return None
         elsewhere = kept.of(key)
-        whole = [name for name in elsewhere if not is_abstract(Path(name))]
+        whole = [name for name in elsewhere if not an_abstract(folder / name)]
         if whole:
             return KEPT_AWAY, (f"A copy of @{key} ({', '.join(whole)}) is recorded in "
                                "literature/sources.yaml, kept out of git, and is not on the "
@@ -487,28 +492,56 @@ def holdings(project, literature=None) -> Holdings:
     return held
 
 
-def _named_copies(project, literature) -> dict[str, list[Path]]:
-    """The files on this computer named as a cited work's copy, by its key: each ledger entry's
-    `source_file` under `literature/`, as G7 resolves it, and each file the record lists."""
-    from manuscript_guard.contracts._schema import ContractError
-    from manuscript_guard.literature.copies import read_record
+def _same(path: Path) -> str:
+    """A path as two spellings of one file compare: a ledger's `sources/x.txt` from
+    `literature/` and the filed name found in `literature/sources/`."""
+    return os.path.normcase(os.path.abspath(path))
 
+
+def _named_copies(project, literature) -> tuple[dict[str, list[Path]], frozenset[str]]:
+    """The files on this computer named as a cited work's copy, by its key, and the files the
+    ledger reads only as an abstract (`_same`).
+
+    A ledger entry's `source_file` is read as G7 reads it (gates/literature.py,
+    gates/citations.py): its spaces taken off, from `literature/`. Each file the record lists
+    is read from `literature/sources/`. Either is a copy only in a form G7 reads as the work:
+    one `stored_files` would find (text, HTML or PDF), and never a table or a citation file
+    (`copies.NOT_THE_WORK`), nor a Word document, which G7 cannot read (round 2 of #810). A
+    file is read as an abstract where each entry naming it says `depth: abstract-only`."""
+    from manuscript_guard.contracts._schema import ContractError
+    from manuscript_guard.contracts.literature import ABSTRACT_ONLY
+    from manuscript_guard.literature.copies import NOT_THE_WORK, read_record
+    from manuscript_guard.literature.sources import HTML_SUFFIXES, PDF_SUFFIXES, TEXT_SUFFIXES
+
+    readable = (TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES) - NOT_THE_WORK
     root = project.path("literature")
+
+    def the_work(path: Path) -> bool:
+        return path.suffix.lower() in readable and path.is_file()
+
     named: dict[str, list[Path]] = {}
+    depths: dict[str, set[str]] = {}
     for value in (literature.values.values() if literature is not None else ()):
         detail = value.detail or {}
-        key, source = str(detail.get("citekey") or ""), str(detail.get("source_file") or "")
-        if key and source.strip() and (root / source).is_file():
-            named.setdefault(key, []).append(root / source)
+        source = str(detail.get("source_file") or "").strip()
+        if not source:
+            continue
+        path = root / source
+        depths.setdefault(_same(path), set()).add(str(detail.get("depth") or ""))
+        key = str(detail.get("citekey") or "")
+        if key and the_work(path):
+            named.setdefault(key, []).append(path)
     try:
         recorded = read_record(project)
     except (ContractError, OSError):
         recorded = {}  # a record that cannot be read vouches for no copy, as for G7
     for name, entry in recorded.items():
         path = root / "sources" / name
-        if isinstance(entry, dict) and entry.get("key") and path.is_file():
+        if isinstance(entry, dict) and entry.get("key") and the_work(path):
             named.setdefault(str(entry["key"]), []).append(path)
-    return named
+    read_as_abstract = frozenset(where for where, said in depths.items()
+                                 if said == {ABSTRACT_ONLY})  # fmt: skip
+    return named, read_as_abstract
 
 
 def _unstored(held: Holdings, keys, shown: set[str]) -> list[dict]:

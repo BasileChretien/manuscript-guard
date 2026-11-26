@@ -390,21 +390,28 @@ def references_heading(project) -> str:
     return REFERENCES_HEADING
 
 
-def _references_filter(project, csl: Path | None = None) -> list[str]:
+def _references_filter(
+    project, csl: Path | None = None, *, citeproc: bool = False
+) -> list[str]:
     """The arguments that run `references_heading.lua`, with the heading in the metadata as
     JSON in hexadecimal, as narrative.lua takes its names; none where the style an offline
-    build formats with, `csl`, prints no reference list (`prints_a_list`)."""
+    build formats with, `csl`, prints no reference list (`prints_a_list`). `citeproc` says
+    the build is one citeproc formats, which honours `suppress-bibliography`."""
     if csl is not None and not prints_a_list(csl):
         return []
     title = json.dumps(references_heading(project), ensure_ascii=False).encode("utf-8").hex()
-    return [
+    arguments = [
         f"--lua-filter={REFERENCES_HEADING_LUA.resolve()}",
         f"--metadata=mg-references-heading:{title}",
     ]
+    if citeproc:
+        arguments.append("--metadata=mg-references-citeproc:true")
+    return arguments
 
 
-#: CSL's namespace, which a style's elements are in.
-_CSL = "{http://purl.org/net/xbiblio/csl}"
+def _local(tag: object) -> str:
+    """An element's name without its namespace."""
+    return str(tag).rsplit("}", 1)[-1]
 
 
 def prints_a_list(style: Path, *, parent: bool = True) -> bool:
@@ -419,10 +426,11 @@ def prints_a_list(style: Path, *, parent: bool = True) -> bool:
         root = parse_xml(style.read_bytes(), what=style.name)
     except (OSError, UnsafeDocument, ValueError):
         return True
-    if root.find(f"{_CSL}bibliography") is not None:
+    # By local names, as citeproc reads a style: one written with no `xmlns` is the same.
+    if any(_local(child.tag) == "bibliography" for child in root):
         return True
-    link = next((node for node in root.iter(f"{_CSL}link")
-                 if node.get("rel") == "independent-parent"), None)  # fmt: skip
+    link = next((node for node in root.iter() if _local(node.tag) == "link"
+                 and node.get("rel") == "independent-parent"), None)  # fmt: skip
     if link is None:
         return False
     named = style.with_name(str(link.get("href", "")).rstrip("/").rsplit("/", 1)[-1] + ".csl")
@@ -720,7 +728,7 @@ def build_document(
             # Before citeproc, which runs where it stands among the filters: the list is given
             # its place, under the author's heading of it where there is one, and its heading.
             if cites:
-                command += _references_filter(project, csl)
+                command += _references_filter(project, csl, citeproc=True)
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:
                 command += [f"--csl={relative_to_root(project, csl.resolve())}"]

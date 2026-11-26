@@ -30826,7 +30826,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   before citeproc, so that the list it places under an author's empty heading of it is filled
   there. It adds none where the style the offline build formats with has no `<bibliography>`,
   its own or its parent's (`document.prints_a_list`), or where the metadata sets
-  `suppress-bibliography`; it cannot see whether citeproc will print an entry otherwise, and a
+  `suppress-bibliography` on that build; it cannot see whether citeproc will print an entry otherwise, and a
   document whose every citation names a key the bibliography lacks, which `check` fails, built
   with `--skip-checks`, has the heading over an empty list. A live build's style is Zotero's,
   read by nothing here, and its bibliography field gets the heading whatever the style.
@@ -30838,6 +30838,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   paragraph, a table, a lower heading or a page break, the heading is not empty to the build:
   the list goes at the end with a heading of its own, and the document prints that file's
   opening under the author's "References", as pandoc reads it. Accepted.
+- **"Literature" alone is no reference list's name, and German's "Literatur" is one.** An
+  author's empty "# Literature" ending main.md, before a file that opens with a heading, does
+  not take the list, which goes at the end with a heading of its own; an empty numbered
+  "2.1 Literatur" before "2.2 Methoden" in an outline does take it. Pinned by
+  `tests/test_references_heading.py::test_literature_alone_names_no_list_in_english_and_literatur_names_one_in_german`.
 - **The note `import` gives of the heading compares it with a fresh build.** The returned
   heading is held to the one the source builds now, not to the one the document was sent
   with: a heading the journal profile renamed after the document was sent is said as words a

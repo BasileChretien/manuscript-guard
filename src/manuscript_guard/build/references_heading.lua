@@ -19,8 +19,10 @@ It adds none where the author wrote one: where the block before the list, commen
 a heading, or a paragraph of only a reference list's name in bold or in italics, as a paper
 brought in from Word heads its list ("**References**", "*Bibliographie*"); or where the
 section the list stands in is headed as a reference list. A `refs` div inside another block
-is the author's arrangement and is left as it is, and a document whose metadata sets
-`suppress-bibliography`, which citeproc prints no list for, gets no heading.
+is the author's arrangement and is left as it is. On an offline build, which the
+`mg-references-citeproc` metadata says, a document whose metadata sets `suppress-bibliography`
+as citeproc reads it (true, or the word "true" or "yes"), for which citeproc prints no list,
+gets no heading; a live build's field prints the list whatever it says.
 
 The heading is the build's, never the source's: it carries the bookmark `mg-references`, and a
 document read back passes it over, so that `import` finds it in no paragraph of the source and
@@ -60,10 +62,21 @@ local function decoded(hex)
   end)))
 end
 
+-- `suppress-bibliography` as citeproc reads it: true, or the word "true" or "yes".
+local function suppressed(value)
+  if value == nil or type(value) == 'boolean' then return value == true end
+  local said = pandoc.utils.stringify(value)
+  return said == 'true' or said == 'yes'
+end
+
 local function Meta(meta)
   local given = meta['mg-references-heading']
+  local citeproc = meta['mg-references-citeproc'] ~= nil
   meta['mg-references-heading'] = nil
-  if given == nil or meta['suppress-bibliography'] == true then return meta end
+  meta['mg-references-citeproc'] = nil
+  if given == nil or (citeproc and suppressed(meta['suppress-bibliography'])) then
+    return meta
+  end
   local ok, text = pcall(decoded, pandoc.utils.stringify(given))
   if not ok or type(text) ~= 'string' then
     error('references_heading.lua: the title of the reference list could not be read')

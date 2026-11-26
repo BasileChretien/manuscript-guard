@@ -35,6 +35,11 @@ def _stub_zotero_lua(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(builder, "ensure_zotero_lua", lambda _cache: stub)
 
 
+def _no_heading(_project, _csl=None, **_said) -> list[str]:
+    """The build's arguments for the heading's filter, as a release before it gave: none."""
+    return []
+
+
 def _paragraphs(path: Path) -> list[tuple[str, str]]:
     """Each paragraph of the document as (style, text); a field's paragraph is "FIELD"."""
     xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8")
@@ -156,6 +161,32 @@ def test_a_last_paragraph_in_bold_of_other_words_is_no_label(
 
 
 @needs_pandoc
+def test_literature_alone_names_no_list_in_english_and_literatur_names_one_in_german(
+    project: Path,
+) -> None:
+    """Known gaps: "Literature" alone is no reference list's name, so an author's empty
+    "# Literature" ending main.md, before a file that opens with a heading, does not take the
+    list, which goes at the end with a heading of its own; German's "Literatur" is one, so an
+    empty "2.1 Literatur" before "2.2 Methoden" in an outline does take it."""
+    path = project / "manuscript" / "main.md"
+    original = path.read_text(encoding="utf-8")
+    later = project / "manuscript" / "zz_appendix.md"
+    path.write_text(original + "\n# Literature\n", encoding="utf-8", newline="\n")
+    later.write_text("# Appendix\n\nMore of the work.\n", encoding="utf-8", newline="\n")
+    paragraphs = _built(project, OFFLINE)
+    start = _list_starts(paragraphs)
+    assert paragraphs[start - 1] == ("Heading1", "References")
+    assert "Literature" in _headings(paragraphs[:start])
+    later.unlink()
+    path.write_text(original + "\n# 2.1 Literatur\n\n# 2.2 Methoden\n\nDie Methoden.\n",
+                    encoding="utf-8", newline="\n")  # fmt: skip
+    paragraphs = _built(project, OFFLINE)
+    start = _list_starts(paragraphs)
+    assert _headings(paragraphs[:start])[-1] == "2.1 Literatur"
+    assert "References" not in _headings(paragraphs)
+
+
+@needs_pandoc
 def test_an_empty_section_named_literature_does_not_take_the_list(project: Path) -> None:
     """"Literature" alone names a section of an outline as often as a reference list, so an
     empty "2.1 Literature" before "2.2 Methods" is not where the list goes."""
@@ -220,22 +251,54 @@ def test_a_dependent_style_is_read_by_its_parent(tmp_path: Path) -> None:
 
 
 @needs_pandoc
-def test_a_suppressed_bibliography_gets_no_heading(tmp_path: Path) -> None:
-    """`suppress-bibliography`, which tells citeproc to print no list, is honoured."""
-    import json
-    import subprocess
-
-    source = tmp_path / "m.md"
-    source.write_text("Text.\n", encoding="utf-8")
-    out = tmp_path / "m.docx"
-    title = json.dumps("References").encode("utf-8").hex()
-    subprocess.run(
-        [shutil.which("pandoc"), str(source), "-o", str(out),
-         f"--lua-filter={builder.REFERENCES_HEADING_LUA}",
-         f"--metadata=mg-references-heading:{title}", "--metadata=suppress-bibliography:true"],
-        check=True, capture_output=True,
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    "value, suppressed",
+    [("true", True), ('"true"', True), ("yes", True), ('"yes"', True), ("false", False)],
+)  # fmt: skip
+def test_a_suppressed_bibliography_has_no_heading_where_citeproc_prints_none(
+    project: Path, mode: str, value: str, suppressed: bool, tmp_path: Path, monkeypatch
+) -> None:
+    """`suppress-bibliography`, as citeproc reads it (true, or the word "true" or "yes"),
+    prints no list in an offline build, which then puts no heading over it. Zotero's field in
+    a live build, and the build import compares it with, print the list whatever it says, and
+    the list keeps its heading there. The assembly refuses metadata in a manuscript file, so
+    the setting is given in the build's own prologue, a metadata block of its own."""
+    _stub_zotero_lua(tmp_path, monkeypatch)
+    proj, _ = load_project(project)
+    namespace, results, _lit, _ = load_namespace(proj)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    result = build_document(
+        proj, assembled, mode=mode, verify_reading=False,
+        prologue=f"---\nsuppress-bibliography: {value}\n---\n\n",
     )  # fmt: skip
-    assert "References" not in _headings(_paragraphs(out))
+    paragraphs = _paragraphs(result.output)
+    if mode == OFFLINE and suppressed:
+        assert not [p for p in paragraphs if p[0] in ("FIELD", "Bibliography")]
+        assert "References" not in _headings(paragraphs)
+    else:
+        start = _list_starts(paragraphs)
+        assert paragraphs[start - 1] == ("Heading1", "References")
+
+
+def test_a_style_without_its_namespace_is_read_by_local_names(tmp_path: Path) -> None:
+    """citeproc reads a style's elements by their local names, so a style written with no
+    `xmlns` is read as one written with it."""
+    bare = tmp_path / "bare.csl"
+    bare.write_text('<style version="1.0"><info><title>B</title></info><citation><layout/>'
+                    "</citation><bibliography><layout/></bibliography></style>",
+                    encoding="utf-8")  # fmt: skip
+    assert builder.prints_a_list(bare) is True
+    notes = tmp_path / "notes.csl"
+    notes.write_text('<style version="1.0"><info><title>N</title></info><citation><layout/>'
+                     "</citation></style>", encoding="utf-8")  # fmt: skip
+    assert builder.prints_a_list(notes) is False
+    dependent = tmp_path / "journal.csl"
+    dependent.write_text('<style version="1.0"><info><title>J</title><link '
+                         'rel="independent-parent" href="http://www.zotero.org/styles/notes"/>'
+                         "</info></style>", encoding="utf-8")  # fmt: skip
+    assert builder.prints_a_list(dependent) is False
 
 
 @needs_pandoc
@@ -443,7 +506,7 @@ def test_a_document_built_before_the_heading_comes_back_with_no_edit(
     source = project / "manuscript" / "main.md"
     before = source.read_bytes()
     with monkeypatch.context() as patched:
-        patched.setattr(builder, "_references_filter", lambda _project, _csl=None: [])
+        patched.setattr(builder, "_references_filter", _no_heading)
         assert main(["build", str(project), "--offline"]) == 0
     assert "References" not in _headings(_paragraphs(project / "build" / "manuscript.docx"))
     capsys.readouterr()
@@ -489,7 +552,7 @@ def test_the_marked_up_copy_does_not_mark_the_builds_heading(
     assembled, _ = assemble(proj, namespace, results)
     old, new = tmp_path / "received.docx", tmp_path / "revision.docx"
     with monkeypatch.context() as patched:
-        patched.setattr(builder, "_references_filter", lambda _project, _csl=None: [])
+        patched.setattr(builder, "_references_filter", _no_heading)
         build_document(proj, assembled, mode=OFFLINE, output=old, stamp=False)
     build_document(proj, assembled, mode=OFFLINE, output=new, stamp=False)
     assert "References" not in _headings(_paragraphs(old))
@@ -544,7 +607,7 @@ def test_the_marked_up_copy_puts_a_deletion_at_the_end_below_the_heading(
         assembled, _ = assemble(proj, namespace, results)
         with monkeypatch.context() as patched:
             if not filtered:
-                patched.setattr(builder, "_references_filter", lambda _project, _csl=None: [])
+                patched.setattr(builder, "_references_filter", _no_heading)
             build_document(proj, assembled, mode=OFFLINE, output=output, stamp=False)
     made = write(old, new, tmp_path / "marked.docx", date="2026-11-26", form="tracked")
     xml = zipfile.ZipFile(made.path).read("word/document.xml").decode("utf-8")

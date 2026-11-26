@@ -387,6 +387,26 @@ def test_items_a_browser_shows_apart_are_kept_apart(journal_project: Path) -> No
     assert lines[1:] == ["English", "French", "Centred text"]
 
 
+def test_a_link_in_a_navigation_bar_gets_no_space_it_was_not_typed_with(
+    journal_project: Path,
+) -> None:
+    """Only links side by side with nothing between them are kept apart; a link inside a
+    sentence is the sentence's, and `</br>` breaks a line as `<br>` does, as browsers read it."""
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    saved = journal_project.parent / "page.html"
+    saved.write_text(
+        "<html><body><nav><p>See our <a href='/p'>policy</a>.</p>"
+        "<a href='/'>Home</a><a href='/s'>Submit</a> <a href='/h'>Help</a></nav>"
+        "<p>Word limits</br>Abstract: 300 words<br/>Main text: 4000 words</p></body></html>",
+        encoding="utf-8",
+    )
+    assert page_text(saved).splitlines() == [
+        "See our policy.", "Home Submit Help", "Word limits", "Abstract: 300 words",
+        "Main text: 4000 words",
+    ]
+
+
 @pytest.mark.parametrize(
     ("raw", "read"),
     [
@@ -450,3 +470,98 @@ def test_a_saved_page_that_is_not_there_is_said_so(journal_project: Path, capsys
     assert main(["journal", str(journal_project), "--store", str(missing)]) == 2
     err = capsys.readouterr().err
     assert "does not exist" in err and "cannot be read" not in err
+
+
+def _link(link: Path, target: Path, *, directory: bool) -> None:
+    """A link at `link` to `target`: a junction on Windows for a folder, else a symbolic
+    link, skipped where this system will not make one."""
+    import os
+
+    if directory and os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+        return
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as exc:  # Windows without the right to make one
+        pytest.skip(f"no symbolic link here: {exc}")
+
+
+@pytest.mark.parametrize("kind", ["live file link", "dangling file link", "live folder link",
+                                  "dangling folder link"])  # fmt: skip
+def test_a_page_is_never_written_through_a_link(journal_project: Path, capsys, kind: str) -> None:
+    """The page's own file a link out of the project, live or left dangling: writing it would
+    write where the link points, outside the project, so it is refused. A sources folder that
+    is a link stays accepted (`test_a_sources_folder_linked_elsewhere_is_stored_through`)."""
+    import shutil
+
+    page = journal_project / PAGE
+    page.unlink()
+    directory = "folder" in kind
+    target = journal_project.parent / ("outside" if directory else "outside.txt")
+    if directory:
+        target.mkdir()
+    else:
+        target.write_text("kept\n", encoding="utf-8")
+    _link(page, target, directory=directory)
+    if "dangling" in kind:
+        shutil.rmtree(target) if directory else target.unlink()
+    saved = _saved_html(journal_project.parent / "page.html")
+    assert main(["journal", str(journal_project), "--store", str(saved), "--replace"]) == 2
+    assert "link" in capsys.readouterr().err
+    if "dangling" in kind:
+        assert not target.exists()
+    elif not directory:
+        assert target.read_text(encoding="utf-8") == "kept\n"
+    else:
+        assert not list(target.iterdir())
+
+
+def test_what_a_page_hides_is_stored_with_it(journal_project: Path, capsys) -> None:
+    """A known gap (DESIGN.md, Known gaps): hidden elements are kept, so that a section folded
+    in an accordion is on the stored page; a modal's text hidden on the page is stored with it,
+    and a bot check's page whose words sit only in hidden elements is stored as the page."""
+    (journal_project / PAGE).unlink()
+    challenge = journal_project.parent / "challenge.html"
+    challenge.write_text(
+        "<html><head><title>Just a moment...</title></head><body>"
+        "<div hidden><p>Verifying you are human</p></div>"
+        "<div style='display: none'>Ray ID 8f</div></body></html>",
+        encoding="utf-8",
+    )
+    assert main(["journal", str(journal_project), "--store", str(challenge)]) == 0
+    assert "Verifying you are human" in (journal_project / PAGE).read_text(encoding="utf-8")
+    capsys.readouterr()
+    modal = journal_project.parent / "page.html"
+    modal.write_text(_saved_html(modal).read_text(encoding="utf-8").replace(
+        "<main>", "<div class='modal' hidden><p>We use cookies</p></div><main>"),
+        encoding="utf-8")  # fmt: skip
+    assert main(["journal", str(journal_project), "--store", str(modal), "--replace"]) == 0
+    assert "We use cookies" in (journal_project / PAGE).read_text(encoding="utf-8")
+
+
+def test_a_page_read_again_that_is_not_there_or_not_a_page_is_said(
+    journal_project: Path, capsys
+) -> None:
+    missing = journal_project.parent / "missing.html"
+    assert main(["journal", str(journal_project), "--reread", str(missing)]) == 2
+    err = capsys.readouterr().err
+    assert "does not exist" in err and "cannot be read" not in err
+    single = journal_project.parent / "page.mhtml"
+    single.write_text("MIME-Version: 1.0\n\nAbstracts should not exceed 300 words.\n",
+                      encoding="utf-8")  # fmt: skip
+    assert main(["journal", str(journal_project), "--reread", str(single)]) == 2
+    err = capsys.readouterr().err
+    assert "HTML only" in err and "--store" not in err
+
+
+def test_a_name_whose_last_dot_starts_no_suffix_is_read_as_text(
+    journal_project: Path, capsys
+) -> None:
+    """`J. Clin. Oncol` has a dot in its name and no suffix this knows: it is text."""
+    (journal_project / PAGE).unlink()
+    saved = journal_project.parent / "J. Clin. Oncol"
+    saved.write_bytes((EXAMPLE / PAGE).read_bytes())
+    assert main(["journal", str(journal_project), "--store", str(saved)]) == 0
+    assert _quotes_said(journal_project) == set()

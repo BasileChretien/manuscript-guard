@@ -47,6 +47,7 @@ import difflib
 import hashlib
 import os
 import re
+import stat
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -609,11 +610,13 @@ class AnotherPageStored(PageRefused):
 
 class _Shown(HTMLParser):
     """The text of a page, as a browser shows it opened out: each block on a line of its own,
-    inline elements joining their words and the links of a navigation bar kept apart, entities
-    read as the characters they are (`convert_charrefs`), and nothing of a comment or of
-    `_UNSHOWN`. The words of a section folded away are kept, `hidden`, `hidden="until-found"`
-    or `display: none`: a guidelines page folds its sections in accordions and tabs, and the
-    author opens one and copies a quote from it."""
+    `<br>` and `</br>` breaking one, inline elements joining their words, entities read as the
+    characters they are (`convert_charrefs`), and nothing of a comment or of `_UNSHOWN`. Two
+    links of a navigation bar set side by side with nothing typed between them are kept apart
+    by a space, which its style puts between them; a link inside a sentence gets none. The
+    words of a section folded away are kept, `hidden`, `hidden="until-found"` or `display:
+    none`: a guidelines page folds its sections in accordions and tabs, and the author opens
+    one and copies a quote from it (DESIGN.md, Known gaps)."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -621,6 +624,8 @@ class _Shown(HTMLParser):
         self._skipping: str | None = None
         self._depth = 0
         self._navigation = 0
+        #: A link of a navigation bar ended, and nothing has come after it yet.
+        self._after_link = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if self._skipping is not None:
@@ -633,8 +638,15 @@ class _Shown(HTMLParser):
         self._navigation += tag == "nav"
         if tag in _BLOCKS or tag in ("br", "hr"):
             self.parts.append("\n")
-        elif tag == "a" and self._navigation:
+            self._after_link = False
+        elif tag == "a" and self._after_link:
             self.parts.append(" ")
+            self._after_link = False
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in ("br", "hr"):
+            self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
         if self._skipping is not None:
@@ -645,22 +657,27 @@ class _Shown(HTMLParser):
             return
         if tag == "nav" and self._navigation:
             self._navigation -= 1
-        if tag in _BLOCKS:
+        if tag in _BLOCKS or tag == "br":
             self.parts.append("\n")
+            self._after_link = False
         elif tag == "a" and self._navigation:
-            self.parts.append(" ")
+            self._after_link = True
 
     def handle_data(self, data: str) -> None:
         if self._skipping is None:
             self.parts.append(data)
+            self._after_link = self._after_link and not data
 
 
 def _decoded(raw: bytes) -> str:
-    """A web page's text, read as a browser reads it. A byte-order mark says what the bytes
-    are. Bytes that are UTF-8 are read as UTF-8, whatever a declaration left stale by a page
-    converted since says. Otherwise the page's declared character set (`_CHARSET`, in its
-    first 4096 bytes), UTF-16 read as UTF-8 since bytes it is declared in are not UTF-16
-    (WHATWG's encoding standard) and Latin-1's names as windows-1252; with no declaration, or
+    """A web page's text. A byte-order mark says what the bytes are. Then bytes that are
+    valid UTF-8 are read as UTF-8, before any declaration: a declaration left stale by a page
+    converted since is common, and text in a legacy character set that is also valid UTF-8 is
+    rare (where it is, its letters outside ASCII are read wrong, which a browser obeying the
+    declaration would not do). Otherwise the character set the page declares, in a `<meta>` or
+    in an XML declaration, either read in any web page whatever its suffix (`_CHARSET`, in
+    its first 4096 bytes): UTF-16 read as UTF-8, since bytes it is declared in are not UTF-16
+    (WHATWG's encoding standard), and Latin-1's names as windows-1252; with no declaration, or
     a name Python does not know, windows-1252. A byte not in it is read as U+FFFD."""
     if raw.startswith(codecs.BOM_UTF8):
         return raw[3:].decode("utf-8", errors="replace")
@@ -682,11 +699,21 @@ def _decoded(raw: bytes) -> str:
         return raw.decode("cp1252", errors="replace")
 
 
-def page_text(path: Path, *, any_text: bool = False) -> str:
+#: What a browser, a word processor or a screenshot saves that is not a page this reads: a
+#: page saved as a single file, a document, an archive, an image.
+NOT_PAGES = frozenset({
+    ".mhtml", ".mht", ".webarchive", ".rtf", ".doc", ".docx", ".odt", ".pages", ".epub",
+    ".zip", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+})  # fmt: skip
+
+
+def page_text(path: Path) -> str:
     """The text of a journal's page as the profile stores it, from the file the author has:
-    a page saved from a browser as a web page (.html, .htm, .xhtml) or printed to PDF, or
-    its text (.txt, .md, a file with no suffix); with `any_text`, as `--reread` reads, any
-    other file as UTF-8 text too.
+    a page saved from a browser as a web page (.html, .htm, .xhtml) or printed to PDF
+    (.pdf), or its text: a file named as text (.txt, .md, .rst, .csv, .json, .xml, .bib,
+    .nbib, .ris), or one whose name has no suffix this knows, a dot inside the name ("J. Clin.
+    Oncol") or a date ("bmj-open-2026.11.26") among them, read as having none. A page saved
+    as a single file, a document, an archive or an image (`NOT_PAGES`) is refused.
 
     A web page is read in the character set a browser reads it in (`_decoded`), and keeps
     its words as a browser shows it opened out (`_Shown`): no script, style, comment, title,
@@ -698,13 +725,11 @@ def page_text(path: Path, *, any_text: bool = False) -> str:
     its paragraphs read as one. Each line of either has its white space folded to one space.
     Text is kept as it is written, with LF line endings.
 
-    Raises UnreadableSource for a file of another kind without `any_text` (a page saved as a
-    single file, .mhtml or .mht, a .rtf, a Word document), and for a PDF nothing here reads;
+    Raises UnreadableSource for a file of `NOT_PAGES`, and for a PDF nothing here reads;
     UnicodeDecodeError for text that is not UTF-8."""
     from manuscript_guard.literature.sources import (
         HTML_SUFFIXES,
         PDF_SUFFIXES,
-        TEXT_SUFFIXES,
         UnreadableSource,
         _read_pdf,
     )
@@ -717,15 +742,15 @@ def page_text(path: Path, *, any_text: bool = False) -> str:
         folded = (" ".join(line.split()) for line in "".join(shown.parts).splitlines())
         kept = [line for line in folded if line]
         return "\n".join(kept) + "\n" if kept else ""
-    if suffix in PDF_SUFFIXES:
-        text = _read_pdf(path, layout=False)
-    elif suffix in TEXT_SUFFIXES or not suffix or any_text:
-        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
-    else:
+    if suffix in NOT_PAGES:
         raise UnreadableSource(
             f"{path.name}: a {suffix} file is not a page this reads; save the page from your "
             "browser as \"Webpage, HTML only\", or print it to PDF"
         )
+    if suffix not in PDF_SUFFIXES:
+        # A text file, or one whose name has no suffix known here.
+        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    text = _read_pdf(path, layout=False)
     lines: list[str] = []
     for line in (" ".join(line.split()) for line in text.splitlines()):
         if line or (lines and lines[-1]):
@@ -746,6 +771,17 @@ class Stored:
     blocks: tuple[str, ...]
     #: False where the same text was stored already, and nothing was written.
     written: bool
+
+
+def _a_link(path: Path) -> bool:
+    """Whether `path` is itself a link, a symbolic one or a junction, live or dangling."""
+    try:
+        status = os.lstat(path)
+    except OSError:
+        return False
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return stat.S_ISLNK(status.st_mode) or bool(
+        getattr(status, "st_file_attributes", 0) & reparse)  # fmt: skip
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -771,7 +807,9 @@ def store_page(project: Project, saved: Path, slug: str, page: str | None = None
     it from their own browser, and this stores it. Only ever under the project's root, as the
     path is written (`_inside`): a `page_file` or a journal's name that leads out of it
     (`../`, a path of its own) is refused, since a page was only read from there before it
-    was written there.
+    was written there; and never through a link at the page's own file (`_a_link`), live or
+    dangling. A folder on the way that is a link, a sources folder linked to a shared one, is
+    written through as the author linked it.
 
     Raises PageRefused where the profile cannot be read, the place is outside the project,
     the file holds no text or the page cannot be written; AnotherPageStored where another
@@ -794,6 +832,12 @@ def store_page(project: Project, saved: Path, slug: str, page: str | None = None
     if chosen is None:
         raise LookupError(f"{page} is no page of the profile; its pages: "
                           f"{', '.join(_where(one.path, project) for one in pages)}")  # fmt: skip
+    if _a_link(chosen.path):
+        raise PageRefused(
+            f"{_where(chosen.path, project)} is a link, and a page is never written through "
+            "one, which would write where it points: remove the link, or name the file it "
+            "points to as the page_file"
+        )
     if not _inside(chosen.path, project.root):
         raise PageRefused(
             f"{chosen.path} is outside the project, and a journal's page is stored only in it: "

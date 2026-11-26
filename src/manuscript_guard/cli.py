@@ -3070,8 +3070,11 @@ def _reread(project, new: Path, page: str | None = None) -> int:
 
     try:
         # A page saved from a browser, as a web page or printed to PDF, is read as `--store`
-        # stores it, so that the two compare as one text; any other file as UTF-8 text.
-        text = page_text(new, any_text=True)
+        # stores it, so that the two compare as one text, and refused as it refuses it.
+        if not new.exists():
+            print(f"manuscript-guard: {new} does not exist", file=sys.stderr)
+            return 2
+        text = page_text(new)
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
         return 2

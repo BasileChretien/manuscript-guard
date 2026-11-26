@@ -190,6 +190,7 @@ from generated import (
     response_letters,
     results_named_papers,
     revisions,
+    saved_pages,
     set_hazards,
     share_tables,
     signed_ticks,
@@ -26175,6 +26176,36 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+
+
+@holds(40, saved_pages())
+def test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown(
+    described: dict[str, Any],
+) -> None:
+    """A journal's page as a browser saved it is stored as the page shows it: each paragraph's
+    words on a line of their own, in order, a word an inline element splits whole, the links
+    of a navigation bar apart, and none of the words of what a browser does not show."""
+    lines = READINGS["saved journal page"]()(described)
+    assert lines == described["lines"], described
+    assert not {word for line in lines for word in line.split()} & set(described["unshown"])
+
+
+def _a_tag_in_a_saved_page_is_a_space(patch: pytest.MonkeyPatch) -> None:
+    shown = journal_quotes_gate._Shown
+    started, ended = shown.handle_starttag, shown.handle_endtag
+
+    def start(self, tag, attrs):
+        started(self, tag, attrs)
+        self.parts.append(" ")
+
+    def end(self, tag):
+        ended(self, tag)
+        self.parts.append(" ")
+
+    patch.setattr(shown, "handle_starttag", start)
+    patch.setattr(shown, "handle_endtag", end)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -33664,6 +33695,10 @@ BROKEN = {
     "an ordinal counts across the paper": (
         _an_ordinal_counts_across_the_paper,
         test_the_ordinal_of_a_key_counts_in_its_sentence_only,
+    ),
+    "a tag in a saved page is a space": (
+        _a_tag_in_a_saved_page_is_a_space,
+        test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown,
     ),
 }
 

@@ -29,14 +29,17 @@ manuscript-guard journal --template bmj-open --store instructions.pdf   # a new 
 ```
 
 `--store` writes the page's text where the profile reads it, `profiles/journals/sources/<slug>.txt`
-or the profile's `page_file`, and prints the `page_sha256` to record; it writes nowhere outside
-the project. A web page is read in the character set a browser reads it in, and keeps its
+or the profile's `page_file`, and prints the `page_sha256` to record. It writes nowhere outside
+the project as the path is written, and never through a link at the page's own file; a sources
+folder linked to a shared folder is written through, as the author linked it. A web page is read in the character set a browser reads it in, and keeps its
 words as a browser shows the page opened out: no script, style, comment, title, `<template>`
 or `<noscript>`, and the words of a section folded away in an accordion kept; each block on a
 line of its own, and inline markup joining its words, so that a sentence with a link in it is
 the sentence the author copies. A PDF is read in reading order, as the literature's PDFs are,
-with poppler's `pdftotext` or `pypdf`, and a text file as it is. A page saved as a single file
-(`.mhtml`, `.mht`), a `.rtf` or a Word document is refused: save it as "Webpage, HTML only".
+with poppler's `pdftotext` or `pypdf`, and a text file as it is, a name with a dot in it and no
+suffix known here among them. A page saved as a single file (`.mhtml`, `.mht`), a `.rtf`, a
+document or an image is refused: save it as "Webpage, HTML only". A section hidden on the page
+is kept, and so is a notice hidden there (DESIGN.md, Known gaps).
 The journal is `--template`'s when given with it, the page stored before the profile is
 started, and otherwise `paper.yaml`'s `target_journal`. A file with no text shown, which is
 what a page saved while the check stood in its place holds, is refused, and so is a page

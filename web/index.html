@@ -129,8 +129,10 @@
           <label class="tick"><input id="lookup" type="checkbox" disabled>
             <span><span class="field">Check the reference list for retracted and unregistered
               works</span>
-              <span class="help">This sends the DOIs and PubMed IDs the paper cites, and nothing
-                else, to Crossref, OpenAlex, DataCite, doi.org and PubMed.</span></span></label>
+              <span class="help">This sends the DOIs and PubMed IDs the paper cites to Crossref,
+                OpenAlex, DataCite, doi.org and PubMed, and, for a reference with neither, its
+                title, first author and year to Crossref. No sentence of the paper is
+                sent.</span></span></label>
         </div>
       </details>
 
@@ -358,7 +360,10 @@
     <details>
       <summary>Reviewing a paper for a journal?</summary>
       <p>Read the journal's policy first: some forbid putting a manuscript under review into any
-        tool, even one that runs on your own computer.</p>
+        tool, even one that runs on your own computer. An editorial office deciding whether to
+        allow it will find what it needs on
+        <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/editorial-office.md">a
+        page for editorial offices</a>.</p>
     </details>
     <details>
       <summary>What did this page load and send?</summary>

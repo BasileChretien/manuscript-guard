@@ -17,7 +17,8 @@ schema: manuscript-guard/statistical-methods/1
 #   - a space, a hyphen, an en dash or a line break between two of its words, as one: "chi
 #     squared", "chi-squared", "Mann–Whitney";
 #   - "'s" at the end of a word may be there or not, so "Fisher's exact test" is also
-#     "Fisher exact test", and an "s" or "es" after the last word, so "t tests" too;
+#     "Fisher exact test", and an "s" after the last word, so "t tests" too; not "es", which
+#     would read "Holmes" as "Holm";
 #   - in the text as a reader reads it: not in a binding, a citation, a comment, code or an
 #     address.
 #

@@ -5466,6 +5466,22 @@ def test_a_table_s_emitted_caption_is_read_for_the_line_it_points_at(project: Pa
     assert _unnamed_lines(project) == [("line", fragment.name, None)]
 
 
+def test_a_latex_caption_is_read_for_the_line_it_points_at(project: Path) -> None:
+    """A LaTeX file's `\\caption` is read inside its braces, at its `.tex` line; one in a
+    comment is not."""
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nx\n"
+        "\\begin{figure}\\caption{Journals below the line had fewer seats.}\\end{figure}\n"
+        "\\begin{figure}\\caption{Journals below the line of equal shares.}\\end{figure}\n"
+        "% \\caption{Journals above the curve.}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert _unnamed_lines(project) == [("line", "main.tex", 5)]
+
+
 def _overclaimed(root: Path) -> list:
     """What G8 says of a summary that claims more than the Results (`summary-claim-stronger`)."""
     from manuscript_guard.gates import check_reported

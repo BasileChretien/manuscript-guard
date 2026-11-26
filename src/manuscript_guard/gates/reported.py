@@ -449,8 +449,9 @@ class Walk:
         text is not the Discussion's: the Results', a summary's, the Methods' or another."""
         if not self._argues() or self._in_results():
             return None
-        return next(section.title for section in self.chain
-                    if id(section) not in self.titles and names_discussion(section.title))
+        return next((section.title for section in self.chain
+                     if id(section) not in self.titles and names_discussion(section.title)),
+                    None)  # fmt: skip
 
 
 def check_reported(project: Project, results: Results) -> Report:

@@ -93,11 +93,11 @@ def methods() -> tuple[Method, ...]:
 def pattern(names: Iterable[str]) -> re.Pattern[str]:
     """What finds any of `names` as the list says a name is read: whole words, in any case
     but a name in capitals alone, its words joined by `_JOIN`, an "'s" that ends a word there
-    or not, and an "s" or "es" after its last word."""
+    or not, and an "s" after its last word: not "es", or "Holmes" would be "Holm"."""
     folded: list[str] = []
     exact: list[str] = []
     for name in names:
-        body = _JOIN.join(_word(word) for word in _WORDS.split(name)) + "(?:e?s)?"
+        body = _JOIN.join(_word(word) for word in _WORDS.split(name)) + "s?"
         (exact if _CAPITALS.fullmatch(name) else folded).append(body)
     choices = ([f"(?i:{'|'.join(folded)})"] if folded else []) + exact
     return re.compile(rf"(?<!\w)(?:{'|'.join(choices)})(?!\w)")

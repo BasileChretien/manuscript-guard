@@ -39737,6 +39737,19 @@ def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
         ("## Measures to address bias", "measurement", False),
         ("## Non-response", "bias", True),
         ("## Selection bias", "bias", True),
+        # Round 3: every reported heading, each the way it should read.
+        ("## Measures taken to minimise bias", "measurement", False),
+        ("## Measures for reducing bias", "measurement", False),
+        ("## Covariate assessment", "measurement", True),
+        ("## Assessment of depressive symptoms", "measurement", True),
+        ("## Exposure and outcome measures", "measurement", True),
+        ("## Outcome assessment", "measurement", False),
+        ("## Assessment of the outcome", "measurement", False),
+        ("## Weighting", "sampling", True),
+        ("## Survey design and weighting", "sampling", True),
+        ("## Weights and variance estimation", "sampling", True),
+        ("## Size of the study sample", "sampling", False),
+        ("## Size of sample", "sampling", False),
     ],
 )  # fmt: skip
 def test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses(
@@ -39748,7 +39761,11 @@ def test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses(
     body weight, and non-response is a bias, not the way people were sampled. Round 2: G12
     reads every heading for every section, so the widened patterns took other sections'
     headings, a weighting that adjusts for confounding, a sample-size calculation, a bias or
-    quality assessment, the outcome's measures, and passed a plan that lacked the section."""
+    quality assessment, the outcome's measures, and passed a plan that lacked the section.
+    Round 3, both ways (Basile, 2026-11-26): a heading about bias is the bias's and one that
+    names the outcome alone is the outcome's, while any other assessment, measure or
+    instrument is measurement; a survey's weights are sampling, a weighting that adjusts for
+    confounding is not, nor is any wording of a sample's size."""
     _paper_has(project, study_type="cross-sectional")
     assert section in _plan_asked(project)
     plan = project / "design" / "plan.md"

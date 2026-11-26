@@ -308,7 +308,10 @@ which nothing quotes, fails too.
 `build` writes the .docx from the Markdown every time, so the document is never edited and
 nothing is carried across by hand. With Zotero open it writes live Zotero citation fields
 that Word's plugin adopts. Without it, `--offline` formats the citations from a committed
-`references.bib`, which is what CI and a co-author without your library get.
+`references.bib`, which is what CI and a co-author without your library get. A live build asks
+Zotero first and says what stops it: Zotero closed, Better BibTeX missing, or a cited key the
+library does not hold. An offline build says its citations are text, and whether a live one
+would work now; `check` notes a built document whose citations are text.
 
 ## What is checked
 

@@ -30747,6 +30747,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `2012. `, is two sentences, and every key placed in it moves; a re-wrap at any other space
   moves none. Pinned by
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
+- **What says a citation is not a Zotero field reads the source and the document.** A live
+  build counts the citations in its source (each group in brackets, and each narrative
+  citation outside one, leaving out comments, listings and inline code) and warns where the
+  document holds fewer Zotero fields; a citation pandoc reads that this count does not, or the
+  reverse, moves the count. `check` notes a built document (`citations-not-live`) only where
+  the document records no live build and holds pandoc's bookmark of a formatted reference
+  (`ref-<key>`), so one built offline in a style that prints no reference list is not noted.
+  Pinned by
+  `tests/test_cli.py::test_only_a_document_holding_a_reference_list_as_text_is_noted`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

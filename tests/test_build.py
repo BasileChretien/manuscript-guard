@@ -257,6 +257,86 @@ def test_the_built_document_carries_no_unresolved_bindings(project: Path) -> Non
     assert "{{" not in docx_text(result.output)
 
 
+@pytest.fixture
+def zotero_forgotten():
+    """`lookup` keeps its answers for the process: each test here asks its own fake."""
+    from manuscript_guard.zotero import reset_cache
+
+    reset_cache()
+    yield
+    reset_cache()
+
+
+@pytest.mark.parametrize(
+    ("ping", "said"),
+    [(False, "Zotero is not running"), (True, "Better BibTeX does not answer")],
+)
+def test_a_live_build_says_why_zotero_cannot_make_its_fields_before_pandoc_runs(
+    project: Path, monkeypatch, zotero_forgotten, ping: bool, said: str
+) -> None:
+    """The build used to run pandoc, fail, and add "If Zotero is not running" whatever the
+    reason was. It now asks first, and says which of the things a live build needs is
+    missing, and what to do."""
+    import urllib.error
+
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import client
+
+    def nothing_there(*_args, **_kwargs):
+        raise urllib.error.HTTPError(client.ENDPOINT, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: ping)
+    monkeypatch.setattr(client.urllib.request, "urlopen", nothing_there)
+    monkeypatch.setattr(document, "pandoc", lambda: pytest.fail("pandoc ran"))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(document.ZoteroNotReady, match=said) as caught:
+        build_document(proj, assembled, mode=LIVE)
+    assert "--offline" in str(caught.value)
+
+
+def test_a_live_build_refuses_keys_the_library_does_not_hold_and_names_them(
+    project: Path, monkeypatch, zotero_forgotten
+) -> None:
+    """A key Zotero does not hold comes out of zotero.lua as text, among fields, and nothing
+    said so: the build names each such key before it runs."""
+    from test_zotero import FakeBBT, csl
+
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import client
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("fictionalClassSignal2019", True)]))
+    monkeypatch.setattr(document, "pandoc", lambda: pytest.fail("pandoc ran"))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(document.ZoteroNotReady) as caught:
+        build_document(proj, assembled, mode=LIVE)
+    assert "fictionalHepaticCohort2021" in str(caught.value)
+    assert "fictionalClassSignal2019" not in str(caught.value)
+
+
+def _docx_with(path: Path, xml: str) -> Path:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    return path
+
+
+def test_fewer_zotero_fields_than_citations_are_said(tmp_path: Path) -> None:
+    """Only a document with no field at all was warned of: one in which zotero.lua made
+    fields of some citations and left the rest as text passed as live."""
+    from manuscript_guard.build.document import _verify_live_fields
+
+    field = "<w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {}</w:instrText>"
+    docx = _docx_with(tmp_path / "some.docx", f"<w:document>{field}</w:document>")
+    report = _verify_live_fields(docx, 3)
+    assert [f.code for f in report.findings] == ["no-live-citations"]
+    assert "2 of the 3 citations" in report.findings[0].message
+    assert report.counts["zotero_fields"] == 1
+    whole = _docx_with(tmp_path / "all.docx", f"<w:document>{field * 3}</w:document>")
+    assert not _verify_live_fields(whole, 3).findings
+
+
 @needs_pandoc
 @needs_zotero
 def test_live_build_writes_real_zotero_fields(tmp_path: Path) -> None:

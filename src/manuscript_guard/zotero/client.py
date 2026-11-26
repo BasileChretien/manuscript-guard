@@ -54,6 +54,10 @@ class ZoteroUnavailable(Exception):
     """Zotero is not running, or Better BibTeX is not answering."""
 
 
+class ZoteroBusy(ZoteroUnavailable):
+    """Zotero answered its ping, and Better BibTeX did not answer a call in the time given."""
+
+
 class ZoteroRefused(ZoteroUnavailable):
     """Better BibTeX answered with an error: an unknown method, bad arguments, a duplicate.
 
@@ -149,7 +153,7 @@ def rpc(method: str, params, timeout: int = GATE_TIMEOUT) -> object:
         if _timed_out(exc):
             # Zotero is up (the ping answered) but busy: say so, rather than asking whether
             # it is running, which sends the author to look for a problem that is not there.
-            raise ZoteroUnavailable(
+            raise ZoteroBusy(
                 f"Better BibTeX did not answer {method} within {timeout} s; Zotero is running "
                 "but busy (indexing, syncing, or a very large request)"
             ) from exc
@@ -312,6 +316,75 @@ def lookup(citekeys: tuple[str, ...], timeout: int = GATE_TIMEOUT) -> Lookup:
         missing=frozenset(missing),
         ambiguous=ambiguous,
     )
+
+
+#: What a live build needs, and the first of them that is missing (`readiness`).
+READY = "ready"
+NOT_RUNNING = "not-running"
+NO_BETTER_BIBTEX = "no-better-bibtex"
+BUSY = "busy"
+KEYS_MISSING = "keys-missing"
+#: How long the readiness probe waits for Zotero's ping and Better BibTeX's first answer: a
+#: build asks before it runs, and a closed Zotero refuses the connection at once.
+PROBE_TIMEOUT = 5
+
+
+@dataclass(frozen=True)
+class Readiness:
+    """Whether a live build would get a Zotero field for every citation, and if not, why.
+
+    `state` is the first thing missing, in the order a build needs them: Zotero running
+    (`NOT_RUNNING`), Better BibTeX answering in it (`NO_BETTER_BIBTEX`, or `BUSY` where it
+    did not answer in time), and every cited key in the library (`KEYS_MISSING`, with the
+    keys no item carries and those several carry)."""
+
+    state: str
+    missing: tuple[str, ...] = ()
+    ambiguous: tuple[str, ...] = ()
+    detail: str = ""
+
+    @property
+    def ready(self) -> bool:
+        return self.state == READY
+
+
+def _ping(timeout: int) -> bool:
+    """Zotero's own ping, asked again whatever an earlier call of this run met."""
+    try:
+        with urllib.request.urlopen(PING, timeout=timeout) as response:
+            return response.status == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def readiness(citekeys, timeout: int = PROBE_TIMEOUT) -> Readiness:
+    """What a live build of a document citing `citekeys` would meet, asked of Zotero now.
+
+    Read-only: the ping, Better BibTeX's `api.ready`, and `lookup` of the keys. A Better
+    BibTeX too old for `api.ready` still answers, and is read as answering."""
+    if not _ping(timeout):
+        return Readiness(NOT_RUNNING)
+    try:
+        rpc("api.ready", [], timeout=timeout)
+    except ZoteroBusy as exc:
+        return Readiness(BUSY, detail=str(exc))
+    except ZoteroRefused:
+        pass
+    except ZoteroUnavailable as exc:
+        return Readiness(NO_BETTER_BIBTEX, detail=str(exc))
+    keys = tuple(sorted(set(citekeys)))
+    if not keys:
+        return Readiness(READY)
+    try:
+        found = lookup(keys)
+    except ZoteroBusy as exc:
+        return Readiness(BUSY, detail=str(exc))
+    except ZoteroUnavailable as exc:
+        return Readiness(NO_BETTER_BIBTEX, detail=str(exc))
+    if found.missing or found.ambiguous:
+        return Readiness(KEYS_MISSING, missing=tuple(sorted(found.missing)),
+                         ambiguous=tuple(sorted(found.ambiguous)))  # fmt: skip
+    return Readiness(READY)
 
 
 def export(citekeys: list[str], translator: str = "biblatex") -> str:

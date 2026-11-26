@@ -55,6 +55,25 @@ The paper follows STROBE, or RECORD.
 - **Confounding.** (STROBE, 7 and 12a)
 - **Missing data.** (STROBE, 12c)
 
+## cross-sectional
+
+The paper follows STROBE, or RECORD for routinely collected data. Exposure and outcome are
+measured at one time, so the plan says which question that can answer and which it cannot:
+a prevalence, an association, not which came first.
+
+- **Sampling.** How are participants sampled and recruited, and does the analysis allow
+  for it (weights, clusters, strata)? (STROBE, 6a and 12d)
+- **Measurement.** How is each variable measured, with which instrument, and the same way
+  in every group? (STROBE, 8)
+- **Bias.** Which sources of bias, non-response among them, and what is done about each?
+  (STROBE, 9)
+- **Sample size.** How was the study size arrived at? (STROBE, 10)
+- **Confounding.** Which confounders and effect modifiers, which adjustment set, and why
+  each variable is in it? (STROBE, 7 and 12a)
+- **Missing data.** (STROBE, 12c)
+- **Sensitivity analyses.** Which subgroups, interactions and sensitivity analyses?
+  (STROBE, 12b and 12e)
+
 ## self-controlled
 
 No reporting guideline is written for self-controlled designs; the paper follows STROBE.

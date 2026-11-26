@@ -29153,6 +29153,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`.
   - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
     reference list are read as prose, as before (answer 9). Accepted.
+  - A statement of the back matter that a reference list's lines stand on both sides of in
+    reading order, as Frontiers sets them, is read before the list's heading, its heading and
+    the paragraph under it; a line between them under no heading, "Publisher's note", stays
+    with the list, and a statement under a title none of the statements' names is read where
+    it stands, inside the list.
+    Pinned by `tests/test_corruption.py::test_a_reference_list_the_statements_stand_inside_is_one_list`.
   - Inside a band of a page, two columns are read left then right, each block by its centre:
     a page of three columns, or a block set across one column and part of the next, is read
     in that order. Accepted.

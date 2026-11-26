@@ -3886,6 +3886,34 @@ def test_a_decimal_at_a_column_s_foot_leaves_its_paragraph_open(tmp_path: Path) 
     assert "was 2.5\nin each of the sites" in staged, staged
 
 
+def test_a_reference_list_the_statements_stand_inside_is_one_list(tmp_path: Path) -> None:
+    """A judge of #802's fresh findings, pdf-psych-C1 of the real-paper corpus: Frontiers
+    opens the reference list at the foot of the left column and sets the statements of the
+    back matter at the head of the right, the list going on under them. Read in reading
+    order, the list's rest stood under "Supplementary material", and G14 read the cited
+    works' titles as the text: "NAMA" was asked defined. The statements are read before the
+    list, and the list is one section under its heading."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Conclusion", "The cohort was read and the records were kept.", *[_FULL] * 4,
+            "References", "Adam, K. (1994). Suicidal behavior and attachment.",
+            "Bowlby, J. (1969). Attachment. New York: Basic Books."]
+    right = ["Data availability statement", "The raw data are available on request.",
+             "Ethics statement", "The study was approved by the board.",
+             "Supplementary material", "The supplementary material is online.",
+             "Coan, J. (2008). A neuro-anatomical model of human attachment (NAMA).",
+             "Dozier, M. (1999). Attachment in the NAMA. Guilford Press."]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0, 8: 4.0})
+              + _column(right, RIGHT, TOP, {1: 4.0, 2: 14.0, 3: 4.0, 4: 14.0, 5: 4.0,
+                                            6: 30.0}))  # fmt: skip
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "NAMA" in f.message] == [], run.language
+    assert staged.index("Ethics statement") < staged.index("# References"), staged
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

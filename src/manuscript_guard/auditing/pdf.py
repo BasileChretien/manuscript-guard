@@ -661,8 +661,9 @@ def read_paragraphs(path: Path) -> PdfText:
 
 def _of_layout(path: Path, layout, name: str) -> PdfText:
     """The `PdfText` of lines rebuilt (`pdf_layout.Layout`), its headings read on them as on
-    the lines `pdftotext` reads (`headings_of`)."""
-    rows = layout.rows
+    the lines `pdftotext` reads (`headings_of`), the reference list's parts made one
+    (`_references_together`)."""
+    rows = _references_together(layout.rows)
     texts = [row.text for row in rows]
     headings, run_in = headings_of(texts)
     places = tuple(Place(row.page, row.line, row.printed) for row in rows)
@@ -672,6 +673,51 @@ def _of_layout(path: Path, layout, name: str) -> PdfText:
                    layout.running, run_in, paragraphs=tuple(row.paragraph for row in rows),
                    of_display=tuple(row.display for row in rows), displays=layout.displays,
                    cited=tuple(row.cited for row in rows))  # fmt: skip
+
+
+#: The title of the supplementary material's statement, which a journal sets among the
+#: statements of its back matter: "Supplementary material", "Supplementary data".
+_SUPPLEMENTARY_STATEMENT = re.compile(
+    r"supplementary\s+(?:material|materials|data|information)\W*$", re.IGNORECASE)
+
+
+def _references_together(rows: tuple) -> tuple:
+    """The rows with each statement of the back matter that a reference list's lines stand on
+    both sides of read before the list: a journal (Frontiers) that opens the list at the foot
+    of the left column and sets the statements at the head of the right, the list going on
+    under them. Each statement, its heading (`heading_title`, `names_statement`,
+    "Supplementary material") and the paragraph under it, is put before the list's heading,
+    so that the list is one section under its heading; what else stands between them, a
+    "Publisher's note" under no heading of the list, stays with the list. Where no heading
+    names the reference list, or no line of the list stands after the statements, the rows
+    as they are."""
+    from manuscript_guard.text.sections import Section
+
+    titles = [heading_title(row.text) for row in rows]
+    lists = [at for at, title in enumerate(titles)
+             if title is not None and Section(title, 1, "", 0).is_references]  # fmt: skip
+    if not lists:
+        return rows
+    first = lists[0]
+    moved = []
+    for start in range(first + 1, len(rows)):
+        title = titles[start]
+        if title is None or not (names_statement(title) or _SUPPLEMENTARY_STATEMENT.match(title)):
+            continue
+        end = start + 1
+        if end < len(rows) and titles[end] is None:
+            paragraph = rows[end].paragraph
+            while end < len(rows) and titles[end] is None and rows[end].paragraph == paragraph:
+                end += 1
+        moved.append((start, end))
+    # Only where the list's lines stand after them.
+    if not moved or not any(titles[at] is None for at in range(moved[-1][1], len(rows))):
+        return rows
+    statements = [at for start, end in moved for at in range(start, end)]
+    taken = set(statements)
+    order = [*range(first), *statements, *(at for at in range(first, len(rows))
+                                         if at not in taken)]  # fmt: skip
+    return tuple(rows[at] for at in order)
 
 
 #: Where the name `author` gives was read.

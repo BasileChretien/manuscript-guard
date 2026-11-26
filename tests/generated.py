@@ -19803,6 +19803,9 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
                 '{x} <- processx::run("python", "x.py")$status; if ({z} != {x}) stop()',
                 '{x} <- processx::run("python", "x.py"); if ({x}$status != {z}) stop()',
                 '{x} <- run("python", "x.py"); if ({z} != {x}$status) stop()',
+                # The runs of sys and callr (round 2 of #817).
+                '{x} <- sys::exec_internal("x"); if ({x}$status != {z}) stop()',
+                'if (callr::rcmd("build", ".")$status != {z}) stop()',
                 'if (system2("python", "x.py") != {z}) stop()']))  # fmt: skip
             return form.format(x=name, z=zero), []
         form = draw(st.sampled_from([
@@ -19813,7 +19816,7 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
         return form.format(x=name), []
     if kind == "status in a body":
         # Round 1 of #817: in R, assigned inside braces, a function's body, `local()` or
-        # `tryCatch()`; in Python, an annotated assignment, in a function's body or not.
+        # `tryCatch()`. Round 2: in Python, assigned straight after a block's colon.
         if r:
             form = draw(st.sampled_from([
                 '{x}_check <- function() {{ {x} <- system2("x"); if ({x} != {z}) stop() }}',
@@ -19821,21 +19824,23 @@ def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple
                 'tryCatch({{ {x} <- processx::run("x"); if ({x}$status != {z}) stop() }}, '
                 "error = stop)"]))  # fmt: skip
             return form.format(x=name, z=zero), []
-        form = draw(st.sampled_from([
-            "{x}: int = subprocess.call(['x'])\nif {x} != 0:\n    raise SystemExit",
-            "def {x}_check():\n    {x}: int = subprocess.call(['x'])\n    if {x} != 0:\n"
-            "        raise SystemExit"]))  # fmt: skip
+        opener = draw(st.sampled_from(["try:", "if {x}_wanted:", "for {x}_one in {x}_all:",
+                                       "with open('x') as {x}_file:", "class {x}_kept:",
+                                       "def {x}_check():"]))  # fmt: skip
+        form = (opener + "\n    {x} = subprocess.call(['x'])\n    if {x} != 0:\n"
+                "        raise SystemExit")  # fmt: skip
+        if opener == "try:":
+            form += "\nexcept OSError:\n    raise"
         return form.format(x=name), []
     if kind == "a column or a keyword's list":
-        # Round 1 of #817: a column called status is no run's, and a list after a keyword,
-        # a soft keyword too, is no subscript.
+        # Round 1 of #817: a column called status is no run's, and a list after a keyword is
+        # no subscript.
         if r:
             form = draw(st.sampled_from(["p <- ggplot({x}[{x}$status == {z}, ], aes(time))",
                                          "{x}_one <- subset({x}, {x}$status != {z})"]))
             return form.format(x=name, z=zero), [zero]
         form = draw(st.sampled_from(["if {x} in [{n}]:\n    raise SystemExit",
-                                     "def {x}_of():\n    return [{n}]",
-                                     "match {x}:\n    case [{n}]:\n        pass"]))  # fmt: skip
+                                     "def {x}_of():\n    return [{n}]"]))  # fmt: skip
         return form.format(x=name, n=n), [n]
     # Not a status: another name compared with zero, a status compared with another number,
     # and a status assigned as a call's argument, which is the call's and not the script's.

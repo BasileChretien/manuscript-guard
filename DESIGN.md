@@ -612,16 +612,17 @@ colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gr
 and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
 `"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
 bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and
-not after a keyword (`x in [3]`, `return [3]`, `case [3]:`), is an index. A zero compared by
-`==` or `!=` with a process's exit status is the test of whether it failed: a name the script
-assigns, at the top level or inside braces (a function's body, `local({ })`, `tryCatch({ })`)
-but not as a call's argument, from `system2()`, `system()`, `os.system()` or
-`subprocess.call()`, or from a `.returncode` or a run's `$status`; a run being processx's
-`run()`, with its package or without; and any of those written in place. A `$status` of
-anything else, a data frame's column, is read as before. A rendered SVG's `<style>` and
-`<script>` draw nothing either, so their text
-is not read as the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind
-check still reads them, for a name.
+not after a keyword (`x in [3]`, `return [3]`), unless the word is a field's (`d$next[1]`),
+is an index. A zero compared by `==` or `!=` with a process's exit status is the test of
+whether it failed: a name the script assigns, at the top level or inside braces (a
+function's body, `local({ })`, `tryCatch({ })`) but not as a call's argument, from
+`system2()`, `system()`, `os.system()` or `subprocess.call()`, or from a `.returncode` or a
+run's `$status`; a run being processx's `run()`, with its package or without, sys's
+`exec_internal()`, or callr's `rcmd()`, `rcmd_safe()` or `rscript()`; and any of those
+written in place. A `$status` of anything else, a data frame's column, is read as before.
+A rendered SVG's `<style>` and `<script>` draw nothing either, so their text is not read as
+the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind check still
+reads them, for a name.
 
 **The marks the script computes.** Labels drawn from the results say nothing about the marks.
 `sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
@@ -19517,16 +19518,22 @@ Added by the adversarial review, verified and **not** fixed:
     `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
   - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
     (`edges[1:3]`) are read as numbers bound to nothing, and so is the subscript of a name
-    that is a keyword in either language (`type[1]` in R). Pinned by
-    `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read`.
+    that is a keyword in either language and no field's (`next[1]` in R). A soft keyword
+    of Python's is read as a name, so `case [3]:` is taken for an index and its number is
+    not read: the tokens do not say whether `match` or `case` opens a statement (round 2
+    of #817). Pinned by
+    `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read` and
+    `tests/test_figures.py::test_a_number_that_is_a_whole_subscript_is_an_index`.
   - An exit status is known by the calls that return one, by `.returncode`, and by the
-    `$status` of a run of processx's `run()`: R's `system2(stdout = TRUE)` and
+    `$status` of a run (processx's `run()`, sys's `exec_internal()`, callr's `rcmd()`,
+    `rcmd_safe()` and `rscript()`): R's `system2(stdout = TRUE)` and
     `system(intern = TRUE)`, which return the output, are taken for a status, and so is the
     `$status` of a function of the script's own called `run`; while `Popen(...).wait()`, a
     status returned by a function of the script's own, one assigned in a function's argument,
-    one annotated with a type that is not a single name (`rc: Optional[int] = ...`) and a run
-    kept by another call (`res <- tryCatch(processx::run(...))`) are not, and their zero is
-    read. Pinned by
+    one in an annotated assignment (`rc: int = subprocess.call(...)`, read as assigning to
+    `int`, since the tokens hold no line breaks and a block's colon before `rc =` reads the
+    same way), a run kept by another call (`res <- tryCatch(processx::run(...))`) and one
+    kept in a list's item (`results[[i]]$status`) are not, and their zero is read. Pinned by
     `tests/test_figures.py::test_a_zero_compared_with_an_exit_status_is_no_number` and
     `tests/test_figures.py::test_a_zero_compared_with_anything_else_is_still_read`.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in

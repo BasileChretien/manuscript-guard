@@ -63,8 +63,9 @@ class CodeNumber:
     # subscript: the 1 of `edges[1]`, `fits[[1]]`, `edges[-1]`. An index, in either language.
     subscript: bool = False
     # The number is 0 (or 0L), compared by `==` or `!=` with a process's exit status: a name
-    # assigned from `system2()`, `system()`, `os.system()` or `subprocess.call()`, or from a
-    # `$status` or `.returncode`, or any of those written in place (`_exit_statuses`).
+    # assigned from `system2()`, `system()`, `os.system()` or `subprocess.call()`, from a
+    # `.returncode`, or from the `$status` of a run (`_RUN_CALLS`), the run's own `$status`,
+    # or any of those written in place (`_exit_statuses`).
     exit_status: bool = False
 
     @property
@@ -239,10 +240,10 @@ def _between_quotes(literal: str) -> str:
 
 
 #: Words before a bracket that open no subscript: `x in [1]`, `return [1]`, `else [1]`.
-#: Python's soft keywords are not in `keyword.kwlist` (`case [3]:`), and are named here, not
-#: taken from `keyword.softkwlist`, which differs between Python versions.
-_KEYWORDS = frozenset(keyword.kwlist) | {"match", "case", "type", "function", "repeat", "next",
-                                         "break", "print"}  # fmt: skip
+#: Python's soft keywords (`match`, `case`, `type`) are names as often as not, and the
+#: tokens do not say which (round 2 of #817): they are read as names, so `case [3]:` is taken
+#: for an index (Known gaps).
+_KEYWORDS = frozenset(keyword.kwlist) | {"function", "repeat", "next", "break", "print"}
 
 
 def _text(tokens: list[Token], index: int) -> str | None:
@@ -269,15 +270,20 @@ def _whole_subscript(tokens: list[Token], index: int) -> bool:
     before = _text(tokens, owner)
     if before in (")", "]"):
         return True
-    return owner >= 0 and _identifier(tokens[owner]) is not None and before not in _KEYWORDS
+    if owner < 0 or _identifier(tokens[owner]) is None:
+        return False
+    # A name after `$` or `@` is a field's, whatever word it is: `d$next[1]`.
+    return before not in _KEYWORDS or _text(tokens, owner - 1) in ("$", "@")
 
 
 #: The calls whose value is the exit status of the process they ran, in R and in Python.
 _STATUS_CALLS = frozenset({"system", "system2", "base::system", "base::system2", "os.system",
                            "subprocess.call"})  # fmt: skip
 #: The calls whose value is a run of a process, whose `$status` is its exit status: processx's
-#: `run()`, written with its package or after `library(processx)`.
-_RUN_CALLS = frozenset({"processx::run", "run"})
+#: `run()`, written with its package or after `library(processx)`, sys's `exec_internal()`
+#: and callr's `rcmd()`, `rcmd_safe()` and `rscript()` (round 2 of #817).
+_RUN_CALLS = frozenset({"processx::run", "run", "sys::exec_internal", "callr::rcmd",
+                        "callr::rcmd_safe", "callr::rscript"})  # fmt: skip
 #: A zero as an exit status is written: R's integer, and the number of either language.
 _ZERO = frozenset({"0", "0L"})
 
@@ -402,14 +408,13 @@ def _assigns(tokens: list[Token], index: int) -> bool:
 
 
 def _assigned(tokens: list[Token], index: int) -> str | None:
-    """The name the assignment at `index` assigns to: the name before it, or, in Python's
-    annotated assignment `rc: int = ...`, the name before the annotation (round 1 of
-    #817); None where no name stands there."""
+    """The name the assignment at `index` assigns to: the name before it; None where no name
+    stands there. An annotated assignment, `rc: int = ...`, is read as assigning to its type:
+    the tokens hold no line breaks, so a block's colon (`try:`, `if ok:`) followed by `rc =`
+    reads as an annotation too, and the reading that took the name before the colon took
+    `try` (round 2 of #817; Known gaps)."""
     if index < 1 or _identifier(tokens[index - 1]) is None:
         return None
-    # R's `pkg::name` is two colons before the name, never a name and one colon.
-    if _text(tokens, index - 2) == ":" and index > 2 and _identifier(tokens[index - 3]):
-        return tokens[index - 3].text
     return tokens[index - 1].text
 
 

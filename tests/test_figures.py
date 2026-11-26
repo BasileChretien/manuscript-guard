@@ -392,6 +392,14 @@ def test_a_string_that_is_no_colour_name_is_still_read(
         ("first = edges[0]", ".py"),
         ("last = edges[-1]", ".py"),
         ("cell = rows[0][1]", ".py"),
+        # A name that is no keyword here, and one after `$`, which is a field's (round 2 of
+        # #817): quiet, as at 82fd19e.
+        ("first <- d$type[1]", ".R"),
+        ("first <- type[1]", ".R"),
+        ("match = re.search(p, s)\nfirst = match[1]", ".py"),
+        ("first <- d$next[1]", ".R"),
+        # Known gaps: a soft keyword is read as a name, so `case [3]:` is taken for an index.
+        ("match dose:\n    case [3]:\n        pass", ".py"),
     ],
 )
 def test_a_number_that_is_a_whole_subscript_is_an_index(
@@ -413,14 +421,13 @@ def test_a_number_that_is_a_whole_subscript_is_an_index(
         # A Python list of one number is a list, not a subscript.
         ("ticks = [1]", ".py", ["1"]),
         ("ticks = [[2]]", ".py", ["2"]),
-        # A list after a keyword is a list, soft keywords too (round 1 of #817).
+        # A list after a keyword is a list (round 1 of #817).
         ("if dose in [3.84]:\n    pass", ".py", ["3.84"]),
         ("def doses():\n    return [3.84]", ".py", ["3.84"]),
-        ("match dose:\n    case [3]:\n        pass", ".py", ["3"]),
         # Known gaps: a slice is read, and the subscript of a name that is a keyword in either
-        # language.
+        # language, where it is no field's.
         ("some <- edges[1:3]", ".R", ["1", "3"]),
-        ("first <- type[1]", ".R", ["1"]),
+        ("first <- next[1]", ".R", ["1"]),
     ],
 )
 def test_a_number_beside_a_subscript_is_still_read(
@@ -450,9 +457,25 @@ def test_a_number_beside_a_subscript_is_still_read(
         ('tryCatch({ job <- processx::run("x"); if (job$status != 0) stop() }, error = stop)',
          ".R"),
         ('library(processx)\njob <- run("python", "x.py")\nif (job$status != 0) stop()', ".R"),
-        # An annotated assignment names the variable, not its type (round 1 of #817).
-        ("rc: int = subprocess.call(['x'])\nif rc != 0:\n    raise SystemExit", ".py"),
-        ("def check():\n    rc: int = subprocess.call(['x'])\n    if rc != 0:\n"
+        # The runs of sys and callr, whose `$status` is the exit status (round 2 of #817).
+        ('job <- sys::exec_internal("x")\nif (job$status != 0) stop()', ".R"),
+        ('if (callr::rcmd("build", ".")$status != 0) stop()', ".R"),
+        ('job <- callr::rscript("x.R")\nif (job$status != 0) stop()', ".R"),
+        ('job <- callr::rcmd_safe("build")\nif (job$status != 0) stop()', ".R"),
+        # Assigned straight after a block's colon (round 2 of #817).
+        ("try:\n    rc = subprocess.call(['x'])\nexcept OSError:\n    raise\nif rc != 0:\n"
+         "    raise SystemExit", ".py"),
+        ("if ok:\n    pass\nelse:\n    rc = subprocess.call(['x'])\n    if rc != 0:\n"
+         "        raise SystemExit", ".py"),
+        ("if ok:\n    rc = subprocess.call(['x'])\n    if rc != 0:\n        raise SystemExit",
+         ".py"),
+        ("for f in files:\n    rc = subprocess.call(['x'])\n    if rc != 0:\n"
+         "        raise SystemExit", ".py"),
+        ("with open(p) as fh:\n    rc = subprocess.call(['x'])\nif rc != 0:\n"
+         "    raise SystemExit", ".py"),
+        ("class C:\n    rc = subprocess.call(['x'])\n    if rc != 0:\n        raise SystemExit",
+         ".py"),
+        ("def check():\n    rc = subprocess.call(['x'])\n    if rc != 0:\n"
          "        raise SystemExit", ".py"),
         # Known gaps: `stdout = TRUE` and `intern = TRUE` make system2() and system() return
         # the output, taken for a status.
@@ -481,13 +504,14 @@ def test_a_zero_compared_with_an_exit_status_is_no_number(
         ("p <- ggplot(d[d$status == 0, ], aes(time))", ".R", ["0"]),
         ('fit <- survfit(Surv(time, status) ~ sex, d)\nif (fit$status != 0) stop()', ".R",
          ["0"]),
-        # Known gaps: calls not known to return a status, an annotation that is not a single
-        # name, and a run kept by another call.
+        # Known gaps: calls not known to return a status, an annotated assignment, a run kept
+        # by another call, and a run kept in a list's item.
         ("proc = subprocess.Popen(['x'])\nif proc.wait() != 0:\n    raise SystemExit", ".py",
          ["0"]),
-        ("rc: Optional[int] = subprocess.call(['x'])\nif rc != 0:\n    raise SystemExit", ".py",
-         ["0"]),
+        ("rc: int = subprocess.call(['x'])\nif rc != 0:\n    raise SystemExit", ".py", ["0"]),
         ('job <- tryCatch(processx::run("x"))\nif (job$status != 0) stop()', ".R", ["0"]),
+        ('results[[i]] <- processx::run("x")\nif (results[[i]]$status != 0) stop()', ".R",
+         ["0"]),
     ],
 )
 def test_a_zero_compared_with_anything_else_is_still_read(

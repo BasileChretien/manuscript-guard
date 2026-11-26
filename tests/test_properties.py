@@ -26201,10 +26201,10 @@ def test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_els
     digits (`"grey50"`, `"steelblue4"`, `"C0"`), a number that is a whole subscript
     (`edges[1]`) and a zero compared with an exit status (`if (status != 0) stop()`), none of
     them a number the figure draws or data typed into it (the bisphosphonates paper,
-    2026-11-26), a status assigned in a function's body or annotated (`rc: int = ...`) among
+    2026-11-26), a status assigned in braces or straight after a block's colon (`try:`) among
     them; and beside each what only looks like it, which G3 reports as before: a name R has no
     colour by, R's names in Python, a subscript with arithmetic in it or two numbers, a list
-    of one number, after a keyword too (`in [3]`, `return [3]`, `case [3]:`), a zero compared
+    of one number, after a keyword too (`in [3]`, `return [3]`), a zero compared
     with another name, a status compared with another number, a status assigned as a call's
     argument, and a column called status (round 1 of #817). G3 reports the second kind's
     numbers, in the order of the lines, and no other."""
@@ -26295,12 +26295,20 @@ def _a_status_is_assigned_at_the_top_level_only(patch: pytest.MonkeyPatch) -> No
         code, tokens, where=lambda brackets: not brackets, name=code._assigned))  # fmt: skip
 
 
-def _an_annotation_is_the_name_assigned(patch: pytest.MonkeyPatch) -> None:
-    """`rc: int = subprocess.call(...)` read as assigning to `int` (round 1 of #817)."""
+def _the_word_before_a_colon_is_assigned(patch: pytest.MonkeyPatch) -> None:
+    """Round 1's reading of an annotated assignment, which round 2 of #817 took out: the
+    name before a colon taken for the one assigned, so `try:` then `rc = ...` records `try`."""
     from manuscript_guard.text import code
 
-    patch.setattr(code, "_assigned", lambda tokens, index: code._identifier(tokens[index - 1])
-                  if index else None)  # fmt: skip
+    def annotated(tokens: list[Any], index: int) -> str | None:
+        if index < 1 or code._identifier(tokens[index - 1]) is None:
+            return None
+        if code._text(tokens, index - 2) == ":" and index > 2 and code._identifier(
+                tokens[index - 3]):  # fmt: skip
+            return tokens[index - 3].text
+        return tokens[index - 1].text
+
+    patch.setattr(code, "_assigned", annotated)
 
 
 def _any_dollar_status_is_a_status(patch: pytest.MonkeyPatch) -> None:
@@ -26314,8 +26322,8 @@ def _any_dollar_status_is_a_status(patch: pytest.MonkeyPatch) -> None:
 
 
 def _keywords_open_subscripts(patch: pytest.MonkeyPatch) -> None:
-    """The keyword test of `_whole_subscript` taken out: `x in [3]`, `return [3]` and `case
-    [3]:` read as indices (round 1 of #817)."""
+    """The keyword test of `_whole_subscript` taken out: `x in [3]` and `return [3]` read as
+    indices (round 1 of #817)."""
     from manuscript_guard.text import code
 
     patch.setattr(code, "_KEYWORDS", frozenset())
@@ -33871,8 +33879,8 @@ BROKEN = {
         _a_status_is_assigned_at_the_top_level_only,
         test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
     ),
-    "an annotation is the name assigned": (
-        _an_annotation_is_the_name_assigned,
+    "the word before a colon is the name assigned": (
+        _the_word_before_a_colon_is_assigned,
         test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
     ),
     "any $status is an exit status": (

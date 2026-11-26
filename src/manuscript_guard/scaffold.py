@@ -9,6 +9,7 @@ real work rather than placeholder noise.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -554,58 +555,111 @@ def git_lines_to_add(root: Path) -> dict[str, list[str]]:
             wanted[".gitignore"] = missing
     attributes = _lines(root / ".gitattributes")
     if attributes is not None:
-        missing = [] if any(_is_eol(line) for line in attributes) else [EOL_LINE]
-        if _svg_rule(attributes) != KEPT:
+        lines = _attribute_lines(attributes)
+        missing = [] if _state(lines, ("*",)) == ("auto", "lf") else [EOL_LINE]
+        if _svg_rule(lines) != KEPT:
             missing.append(SVG_BINARY)
         if missing:
             wanted[".gitattributes"] = missing
     return wanted
 
 
-#: What an existing `.gitattributes` decides of an SVG's bytes (`_svg_rule`): its own rule
-#: holds; it has one, and a `*` line below it that sets `text` undoes it; it has none.
+#: What an existing `.gitattributes` decides of an SVG's bytes (`_svg_rule`): they are kept,
+#: by its own `*.svg` rule or by a `*` line that unsets `text`; its `*.svg` rule is undone by
+#: a `*` line below it; it has no rule for them.
 KEPT, UNDONE, NONE = "kept", "undone", "none"
 
 
-def _sets_text(words: list[str]) -> bool:
-    """Whether a line's attributes set `text`, in any of its states: `binary` is `-text`."""
-    return any(word in ("text", "-text", "!text", "binary") or word.startswith("text=")
-               for word in words[1:])  # fmt: skip
+def _attribute_lines(attributes: list[str]) -> list[list[str]]:
+    """The words of each line of `.gitattributes` that sets attributes on a pattern, in order:
+    not a comment, not a blank line, and not a macro's definition (`[attr]keep -text`), whose
+    name a pattern's line then sets: macros are not read (Known gaps)."""
+    return [line.split() for line in attributes
+            if line.split() and not line.startswith(("#", "[attr]"))]  # fmt: skip
 
 
-def _decides_bytes(words: list[str]) -> bool:
-    """Whether a line sets `text`, `-text`, `binary` or `eol`: what decides whether git
-    normalises a file's line endings. `diff=xml` or `linguist-generated` does not."""
-    return _sets_text(words) or any(word in ("eol", "-eol", "!eol") or word.startswith("eol=")
-                                    for word in words[1:])  # fmt: skip
-
-
-def _svg_rule(attributes: list[str]) -> str:
-    """Whether the file's own rule for `*.svg` decides an SVG's bytes, as git reads it: a later
-    line overrides an earlier one attribute by attribute, so a `*.svg binary` above a `*` line
-    that sets `text` is undone by it (round 1 of #815). Only the patterns `*` and `*.svg` are
-    read; a line for another that holds SVGs (`figures/* text`) is not (Known gaps)."""
-    rule = NONE
-    for line in attributes:
-        words = line.split()
-        if not words or words[0].startswith("#"):
+def _apply(state: dict[str, str | None], words: list[str]) -> bool:
+    """Set on `state` the `text` and `eol` a line's attributes give, as git reads them, each
+    overriding what an earlier line gave; whether the line set either. `binary` is `-text`."""
+    said = False
+    for word in words[1:]:
+        if word in ("text", "-text", "!text", "binary") or word.startswith("text="):
+            state["text"] = {"text": "set", "-text": "unset", "binary": "unset",
+                             "!text": None}.get(word, word[len("text="):])  # fmt: skip
+        elif word in ("eol", "-eol", "!eol") or word.startswith("eol="):
+            state["eol"] = {"eol": "set", "-eol": "unset", "!eol": None}.get(
+                word, word[len("eol="):])
+        else:
             continue
-        if words[0] == "*.svg" and _decides_bytes(words):
-            rule = KEPT
-        elif words[0] == "*" and _sets_text(words) and rule == KEPT:
-            rule = UNDONE
-    return rule
+        said = True
+    return said
 
 
-def attributes_order(root: Path) -> tuple[bool, bool]:
-    """Where the lines `git_lines_to_add` asks of an existing `.gitattributes` go, as git
-    reads the file: whether it has lines for patterns of their own (`*.docx binary`, an
-    `*.svg` line), above which the eol line goes, since a `*` line below them undoes them;
-    and whether its `*.svg` rule is undone by a `*` line below it."""
-    attributes = _lines(Path(root).resolve() / ".gitattributes") or []
-    own = any(line.split()[0] != "*" for line in attributes
-              if line.split() and not line.startswith("#"))  # fmt: skip
-    return own, _svg_rule(attributes) == UNDONE
+def _state(lines: list[list[str]], patterns: tuple[str, ...]) -> tuple[str | None, str | None]:
+    """The `text` and `eol` a file that `patterns` all match ends with: the last value each
+    takes over the lines for those patterns, in order, as git reads them (round 2 of #815).
+    Only the patterns written are read: `figures/*.svg` holds no SVG of `("*", "*.svg")`."""
+    state: dict[str, str | None] = {"text": None, "eol": None}
+    for words in lines:
+        if words[0] in patterns:
+            _apply(state, words)
+    return state["text"], state["eol"]
+
+
+def _svg_rule(lines: list[list[str]]) -> str:
+    """What the file decides of an SVG's bytes, as git reads it, line over line and attribute
+    by attribute (rounds 1 and 2 of #815). They are kept where the SVG ends with `text`
+    unset (`*.svg binary`, or a later `* -text` or `* binary`), or where the last line to set
+    its `text` or `eol` is the file's own `*.svg` line (`*.svg text eol=lf` is the author's
+    choice). A `*.svg` line a `*` line below it overrides is undone. Only the patterns `*` and
+    `*.svg` are read; a line for another that holds SVGs (`figures/* text`) is not (Known
+    gaps)."""
+    state: dict[str, str | None] = {"text": None, "eol": None}
+    own = last = None
+    for words in lines:
+        if words[0] not in ("*", "*.svg"):
+            continue
+        if _apply(state, words):
+            last = words[0]
+            if words[0] == "*.svg":
+                own = True
+    if state["text"] == "unset" or last == "*.svg":
+        return KEPT
+    return UNDONE if own else NONE
+
+
+@dataclass(frozen=True)
+class AttributesAdvice:
+    """Where the lines `git_lines_to_add` asks of an existing `.gitattributes` go, as git reads
+    the file, line over line and attribute by attribute (rounds 1 and 2 of #815).
+
+    `own` says the file has lines for patterns of their own (`*.docx binary`, an `*.svg`
+    line), which a `*` line below them undoes, so the eol line goes above them. `setters` are
+    its `*` lines that set `text` or `eol`, in order: where there are any, the first is to be
+    changed to `* text=auto eol=lf`, `text` and `eol` taken off the others, since a line added
+    above them would be overridden by them; `setter_below_own` says a line for a pattern of
+    its own stands above the first, which then moves to the top. `svg_undone` says its own
+    `*.svg` rule is undone by a `*` line below it."""
+
+    own: bool
+    setters: tuple[str, ...]
+    setter_below_own: bool
+    svg_undone: bool
+
+
+def attributes_advice(root: Path) -> AttributesAdvice:
+    """How the lines `git_lines_to_add` asks of the `.gitattributes` at `root` go into it."""
+    lines = _attribute_lines(_lines(Path(root).resolve() / ".gitattributes") or [])
+    setters: list[str] = []
+    own = below = False
+    for words in lines:
+        if words[0] != "*":
+            own = True
+        elif _apply({"text": None, "eol": None}, words):
+            below = below or (own and not setters)
+            setters.append(" ".join(words))
+    return AttributesAdvice(own=own, setters=tuple(setters), setter_below_own=below,
+                            svg_undone=_svg_rule(lines) == UNDONE)  # fmt: skip
 
 
 def _lines(path: Path) -> list[str] | None:
@@ -613,11 +667,6 @@ def _lines(path: Path) -> list[str] | None:
         return [line.strip() for line in path.read_text("utf-8", errors="replace").splitlines()]
     except OSError:
         return None
-
-
-def _is_eol(line: str) -> bool:
-    words = line.split()
-    return bool(words) and words[0] == "*" and set(words[1:]) >= {"text=auto", "eol=lf"}
 
 
 def _sources_in_git(root: Path) -> bool:

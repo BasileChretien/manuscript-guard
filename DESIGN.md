@@ -28697,15 +28697,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `!literature/sources/*.pdf`, or a later `!build/`, counts as present though git then
   commits those files, a false pass (round 1 of #546, finding 3). A UTF-8 BOM before the
   first line leaves that line unread, and a leading space makes ` build/` count, where git
-  does the opposite (finding 4). In `.gitattributes` only a `*` line with both
-  `text=auto` and `eol=lf` counts, so `* text eol=lf`, or the two on separate lines, both of
-  which check out LF, are asked for again (finding 5). The file's rule for SVG figures is a
-  line whose pattern is `*.svg` and which sets `text`, `-text`, `binary` or `eol`, with no
-  `*` line below it that sets `text`, since git reads a later line over an earlier one
-  attribute by attribute (round 1 of #815); only `*` and `*.svg` are read. So
-  `figures/*.svg binary` or `*.SVG binary` is answered with `*.svg binary` again, a false
-  alarm, and a later line for another pattern that holds SVGs (`figures/* text`) undoes the
-  `*.svg` line unread, a false pass. The folders are `build/` and
+  does the opposite (finding 4). In `.gitattributes`, `text` and `eol` are read by the last
+  value each takes over the lines, attribute by attribute, as git reads them (rounds 1 and 2
+  of #815), but only for the patterns `*` and `*.svg` as written, and a macro attribute is
+  not read (`[attr]keep -text -diff` with `*.svg keep` is answered with `*.svg binary`, a
+  false alarm). The file needs `text=auto` and `eol=lf` from its `*` lines, so
+  `* text eol=lf`, which sets `text` on every file, binary ones too, is asked to become
+  `* text=auto eol=lf` (finding 5), while the two set on separate lines count. An SVG's bytes
+  are kept where it ends with `text` unset or where the last line to set its `text` or `eol`
+  is the file's own `*.svg` line. So `figures/*.svg binary` or `*.SVG binary` is answered
+  with `*.svg binary` again, a false alarm; a later line for another pattern that holds SVGs
+  (`figures/* text`) undoes the `*.svg` line unread, a false pass; and a `*` line below a
+  `*.docx binary` undoes it unsaid, a false pass too. The folders are `build/` and
   `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
   reason printed for `.gitignore` is one sentence that names both lines whichever is
   missing, so it can say the file does not leave out `build/` when `/build` does, or warn

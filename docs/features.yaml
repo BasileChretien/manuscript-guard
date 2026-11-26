@@ -876,6 +876,18 @@ features:
     tests: [tests/test_web.py]
     docs: docs/audit-page.md
 
+  - id: audit-page-hosted
+    stage: others
+    title: Audit page on a journal's site
+    says: >-
+      Lets a publisher or a society serve the audit page on its own site, with its journals'
+      rules built in and its own name, logo and colours, linked from each journal's "Submit"
+      page, and the paper is still not uploaded.
+    status: works
+    tests: [tests/test_web_host.py]
+    docs: docs/hosting-the-audit-page.md
+    limits: Each journal a host offers is held to the command line in CI only on invented ones.
+
   - id: false-alarm-rates
     stage: others
     title: How often a warning is wrong

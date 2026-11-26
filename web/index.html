@@ -77,6 +77,13 @@
         <span class="help">Drop your .docx or .md file here, or click to choose it.</span>
         <span id="chosen" class="chosen" hidden></span>
         <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
+      <!-- Shown for a .docx only: the copy is of a Word document (app.js). -->
+      <label id="trackedbox" class="tick" hidden><input id="tracked" type="checkbox" disabled>
+        <span><span class="field">Also make a copy with the corrections as tracked changes</span>
+          <span class="help">The spelling of the paper's English, the spacing of P values,
+            signs, intervals and percentages, and an abbreviation used only once written out,
+            each a change in Word for you to accept or reject; every other finding is a
+            comment.</span></span></label>
 
       <details class="options">
         <summary>More options <span class="help">(analysis outputs, English, words to
@@ -127,6 +134,46 @@
         </div>
       </details>
 
+      <details class="options">
+        <summary>For a referee or an editor <span class="help">(the study's design, the
+          table rows to hold to their kind of number)</span></summary>
+        <div class="optionlist">
+          <label><span class="field">The study's design</span>
+            <span class="help">Observational: each sentence of the Abstract, the Discussion and
+              the Conclusion that says one thing causes another, with no hedge, negation or
+              citation, is a warning. Trial: a table of baseline characteristics with a column of P values
+              is a warning (CONSORT).</span>
+            <select id="design" name="design" disabled>
+              <option value="">Not said</option>
+              <option value="observational">Observational</option>
+              <option value="trial">Randomised trial</option>
+            </select></label>
+          <label><span class="field">Rows of means of whole numbers</span>
+            <span class="help">A word or words of each row's label, one a line, for a scale
+              scored in whole numbers or a count: each mean is held to its column's n, and its
+              SD to the mean and n (GRIM, GRIMMER).</span>
+            <textarea id="wholenumbers" name="wholenumbers" rows="2" autocomplete="off"
+              spellcheck="false" placeholder="Pain score" disabled></textarea></label>
+          <label><span class="field">Rows of numbers each 0 or 1</span>
+            <span class="help">A word or words of each row's label, one a line, for a mean or
+              a proportion of a yes-or-no variable with its SD: each mean and SD is held to the
+              other and to its column's n (DEBIT).</span>
+            <textarea id="binary" name="binary" rows="2" autocomplete="off"
+              spellcheck="false" placeholder="Female" disabled></textarea></label>
+          <label><span class="field">Rows that cannot be negative</span>
+            <span class="help">A word or words of each row's label, one a line, for a weight,
+              a concentration or a length of stay: each mean less than twice its SD is said, as
+              skewed data a median (IQR) would describe.</span>
+            <textarea id="nonnegative" name="nonnegative" rows="2" autocomplete="off"
+              spellcheck="false" placeholder="Length of stay" disabled></textarea></label>
+          <label><span class="field">The data custodian's smallest count</span>
+            <span class="help">A count held back that a total gives away is said where it is
+              from 1 to below this number; left empty, any from 1.</span>
+            <input id="mincount" name="mincount" type="number" min="1" max="999999" step="1"
+              inputmode="numeric" placeholder="5" disabled></label>
+        </div>
+      </details>
+
       <div class="go">
         <button id="run" type="submit" disabled>Check my paper</button>
         <button id="example" type="button" class="quiet" disabled>Or try it with an example
@@ -151,6 +198,8 @@
       <button id="savepdf" type="button" hidden>Download the PDF</button>
       <button id="savecommented" type="button" class="quiet" hidden>Download your paper with
         the findings as Word comments</button>
+      <button id="savetracked" type="button" class="quiet" hidden>Download your paper with
+        the corrections as tracked changes</button>
       <button id="again" type="button" class="quiet">Check another paper</button>
     </div>
     <pre id="notes" hidden></pre>

@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1066" width="880" height="1066" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 70 work, 2 work in part and 2 are planned.</title>
+  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 71 work, 2 work in part and 2 are planned.</title>
   <rect width="880" height="1066" fill="#ffffff"/>
   <circle cx="25" cy="22" r="4.5" fill="#1a7f37"/>
-  <text x="36" y="26" font-size="12.5" fill="#59636e">works (70)</text>
+  <text x="36" y="26" font-size="12.5" fill="#59636e">works (71)</text>
   <circle cx="125" cy="22" r="4.5" fill="#ffffff" stroke="#9a6700" stroke-width="1.5"/><path d="M 125 17.5 A 4.5 4.5 0 0 0 125 26.5 Z" fill="#9a6700"/>
   <text x="136" y="26" font-size="12.5" fill="#59636e">works in part (2)</text>
   <circle cx="274" cy="22" r="4.5" fill="#ffffff" stroke="#59636e" stroke-width="1.5"/>
@@ -265,4 +265,7 @@
   <rect x="600" y="988" width="250" height="21" rx="5" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
   <circle cx="612" cy="998.5" r="4.5" fill="#ffffff" stroke="#9a6700" stroke-width="1.5"/><path d="M 612 994.0 A 4.5 4.5 0 0 0 612 1003.0 Z" fill="#9a6700"/>
   <text x="624" y="1003" font-size="12" fill="#1f2328">An editor&#x27;s report</text>
+  <rect x="600" y="1014" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <circle cx="612" cy="1024.5" r="4.5" fill="#1a7f37"/>
+  <text x="624" y="1029" font-size="12" fill="#1f2328">A letter to the authors</text>
 </svg>

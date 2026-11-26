@@ -497,8 +497,8 @@ def test_an_audit_says_each_step_as_it_starts_and_the_page_names_each(
     """The page shows what a check is doing and how long is left (the author, 2026-11-12), from
     each step the audit says as it starts (`auditing.progress`): read, numbers, words, each
     reference looked up with how many of how many, and the report, in that order. The page
-    names every step the audit says and the two it adds itself, the PDF and the copy, which
-    the worker says before making them."""
+    names every step the audit says and the three it adds itself, the PDF, the copy and the
+    copy with tracked changes (B2), which the worker says before making them."""
     from manuscript_guard.auditing import progress
     from manuscript_guard.cli import main
 
@@ -515,8 +515,8 @@ def test_an_audit_says_each_step_as_it_starts_and_the_page_names_each(
     worker = (WEB / "worker.js").read_text(encoding="utf-8")
     named = set(re.findall(r"^  (\w+): \[\"", re.search(r"const STEPS = \{(.*?)\n\};", app, re.S)
                            .group(0), re.M))  # fmt: skip
-    assert named == {*progress.STEPS, "pdf", "copy"}
-    assert 'told("pdf", 0, 0)' in worker and 'told("copy", 0, 0)' in worker
+    assert named == {*progress.STEPS, "pdf", "copy", "tracked"}
+    assert all(f'told("{key}", 0, 0)' in worker for key in ("pdf", "copy", "tracked"))
     assert "progress.STEP = TOLD" in worker
 
 
@@ -578,16 +578,26 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
          "known": ["CD", "-x", "licence"]},
         {"paper": "paper.docx", "against": [], "noAbstract": True, "noResults": True,
          "results": "-4. Electron temperature relations"},
+        {"paper": "paper.docx", "against": [], "design": "trial",
+         "wholeNumbers": ["Pain score", " ", "-x"], "binary": ["Female"],
+         "nonNegative": ["Length of stay", "Weight"], "minimumCellCount": "11",
+         "tracked": True},
+        {"paper": "paper.md", "against": [], "design": "cohort", "minimumCellCount": "0",
+         "tracked": True},
+        {"paper": "paper.docx", "against": [], "minimumCellCount": "5; rm"},
     ]
     done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
                           capture_output=True, text=True, encoding="utf-8", timeout=60,
                           check=False)  # fmt: skip
     assert done.returncode == 0, done.stderr
-    kept, dashed, apart, twice, slash, dots, settings, answers = json.loads(done.stdout)
+    (kept, dashed, apart, twice, slash, dots, settings, answers, referee, not_docx,
+     not_a_count) = json.loads(done.stdout)
     assert kept == {"args": ["audit", "Mon article (v3).docx", "--against", "résultats 結果.json"],
-                    "written": ["/work/Mon article (v3).docx", "/work/résultats 結果.json"]}
+                    "written": ["/work/Mon article (v3).docx", "/work/résultats 結果.json"],
+                    "corrected": False}
     assert dashed == {"args": ["audit", "./-paper.docx", "--against", "./-results.json"],
-                      "written": ["/work/-paper.docx", "/work/-results.json"]}
+                      "written": ["/work/-paper.docx", "/work/-results.json"],
+                      "corrected": False}
     assert apart["written"] == ["/work/paper.docx", "/work/résultats.json", "/work/rèsultats.json"]
     assert "two of the files chosen are named results.json" in twice["error"]
     assert 'cannot use a file named "a/b.json"' in slash["error"]
@@ -601,6 +611,18 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
     # flag, so that it is read as the heading (decision 27).
     assert answers["args"] == ["audit", "paper.docx", "--no-abstract", "--no-results",
                                "--results=-4. Electron temperature relations"]
+    # A referee's or an editor's: the design, each kind of row once with its labels, a blank
+    # line and a label read as an option left out, the custodian's minimum; and for a .docx
+    # the tracked copy asked for, which has the audit work out G14's corrections (B2).
+    assert referee["args"] == ["audit", "paper.docx", "--design", "trial", "--whole-numbers",
+                               "Pain score", "--binary", "Female", "--non-negative",
+                               "Length of stay", "Weight", "--minimum-cell-count", "11"]
+    assert referee["corrected"] is True
+    # A design `audit` does not take, a count of 0, and a tracked copy of a paper that is no
+    # .docx are not passed on; nor is anything but a whole number as the minimum.
+    assert not_docx == {"args": ["audit", "paper.md"], "written": ["/work/paper.md"],
+                        "corrected": False}
+    assert not_a_count["args"] == ["audit", "paper.docx"]
 
 
 # --------------------------------------------------------------------- a command, printed
@@ -718,3 +740,38 @@ def test_the_page_writes_the_commented_copy_from_the_audit_it_drew(
     assert "412" in comment_ranges(tmp_path / "out.docx").values()
     (tmp_path / "paper.md").write_text("# Results\n\nOf 40, 12.\n", encoding="utf-8")
     assert web.commented("paper.md", "out2.docx") == {"error": "paper.md is not a .docx"}
+
+
+@needs_pandoc
+def test_the_page_writes_the_tracked_copy_from_the_audit_it_drew(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The copy the reader ticks the box for (B2): from the audit `view` ran with G14's
+    corrections worked out, each a tracked change, as many as `audit --tracked` writes, the
+    other findings comments worded for the page; the report the same as without them. An
+    audit run without them gives no tracked copy, rather than one with none tracked."""
+    from test_audit_tracked import docx, heading, para, read
+
+    from manuscript_guard import cli
+
+    monkeypatch.chdir(tmp_path)
+    body = (heading("Methods")
+            + para("The behaviour of the cohort was studied, and its colour was noted.")
+            + heading("Results")
+            + para("The change was seen (P=0.03) in the last of them."))  # fmt: skip
+    paper = docx(tmp_path / "paper.docx", body)
+    arguments = ["audit", "paper.docx", "--english", "american"]
+    plain = web.view(arguments)
+    assert web.commented("paper.docx", str(tmp_path / "none.docx"), tracked=True) == {
+        "error": "the audit worked out no corrections"}
+    drawn = web.view(arguments, corrected=True)
+    assert cli.CORRECTED is False
+    assert {k: drawn[k] for k in ("code", "out", "err")} == {
+        k: plain[k] for k in ("code", "out", "err")}
+    said = web.commented("paper.docx", str(tmp_path / "page.docx"), tracked=True)
+    assert main([*arguments, "--tracked", str(tmp_path / "cli.docx")]) == 0
+    err = capsys.readouterr().err
+    assert f"{said['tracked']} corrections as tracked changes" in err, (said, err)
+    assert said["tracked"] == 2 and said["left"] == 0
+    assert read(tmp_path / "page.docx", accept=True) == read(tmp_path / "cli.docx", accept=True)
+    assert read(tmp_path / "page.docx", accept=False) == read(paper)

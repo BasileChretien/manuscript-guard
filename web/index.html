@@ -77,6 +77,13 @@
         <span class="help">Drop your .docx or .md file here, or click to choose it.</span>
         <span id="chosen" class="chosen" hidden></span>
         <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
+      <!-- Shown for a .docx only: the copy is of a Word document (app.js). -->
+      <label id="trackedbox" class="tick" hidden><input id="tracked" type="checkbox" disabled>
+        <span><span class="field">Also make a copy with the corrections as tracked changes</span>
+          <span class="help">The spelling of the paper's English, the spacing of P values,
+            signs, intervals and percentages, and an abbreviation used only once written out,
+            each a change in Word for you to accept or reject; every other finding is a
+            comment.</span></span></label>
 
       <details class="options">
         <summary>More options <span class="help">(analysis outputs, English, words to
@@ -122,8 +129,145 @@
           <label class="tick"><input id="lookup" type="checkbox" disabled>
             <span><span class="field">Check the reference list for retracted and unregistered
               works</span>
-              <span class="help">This sends the DOIs and PubMed IDs the paper cites, and nothing
-                else, to Crossref, OpenAlex, DataCite, doi.org and PubMed.</span></span></label>
+              <span class="help">This sends the DOIs and PubMed IDs the paper cites to Crossref,
+                OpenAlex, DataCite, doi.org and PubMed, and, for a reference with neither, its
+                title, first author and year to Crossref. No sentence of the paper is
+                sent.</span></span></label>
+        </div>
+      </details>
+
+      <details class="options">
+        <summary>For a referee or an editor <span class="help">(the study's design, the
+          table rows to hold to their kind of number)</span></summary>
+        <div class="optionlist">
+          <label><span class="field">The study's design</span>
+            <span class="help">Observational: each sentence of the Abstract, the Discussion and
+              the Conclusion that says one thing causes another, with no hedge, negation or
+              citation, is a warning. Trial: a table of baseline characteristics with a column of P values
+              is a warning (CONSORT).</span>
+            <select id="design" name="design" disabled>
+              <option value="">Not said</option>
+              <option value="observational">Observational</option>
+              <option value="trial">Randomised trial</option>
+            </select></label>
+          <label><span class="field">Rows of means of whole numbers</span>
+            <span class="help">A word or words of each row's label, one a line, for a scale
+              scored in whole numbers or a count: each mean is held to its column's n, and its
+              SD to the mean and n (GRIM, GRIMMER).</span>
+            <textarea id="wholenumbers" name="wholenumbers" rows="2" autocomplete="off"
+              spellcheck="false" placeholder="Pain score" disabled></textarea></label>
+          <label><span class="field">Rows of numbers each 0 or 1</span>
+            <span class="help">A word or words of each row's label, one a line, for a mean or
+              a proportion of a yes-or-no variable with its SD: each mean and SD is held to the
+              other and to its column's n (DEBIT).</span>
+            <textarea id="binary" name="binary" rows="2" autocomplete="off"
+              spellcheck="false" placeholder="Female" disabled></textarea></label>
+          <label><span class="field">Rows that cannot be negative</span>
+            <span class="help">A word or words of each row's label, one a line, for a weight,
+              a concentration or a length of stay: each mean less than twice its SD is said, as
+              skewed data a median (IQR) would describe.</span>
+            <textarea id="nonnegative" name="nonnegative" rows="2" autocomplete="off"
+              spellcheck="false" placeholder="Length of stay" disabled></textarea></label>
+          <label><span class="field">The data custodian's smallest count</span>
+            <span class="help">A count held back that a total gives away is said where it is
+              from 1 to below this number; left empty, any from 1.</span>
+            <input id="mincount" name="mincount" type="number" min="1" max="999999" step="1"
+              inputmode="numeric" placeholder="5" disabled></label>
+        </div>
+      </details>
+
+      <details id="journalbox" class="options">
+        <summary>For a journal <span class="help">(its limits, the sections and statements it
+          requires, a blind review)</span></summary>
+        <div class="optionlist">
+          <p class="help">Type what the journal's instructions for authors say. A limit left
+            empty is not checked. The paper is then held to them, and the report also lists
+            what a .docx holds besides its text: tracked changes, comments, hidden text and
+            the names Word keeps.</p>
+          <label><span class="field">The journal's name</span>
+            <input id="jname" type="text" autocomplete="off" disabled></label>
+          <label><span class="field">The address of its instructions for authors</span>
+            <input id="jurl" type="text" autocomplete="off" spellcheck="false"
+              placeholder="https://" disabled></label>
+          <div class="limits">
+            <label><span class="field">Words in the abstract, at most</span>
+              <input id="jabstract" type="number" min="1" step="1" inputmode="numeric" disabled></label>
+            <label><span class="field">Words in the main text, at most</span>
+              <input id="jmain" type="number" min="1" step="1" inputmode="numeric" disabled></label>
+            <label><span class="field">Figures, at most</span>
+              <input id="jfigures" type="number" min="0" step="1" inputmode="numeric" disabled></label>
+            <label><span class="field">Tables, at most</span>
+              <input id="jtables" type="number" min="0" step="1" inputmode="numeric" disabled></label>
+            <label><span class="field">References, at most</span>
+              <input id="jreferences" type="number" min="1" step="1" inputmode="numeric" disabled></label>
+            <label><span class="field">Keywords, at most</span>
+              <input id="jkeywords" type="number" min="1" step="1" inputmode="numeric" disabled></label>
+          </div>
+          <label><span class="field">The sections it requires</span>
+            <span class="help">One heading a line, as the journal names it.</span>
+            <textarea id="jsections" rows="3" autocomplete="off" spellcheck="false"
+              placeholder="Introduction&#10;Methods&#10;Results&#10;Discussion" disabled></textarea></label>
+          <label><span class="field">The headings of its structured abstract</span>
+            <span class="help">One a line; left empty, the abstract is not held to any.</span>
+            <textarea id="jheadings" rows="3" autocomplete="off" spellcheck="false"
+              placeholder="Background&#10;Methods&#10;Results&#10;Conclusions" disabled></textarea></label>
+          <fieldset class="statements">
+            <legend class="field">The statements it requires</legend>
+            <span class="help">Tick each, and give the heading the journal asks for it under,
+              as its instructions write it, with "or" between two it takes. The paper is held
+              to that heading, as a heading or as the label a paragraph opens with
+              ("Funding: none").</span>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="funding" id="jst-funding" disabled><span>Funding</span></label>
+              <input id="jsh-funding" type="text" value="Funding" autocomplete="off" aria-label="The heading the journal asks for, for Funding" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="competing-interests" id="jst-competing-interests" disabled><span>Competing interests</span></label>
+              <input id="jsh-competing-interests" type="text" value="Competing interests" autocomplete="off" aria-label="The heading the journal asks for, for Competing interests" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="ethics" id="jst-ethics" disabled><span>Ethics approval</span></label>
+              <input id="jsh-ethics" type="text" value="Ethics approval" autocomplete="off" aria-label="The heading the journal asks for, for Ethics approval" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="consent" id="jst-consent" disabled><span>Consent</span></label>
+              <input id="jsh-consent" type="text" value="Informed consent" autocomplete="off" aria-label="The heading the journal asks for, for Consent" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="data-availability" id="jst-data-availability" disabled><span>Data availability</span></label>
+              <input id="jsh-data-availability" type="text" value="Data availability" autocomplete="off" aria-label="The heading the journal asks for, for Data availability" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="author-contributions" id="jst-author-contributions" disabled><span>Author contributions</span></label>
+              <input id="jsh-author-contributions" type="text" value="Author contributions" autocomplete="off" aria-label="The heading the journal asks for, for Author contributions" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="trial-registration" id="jst-trial-registration" disabled><span>Trial registration</span></label>
+              <input id="jsh-trial-registration" type="text" value="Trial registration" autocomplete="off" aria-label="The heading the journal asks for, for Trial registration" disabled></div>
+            <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="use-of-ai" id="jst-use-of-ai" disabled><span>Use of AI</span></label>
+              <input id="jsh-use-of-ai" type="text" value="Declaration of generative AI" autocomplete="off" aria-label="The heading the journal asks for, for Use of AI" disabled></div>
+          </fieldset>
+          <label><span class="field">Its peer review</span>
+            <select id="jblinding" disabled>
+              <option value="">Not said</option>
+              <option value="single">Single-blind</option>
+              <option value="double">Double-blind</option>
+              <option value="triple">Triple-blind</option>
+              <option value="open">Open</option>
+            </select></label>
+          <!-- Shown for a double- or triple-blind review, or a profile of the reader's own
+               (app.js): the authors to look for in the documents. -->
+          <div id="blindbox" class="optionlist" hidden>
+            <p class="help">The reviewers are not to know the authors: each name, ORCID iD,
+              e-mail address and affiliation given is looked for in the paper, its comments,
+              its tracked changes and the names Word keeps, the reference list aside.</p>
+            <div id="authorrows" class="authorrows">
+              <div class="author">
+                <input id="author-1-given" type="text" autocomplete="off" placeholder="Given name" aria-label="Author 1, given name" disabled>
+                <input id="author-1-family" type="text" autocomplete="off" placeholder="Family name" aria-label="Author 1, family name" disabled>
+                <input id="author-1-orcid" type="text" autocomplete="off" spellcheck="false" placeholder="ORCID iD" aria-label="Author 1, ORCID iD" disabled>
+                <input id="author-1-email" type="text" autocomplete="off" spellcheck="false" placeholder="E-mail" aria-label="Author 1, e-mail address" disabled>
+              </div>
+            </div>
+            <button id="addauthor" type="button" class="quiet small" disabled>Add an author</button>
+            <label><span class="field">Their affiliations</span>
+              <span class="help">One a line.</span>
+              <textarea id="affiliations" rows="2" autocomplete="off" disabled></textarea></label>
+            <label><span class="field">Or an authors.yaml you keep</span>
+              <span class="help">Used in place of the names above.</span>
+              <input id="authorsfile" type="file" accept=".yaml,.yml,.json" disabled></label>
+          </div>
+          <label><span class="field">Or a journal profile you keep</span>
+            <span class="help">A profile manuscript-guard reads (.yaml), used in place of the
+              form above.</span>
+            <input id="jfile" type="file" accept=".yaml,.yml,.json" disabled></label>
         </div>
       </details>
 
@@ -151,6 +295,8 @@
       <button id="savepdf" type="button" hidden>Download the PDF</button>
       <button id="savecommented" type="button" class="quiet" hidden>Download your paper with
         the findings as Word comments</button>
+      <button id="savetracked" type="button" class="quiet" hidden>Download your paper with
+        the corrections as tracked changes</button>
       <button id="again" type="button" class="quiet">Check another paper</button>
     </div>
     <pre id="notes" hidden></pre>
@@ -195,6 +341,9 @@
           units are written, and phrasing to look at.</li>
         <li>The reference list: each entry read, and with the box ticked, each DOI and PubMed
           ID looked up for a retraction.</li>
+        <li>With a journal's rules typed in "For a journal": its limits, the sections and
+          statements it requires, what a .docx holds besides its text, and in a blind review
+          each place an author is named.</li>
       </ul>
     </details>
     <details>
@@ -211,7 +360,10 @@
     <details>
       <summary>Reviewing a paper for a journal?</summary>
       <p>Read the journal's policy first: some forbid putting a manuscript under review into any
-        tool, even one that runs on your own computer.</p>
+        tool, even one that runs on your own computer. An editorial office deciding whether to
+        allow it will find what it needs on
+        <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/editorial-office.md">a
+        page for editorial offices</a>.</p>
     </details>
     <details>
       <summary>What did this page load and send?</summary>

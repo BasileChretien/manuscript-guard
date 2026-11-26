@@ -189,8 +189,10 @@ def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     other = action.choice.options[-1]
     assert other.id == "other" and other.label.startswith("None of these (")
     # Said beside it, so that an author whose study is one of them knows to choose it.
-    assert all(study in other.label for study in ("cross-sectional survey", "case series",
-                                                   "qualitative study", "narrative review"))
+    assert all(study in other.label for study in ("case series", "qualitative study",
+                                                   "narrative review"))
+    # A cross-sectional study is a design of the table since its first new one.
+    assert "cross-sectional" not in other.label
     assert "seven sections every plan has" in other.effect
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
 

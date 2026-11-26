@@ -305,7 +305,7 @@ types:
     guidelines: [STROBE, RECORD]
     sections:
       - id: sampling
-        heading: '(?i)\bsampl(?:e|ing)\b(?!\s+size)|\bselection of participants|\bparticipant selection|\brecruit|\bweighting|\bsurvey weights?\b'
+        heading: '(?i)\bsampl(?:e|es|ing)\b(?<!size of the sample)(?<!size of the samples)(?![\s-]+size)|\bselection of participants|\bparticipant selection|\brecruit|\bsurvey weight'
         says: >-
           how participants are sampled and recruited, and how the analysis takes the sampling
           into account (weights, clusters, strata)
@@ -320,7 +320,7 @@ types:
         url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
         read_on: 2026-11-26
       - id: measurement
-        heading: '(?i)\bmeasurements?\b|\bmeasures\b|\binstruments?\b|\bquestionnaires?\b|\bdata collection|\bassessment'
+        heading: '(?i)\bmeasurements?\b|(?<!outcome )\bmeasures\b(?!\s+to\b)|\binstruments?\b|\bquestionnaires?\b|\bdata collection|\b(?:exposure|outcome) assessment|\bassessment of (?:the )?(?:exposures?|outcomes?)\b'
         says: >-
           how each variable is measured, with the instrument used, and whether it is measured
           the same way in every group

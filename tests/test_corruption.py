@@ -39723,10 +39723,18 @@ def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
         ("## Sample size", "sampling", False),
         ("## Body weight", "sampling", False),
         ("## Non-response", "sampling", False),
+        ("## Inverse probability weighting", "sampling", False),
+        ("## Propensity score weighting", "sampling", False),
+        ("## Sample-size calculation", "sampling", False),
+        ("## Size of the sample", "sampling", False),
         ("## Measures", "measurement", True),
         ("## Study measures", "measurement", True),
         ("## Exposure assessment", "measurement", True),
         ("## Questionnaire", "measurement", True),
+        ("## Bias assessment", "measurement", False),
+        ("## Quality assessment", "measurement", False),
+        ("## Outcome measures", "measurement", False),
+        ("## Measures to address bias", "measurement", False),
         ("## Non-response", "bias", True),
         ("## Selection bias", "bias", True),
     ],
@@ -39737,7 +39745,10 @@ def test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses(
     """Round 1 of #801: the sampling pattern missed "Study sample" and STROBE 6a's own
     "Selection of participants", and the measurement pattern a survey's usual "Measures", so
     such a plan was told it said nothing about them. "Sample size" is not sampling, nor is a
-    body weight, and non-response is a bias, not the way people were sampled."""
+    body weight, and non-response is a bias, not the way people were sampled. Round 2: G12
+    reads every heading for every section, so the widened patterns took other sections'
+    headings, a weighting that adjusts for confounding, a sample-size calculation, a bias or
+    quality assessment, the outcome's measures, and passed a plan that lacked the section."""
     _paper_has(project, study_type="cross-sectional")
     assert section in _plan_asked(project)
     plan = project / "design" / "plan.md"

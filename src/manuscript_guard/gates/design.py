@@ -140,6 +140,13 @@ def required_for(study_type: str | None) -> tuple[tuple[str, str, str], ...]:
     return _required() + own
 
 
+#: The sections no heading may name by its identifier. Every reader of the plan's Deviations
+#: but the check of its sections finds it by its words (what it says since the first results,
+#: the planned results it excuses, the controls, the registration, the brief), so one named
+#: under other words was found by that check and read by none of the rest (round 1 of #824).
+UNNAMED = frozenset({"deviations"})
+
+
 def section_identifier(name: str) -> str:
     """The identifier that names a plan's section on a heading exactly, whatever the
     heading's words: the section's id with a hyphen for each space, `sampling` and
@@ -147,7 +154,13 @@ def section_identifier(name: str) -> str:
     return name.replace(" ", "-")
 
 
-def _heading_identifiers(text: str, sections: list[Section]) -> list[str | None]:
+def names_section(name: str, identifier: str | None) -> bool:
+    """Whether a heading whose attribute block gives `identifier` (in lower case, as
+    `heading_identifiers` reads it) names the section `name` exactly. None of `UNNAMED`."""
+    return name not in UNNAMED and identifier == section_identifier(name)
+
+
+def heading_identifiers(text: str, sections: list[Section]) -> list[str | None]:
     """The identifier each section's heading names, read from the heading's line of the
     plan, in lower case; None where it names none."""
     lines = text.split("\n")
@@ -567,11 +580,10 @@ def _check_plan(project: Project, results: Results | None, stage: str | None) ->
     # A heading is its section's by its words, or exactly by the identifier it names, which
     # answers a false alarm of the words (DESIGN.md, Known gaps, "A design's sections are
     # found by the words of their headings").
-    named = _heading_identifiers(text, sections)
+    named = heading_identifiers(text, sections)
     for name, pattern, purpose in required:
-        exact = section_identifier(name)
         matching = [i for i, s in enumerate(sections)
-                    if named[i] == exact or re.search(pattern, s.title)]  # fmt: skip
+                    if names_section(name, named[i]) or re.search(pattern, s.title)]  # fmt: skip
         if not matching:
             report = report.with_findings(
                 Finding(
@@ -580,8 +592,9 @@ def _check_plan(project: Project, results: Results | None, stage: str | None) ->
                     severity=WARN,
                     message=f"the plan says nothing about {name}",
                     path=path,
-                    hint=f"{purpose}; where a heading of the plan says it in other words, name "
-                    f"the section on that heading: {{#{section_identifier(name)}}}",
+                    hint=purpose if name in UNNAMED else f"{purpose}; where a heading of the "
+                    "plan says it in other words, name the section on that heading: "
+                    f"{{#{section_identifier(name)}}}",
                 )
             )
             continue

@@ -7283,7 +7283,7 @@ def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, st
     stands in every example; then the sections are written in another drawn order, with a
     heading of no section among them. A section is said in a sentence, in a list, or under a
     subsection; one with nothing to say holds one of `_SAYS_NOTHING`, or empty subsections."""
-    from manuscript_guard.gates.design import REQUIRED, study_types
+    from manuscript_guard.gates.design import REQUIRED, UNNAMED, study_types
 
     design = draw(st.sampled_from((None, "other", *sorted(study_types()))))
     ids = [name for name, _pattern, _says in REQUIRED] + [
@@ -7304,6 +7304,12 @@ def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, st
 
     order = draw(st.permutations(range(len(ids))))
     kinds = {ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    # A section no heading may name (the Deviations, `UNNAMED`) trades its kind with another's,
+    # so the plan still names one exactly and holds every kind.
+    for unnamed in UNNAMED & set(kinds):
+        if kinds[unnamed] == "named exactly":
+            other = next(name for name in ids if name not in UNNAMED and kinds[name] != "named exactly")
+            kinds[unnamed], kinds[other] = kinds[other], kinds[unnamed]
     parts = []
     for name in ids:
         kind = kinds[name]

@@ -129,6 +129,21 @@ def test_check_reads_nothing_under_communication_while_the_group_is_off(
 # ------------------------------------------------------------------------------ the brief
 
 
+def test_the_brief_reads_a_plan_section_named_by_its_identifier(project: Path) -> None:
+    """Round 1 of #824: a plan heading may name its section exactly, `{#population}`, and
+    the brief took the population only from a heading of the section's words, so a plan G12
+    found complete gave the brief no population."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Population and data source\n" in text
+    plan.write_text(text.replace("## Population and data source\n", "## Who {#population}\n"),
+                    encoding="utf-8")  # fmt: skip
+    enable(project)
+    assert main(["communicate", "brief", str(project)]) == 0
+    document = yaml.safe_load(brief_file(project).read_bytes())
+    assert [one["id"] for one in document.get("population", [])] == ["population.1"]
+
+
 def test_the_brief_is_scaffolded_from_the_plan_and_the_manuscript_the_same_every_time(
     project: Path,
 ) -> None:

@@ -410,18 +410,27 @@ def _statement(section: str, number: int, read: _Read) -> dict:
 
 
 def _from_plan(project) -> dict[str, list[dict]]:
-    from manuscript_guard.gates.design import REQUIRED, _plan_sections
+    from manuscript_guard.gates.design import (
+        REQUIRED,
+        _plan_sections,
+        heading_identifiers,
+        names_section,
+    )
 
     path = plan_file(project)
     if not path.is_file():
         return {}
-    sections = _plan_sections(read_text(path).replace("\r\n", "\n"))
+    text = read_text(path).replace("\r\n", "\n")
+    sections = _plan_sections(text)
+    # A heading may name its section exactly, `{#population}`, as G12 reads it (round 1 of
+    # #824): a plan G12 found complete gave the brief no population.
+    named = heading_identifiers(text, sections)
     patterns = {key: pattern for key, pattern, _what in REQUIRED}
     name = path.relative_to(project.root).as_posix()
     out: dict[str, list[dict]] = {}
     for part, key in _FROM_PLAN:
-        section = next((s for s in sections if s.title and re.search(patterns[key], s.title)),
-                       None)  # fmt: skip
+        section = next((s for i, s in enumerate(sections) if s.title and (
+            re.search(patterns[key], s.title) or names_section(key, named[i]))), None)  # fmt: skip
         if section is None:
             continue
         for _piece, first, end in sentence_spans(section.body):

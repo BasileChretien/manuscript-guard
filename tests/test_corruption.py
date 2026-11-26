@@ -23956,6 +23956,11 @@ def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> N
     # A plan with no such section is plan-section-missing's, not this.
     plan.write_bytes(text.replace("## Population and data source", "## Cohort").encode())
     assert _sources_said(project) == []
+    # Named exactly, `{#population}`, it is the Population this check reads (round 1 of
+    # #824: plan-section-missing fell silent for it, and so did this check).
+    plan.write_bytes(text.replace("## Population and data source", "## Cohort {#population}")
+                     .encode())  # fmt: skip
+    assert _sources_said(project) == [("plan-source-unnamed", "warn")]
 
 
 def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:
@@ -39725,6 +39730,25 @@ def test_a_heading_names_its_section_exactly_whatever_its_words(project: Path) -
                                  "## When people enter the study {#confounding}\n"),
                     encoding="utf-8")  # fmt: skip
     assert "time zero and follow-up" in _plan_asked(project)
+
+
+def test_the_deviations_are_found_by_their_words_and_never_named(project: Path) -> None:
+    """Round 1 of #824: every reader of the plan's Deviations finds it by its words (what it
+    says since the first results, the planned results it excuses, the controls, the
+    registration, the brief), so a Deviations named `{#deviations}` under other words was
+    found by G12's check of the sections and read by none of the rest. It cannot be named so,
+    and its warning does not say it can."""
+    from manuscript_guard.gates import check_design
+
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Deviations from the plan\n",
+                                 "## Since the start {#deviations}\n"), encoding="utf-8")
+    assert "deviations" in _plan_asked(project)
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "{#" not in hints["the plan says nothing about deviations"]
 
 
 def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(

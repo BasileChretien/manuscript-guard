@@ -19663,10 +19663,10 @@ Added by the adversarial review, verified and **not** fixed:
   2026-11-26). The author answers such a false alarm, for any design and any section, by
   naming the section on the heading: its attribute block's identifier, the section's name
   with a hyphen for each space (`## Study sample {#sampling}`), makes it the section's
-  whatever its words, and the warning says which identifier. Only G12's check of the
-  plan's sections reads the identifier; the other readers of the plan's Deviations (the
-  data dictionary's, the earlier outputs', the brief's, the companion page's) still go by
-  its words. The self-controlled designs have no reporting guideline, and
+  whatever its words, and the warning says which identifier. G12's check of the plan's
+  sections, its check that the Population names the chosen data source, and the brief read
+  the identifier. The Deviations cannot be so named: every other reader of it finds it by
+  its words, and one named under other words would be read by none of them. The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
@@ -19674,6 +19674,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
+  `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
   `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
   `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,

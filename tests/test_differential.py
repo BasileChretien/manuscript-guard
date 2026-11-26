@@ -222,7 +222,8 @@ CHANGED = {
     # its words; the drawn plans hold one in every example.
     "a section's name on its heading is not read": (
         "gates/design.py",
-        "                    if named[i] == exact or re.search(pattern, s.title)]  # fmt: skip\n",
+        "                    if names_section(name, named[i]) or re.search(pattern, s.title)]"
+        "  # fmt: skip\n",
         "                    if re.search(pattern, s.title)]  # fmt: skip\n",
         "plan sections asked",
     ),

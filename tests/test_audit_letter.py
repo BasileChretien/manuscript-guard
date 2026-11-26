@@ -6,13 +6,16 @@ authors, with its places; never a place in the journal's profile, never over a f
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from test_audit_readers import PAPER as CLEAN
 from test_audit_readers import profile
 
 from manuscript_guard.auditing import NOTICE, READER_FLAGS, editor, letter
+from manuscript_guard.auditing.report import Item
 from manuscript_guard.cli import main
+from manuscript_guard.findings import WARN
 from manuscript_guard.hooks import _reads_in_confidence
 
 #: A paper with a fault of each part the letter asks: a citation past the end of its list
@@ -74,6 +77,20 @@ def test_sentences_that_are_wrong_are_refused_with_where(text: str, said: str) -
 
 def test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any() -> None:
     assert letter.asked(editor.FURTHER) == letter.sentences().further
+
+
+def test_a_file_whose_only_sign_is_words_to_a_model_is_not_said_to_hide_text() -> None:
+    """Round 1 of #796: the kind `hidden-text` also holds a Word file whose only sign is words
+    addressed to a model that a reader sees (`editor._hides` reads `to_a_model`, which counts
+    printed ones too), so its sentence names those words as well as text no reader sees."""
+    word = Path("paper.docx")
+    held = dict.fromkeys(("insertions", "deletions", "moves", "comments", "hidden", "unseen",
+                          "zero_width"), [])  # fmt: skip
+    facts = SimpleNamespace(path=word, note="", to_a_model=["x"], **held)
+    found = Item("Document", "audit", "document-holds", "said", WARN, False, word)
+    kind = editor.kind_of(found, SimpleNamespace(documents=[facts]))
+    assert kind.name == "hidden-text"
+    assert "addressed to" in letter.asked(kind) and "cannot see" in letter.asked(kind)
 
 
 # ------------------------------------------------------------------------ the letter

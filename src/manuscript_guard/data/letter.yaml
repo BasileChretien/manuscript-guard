@@ -36,8 +36,8 @@ kinds:
     A cited work has been retracted or withdrawn, or carries an expression of concern. Please
     check whether it should still be cited, and where it should, say so in the text.
   hidden-text: >-
-    The file holds text a reader cannot see. Please send a copy without it, or tell us what
-    it is for.
+    The file holds text a reader cannot see, or words addressed to an AI reviewer or tool.
+    Please send a copy without them, or tell us what they are for.
   package-differs: >-
     The reproducibility package and its manifest do not agree. Please check the package.
   # ------------------------------------------------------------ ask the authors

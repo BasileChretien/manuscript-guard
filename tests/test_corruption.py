@@ -3472,6 +3472,662 @@ def test_a_pdf_s_abstract_number_only_the_discussion_repeats_past_a_result_colum
     assert [c.text for c, *_rest in read.only_in] == ["1,284"]
 
 
+def _rebuilt_run(tmp_path: Path, pages: list, head: str | None = None):
+    """G6 and G14 on a PDF laid out (`proof_pdf.laid_out`), its lines rebuilt into
+    paragraphs from where each word is set, as `audit` reads one; skipped where the
+    pdftotext found gives no word's place."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import knows_word_places, laid_out
+
+    from manuscript_guard.auditing import pdf as pdf_module
+    from manuscript_guard.auditing.gates import run_gates
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    data, _places = laid_out(pages, head=head)
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(data)
+    pdf_module._REBUILT.clear()
+    run = run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    return run
+
+
+def _rebuilt_said(run, form: str) -> list[tuple[str, bool]]:
+    """Each finding of G6 and G14 whose message names `form` among its first words,
+    `(code, asked)`."""
+    return sorted((f.code, bool(f.question)) for f in [*run.writing, *run.language]
+                  if form in f.message.replace("'", " ").split()[:6])  # fmt: skip
+
+
+def _set_words(text: str) -> tuple[str, ...]:
+    return tuple(text.split())
+
+
+def _set_lines(*texts: str, size: float = 9.0) -> list[dict]:
+    """Lines set as they are given, each short of a column."""
+    return [{"words": _set_words(text), "size": size} for text in texts]
+
+
+#: Lines of words that say nothing, to fill a column.
+_UNSAID = ("and the records were kept.", "and the cohort was read.", "and the sites were seen.")
+
+
+def test_a_definition_a_pdf_s_column_and_a_legend_break_is_one(tmp_path: Path) -> None:
+    """The design of 2026-11-26, S4 and S1: a PDF's text read a line to a line set a
+    column's last line, "Then the trial stage", and the next column's first, "(TS) was
+    read", with a table's legend between, apart, and G14 found the form used before any
+    definition. Rebuilt, the paragraph goes on across the column and the legend, which is
+    read after it, and the form is defined; a form used before its definition is still
+    said."""
+    left = [*_set_lines("Methods", *_UNSAID, "The KQ rose in each site.", "Then the trial stage"),
+            {"words": ("Table", "1.", "Counts", "by", "site."), "size": 7.5},
+            {"words": ("KQ", "12", "14"), "size": 7.5, "cells": True}]
+    right = _set_lines("(TS) was read in each site.", "The knee quotient (KQ) held.",
+                   "The TS rose.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    assert _rebuilt_said(run, "TS") == [], run.language
+    assert ("abbreviation-used-before-defined", False) in _rebuilt_said(run, "KQ"), run.language
+
+
+def test_a_pdf_s_legend_restating_the_text_says_nothing_and_another_meaning_is_asked(
+    tmp_path: Path,
+) -> None:
+    """The author's answer 2 of 2026-11-26: a PDF's legends and tables are read as displays,
+    as a Word paper's are. A legend that restates the text's definition says nothing; one
+    that gives the form another meaning is asked about, never warned of as the text's
+    redefinition, as a legend read as prose was (S1 of the design: 18 false
+    redefinitions)."""
+    left = [*_set_lines("Methods", *_UNSAID, "The low dose (LD) was read.",
+                    "The quality score (QS) was read."),
+            {"words": _set_words("Table 1. Counts by low dose (LD)."), "size": 7.5},
+            {"words": _set_words("Figure 2. Counts by quiet score (QS)."), "size": 7.5}]
+    right = _set_lines("Results", *_UNSAID, "The LD and the QS held.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    assert _rebuilt_said(run, "LD") == [], run.language
+    assert _rebuilt_said(run, "QS") == [("abbreviation-redefined", True)], run.language
+
+
+def test_a_short_form_in_a_pdf_s_running_head_is_owed_no_definition(tmp_path: Path) -> None:
+    """S2 of the design: a running head holding a short form, "JFSR Reports 2026", stood
+    among each page's lines and was asked defined. Rebuilt, what the pages repeat at their
+    top is taken out; a form the text uses and never defines is still asked."""
+    pages = [([], _set_lines("Methods", *_UNSAID, "The QX held."), _set_lines(*_UNSAID)),
+             ([], _set_lines(*_UNSAID), _set_lines(*_UNSAID))]
+    run = _rebuilt_run(tmp_path, pages, head="JFSR Reports 2026")
+    assert "JFSR" not in " ".join(f.message for f in run.language), run.language
+    assert any("QX" in f.message for f in run.language), run.language
+
+
+def test_a_line_a_pdf_draws_twice_is_read_once(tmp_path: Path) -> None:
+    """The design of 2026-11-26, S1: a PDF that draws two overlaid copies of its text on a
+    page was read twice, and each definition there a redefinition ("SPM is defined again"
+    seven times). A line drawn again over itself is read once."""
+    twice = {"words": _set_words("The serum peak marker (SPM) was read."), "twice": True}
+    left = [*_set_lines("Methods", *_UNSAID), twice, *_set_lines(*_UNSAID)]
+    right = _set_lines("Results", *_UNSAID, "The SPM held.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    assert _rebuilt_said(run, "SPM") == [], run.language
+
+
+def test_a_superscript_citation_in_a_pdf_is_a_citation(tmp_path: Path) -> None:
+    """The author's answer 6 of 2026-11-26, S5 of the design: "Studies have shown" with its
+    citations set as a superscript, "rose 2-4", had a bare number on its line and no
+    citation nearby. A raised small number after a word is a citation for G6; the same
+    appeal with none is still said."""
+    cited = {"words": _set_words("Studies have shown falls rose"), "raised": ((4, "2-4"),)}
+    # More than G6's window of words between the two appeals.
+    left = [*_set_lines("Introduction"), cited, *_set_lines("among older women.", *_UNSAID * 5)]
+    right = _set_lines("Discussion", *_UNSAID, "Studies have shown falls rose", "among older men.")
+    run = _rebuilt_run(tmp_path, [([], left, right)])
+    vague = [f for f in run.writing if f.code == "vague-attribution"]
+    assert len(vague) == 1 and vague[0].line is not None, run.writing
+    assert run.places.place(vague[0].line).line > 3, run.places.place(vague[0].line)
+
+
+def test_a_short_form_a_pdf_breaks_at_a_line_s_end_is_one(tmp_path: Path) -> None:
+    """S4 of the design: a short form broken at a line's end, "(RE-" then "AIM)", was two
+    words, neither of them the form the text uses after it. Rebuilt, both parts capitals,
+    it is joined on the first line, and its definition and its use are one form's."""
+    left = _set_lines("Methods", *_UNSAID, "The reach effectiveness adoption",
+                  "implementation maintenance (RE-", "AIM) frame was read.", "The RE-AIM held.")
+    run = _rebuilt_run(tmp_path, [([], left, _set_lines(*_UNSAID))])
+    assert not [f for f in run.language if "AIM" in f.message], run.language
+
+
+def test_a_pdf_s_heading_with_a_format_character_ends_its_abstract(tmp_path: Path) -> None:
+    """pdf-multi-C4 of the real-paper corpus: a zero-width non-joiner after "1." hid its
+    heading "1. Introduction", so the Abstract ran on, and a form defined there and again in
+    the Introduction was redefined in it. Rebuilt, a word's format characters are dropped,
+    the heading ends the Abstract, and each defines the form for itself."""
+    left = _set_lines("Abstract", "The bone mineral density (BMD) fell.", "The BMD held.",
+                  "1.\N{ZERO WIDTH NON-JOINER} Introduction",
+                  "The bone mineral density (BMD) fell.", "The BMD held.", *_UNSAID)
+    run = _rebuilt_run(tmp_path, [([], left, _set_lines(*_UNSAID))])
+    assert _rebuilt_said(run, "BMD") == [], run.language
+
+
+def test_a_word_a_pdf_kerns_in_two_is_one_word(tmp_path: Path) -> None:
+    """pdf-educ-A1 of the real-paper corpus kerns its code names, "T" then
+    "U1_effect" touching it, and poppler gives each word of the two apart: read as
+    "T U1_effect", no name from the code was left, and G14's question on them went. Two
+    words set with no gap between them are one, as pdftotext's text reading prints them."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import Piece, knows_word_places, pdf, width
+
+    from manuscript_guard.auditing import pdf as pdf_module
+    from manuscript_guard.auditing.gates import run_gates
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    before = "The effect was large in U1 (T"
+    pieces = [Piece(72.0, 760.0, "Results", size=11.0), Piece(72.0, 740.0, before, size=11.0),
+              Piece(72.0 + width(before, 11.0), 740.0, "U1_effect = .06).", size=9.5)]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf([pieces]))
+    pdf_module._REBUILT.clear()
+    run = run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    assert "(TU1_effect = .06)." in run.places.text, run.places.text
+    assert any(f.code == "code-name-in-prose" and "TU1_effect" in f.message
+               for f in run.language), run.language
+
+
+def test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs(tmp_path: Path) -> None:
+    """pdf-educ-B2 of the real-paper corpus, a preprint set double-spaced with its lines
+    numbered in the margin: poppler gives each line a block of its own, and the first
+    rebuild kept the numbers as lines of the text between them, so a definition broken at a
+    line's end was broken by a number too, "decision-making" then "65" then "(SIDM)", and
+    its long form read with a number in it. The numbers are taken out, each given to its
+    line as the number the PDF prints, and the lines are one paragraph again."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import Piece, knows_word_places, pdf
+
+    from manuscript_guard.auditing import pdf as pdf_module
+    from manuscript_guard.auditing.gates import run_gates
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    texts = ["Methods", "We read the records of each of the schools of the state and",
+             "the school-based intervention decision-making", "(SIDM) model was read in each.",
+             "We kept the records of each of the schools and their staff, and the SIDM held.",
+             "Results", "The records were kept in each of the sites, and the SIDM held there."]
+    pieces = []
+    for number, text in enumerate(texts, 61):
+        y = 760.0 - 27.0 * (number - 61)
+        pieces += [Piece(34.0, y, str(number), size=9.0), Piece(72.0, y, text, size=11.0)]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf([pieces]))
+    pdf_module._REBUILT.clear()
+    run = run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    assert [f for f in run.language if "SIDM" in f.message] == [], run.language
+    printed = [place.printed for place in run.places.places]
+    assert printed == list(range(61, 61 + len(texts))), printed
+
+
+def _pieces_run(tmp_path: Path, pages: list) -> tuple:
+    """G6 and G14 on a PDF of `pages` of `proof_pdf.Piece`s, its lines rebuilt, and the
+    Markdown they read; skipped where the pdftotext found gives no word's place."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import knows_word_places, pdf
+
+    from manuscript_guard.auditing import gates
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf(pages))
+    pdf_module._REBUILT.clear()
+    run = gates.run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    return run, gates._staged_pdf(paper, True).files["main.md"]
+
+
+def _double_spaced(texts: list[str], first: int = 61) -> list:
+    """A page set double-spaced, each line numbered in the left margin."""
+    from proof_pdf import Piece
+
+    pieces = []
+    for number, text in enumerate(texts, first):
+        y = 760.0 - 27.0 * (number - first)
+        pieces += [Piece(34.0, y, str(number), size=9.0), Piece(72.0, y, text, size=11.0)]
+    return pieces
+
+
+def _column(texts: list[str], x: float, top: float, gaps: dict[int, float] | None = None,
+            justified: bool = True) -> list:
+    """A column of lines from `top` down, each justified to a column's width but a short
+    one, `gaps` points more above the lines they name."""
+    from proof_pdf import BODY_LEADING, COLUMN, Set, _set, width
+
+    pieces, y = [], top
+    for at, text in enumerate(texts):
+        y -= (gaps or {}).get(at, 0.0)
+        full = justified and width(text, 9.0) > 0.8 * COLUMN
+        pieces += _set(Set(tuple(text.split()), justified=full), x, y)
+        y -= BODY_LEADING
+    return pieces
+
+
+def test_a_double_spaced_paragraph_s_short_last_line_is_its_own(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: a double-spaced manuscript sets each line in a block of
+    its own, and a paragraph's last line short and narrow, "(SIDM) held.", was held as a
+    narrow fragment and given a paragraph of its own while the paragraph before it was left
+    open: the long form and its short form stood in two paragraphs, a blank line inside the
+    sentence. The line goes on with the paragraph its line before left open."""
+    texts = ["Methods", "We read the records of each of the schools of the state and",
+             "the school-based intervention decision-making", "(SIDM) held.",
+             "We kept the records of each of the schools and their staff, and the SIDM held.",
+             "Results", "The records were kept in each of the sites, and the SIDM held there."]
+    run, staged = _pieces_run(tmp_path, [_double_spaced(texts)])
+    assert [f for f in run.language if "SIDM" in f.message] == [], run.language
+    assert "decision-making\n(SIDM) held." in staged, staged
+
+
+#: A line of words that says nothing, a column wide once justified.
+_FULL = "and the records of the cohort were kept in each site"
+
+
+def test_a_one_line_remnant_at_a_column_s_top_goes_on_with_its_paragraph(tmp_path: Path) -> None:
+    """The same in two columns: a paragraph's last line set at the next column's top as a
+    block of its own, "(TS) held.", the column's next paragraph a little below it."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Methods", *[_FULL] * 4, "and the records were read, then the trial stage"]
+    right = ["(TS) held.", "The TS rose in each of the sites.", *_UNSAID]
+    pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {1: 14.0})
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "TS" in f.message.split()[:2]] == [], run.language
+    assert "trial stage\n(TS) held." in staged, staged
+
+
+def test_a_right_column_line_on_a_left_column_line_s_baseline_keeps_the_columns(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of the review of #802, pdf-psych-C1 and pdf-pubh-C2 of the real-paper corpus:
+    a heading of the right column set as a block of one line on the baseline of a line of
+    the left column, a gutter apart, was made one line with it; the left column's block then
+    reached across the page's middle, was read as a band of its own, and the left column's
+    blocks below it were read after the whole right column. A definition there was used
+    before it in the right column, "TLE is used here, and defined later". Two lines the
+    page's middle parts are two columns' lines."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Methods", *[_FULL] * 6, "Results", "The traumatic life events (TLE) were read.",
+            *[_FULL] * 3]
+    right = [_FULL, _FULL, "The TLE rose in each of the sites.", _FULL, "Analyses",
+             *[_FULL] * 3]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0})
+              + _column(right, RIGHT, TOP, {4: 11.0, 5: 11.0}))  # fmt: skip
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "TLE" in f.message.split()[:2]] == [], run.language
+    assert staged.index("traumatic life events") < staged.index("TLE rose"), staged
+
+
+def _bbox_markup(lines: list[list[tuple]], height: float = 12.1) -> str:
+    """Poppler's `-bbox-layout` markup of one page whose lines hold these words, each
+    `(word, gap before it)`, set `height` points high, as a real paper's lines are, or
+    `(word, gap, its own height)`, on the line's foot."""
+    from proof_pdf import width
+
+    out = ['<doc><page width="595.0" height="842.0"><flow><block xMin="72.0" yMin="100.0" '
+           'xMax="540.0" yMax="400.0">']
+    for at, words in enumerate(lines):
+        y0, x, said = 100.0 + 15.0 * at, 72.0, []
+        for word, gap, *own in words:
+            high = own[0] if own else height
+            x += gap
+            x1 = x + width(word, 10.0 * high / height)
+            said.append(f'<word xMin="{x:.3f}" yMin="{y0 + height - high:.3f}" '
+                        f'xMax="{x1:.3f}" yMax="{y0 + height:.3f}">{word}</word>')
+            x = x1
+        out.append(f'<line xMin="72.0" yMin="{y0:.3f}" xMax="{x:.3f}" '
+                   f'yMax="{y0 + height:.3f}">{"".join(said)}</line>')
+    return "".join([*out, "</block></flow></page></doc>"])
+
+
+def test_a_thin_space_a_pdf_sets_stays_a_space() -> None:
+    """Round 1 of the review of #802, pdf-multi-C1 and pdf-psych-C1 of the real-paper
+    corpus: poppler gives the words a thin space parts, "N", "=" and "168", "18" and
+    "years", a gap of about 1 point on lines 12.1 points high, and the rebuild read that as
+    no space, so the notation was said to be wrongly spaced. Only words set with no gap
+    between them are one: a word kerned in two, "T" then "U1_effect" 0.04 points on, still
+    is (`test_a_word_a_pdf_kerns_in_two_is_one_word`). Read from poppler's markup as it gives
+    those lines, so that it needs no poppler."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from manuscript_guard.auditing.pdf_layout import rebuilt
+
+    space, thin = 2.5, 1.03
+    lines = [[("Of", 0.0), ("the", space), ("cohort", space), ("(N", space), ("=", thin),
+              ("168),", thin), ("each", space), ("was", space), ("at", space),
+              ("least", space), ("18", space), ("years", thin), ("old.", space)],
+             [("In", 0.0), ("U1", space), ("(T", space), ("U1_effect", 0.04), ("=", space),
+              (".06).", space)]]
+    texts = [row.text for row in rebuilt(_bbox_markup(lines)).rows]
+    assert texts == ["Of the cohort (N = 168), each was at least 18 years old.",
+                     "In U1 (TU1_effect = .06)."], texts
+
+
+def test_a_hyphenated_short_form_a_pdf_breaks_at_a_line_s_end_is_one(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: "SARS-" at a line's end and "CoV-2) infection" on the
+    next were joined as "SARS-CoV" and "-2) infection". The rest of a broken short form is
+    taken with its own hyphens."""
+    left = ["Methods", *_UNSAID, "The severe acute respiratory syndrome",
+            "coronavirus 2 (SARS-", "CoV-2) infection was read.", "The SARS-CoV-2 held."]
+    _run, staged = _pieces_run(tmp_path, [_column(left, 56.0, 780.0, justified=False)])
+    assert "coronavirus 2 (SARS-CoV-2\n) infection was read." in staged, staged
+
+
+def test_a_paragraph_opening_on_a_display_s_name_is_the_text_s(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: a paragraph of the text that opens on a display's name
+    and a capital or a bracket, "Figure 2 (A) shows", set as a block of its own as a
+    double-spaced manuscript sets each line, was read as a legend, and its redefinition of a
+    form the text defines as the display's, asked rather than warned of. A label followed by
+    no stop is a legend's only where its block is set smaller than the text."""
+    texts = ["Results", "We read the low dose (LD) of each of the schools of the state.",
+             "Figure 2 (A) shows the light dose (LD) for each of the schools.",
+             "We kept the records of each of the schools, and the LD held.",
+             "Discussion", "The records were kept in each of the sites, and the LD held there."]
+    run, _staged = _pieces_run(tmp_path, [_double_spaced(texts)])
+    said = [(f.code, bool(f.question)) for f in run.language if f.message.split()[0] == "LD"]
+    assert said == [("abbreviation-redefined", False)], run.language
+
+
+def test_a_number_ending_a_ragged_line_is_the_text_s(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: on a page set ragged right, the longest line ending on
+    a number, "aged 18 to 65", lost its number, taken for the line's number in the margin. A
+    number at a line's end is the margin's only where a gap of an em at least parts it from
+    the line's words."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import Piece
+
+    texts = ["Methods", "We read the records of each of the schools,",
+             "of the women and men in each of the schools aged 18 to 65", "and their staff.",
+             "Results", "We kept them all."]
+    pieces = [Piece(72.0, 760.0 - 14.0 * at, text, size=11.0) for at, text in enumerate(texts)]
+    run, _staged = _pieces_run(tmp_path, [pieces])
+    lines = run.places.text.split("\n")
+    at = next(k for k, line in enumerate(lines) if "aged 18" in line)
+    assert lines[at].endswith("aged 18 to 65"), lines[at]
+    assert run.places.places[at].printed is None, run.places.places[at]
+
+
+def test_a_decimal_at_a_column_s_foot_leaves_its_paragraph_open(tmp_path: Path) -> None:
+    """Round 1 of the review of #802: a stop and the digits after it at a line's end were
+    read as a superscript citation after a stop, so a column whose last line ended "the mean
+    was 2.5" was read as ended there, and its paragraph was not followed into the next
+    column. A citation after a stop follows a letter or a bracket."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Methods", *[_FULL] * 3, "and the trial stage was read: the mean was 2.5"]
+    right = ["in each of the sites, and it held.", *_UNSAID]
+    _run, staged = _pieces_run(tmp_path, [_column(left, LEFT, TOP) + _column(right, RIGHT, TOP)])
+    assert "was 2.5\nin each of the sites" in staged, staged
+
+
+def test_a_reference_list_the_statements_stand_inside_is_one_list(tmp_path: Path) -> None:
+    """A judge of #802's fresh findings, pdf-psych-C1 of the real-paper corpus: Frontiers
+    opens the reference list at the foot of the left column and sets the statements of the
+    back matter at the head of the right, the list going on under them. Read in reading
+    order, the list's rest stood under "Supplementary material", and G14 read the cited
+    works' titles as the text: "NAMA" was asked defined. The statements are read before the
+    list, and the list is one section under its heading."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Conclusion", "The cohort was read and the records were kept.", *[_FULL] * 4,
+            "References", "Adam, K. (1994). Suicidal behavior and attachment.",
+            "Bowlby, J. (1969). Attachment. New York: Basic Books."]
+    right = ["Data availability statement", "The raw data are available on request.",
+             "Ethics statement", "The study was approved by the board.",
+             "Supplementary material", "The supplementary material is online.",
+             "Coan, J. (2008). A neuro-anatomical model of", "human attachment (NAMA).",
+             "Dozier, M. (1999). Attachment in the NAMA. Guilford Press."]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0, 8: 4.0})
+              + _column(right, RIGHT, TOP, {1: 4.0, 2: 14.0, 3: 4.0, 4: 14.0, 5: 4.0,
+                                            6: 30.0}))  # fmt: skip
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "NAMA" in f.message] == [], run.language
+    assert staged.index("Ethics statement") < staged.index("# References"), staged
+
+
+def test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_legend(
+    tmp_path: Path,
+) -> None:
+    """pdf-biol-C3 of the real-paper corpus, a Nature paper: its legends open "Fig. 2 Title",
+    no stop after the number, and are set larger than its Methods' small type, the size most
+    of its words are set at. Read as the text's, a legend's restatement of a definition was
+    a redefinition. A label whose title opens on a capital opens a legend at any size."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Results", "We saw three unbinding pathways, pathway 1 (P1) the first.",
+            *[_FULL] * 4]
+    legend = ["Fig. 2 Three pathways of the complex under load. In pathway 1 (P1) it",
+              "ruptured at high force."]
+    right = [*legend, "", "The P1 held in each of the sites.", *_UNSAID]
+    pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {3: 14.0}, justified=False)
+    run, _staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if f.message.split()[0] == "P1"] == [], run.language
+
+
+def test_a_label_opening_a_line_of_an_open_sentence_is_the_text_s(tmp_path: Path) -> None:
+    """Round 2 of the review of #802: a double-spaced manuscript sets each line in a block of
+    its own, and a sentence's line may open on a display's name and a stop, "Table 1.
+    Patients with". Its block was read as a legend, after the paragraph: the text read
+    "given in than the others", and the definition on that line stood in a display. A label
+    opens a legend only where its block opens a paragraph: the line before ends one, or the
+    block is set apart from it, on another page or column, at another size or further below
+    it than the paragraph's lines stand one below the other."""
+    texts = ["Results", "The characteristics of the cohort are given in",
+             "Table 1. Patients with chronic kidney disease (CKD) were older",
+             "than the others, and they were kept.",
+             "We kept the records of each of the schools, and the CKD held.",
+             "Discussion", "The records were kept in each of the sites, and the CKD held there."]
+    run, staged = _pieces_run(tmp_path, [_double_spaced(texts)])
+    assert "given in\nTable 1. Patients" in staged, staged
+    assert [f for f in run.language if f.message.split()[0] == "CKD"] == [], run.language
+
+
+def test_a_legend_set_apart_under_an_open_sentence_is_a_legend(tmp_path: Path) -> None:
+    """The same rule's other side: a table's legend set at the text's size a line's space
+    below a paragraph left open, a table in its way, is the table's, and the paragraph goes
+    on after it."""
+    texts = ["Results", "We read the records of each of the schools of the state, and",
+             "", "Table 1. Patients with the low dose (LD) of each site.",
+             "the trial stage held in each of the schools of the state.",
+             "We kept the records of each of the schools, and the LD held.",
+             "Discussion", "The records were kept in each of the sites, and the LD held there."]
+    pieces = _double_spaced(texts)
+    del pieces[2 * texts.index(""):2 * texts.index("") + 2]  # a line's space
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert "state, and\nthe trial stage held" in staged, staged
+
+
+def test_a_statement_s_every_paragraph_goes_with_it_and_only_inside_the_list(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of the review of #802: the statements of the back matter set inside the
+    reference list were moved before it by their heading and their first paragraph alone,
+    and moved where the list stood wholly before them: a second paragraph of "Supplementary
+    material" then stood under the References' heading, which G14 does not read. A
+    statement is moved whole, to the next heading or the list's next entry, and only where
+    the list's entries stand on both sides of it."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, TOP
+
+    texts = ["Conclusion", "The cohort was read and the records were kept.",
+             "References", "Adam, K. (1994). Suicidal behavior and attachment.",
+             "Bowlby, J. (1969). Attachment. New York: Basic Books.",
+             "Supplementary material", "The supplementary material is online.",
+             "The low dose (LD) was read in each site, and the LD held."]
+    pieces = _column(texts, LEFT, TOP, {2: 14.0, 3: 4.0, 5: 14.0, 6: 4.0, 7: 6.0},
+                     justified=False)  # fmt: skip
+    _run, staged = _pieces_run(tmp_path, [pieces])
+    second = staged.index("The low dose (LD)")
+    headings = [line for line in staged[:second].split("\n") if line.startswith("#")]
+    assert headings[-1] == "# Supplementary material", staged
+
+
+def test_a_statement_inside_the_list_takes_no_entry_with_it(tmp_path: Path) -> None:
+    """Round 2 of the review of #802, a Frontiers paper's statement: "found online at:" and
+    the address, no stop after it, left its paragraph open, the list's next entry went on
+    with it, and was moved before the list with the statement, read as the text's. A
+    statement ends at the list's next entry."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Conclusion", "The cohort was read and the records were kept.", *[_FULL] * 4,
+            "References", "Adam, K. (1994). Suicidal behavior and attachment.",
+            "Bowlby, J. (1969). Attachment. New York: Basic Books."]
+    right = ["Supplementary material", "The material for this article is online at:",
+             "https://doi.org/10.1/x#supplementary-material",
+             "Coan, J. (2008). A neuro-anatomical model of", "human attachment (NAMA).",
+             "Dozier, M. (1999). Attachment in the NAMA. Guilford Press."]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0, 8: 4.0})
+              + _column(right, RIGHT, TOP, {1: 4.0, 3: 6.0}, justified=False))  # fmt: skip
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if "NAMA" in f.message] == [], run.language
+    assert staged.index("# References") < staged.index("Coan, J."), staged
+    assert staged.index("supplementary-material") < staged.index("# References"), staged
+
+
+@pytest.mark.parametrize("label", ["Fig. 2\N{EM DASH}Three", "Fig. 2 \N{EN DASH} Three"])
+def test_a_legend_whose_label_a_dash_follows_is_a_legend(tmp_path: Path, label: str) -> None:
+    """Round 2 of the review of #802: a legend set at the text's size whose label a dash
+    follows, "Figure 1\N{EM DASH}Title", "Figure 1 \N{EN DASH} Title", was read as the
+    text's, and its restatement of a definition was a redefinition. A dash after the label
+    opens a legend as a stop does."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Results", "We saw three unbinding pathways, pathway 1 (P1) the first.",
+            *[_FULL] * 4]
+    legend = [f"{label} pathways of the complex under load. In pathway 1 (P1) it",
+              "ruptured at high force."]
+    right = [*legend, "", "The P1 held in each of the sites.", *_UNSAID]
+    pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {3: 14.0}, justified=False)
+    run, _staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if f.message.split()[0] == "P1"] == [], run.language
+
+
+def test_a_numbered_entry_after_a_statement_inside_the_list_stays_in_the_list(
+    tmp_path: Path,
+) -> None:
+    """pdf-biol-C4 of the real-paper corpus, a Frontiers paper: its numbered entries, "5.
+    Olveda RM, Daniel BL. Title. J Infect Dis (1996) 174(1):163-72.", have no shape the
+    audit reads an entry by, so the "Acknowledgments" set inside the list was not moved
+    before it, and the entries after it were read as the text: "Miyaji EN" used the form
+    the text defines once and never again. A line that opens on an entry's number and a
+    capital, inside the reference list, opens an entry."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Discussion", "The endemic normal (EN) cohort was read and kept.", *[_FULL] * 4,
+            "References", "1. Adam K, Bowlby J. Suicidal behavior. J Med (1994) 1:1-2."]
+    right = ["Acknowledgments", "We thank the team of each of the sites for their work.",
+             "2. Coan J, Miyaji EN. A model of attachment. J Med (2008) 2:3-4.",
+             "3. Dozier M. Attachment in the cohort. J Med (1999) 3:5-6."]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0})
+              + _column(right, RIGHT, TOP, {1: 4.0, 2: 6.0, 3: 4.0}, justified=False))
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert staged.index("We thank the team") < staged.index("# References"), staged
+    assert staged.index("# References") < staged.index("2. Coan J"), staged
+    said = [f.code for f in run.language if f.message.split()[0] == "EN"]
+    assert said == ["abbreviation-unused"], run.language
+
+
+def test_a_heading_set_in_small_capitals_is_one_word() -> None:
+    """The final fresh findings of #802, tex-cs-lg-B2 of the real-paper corpus, an IEEE
+    paper: its headings are set in small capitals, "R" at the heading's size and "EFERENCES"
+    smaller, half a point on, and poppler gives the two apart. Once two words were one only
+    under 0.03 of the line's height apart, the thin space's rule, "R EFERENCES" was no
+    heading, the reference list was read as the text, and its entries' "EMBC" and
+    "artefact" were G14's. Two words set at two sizes a tenth of their height apart or less
+    are one; two set at one size, a thin space apart, are two
+    (`test_a_thin_space_a_pdf_sets_stays_a_space`)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from manuscript_guard.auditing.pdf import heading_title
+    from manuscript_guard.auditing.pdf_layout import rebuilt
+
+    lines = [[("R", 0.0, 8.91), ("EFERENCES", 0.5, 7.13)],
+             [("V.", 0.0, 8.91), ("D", 5.48, 8.91), ("ISCUSSION", 0.5, 7.13),
+              ("AND", 2.98, 7.13), ("C", 2.99, 8.91), ("ONCLUSION", 0.5, 7.13)],
+             [("Of", 0.0), ("the", 2.5), ("cohort", 2.5), ("(N", 2.5), ("=", 1.03),
+              ("168).", 1.03)]]
+    texts = [row.text for row in rebuilt(_bbox_markup(lines)).rows]
+    assert texts == ["REFERENCES", "V. DISCUSSION AND CONCLUSION",
+                     "Of the cohort (N = 168)."], texts
+    assert heading_title(texts[0]) is not None, texts
+
+
+def test_a_paragraph_open_at_a_page_s_foot_does_not_go_on_into_smaller_type(
+    tmp_path: Path,
+) -> None:
+    """The final fresh findings of #802, pdf-pubh-C3 of the real-paper corpus, a JMIR paper:
+    its list of abbreviations ends a page with no stop, "UTB: unified theory of behavior",
+    and the next page opens on the journal's editorial history, set smaller, "Edited by G
+    Eysenbach; submitted 13.03.18", which went on with the list's last line: UTB was defined
+    as "unified theory of behavior Edited by G Eysenbach; ...". A paragraph left open goes on
+    only into a block set at its own size; a paragraph broken at a column's foot goes on as
+    before (`test_a_definition_a_pdf_s_column_and_a_legend_break_is_one`)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, TOP, Set, _set
+
+    first = _column(["Methods", "The unified theory of behavior (UTB) was read in each site.",
+                     *[_FULL] * 4, "We kept the UTB of each site.", "Abbreviations",
+                     "SMS: short message service", "UTB: unified theory of behavior"],
+                    LEFT, TOP, {7: 14.0, 8: 4.0}, justified=False)
+    history = ["Edited", "by", "G", "Eysenbach;", "submitted", "13.03.18;", "peer-reviewed",
+               "by", "D", "Levine;", "accepted", "01.07.18"]
+    second = [*_set(Set(tuple(history[:9]), size=7.8), LEFT, TOP),
+              *_set(Set(tuple(history[9:]), size=7.8), LEFT, TOP - 9.0),
+              *_column(["The authors published it in the journal.", *_UNSAID], LEFT,
+                       TOP - 40.0, justified=False)]
+    run, staged = _pieces_run(tmp_path, [first, second])
+    assert [f for f in run.language if "Edited" in f.message] == [], run.language
+    assert "unified theory of behavior\n\nEdited by" in staged, staged
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

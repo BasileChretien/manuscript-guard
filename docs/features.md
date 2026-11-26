@@ -5,7 +5,7 @@
 
 Everything manuscript-guard is meant to do, by the stage of a paper it belongs to:
 one entry for each thing it promises, what does it, and the tests that prove it.
-Of the 76 entries, 72 work, 2 work in part, and 2 are planned.
+Of the 78 entries, 73 work, 3 work in part, and 2 are planned.
 
 The source is [features.yaml](features.yaml), which an agent tool reads before it
 changes a feature. `python tools/feature_map.py` draws this page and its picture from
@@ -15,7 +15,7 @@ skill and hook is in an entry, and every test an entry names is there.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/features-dark.svg">
   <img src="img/features-light.svg" width="880"
-       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 72 work, 2 work in part and 2 are planned.">
+       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 73 work, 3 work in part and 2 are planned.">
 </picture>
 
 ## Start
@@ -149,7 +149,9 @@ Read a paper written some other way, as its author, an editor or a referee.
 | Feature | What it does | Status | Done by | Proved by |
 |---|---|---|---|---|
 | **[Audit a paper](audit.md)** | Checks a paper in Word, Markdown, LaTeX or PDF: its numbers against each other and the outputs given, its Abstract against its Results, its words and its references, each numbered entry held to the citations of it. In a Word or Markdown paper, every entry is reported where the text cites nothing by number and no author of the list with a year; a PDF's list and a LaTeX paper's are never reported so. | works | [`audit`](commands.md#checking--audit), skill [`paper-audit`](agent-tools.md) | [`test_audit.py`](../tests/test_audit.py)<br>[`test_audit_sections.py`](../tests/test_audit_sections.py)<br>[`test_audit_pdf.py`](../tests/test_audit_pdf.py)<br>[`test_corruption.py::test_a_numbered_list_in_a_text_that_cites_nothing_by_number_is_every_entry_uncited`](../tests/test_corruption.py)<br>[`test_properties.py::test_a_numbered_list_is_never_cited_only_where_nothing_cites_by_number`](../tests/test_properties.py) |
+| **[A PDF's paragraphs](install.md)** | Reads a PDF paper's words where each is set on its page, so that the writing and language checks read its paragraphs across columns and pages, its tables and legends as tables and legends, and not its running heads or line numbers. *Needs poppler's pdftotext, Xpdf's giving no word's place; only the writing and language checks read the paragraphs, the numbers, the Abstract, the references and compare reading the PDF's lines as before; front matter and side boxes are read as prose (DESIGN.md, Known gaps).* | works in part | [`audit`](commands.md#checking--audit) | [`test_properties.py::test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset`](../tests/test_properties.py)<br>[`test_corruption.py::test_a_definition_a_pdf_s_column_and_a_legend_break_is_one`](../tests/test_corruption.py)<br>[`test_audit_pdf.py::test_g6_and_g14_s_findings_on_a_rebuilt_pdf_are_placed_by_its_rebuilt_lines`](../tests/test_audit_pdf.py)<br>[`test_audit_pdf.py::test_a_pdf_whose_lines_cannot_be_rebuilt_is_read_by_g6_and_g14_as_before`](../tests/test_audit_pdf.py) |
 | **[Audit in a web browser](audit-page.md)** | Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not uploaded anywhere. | works | &mdash; | [`test_web.py`](../tests/test_web.py) |
+| **[Audit page on a journal's site](hosting-the-audit-page.md)** | Lets a publisher or a society serve the audit page on its own site, with its journals' rules built in and its own name, logo and colours, linked from each journal's "Submit" page, and the paper is still not uploaded. *Each journal a host offers is held to the command line in CI only on invented ones.* | works | &mdash; | [`test_web_host.py`](../tests/test_web_host.py) |
 | **[How often a warning is wrong](false-alarms.md)** | Publishes, for each kind of warning, the share judged false on real papers, with the papers and the version it was measured on and what that share does not measure. | works | &mdash; | [`test_false_alarms.py`](../tests/test_false_alarms.py) |
 | **[Compare two versions](refereeing.md)** | Sets a revised manuscript beside the version before it: the sections, tables, numbers, citations and claims that changed. | works | [`compare`](commands.md#checking--audit) | [`test_compare.py`](../tests/test_compare.py) |
 | **[Start a referee's report](refereeing.md)** | Writes what the audit found, with each place, as the start of a report, as Word comments, as tracked changes or as a PDF. | works | [`audit`](commands.md#checking--audit) | [`test_audit_commented.py`](../tests/test_audit_commented.py)<br>[`test_audit_tracked.py`](../tests/test_audit_tracked.py)<br>[`test_report_pdf.py`](../tests/test_report_pdf.py) |

@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1092" width="880" height="1092" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 72 work, 2 work in part and 2 are planned.</title>
-  <rect width="880" height="1092" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1144" width="880" height="1144" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 73 work, 3 work in part and 2 are planned.</title>
+  <rect width="880" height="1144" fill="#ffffff"/>
   <circle cx="25" cy="22" r="4.5" fill="#1a7f37"/>
-  <text x="36" y="26" font-size="12.5" fill="#59636e">works (72)</text>
+  <text x="36" y="26" font-size="12.5" fill="#59636e">works (73)</text>
   <circle cx="125" cy="22" r="4.5" fill="#ffffff" stroke="#9a6700" stroke-width="1.5"/><path d="M 125 17.5 A 4.5 4.5 0 0 0 125 26.5 Z" fill="#9a6700"/>
-  <text x="136" y="26" font-size="12.5" fill="#59636e">works in part (2)</text>
+  <text x="136" y="26" font-size="12.5" fill="#59636e">works in part (3)</text>
   <circle cx="274" cy="22" r="4.5" fill="#ffffff" stroke="#59636e" stroke-width="1.5"/>
   <text x="285" y="26" font-size="12.5" fill="#59636e">planned (2)</text>
   <rect x="20" y="44" width="266" height="312" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
@@ -196,7 +196,7 @@
   <rect x="600" y="630" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="612" cy="640.5" r="4.5" fill="#1a7f37"/>
   <text x="624" y="645" font-size="12" fill="#1f2328">What a change reaches</text>
-  <rect x="20" y="786" width="266" height="286" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <rect x="20" y="786" width="266" height="338" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
   <text x="32" y="810" font-size="15" font-weight="600" fill="#1f2328">7 &#183; Review</text>
   <text x="32" y="828" font-size="11.5" fill="#59636e">Have the paper read by co-authors, a panel</text>
   <text x="32" y="843" font-size="11.5" fill="#59636e">and the people who sign.</text>
@@ -218,7 +218,7 @@
   <rect x="28" y="988" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="40" cy="998.5" r="4.5" fill="#1a7f37"/>
   <text x="52" y="1003" font-size="12" fill="#1f2328">Text hidden in a file</text>
-  <rect x="306" y="786" width="266" height="286" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <rect x="306" y="786" width="266" height="338" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
   <text x="318" y="810" font-size="15" font-weight="600" fill="#1f2328">8 &#183; Submit</text>
   <text x="318" y="828" font-size="11.5" fill="#59636e">Send the paper, answer the reviewers, and</text>
   <text x="318" y="843" font-size="11.5" fill="#59636e">publish what it rests on.</text>
@@ -243,32 +243,38 @@
   <rect x="314" y="1014" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="326" cy="1024.5" r="4.5" fill="#1a7f37"/>
   <text x="338" y="1029" font-size="12" fill="#1f2328">Posts and summaries</text>
-  <rect x="592" y="786" width="266" height="286" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <rect x="592" y="786" width="266" height="338" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
   <text x="604" y="810" font-size="15" font-weight="600" fill="#1f2328">Other people&#x27;s papers</text>
   <text x="604" y="828" font-size="11.5" fill="#59636e">Read a paper written some other way, as</text>
   <text x="604" y="843" font-size="11.5" fill="#59636e">its author, an editor or a referee.</text>
   <rect x="600" y="858" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="612" cy="868.5" r="4.5" fill="#1a7f37"/>
   <text x="624" y="873" font-size="12" fill="#1f2328">Audit a paper</text>
-  <rect x="600" y="884" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
-  <circle cx="612" cy="894.5" r="4.5" fill="#1a7f37"/>
-  <text x="624" y="899" font-size="12" fill="#1f2328">Audit in a web browser</text>
+  <rect x="600" y="884" width="250" height="21" rx="5" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
+  <circle cx="612" cy="894.5" r="4.5" fill="#ffffff" stroke="#9a6700" stroke-width="1.5"/><path d="M 612 890.0 A 4.5 4.5 0 0 0 612 899.0 Z" fill="#9a6700"/>
+  <text x="624" y="899" font-size="12" fill="#1f2328">A PDF&#x27;s paragraphs</text>
   <rect x="600" y="910" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="612" cy="920.5" r="4.5" fill="#1a7f37"/>
-  <text x="624" y="925" font-size="12" fill="#1f2328">How often a warning is wrong</text>
+  <text x="624" y="925" font-size="12" fill="#1f2328">Audit in a web browser</text>
   <rect x="600" y="936" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="612" cy="946.5" r="4.5" fill="#1a7f37"/>
-  <text x="624" y="951" font-size="12" fill="#1f2328">Compare two versions</text>
+  <text x="624" y="951" font-size="12" fill="#1f2328">Audit page on a journal&#x27;s site</text>
   <rect x="600" y="962" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="612" cy="972.5" r="4.5" fill="#1a7f37"/>
-  <text x="624" y="977" font-size="12" fill="#1f2328">Start a referee&#x27;s report</text>
-  <rect x="600" y="988" width="250" height="21" rx="5" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
-  <circle cx="612" cy="998.5" r="4.5" fill="#ffffff" stroke="#9a6700" stroke-width="1.5"/><path d="M 612 994.0 A 4.5 4.5 0 0 0 612 1003.0 Z" fill="#9a6700"/>
-  <text x="624" y="1003" font-size="12" fill="#1f2328">An editor&#x27;s report</text>
+  <text x="624" y="977" font-size="12" fill="#1f2328">How often a warning is wrong</text>
+  <rect x="600" y="988" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <circle cx="612" cy="998.5" r="4.5" fill="#1a7f37"/>
+  <text x="624" y="1003" font-size="12" fill="#1f2328">Compare two versions</text>
   <rect x="600" y="1014" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
   <circle cx="612" cy="1024.5" r="4.5" fill="#1a7f37"/>
-  <text x="624" y="1029" font-size="12" fill="#1f2328">The trial&#x27;s registration</text>
-  <rect x="600" y="1040" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
-  <circle cx="612" cy="1050.5" r="4.5" fill="#1a7f37"/>
-  <text x="624" y="1055" font-size="12" fill="#1f2328">A letter to the authors</text>
+  <text x="624" y="1029" font-size="12" fill="#1f2328">Start a referee&#x27;s report</text>
+  <rect x="600" y="1040" width="250" height="21" rx="5" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
+  <circle cx="612" cy="1050.5" r="4.5" fill="#ffffff" stroke="#9a6700" stroke-width="1.5"/><path d="M 612 1046.0 A 4.5 4.5 0 0 0 612 1055.0 Z" fill="#9a6700"/>
+  <text x="624" y="1055" font-size="12" fill="#1f2328">An editor&#x27;s report</text>
+  <rect x="600" y="1066" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <circle cx="612" cy="1076.5" r="4.5" fill="#1a7f37"/>
+  <text x="624" y="1081" font-size="12" fill="#1f2328">The trial&#x27;s registration</text>
+  <rect x="600" y="1092" width="250" height="21" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <circle cx="612" cy="1102.5" r="4.5" fill="#1a7f37"/>
+  <text x="624" y="1107" font-size="12" fill="#1f2328">A letter to the authors</text>
 </svg>

@@ -47,6 +47,16 @@ repeated Method and Results cannot, a line after the Abstract that opens on "Exp
 heading over the sections it repeats, so that each study's Results are compared with the
 Abstract. A PDF in a folder is not read: name it.
 
+For the writing and language checks (G6 and G14) alone, a PDF's lines are rebuilt into
+paragraphs from where poppler's `pdftotext` sets each word on its page: its columns read in
+order, a paragraph followed across a column, a page or a table, each table and figure
+legend read as a display, as in a Word paper, so that a legend that gives a short form the
+text's meaning says nothing and one that gives it another is asked about, and a citation set
+as a superscript read as one. Their places are still a page and a line, counted down the page
+in reading order, left column first. Where the `pdftotext` found is Xpdf's, which gives no
+word's place, those checks read the PDF's lines as before, and the report says so; a poppler
+installed beside it is named by `MANUSCRIPT_GUARD_POPPLER` ([install](install.md)).
+
 `--pdf FILE.pdf` also writes the report as a PDF, every place and every section in it, as
 `--details` prints them: its sections and each kind of finding on the words are bookmarks,
 each check in its table a link to its section, each place with its message and its quote.

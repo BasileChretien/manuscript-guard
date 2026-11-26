@@ -3,7 +3,9 @@ description: >-
   Builds the site into _site from the checkout: the landing page (web/landing/) at its root
   and the in-browser audit page (web/) in _site/audit, and holds the audit page to the command
   line (web/test/check.py), which also opens the landing page. CI's `web` job and the Pages workflow both run this, so
-  the page served is a page CI has checked, built the same way.
+  the page served is a page CI has checked, built the same way. It also builds the page a
+  journal's host would, with web/test/host's invented journals (web/build.py --host), outside
+  _site, and holds it to the command line too: that page is checked and never deployed.
 
 runs:
   using: composite
@@ -46,6 +48,7 @@ runs:
         pip wheel . --no-deps --wheel-dir "$RUNNER_TEMP/dist"
         (cd web && npm ci)
         python web/build.py --wheel "$RUNNER_TEMP"/dist/manuscript_guard-*.whl --out _site
+        python web/build.py --wheel "$RUNNER_TEMP"/dist/manuscript_guard-*.whl --host web/test/host --out "$RUNNER_TEMP/hosted"
     - name: The page says what the command line says, sends nothing, and refuses what its rules forbid
       shell: bash
       run: >-
@@ -53,3 +56,4 @@ runs:
         --docx "$RUNNER_TEMP/example/build/manuscript.docx"
         --results "$RUNNER_TEMP/example/results/01_disproportionality.json"
         --markdown "$RUNNER_TEMP/example/manuscript/main.md"
+        --hosted "$RUNNER_TEMP/hosted"

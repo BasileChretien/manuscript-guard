@@ -305,7 +305,8 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: the other readings many times over. `import` builds a document for each and takes three
 #: seconds; its sessions have a file of their own, `tests/test_generated_sessions.py`, and
 #: here it is only asked twice for the same one.
-PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1, "finding keys": 6}
+PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1, "finding keys": 6,
+                                      "pdf paragraphs": 6}
 
 #: The quotation marks the LaTeX reader writes for ``` `` ``` and `''`.
 LEFT_QUOTE, RIGHT_QUOTE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
@@ -3775,6 +3776,226 @@ def test_a_pdf_s_text_holds_no_display(drawn: dict[str, Any]) -> None:
                     "asked" if getattr(f, "question", False) else "warned")
                    for f in report.findings)  # fmt: skip
     assert found == drawn["found"], (found, drawn["text"])
+
+
+from generated import pdf_layouts  # noqa: E402
+from proof_pdf import knows_word_places  # noqa: E402
+
+
+def _blocks_staged(text: str, displays: tuple[tuple[int, int], ...]) -> list[tuple]:
+    """The staged Markdown of a PDF as blocks, `("heading", title)`, `("paragraph", its
+    lines as one)` and `("display", its lines, ...)`, as `pdf_layouts` gives what is to be
+    read; a display's kind is not in the text, and is left out."""
+    shown = {at for first, last in displays for at in range(first, last + 1)}
+    out: list[tuple] = []
+    current: list[str] = []
+    kind = ""
+
+    def done() -> None:
+        if current:
+            out.append(("display", tuple(current)) if kind == "display"
+                       else ("paragraph", " ".join(current)))  # fmt: skip
+        current.clear()
+
+    for at, line in enumerate(text.split("\n"), 1):
+        if not line:
+            done()
+        elif line.startswith("#"):
+            done()
+            out.append(("heading", line.lstrip("# ")))
+        else:
+            kind = "display" if at in shown else "paragraph"
+            current.append(line)
+    done()
+    return out
+
+
+def _as_markdown(blocks: list[tuple]) -> tuple[str, tuple[tuple[int, int], ...]]:
+    """What `pdf_layouts` says is to be read, as Markdown, each display one block of its
+    lines, and where each display runs, `(first, last)` lines from 1."""
+    lines: list[str] = []
+    spans = []
+    for block in blocks:
+        if lines:
+            lines.append("")
+        if block[0] == "heading":
+            lines.append(f"# {block[1]}")
+        elif block[0] == "paragraph":
+            lines.append(block[1])
+        else:
+            spans.append((len(lines) + 1, len(lines) + len(block[1])))
+            lines += list(block[1])
+    return "\n".join(lines) + "\n", tuple(spans)
+
+
+def _g14_said(text: str, displays) -> list[tuple[str, str, bool]]:
+    nothing = language_gate._Known(frozenset(), frozenset())
+    read = [language_gate._file(0, Path("main.md"), text, [], False, from_pdf=True,
+                                displays=displays)]  # fmt: skip
+    return sorted((f.code, f.message.split()[0], bool(getattr(f, "question", False)))
+                  for f in _g14_warned(read, nothing, Path(".")).findings)  # fmt: skip
+
+
+@holds(20, pdf_layouts())
+def test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset(drawn: dict[str, Any]) -> None:
+    """The design of 2026-11-26, with the author's answers: a PDF's lines, read from where
+    each word is set, are the paragraphs typeset, word for word and in order, across a
+    column, a page and a display, a display read after the paragraph it stands in; each
+    table and figure is one block of its legend, its cells and notes, and a figure's own
+    words; the running heads and feet, the pages' numbers and the margin's line numbers are
+    gone. G14 finds on them what it finds on the same paragraphs written as Markdown with
+    the displays as displays, and G6 reads a superscript citation as one. Every line is
+    placed at the page and the line, counted down the page in reading order, it was set on,
+    with the number the PDF prints beside it."""
+    from proof_pdf import laid_out
+
+    from manuscript_guard.auditing import gates
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    if not knows_word_places():
+        # In the body, so that the broken rules' cases skip with it (`BROKEN`).
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    data, places = laid_out(drawn["pages"], head=drawn["head"], line_numbers=True)
+    pdf_module._REBUILT.clear()
+    with tempfile.TemporaryDirectory(prefix="mg-layout-") as folder:
+        paper = Path(folder) / "paper.pdf"
+        paper.write_bytes(data)
+        staged = gates._staged_pdf(paper, True)
+        assert staged.placer is not None, staged.read
+        text, read = staged.files["main.md"], staged.placer
+        displays = staged.displays.get("main.md")
+        writing = gates.run_gates(paper, paragraphs=True).writing
+    wanted = [block[:2] for block in drawn["blocks"]]
+    assert _blocks_staged(text, displays or ()) == wanted, text
+    where = {(page, line): (said, number) for page, line, said, number in places}
+    for place, line in zip(read.places, read.text.split("\n"), strict=True):
+        assert where.get((place.page, place.line)) == (line, place.printed), (place, line)
+    expected, spans = _as_markdown(drawn["blocks"])
+    assert _g14_said(text, displays) == _g14_said(expected, spans), (text, expected)
+    assert not [f for f in writing if f.code == "vague-attribution"], writing
+
+
+def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "ordered", lambda blocks: list(blocks))
+
+
+def _a_paragraph_goes_on_only_before_a_lower_case_letter(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "goes_on", lambda block: block.lines[0].text[:1].islower())
+
+
+def _a_display_is_its_legend_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout._Flow, "of_display", lambda self, kind, block, page=0: False)
+
+
+def _nothing_a_page_repeats_is_taken_out(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "_running", lambda pages: (set(), [], []))
+    patch.setattr(pdf_layout, "_margin", lambda page: set())
+
+
+def _a_one_line_remnant_is_a_paragraph_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout._Flow, "remnant", lambda self, page, block: False)
+
+
+def _a_title_on_a_capital_opens_no_legend(patch: pytest.MonkeyPatch) -> None:
+    """As before pdf-biol-C3: "Fig. 2 Three pathways", set at the text's size, the text's."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "TITLED", re.compile(r"(?!)"))
+
+
+def _a_dash_after_a_label_opens_no_legend(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #802: "Table 1—Counts", "Table 1 – Counts" the text's."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "TIGHT", re.compile(pdf_layout._LABEL + r"(?:\s*[.:|]|\s*$)"))
+
+
+def _a_label_inside_an_open_sentence_opens_a_legend(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #802: a double-spaced line "Table 4. Patients" a legend."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout._Flow, "continues", lambda self, page, block: False)
+
+
+def _a_thin_space_is_no_space(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #802: two words a tenth of their height apart are one."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "JOINED", 0.2)
+
+
+def _a_kerned_word_is_two(patch: pytest.MonkeyPatch) -> None:
+    """Two words poppler gives touching are two: "co hort"."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "JOINED", 0.0)
+
+
+def _two_columns_lines_on_one_baseline_are_one(patch: pytest.MonkeyPatch) -> None:
+    """As before round 1 of #802: no page has columns for `_one_baseline` to keep apart."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "_columns_middle", lambda blocks: None)
+
+
+def _the_statements_stay_inside_the_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    patch.setattr(pdf_module, "_references_together", lambda rows: rows)
+
+
+def _a_statement_takes_the_entry_its_paragraph_goes_on_with(patch: pytest.MonkeyPatch) -> None:
+    """As before round 2 of #802: a statement runs to the next heading, entries and all."""
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    kept = pdf_module._opens_entry
+    patch.setattr(pdf_module, "_opens_entry", lambda rows, at: kept(rows, at) and (
+        at == 0 or rows[at - 1].paragraph != rows[at].paragraph))
+
+
+def _a_numbered_entry_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    """As before pdf-biol-C4: "5. Olveda RM ... J Infect Dis (1996) 174(1):163" no entry."""
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    patch.setattr(pdf_module, "_NUMBERED_ENTRY", re.compile(r"(?!)"))
+
+
+def _small_capitals_are_two_words(patch: pytest.MonkeyPatch) -> None:
+    """As at 8da72519a: "R EFERENCES", no heading, the reference list read as the text."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "CAPITALS", 0.0)
+
+
+def _an_open_paragraph_goes_on_into_smaller_type(patch: pytest.MonkeyPatch) -> None:
+    """As before pdf-pubh-C3: the next page's editorial history, set smaller, joined."""
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout._Flow, "smaller", lambda self, block: False)
+
+
+def _a_superscript_is_left_bare(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import pdf_layout
+
+    patch.setattr(pdf_layout, "_raised", lambda line: None)
+
+
+def _a_rebuilt_pdf_s_displays_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import gates
+
+    real = gates._staged_paragraphs
+    patch.setattr(gates, "_staged_paragraphs", lambda paper, pdf: dataclasses.replace(
+        real(paper, pdf), displays={}))
 
 
 def _a_pdf_s_text_is_read_for_displays(patch: pytest.MonkeyPatch) -> None:
@@ -26126,7 +26347,7 @@ def _words_read_from(text: str, suffix: str) -> list:
     from manuscript_guard.auditing import gates
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(gates, "_stage", lambda paper, tree=None: gates._Staged(
+        patch.setattr(gates, "_stage", lambda paper, tree=None, paragraphs=False: gates._Staged(
             {"main.md": text}, {"main.md": paper}))  # fmt: skip
         run = gates.run_gates(Path(f"paper{suffix}"))
     assert not run.note
@@ -26267,6 +26488,78 @@ BROKEN = {
     "a registration number's line is counted in the masked text": (
         _a_registration_number_s_line_counted_in_the_masked_text,
         test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
+    ),
+    "a PDF's blocks are read in poppler's flow order": (
+        _poppler_s_flow_order,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's paragraph goes on across a break only before a lower-case letter": (
+        _a_paragraph_goes_on_only_before_a_lower_case_letter,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's display is its legend's block alone": (
+        _a_display_is_its_legend_alone,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "nothing a PDF's pages repeat is taken out": (
+        _nothing_a_page_repeats_is_taken_out,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's one-line remnant of a paragraph is a paragraph of its own": (
+        _a_one_line_remnant_is_a_paragraph_of_its_own,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's legend whose title opens on a capital is the text's": (
+        _a_title_on_a_capital_opens_no_legend,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's legend whose label a dash follows is the text's": (
+        _a_dash_after_a_label_opens_no_legend,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's line opening on a label inside an open sentence is a legend": (
+        _a_label_inside_an_open_sentence_opens_a_legend,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's thin space is no space": (
+        _a_thin_space_is_no_space,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's word kerned in two is two words": (
+        _a_kerned_word_is_two,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "two columns' lines on one baseline of a PDF are one line": (
+        _two_columns_lines_on_one_baseline_are_one,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's statements inside its reference list stay inside it": (
+        _the_statements_stay_inside_the_reference_list,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's statement takes the list's entry its paragraph goes on with": (
+        _a_statement_takes_the_entry_its_paragraph_goes_on_with,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's numbered entry of a journal's own style is no entry": (
+        _a_numbered_entry_is_no_entry,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's heading in small capitals is two words": (
+        _small_capitals_are_two_words,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's open paragraph goes on into a block set smaller": (
+        _an_open_paragraph_goes_on_into_smaller_type,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's superscript citation is left a bare number": (
+        _a_superscript_is_left_bare,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a rebuilt PDF's displays are not read as displays": (
+        _a_rebuilt_pdf_s_displays_are_not_read,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
     ),
     "a run-in Keywords: in a PDF's Abstract is no heading": (
         _a_pdf_s_keywords_make_no_heading,

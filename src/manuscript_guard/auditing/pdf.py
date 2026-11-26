@@ -14,7 +14,10 @@ dependency of the tool, and a PDF read some other way would not be read as descr
 What is kept is the text, a line of the PDF to a line, and where each line stands: its page,
 its line counted down that page's text as read (the running head and the page's number left
 out), and the number the PDF prints beside it, where it prints one. Every place the audit
-and `compare` give in a PDF is that page and line.
+and `compare` give in a PDF is that page and line. For G6 and G14 of `audit` alone, the
+lines are rebuilt into paragraphs from where poppler sets each word (`read_paragraphs`,
+`auditing.pdf_layout`), and their findings' lines are counted down the page in reading
+order, left column first.
 
 A PDF marks no heading. A line is read as one only where it holds a section's name and
 nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"), from the closed list
@@ -149,6 +152,15 @@ class PdfText:
     #: The lines, from 1, of the headings that are a run-in label, the Abstract's or the
     #: keywords', the rest of the line its first text (`headings_of`).
     run_in: frozenset[int] = frozenset()
+    #: For lines rebuilt into paragraphs (`auditing.pdf_layout`, `read_paragraphs`), each in
+    #: the order G6 and G14 read them: the paragraph each line is of; the display it is of, an
+    #: index into `displays`, or None in the text; each display's kind, "figure" or "table";
+    #: and each line with its superscript citations bracketed, "shown[2-4]", which G6 reads.
+    #: Empty for the lines as `pdftotext` reads them (`read_pdf`).
+    paragraphs: tuple[int, ...] = ()
+    of_display: tuple[int | None, ...] = ()
+    displays: tuple[str, ...] = ()
+    cited: tuple[str, ...] = ()
 
     def place(self, line: int | None) -> Place | None:
         """Where line `line` of the text stands, None for no line or one not in it."""
@@ -233,8 +245,10 @@ class PdfText:
         pages = f"{self.pages} page{'s' if self.pages != 1 else ''}"
         numbers = (" and, where the PDF prints a line's number, that number" if self.numbered
                    else "")  # fmt: skip
+        order = (" in reading order, left column first" if self.paragraphs
+                 else " as read")  # fmt: skip
         return (f"{self.path.name}: read by {self.reader}, {pages}; each place is a page and a "
-                "line counted down that page's text as read, its running head and page number "
+                f"line counted down that page's text{order}, its running head and page number "
                 f"left out{numbers}")
 
 
@@ -615,6 +629,133 @@ def _text_of(path: Path, kept, raw: str) -> PdfText:
                    kept.furniture, kept.numbered, running, run_in)  # fmt: skip
 
 
+_REBUILT: dict[tuple[str, str, str], PdfText | Exception] = {}
+
+
+def read_paragraphs(path: Path) -> PdfText:
+    """`path`'s lines rebuilt into paragraphs from where poppler sets each word
+    (`auditing.pdf_layout`), in the order G6 and G14 read them, each placed by its page and
+    its line counted down the page in reading order, left column first. Raises
+    `pdf_layout.NotRebuilt` where they are not, Xpdf's pdftotext being the one found among
+    the reasons, and `UnreadablePdf` where the file cannot be read. Read once while the
+    file and the program are unchanged, as `read_pdf` reads."""
+    from manuscript_guard.auditing import pdf_layout
+
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise UnreadablePdf(f"{path.name} cannot be read: {exc.strerror or exc}") from None
+    key = (str(path.resolve()), digest, pdf_layout.program() or "")
+    if key not in _REBUILT:
+        while len(_REBUILT) >= _KEPT:
+            del _REBUILT[next(iter(_REBUILT))]
+        try:
+            _REBUILT[key] = _of_layout(path, *pdf_layout.read_layout(path))
+        except pdf_layout.NotRebuilt as exc:
+            _REBUILT[key] = exc
+    found = _REBUILT[key]
+    if isinstance(found, Exception):
+        raise found
+    return found
+
+
+def _of_layout(path: Path, layout, name: str) -> PdfText:
+    """The `PdfText` of lines rebuilt (`pdf_layout.Layout`), its headings read on them as on
+    the lines `pdftotext` reads (`headings_of`), the reference list's parts made one
+    (`_references_together`)."""
+    rows = _references_together(layout.rows)
+    texts = [row.text for row in rows]
+    headings, run_in = headings_of(texts)
+    places = tuple(Place(row.page, row.line, row.printed) for row in rows)
+    return PdfText(path, f"{name}, each word where it is set (-bbox-layout), the lines "
+                   "rebuilt into paragraphs", layout.pages, "\n".join(texts), places, headings,
+                   layout.furniture, any(row.printed is not None for row in rows),
+                   layout.running, run_in, paragraphs=tuple(row.paragraph for row in rows),
+                   of_display=tuple(row.display for row in rows), displays=layout.displays,
+                   cited=tuple(row.cited for row in rows))  # fmt: skip
+
+
+#: The title of the supplementary material's statement, which a journal sets among the
+#: statements of its back matter: "Supplementary material", "Supplementary data".
+_SUPPLEMENTARY_STATEMENT = re.compile(
+    r"supplementary\s+(?:material|materials|data|information)\W*$", re.IGNORECASE)
+
+
+def _references_together(rows: tuple) -> tuple:
+    """The rows with each statement of the back matter that the reference list's entries
+    stand on both sides of read before the list: a journal (Frontiers) that opens the list
+    at the foot of the left column and sets the statements at the head of the right, the
+    list going on under them. Each such statement, its heading (`heading_title`,
+    `names_statement`, "Supplementary material") and every line under it up to the next
+    heading or the list's next entry (`_opens_entry`), is put before the list's heading, so
+    that the list is one section under its heading; a statement that ends with no stop, "at:
+    https://...", leaves its paragraph open, and the entry that goes on with it stays with
+    the list. Where no heading names the reference list, the rows as they are, and so a
+    statement with the list's entries on one side of it alone, which stands after the list
+    or before it (round 2 of the review of #802)."""
+    from manuscript_guard.text.sections import Section
+
+    titles = [heading_title(row.text) for row in rows]
+    lists = [at for at, title in enumerate(titles)
+             if title is not None and Section(title, 1, "", 0).is_references]  # fmt: skip
+    if not lists:
+        return rows
+    first = lists[0]
+    stated = [at for at in range(first + 1, len(rows)) if titles[at] is not None and (
+        names_statement(titles[at]) or _SUPPLEMENTARY_STATEMENT.match(titles[at]))]
+    if not stated:
+        return rows
+    entries = [at > first and titles[at] is None and _opens_entry(rows, at)
+               for at in range(len(rows))]  # fmt: skip
+    moved = []
+    start = stated[0]
+    while start < len(rows):
+        if start not in stated:
+            start += 1
+            continue
+        end = start + 1
+        while end < len(rows) and titles[end] is None and not entries[end]:
+            end += 1
+        if any(entries[first:start]) and any(entries[end:]):
+            moved.append((start, end))
+        start = end
+    if not moved:
+        return rows
+    statements = [at for start, end in moved for at in range(start, end)]
+    taken = set(statements)
+    order = [*range(first), *statements, *(at for at in range(first, len(rows))
+                                         if at not in taken)]  # fmt: skip
+    return tuple(rows[at] for at in order)
+
+
+#: The most lines of one paragraph an entry of a reference list is read over, from its
+#: first (`_opens_entry`).
+ENTRY_LINES = 6
+#: A line of the reference list that opens on an entry's number and a capital, "5. Olveda
+#: RM", "[12] Smith J": an entry, whatever style follows, "J Infect Dis (1996) 174(1):163"
+#: (Frontiers) among them.
+_NUMBERED_ENTRY = re.compile(r"\s*(?:\[\d{1,3}\]|\d{1,3}\.)\s+[A-Z]")
+
+
+def _opens_entry(rows: tuple, at: int) -> bool:
+    """Whether the row at `at`, a line of a reference list, opens an entry of it: on an
+    entry's number and a capital (`_NUMBERED_ENTRY`), or as the audit reads an entry
+    (`audit.looks_like_reference`), alone or with the rows after it of its paragraph, up to
+    `ENTRY_LINES` in all, which a numbered entry needs to reach its volume and pages."""
+    from manuscript_guard.audit import looks_like_reference
+
+    said = rows[at].text
+    if _NUMBERED_ENTRY.match(said) or looks_like_reference(said):
+        return True
+    for after in range(at + 1, min(at + ENTRY_LINES, len(rows))):
+        if rows[after].paragraph != rows[at].paragraph:
+            return False
+        said += " " + rows[after].text
+        if looks_like_reference(said):
+            return True
+    return False
+
+
 #: Where the name `author` gives was read.
 AUTHOR_FIELD = "the PDF's author (the Author of its Info dictionary, read by pdfinfo)"
 
@@ -659,6 +800,7 @@ __all__ = [
     "heading_title",
     "headings_of",
     "is_pdf",
+    "read_paragraphs",
     "read_pdf",
     "study_title",
 ]

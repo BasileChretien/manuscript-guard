@@ -1,0 +1,20 @@
+schema: manuscript-guard/journal/1
+
+# INVENTED FOR web/test/check.py: a journal whose review is double-blind, so that the page
+# asks for the authors to look for. There is no such journal.
+
+name: "Blind Letters in Examples"
+publisher: "Society of Invented Examples"
+source_url: "https://example.invalid/blind-letters/instructions"
+retrieved_on: 2026-11-25
+retrieved_by: "invented for the hosted audit page's test"
+blinding: double
+
+limits:
+  main_text_words: 1500
+  figures: 2
+
+required_statements:
+  - id: competing-interests
+    pattern: '(?im)^#+\s*(competing|conflicts? of) interests?'
+    why: "Every author declares their competing interests."

@@ -46,6 +46,7 @@ from manuscript_guard.contracts import (
     load_project,
     read_text,
 )
+from manuscript_guard.emit import digests_once
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_ai_use,
@@ -188,121 +189,126 @@ def _gate_run(
     A manuscript file that cannot be read, one saved in a code page for instance, stops each
     gate that reads the manuscript, and only those. It is one finding for each such file,
     which names the gates that did not run; the others report as usual.
+
+    Each file whose digest a gate takes is read once in the run, however many records name
+    it (`digests_once`).
     """
-    project, contract_report = load_project(start)
-    namespace, results, literature, load_report = load_namespace(project)
+    with digests_once():
+        project, contract_report = load_project(start)
+        namespace, results, literature, load_report = load_namespace(project)
 
-    chosen = resolve_stage(project, stage, submission)
-    at_submission = chosen == SUBMISSION
+        chosen = resolve_stage(project, stage, submission)
+        at_submission = chosen == SUBMISSION
 
-    unreadable = _unreadable_sources(project)
-    stopped: list[str] = []
-    gate_reports: list[Report] = []
-    latex = manuscript_format(project.path("manuscript")) == LATEX
-    unread: list[str] = []
-    for name, gate in (
-        ("G11", lambda: check_review(project, submission=at_submission)),
-        ("G1", lambda: check_freshness(project, results)),
-        ("G2", lambda: check_numbers(project, namespace, results, literature)),
-        ("G2", lambda: check_bound_units(project, results)),
-        ("G2", lambda: check_bound_comparisons(project, results)),
-        ("G3", lambda: check_figures(project, results)),
-        ("G3", lambda: check_figure_alt(project, namespace, chosen)),
-        ("G3", lambda: check_figure_colours(project)),
-        ("G3", lambda: check_placed(project)),
-        ("G10", lambda: check_figure_reviews(project, content_digest)),
-        ("G7", lambda: check_citations(project, literature)),
-        ("G7", lambda: check_literature_chain(project, literature)),
-        ("G7", lambda: check_prose_quotations(project)),
-        ("G7", lambda: check_passages(project, chosen)),
-        ("G7", lambda: check_currency(project, chosen, literature)),
-        ("G7", lambda: check_weak_sources(project)),
-        ("G7", lambda: check_recycling(project, chosen)),
-        # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
-        ("G7", lambda: check_rrids(project)),
-        ("G4", lambda: check_journal(project)),
-        ("G4", lambda: check_boxes(project, namespace, chosen)),
-        # The pack's main document in a format the journal takes, as the last pack's manifest
-        # records it, or as `submit` will pack it.
-        ("G4", lambda: check_main_document(project, chosen)),
-        ("G4", lambda: check_shortlist(project)),
-        ("G4", lambda: check_package_doi(project, submission=at_submission)),
-        # It reads paper.yaml and the receipts, and none of the manuscript.
-        ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
-        ("G4", lambda: check_statement_sources(project)),
-        # Its own, since the note for a paper whose journal asks for no statement runs with
-        # no journal chosen.
-        ("G4", lambda: check_ai_use(project, chosen)),
-        # Its own too: the declarations are held to authors.yaml whether or not a journal is
-        # chosen, and a journal that asks for them has G4's required statements as well.
-        ("G4", lambda: check_disclosures(project, chosen)),
-        ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
-        ("G6", lambda: check_writing(project, results, submission=at_submission)),
-        ("G9", lambda: check_methods(project, namespace, results)),
-        ("G12", lambda: check_design(project, results, chosen).merge(
-            check_design_rounds(project, submission=at_submission))),
-        # A check of its own, since it reads the manuscript: one that cannot be read stops
-        # it and not the plan's.
-        ("G12", lambda: check_registration(project, results, chosen)),
-        # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
-        ("G12", lambda: check_controls(project, results, chosen)),
-        ("G12", lambda: check_held_out(project, results, chosen)),
-        ("G12", lambda: check_data_sources(project, chosen)),
-        ("G12", lambda: check_declared_datasets(project, results)),
-        ("G12", lambda: check_software(project, results, chosen)),
-        # Its own, since it reads the manuscript: one that cannot be read stops it and not
-        # the check of the plan against the scripts.
-        ("G12", lambda: check_software_cited(project, results)),
-        ("G7", lambda: check_method_passages(project)),
-        ("G12", lambda: check_methods_review(project)),
-        ("G8", lambda: check_consistency(results)),
-        ("G2", lambda: check_small_cells(project, results)),
-        ("G2", lambda: check_recoverable(project, results)),
-        ("G1", lambda: check_restricted_inputs(project, results)),
-        ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
-        ("G1", lambda: check_held_out_reads(project, results, chosen)),
-        ("G1", lambda: check_vault_results(project, results, chosen)),
-        ("G1", lambda: check_datasets(project, results)),
-        ("G1", lambda: check_values(project, namespace, results)),
-        ("G8", lambda: check_reported(project, results)),
-        ("G8", lambda: check_interpretation(project)),
-        # A trial's baseline table with P values, emitted or typed (CONSORT).
-        ("G8", lambda: check_baseline(project, results)),
-        ("G8", lambda: check_relations(results)),
-        ("G8", lambda: check_recomputed(project, namespace, results)),
-        ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
-        ("G13", lambda: check_revision(project, submission=at_submission)),
-        ("G14", lambda: check_language(project, chosen, results)),
-        ("G15", lambda: check_models(project, results)),
-        ("G15", lambda: check_summaries(project, results)),
-        ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
-        ("G16", lambda: check_quality_reported(
-            project, results, chosen, submission=at_submission)),
-        ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
-        ("BUILD", lambda: check_latex(project)),
-    ):
-        if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
-            # The Markdown build's own checks: a LaTeX manuscript's build is checked by
-            # `check_latex` and its compile (step 13).
-            continue
-        if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
-            # A check that reads only Markdown would read nothing here and pass: it is not
-            # run, and its gate says so once.
-            if name not in unread:
-                unread.append(name)
-            continue
-        report = _guarded(name, gate, unreadable)
-        if report is None:
-            # A gate run as several checks stopped once, and is named once.
-            if name not in stopped:
-                stopped.append(name)
-        else:
-            gate_reports.append(report)
+        unreadable = _unreadable_sources(project)
+        stopped: list[str] = []
+        gate_reports: list[Report] = []
+        latex = manuscript_format(project.path("manuscript")) == LATEX
+        unread: list[str] = []
+        for name, gate in (
+            ("G11", lambda: check_review(project, submission=at_submission)),
+            ("G1", lambda: check_freshness(project, results)),
+            ("G2", lambda: check_numbers(project, namespace, results, literature)),
+            ("G2", lambda: check_bound_units(project, results)),
+            ("G2", lambda: check_bound_comparisons(project, results)),
+            ("G3", lambda: check_figures(project, results)),
+            ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+            ("G3", lambda: check_figure_colours(project)),
+            ("G3", lambda: check_placed(project)),
+            ("G10", lambda: check_figure_reviews(project, content_digest)),
+            ("G7", lambda: check_citations(project, literature)),
+            ("G7", lambda: check_literature_chain(project, literature)),
+            ("G7", lambda: check_prose_quotations(project)),
+            ("G7", lambda: check_passages(project, chosen)),
+            ("G7", lambda: check_currency(project, chosen, literature)),
+            ("G7", lambda: check_weak_sources(project)),
+            ("G7", lambda: check_recycling(project, chosen)),
+            # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
+            ("G7", lambda: check_rrids(project)),
+            ("G4", lambda: check_journal(project)),
+            ("G4", lambda: check_boxes(project, namespace, chosen)),
+            # The pack's main document in a format the journal takes, as the last pack's manifest
+            # records it, or as `submit` will pack it.
+            ("G4", lambda: check_main_document(project, chosen)),
+            ("G4", lambda: check_shortlist(project)),
+            ("G4", lambda: check_package_doi(project, submission=at_submission)),
+            # It reads paper.yaml and the receipts, and none of the manuscript.
+            ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
+            ("G4", lambda: check_statement_sources(project)),
+            # Its own, since the note for a paper whose journal asks for no statement runs with
+            # no journal chosen.
+            ("G4", lambda: check_ai_use(project, chosen)),
+            # Its own too: the declarations are held to authors.yaml whether or not a journal is
+            # chosen, and a journal that asks for them has G4's required statements as well.
+            ("G4", lambda: check_disclosures(project, chosen)),
+            ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
+            ("G6", lambda: check_writing(project, results, submission=at_submission)),
+            ("G9", lambda: check_methods(project, namespace, results)),
+            ("G12", lambda: check_design(project, results, chosen).merge(
+                check_design_rounds(project, submission=at_submission))),
+            # A check of its own, since it reads the manuscript: one that cannot be read stops
+            # it and not the plan's.
+            ("G12", lambda: check_registration(project, results, chosen)),
+            # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
+            ("G12", lambda: check_controls(project, results, chosen)),
+            ("G12", lambda: check_held_out(project, results, chosen)),
+            ("G12", lambda: check_data_sources(project, chosen)),
+            ("G12", lambda: check_declared_datasets(project, results)),
+            ("G12", lambda: check_software(project, results, chosen)),
+            # Its own, since it reads the manuscript: one that cannot be read stops it and not
+            # the check of the plan against the scripts.
+            ("G12", lambda: check_software_cited(project, results)),
+            ("G7", lambda: check_method_passages(project)),
+            ("G12", lambda: check_methods_review(project)),
+            ("G8", lambda: check_consistency(results)),
+            ("G2", lambda: check_small_cells(project, results)),
+            ("G2", lambda: check_recoverable(project, results)),
+            ("G1", lambda: check_restricted_inputs(project, results)),
+            ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+            ("G1", lambda: check_held_out_reads(project, results, chosen)),
+            ("G1", lambda: check_vault_results(project, results, chosen)),
+            ("G1", lambda: check_datasets(project, results)),
+            ("G1", lambda: check_values(project, namespace, results)),
+            ("G8", lambda: check_reported(project, results)),
+            ("G8", lambda: check_interpretation(project)),
+            # A trial's baseline table with P values, emitted or typed (CONSORT).
+            ("G8", lambda: check_baseline(project, results)),
+            ("G8", lambda: check_relations(results)),
+            ("G8", lambda: check_recomputed(project, namespace, results)),
+            ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
+            ("G13", lambda: check_revision(project, submission=at_submission)),
+            ("G14", lambda: check_language(project, chosen, results)),
+            ("G15", lambda: check_models(project, results)),
+            ("G15", lambda: check_summaries(project, results)),
+            ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
+            ("G16", lambda: check_quality_reported(
+                project, results, chosen, submission=at_submission)),
+            ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
+            ("BUILD", lambda: check_latex(project)),
+        ):
+            if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
+                # The Markdown build's own checks: a LaTeX manuscript's build is checked by
+                # `check_latex` and its compile (step 13).
+                continue
+            if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
+                # A check that reads only Markdown would read nothing here and pass: it is not
+                # run, and its gate says so once.
+                if name not in unread:
+                    unread.append(name)
+                continue
+            report = _guarded(name, gate, unreadable)
+            if report is None:
+                # A gate run as several checks stopped once, and is named once.
+                if name not in stopped:
+                    stopped.append(name)
+            else:
+                gate_reports.append(report)
 
-    reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
-    reports += [check_format(project), Report(tuple(not_read_in_latex(name) for name in unread))]
-    report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
-    return report, project, chosen, deferred, namespace
+        reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
+        reports += [check_format(project),
+                    Report(tuple(not_read_in_latex(name) for name in unread))]
+        report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
+        return report, project, chosen, deferred, namespace
 
 
 #: The checks that read the manuscript only as Markdown, by the name each entry of

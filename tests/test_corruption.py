@@ -39680,6 +39680,27 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
+    project: Path,
+) -> None:
+    """The first design DESIGN.md's "One set of plan questions" adds: a cross-sectional study
+    took `other` until then, and its plan was asked for the seven sections alone, so a survey
+    whose plan said nothing of how it sampled, measured or met non-response passed. Each
+    section is asked for with the STROBE item it comes from in its hint."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="cross-sectional")
+    asked = _plan_asked(project)
+    assert {"sampling", "measurement", "bias"} <= set(asked), asked
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert hints["the plan says nothing about sampling"].endswith(
+        "(STROBE, items 6a and 12d (cross-sectional))")
+    assert hints["the plan says nothing about bias"].endswith("(STROBE, item 9 (cross-sectional))")
+    # Its sample size is the example's own section, which every design that asks for one finds.
+    assert "sample size" not in asked
+
+
 def test_a_design_none_of_the_table_s_is_still_asked_for_the_seven(project: Path) -> None:
     """`study_type: other` settles the choice of design and asks for nothing of its own: a
     plan that lacks one of the seven sections is still told, as one that names no design."""
@@ -39798,19 +39819,21 @@ def test_a_design_s_section_is_found_by_a_word_of_any_heading(project: Path) -> 
     assert "comparator" in _plan_asked(project)
 
 
-def test_seven_designs_are_named_and_another_is_other(project: Path) -> None:
+def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
-    their headings"): seven designs are named, and a design outside them, a cross-sectional
-    study, is no `study_type` of its own; `other` keeps the seven sections."""
+    their headings"): the table's designs are named, and a design outside them, a
+    qualitative study, is no `study_type` of its own; `other` keeps the seven sections. A
+    cross-sectional study was the example until it became the table's eighth design (DESIGN.md,
+    "One set of plan questions", its first new design)."""
     from manuscript_guard.gates.design import REQUIRED, required_for, study_types
 
     assert sorted(study_types()) == sorted([
-        "trial", "cohort", "case-control", "self-controlled", "disproportionality",
-        "systematic-review", "prediction-model"])  # fmt: skip
+        "trial", "cohort", "case-control", "cross-sectional", "self-controlled",
+        "disproportionality", "systematic-review", "prediction-model"])  # fmt: skip
     assert required_for("other") == REQUIRED
-    _paper_has(project, study_type="cross-sectional")
+    _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)
-    assert any("study_type" in f.message and "cross-sectional" in f.message
+    assert any("study_type" in f.message and "qualitative" in f.message
                for f in report.failures), report.render()  # fmt: skip
 
 

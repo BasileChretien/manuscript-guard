@@ -35,7 +35,8 @@ manuscript-guard compare paper-v1.docx paper-v2.docx --response letter.docx
 The first is the editor's: the paper held to the journal's profile, which the editor keeps.
 The second also looks for the authors' names where the journal reviews blind. The third is
 a referee's: everything else this skill describes, and the registries asked about each
-reference, which sends their DOIs and PMIDs and nothing of the text. The fourth sets a
+reference, which sends their DOIs and PMIDs, and the title, first author and year of each
+that gives neither, but no sentence of the paper. The fourth sets a
 revision beside the version before it, with the authors' letter. The hook asks the
 person before an agent runs `audit` with `--journal`, `--authors`, `--design` or
 `--cited`, or `compare`; that question is theirs to answer, not yours. The project's

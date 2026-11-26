@@ -549,10 +549,120 @@ def test_a_docx_with_six_tables_is_over_a_limit_of_three(tmp_path: Path, capsys)
     paper_md(tmp_path, PAPER + tables(6))
     subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=tmp_path, check=True,
                    timeout=120)  # fmt: skip
-    _code, report, _err = audited(capsys, str(tmp_path / "paper.docx"), "--journal",
-                                  str(profile(tmp_path, limits="tables: 3")))  # fmt: skip
-    over = {f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"}
-    assert over == {"tables: 6, limit 3"}, over
+    over, unchecked = _over_and_unchecked(capsys, tmp_path / "paper.docx",
+                                          profile(tmp_path, limits="tables: 3"))  # fmt: skip
+    assert (over, unchecked) == (["tables: 6, limit 3"], [])
+
+
+def _converted_as(monkeypatch, tmp_path: Path, markdown: str) -> Path:
+    """A .docx that pandoc converts to `markdown` with its lines ended "\\r\\n", as the
+    pandoc on Windows writes them, whatever the system the test runs on."""
+    from manuscript_guard import from_word
+
+    tree = {"pandoc-api-version": [1, 23, 1], "meta": {}, "blocks": [
+        {"t": "Header", "c": [1, ["introduction", [], []], [{"t": "Str", "c": "Introduction"}]]},
+        {"t": "Para", "c": [{"t": "Str", "c": "Text."}]}]}  # fmt: skip
+    windows = markdown.replace("\n", "\r\n")
+
+    def runner(arguments, given, path):
+        return json.dumps(tree) if arguments[arguments.index("-t") + 1] == "json" else windows
+
+    monkeypatch.setattr(from_word, "runner", runner)
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        archive.writestr("word/document.xml", f"<?xml version='1.0'?><w:document xmlns:w='{W}'>"
+                         "<w:body><w:p><w:r><w:t>Text.</w:t></w:r></w:p></w:body></w:document>")
+    return paper
+
+
+def test_a_docx_converted_with_windows_line_ends_has_its_tables_counted(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pandoc on Windows ends its Markdown's lines "\\r\\n", and the audit kept them: no table
+    was read in that text, so `--journal` said a table's rule was not read and not all were
+    counted, where Linux and the page said nothing (2026-11-25, while building #791). A table
+    indented in a list item is still said to be one that was not counted."""
+    journal = profile(tmp_path, limits="tables: 1")
+    paper = _converted_as(monkeypatch, tmp_path, PAPER + tables(2))
+    assert _over_and_unchecked(capsys, paper, journal) == (["tables: 2, limit 1"], [])
+    listed = "\n1.  The groups:\n\n    | Group | n |\n    |---|---|\n    | A | 1 |\n"
+    paper = _converted_as(monkeypatch, tmp_path, PAPER + tables(1) + listed)
+    _over, unchecked = _over_and_unchecked(capsys, paper, journal)
+    assert len(unchecked) == 1 and "indented" in unchecked[0], unchecked
+
+
+def _paths_in(node: object) -> list[str]:
+    """Every value of a "path" key in a report's `--json`, at any depth."""
+    if isinstance(node, list):
+        return [path for item in node for path in _paths_in(item)]
+    if not isinstance(node, dict):
+        return []
+    here = [node["path"]] if isinstance(node.get("path"), str) else []
+    return here + [path for value in node.values() for path in _paths_in(value)]
+
+
+def test_audit_names_a_file_with_forward_slashes(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows the report said `G4 journals\\examples.yaml` and `--json` gave
+    `"path": "project\\\\main.tex"`, where Linux and the page say `journals/examples.yaml` and
+    `project/main.tex`, so the page's report could not be the command line's there (found
+    building #791). An audit writes a path with forward slashes on every system (Basile,
+    2026-11-25)."""
+    (tmp_path / "project" / "sections").mkdir(parents=True)
+    (tmp_path / "project" / "main.tex").write_text(
+        f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Introduction}}\n"
+        f"The ROR was 2.5 in the study.\n{BS}input{{sections/results}}\n{BS}end{{document}}\n",
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "project" / "sections" / "results.tex").write_text(
+        f"{BS}section{{Results}}\nOf 40 patients, 12 had dark urine. The HR was 1.2.\n",
+        encoding="utf-8")  # fmt: skip
+    (tmp_path / "journals").mkdir()
+    profile(tmp_path).replace(tmp_path / "journals" / "examples.yaml")
+    monkeypatch.chdir(tmp_path)
+    given = ["project/main.tex", "--journal", "journals/examples.yaml"]
+    main(["audit", *given])
+    assert " G4 journals/examples.yaml\n" in capsys.readouterr().out
+    _code, report, _err = audited(capsys, *given)
+    paths = _paths_in(report["findings"])
+    assert {"project/main.tex", "project/sections/results.tex",
+            "journals/examples.yaml"} <= set(paths), paths  # fmt: skip
+    assert not [path for path in paths if BS in path], paths
+
+
+def test_a_path_the_platform_writes_with_backslashes_is_written_with_forward_ones() -> None:
+    """What `test_audit_names_a_file_with_forward_slashes` holds on Windows, held on every
+    system: each place the report and `--json` name a file, given Windows' paths."""
+    from dataclasses import replace
+    from pathlib import PureWindowsPath
+
+    from manuscript_guard.auditing import unsorted
+    from manuscript_guard.auditing.report import REFERENCES, Item, _rendered, _Show
+    from manuscript_guard.auditing.undefined import Undefined, listed
+    from manuscript_guard.findings import INFO, Finding
+
+    class Placed:
+        def said(self, line: int | None) -> str:
+            return f"Methods, paragraph {line}"
+
+    root = PureWindowsPath("C:\\work")
+    inner = PureWindowsPath("project\\sections\\results.tex")
+    item = Item(REFERENCES, "G7", unsorted.CODE, "entry 3: not sorted: why: check it by hand",
+                INFO, False, inner, 2)  # fmt: skip
+    assert item.as_dict()["path"] == "project/sections/results.tex"
+    assert _Show(root)(root / inner) == "project/sections/results.tex"
+    journal = Finding("G4", "over-journal-limit", "m", path=PureWindowsPath("journals\\x.yaml"))
+    under = Finding("G4", "over-journal-limit", "m", path=root / inner, line=2)
+    word = Finding("G4", "over-journal-limit", "m", path=root / "paper.docx", line=3)
+    # With no paper's places, and with a .docx's beside them (`_rendered`'s two ways).
+    for found, show in (([journal, under], _Show(root)),
+                        ([journal, under, word], _Show(root, {root / "paper.docx": Placed()}))):
+        said = _rendered(found, root, show)
+        assert " G4 journals/x.yaml\n" in said and " G4 project/sections/results.tex:2\n" in said
+    forms = listed(Undefined("G14", "abbreviation-undefined", "m", forms=(("HR", under),)))
+    assert forms["forms"][0]["path"] == "C:/work/project/sections/results.tex"
+    entries = unsorted.one_finding([item, replace(item, line=4)])[0].listed["entries"]
+    assert [entry["path"] for entry in entries] == ["project/sections/results.tex"] * 2
 
 
 def test_a_latex_paper_s_table_floats_are_held_to_the_limit(tmp_path: Path, capsys) -> None:

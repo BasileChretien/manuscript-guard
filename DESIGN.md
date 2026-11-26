@@ -29146,10 +29146,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A display is found only by the label its legend opens on, "Figure 2.", "Fig. 2",
     "Table 1:", at the start of its block. A legend without one, a table without a legend,
     and a figure's words with no legend under them are read as the text's. Accepted.
-  - A label with a capital or a bracket after it and no stop, "Fig. 2 Three classes",
-    opens a legend only where its block is set smaller than the text; a paragraph of the
-    text that opens so, "Figure 2 (A) shows", is the text's, and so is a legend set at the
-    text's size that opens so.
+  - A label with no stop after it opens a legend where the title after it opens on a
+    capital and another letter, a bracket or panels' letters before it or not, "Fig. 2 Three
+    classes", "Fig. 3 (a) Schematic", or where its block is set smaller than the text; a
+    paragraph of the text that goes on in lower case, "Figure 2 (A) shows", "Table 1 (n =
+    300) gives", is the text's, and so is a legend set at the text's size whose title opens
+    on a lower-case word or a number.
     Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`.
   - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
     reference list are read as prose, as before (answer 9). Accepted.

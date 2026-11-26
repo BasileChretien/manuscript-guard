@@ -114,13 +114,18 @@ MARGIN_RUN = 3
 WORDY = 3
 
 #: A display's label at the start of a legend's first line: with a stop, a colon or a bar
-#: after it, or alone (`TIGHT`), or with a capital or a bracket after it, "Fig. 2 Three
-#: classes", which a legend set smaller than the text opens on and a paragraph of the
-#: text, "Figure 2 (A) shows", does too (`_labelled`).
+#: after it, or alone (`TIGHT`); or with a title after it that opens on a word of a capital
+#: and another letter, a bracket or panels' letters before it or not, "Fig. 2 Three
+#: classes", "Fig. 3 (a) Schematic" (`TITLED`), where a paragraph of the text goes on in
+#: lower case, "Figure 2 (A) shows", "Table 1 (n = 300) gives", "Figure 1 A and B show"
+#: (`_labelled`).
 _LABEL = (r"^(?:Supplementary\s+|Suppl\.?\s+|Extended\s+Data\s+)?"
           r"(?:Figure|Fig\.?|FIGURE|FIG\.?|Table|TABLE|Scheme|Box|Chart)\s*S?\d+[A-Za-z]?")
 LABEL = re.compile(_LABEL + r"(?:\s*[.:|]|\s+[A-Z(]|\s*$)")
 TIGHT = re.compile(_LABEL + r"(?:\s*[.:|]|\s*$)")
+TITLED = re.compile(_LABEL + r"(?:\s*\([^)]{0,40}\))?"
+                    r"(?:\s+[A-Z](?:\s*(?:,|and|&|-|\N{EN DASH})\s*[A-Z])*(?=\s))?"
+                    r"\s+[A-Z][A-Za-z0-9]")
 #: A label that is a figure's, whose own words above it are its.
 FIGURE = re.compile(r"^(?:Supplementary\s+)?(?:Figure|Fig|FIGURE|FIG|Scheme|Chart)\b")
 #: A number alone, as a margin numbers a line.
@@ -594,11 +599,13 @@ def _usual_width(pages: list[Page]) -> float:
 
 def _labelled(block: Block, height: float) -> bool:
     """Whether a block opens on a display's label: one with a stop, a colon or a bar after
-    it, or alone (`TIGHT`); one with a capital or a bracket after it only where the block is
-    set smaller than the text's lines (`height`), as a legend is and a paragraph of the
-    text that opens "Figure 2 (A) shows" is not."""
+    it, or alone (`TIGHT`); one whose title opens on a capital (`TITLED`); or one with a
+    capital or a bracket after it where the block is set smaller than the text's lines
+    (`height`), as a legend is and a paragraph of the text that opens "Figure 2 (A) shows"
+    is not."""
     first = block.lines[0].text
-    return bool(TIGHT.match(first) or (LABEL.match(first) and block.height < height - SMALLER))
+    return bool(TIGHT.match(first) or TITLED.match(first)
+                or (LABEL.match(first) and block.height < height - SMALLER))
 
 
 def _kind(block: Block, height: float, width: float) -> str:

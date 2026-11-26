@@ -39789,6 +39789,54 @@ def test_a_diagnostic_accuracy_plan_is_asked_for_its_reference_standard_and_thre
 @pytest.mark.parametrize(
     ("heading", "section", "found"),
     [
+        ("## Index test", "exposure", True),
+        ("## Index tests", "exposure", True),
+        ("## Index test(s)", "exposure", True),
+        ("## Index test (CT angiography)", "exposure", True),
+        ("## 3. Index test", "exposure", True),
+        ("## 3.1. Index test", "exposure", True),
+        ("## 3 Index test", "exposure", True),
+        ("## 3) Index test", "exposure", True),
+        ("## A. Index test", "exposure", True),
+        ("## III. Index test", "exposure", True),
+        ("## The index test", "exposure", True),
+        ("## Index test:", "exposure", True),
+        ("## **Index test**", "exposure", True),
+        ("## Exposure", "exposure", True),
+        ("## Blinding of index test readers", "exposure", False),
+        ("## Indeterminate index test results", "exposure", False),
+        ("## Positivity cut-off of the index test", "exposure", False),
+        ("## Index test and comparator", "exposure", False),
+        ("## A index test", "exposure", False),
+        ("## Target condition", "outcome", True),
+        ("## Target condition(s)", "outcome", True),
+        ("## III. Target condition", "outcome", True),
+        ("## Target conditions", "outcome", True),
+        ("## Target condition (coronary disease)", "outcome", True),
+        ("## Outcome", "outcome", True),
+        ("## Reference standard for the target condition", "outcome", False),
+    ],
+)  # fmt: skip
+def test_the_index_test_and_the_target_condition_are_their_heading_whole(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """STARD heads every plan's exposure "Index test" and its outcome "Target condition",
+    and G12 reads such a heading so; but only one that is the index test or the target
+    condition, numbered, plural or with a qualifier in brackets, since a heading that names
+    one in passing heads another section, the blinding or the reference standard (rounds 1
+    and 2 of #830)."""
+    _paper_has(project, study_type="diagnostic-accuracy")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    own = {"exposure": "## Exposure", "outcome": "## Outcome"}[section]
+    assert f"{own}\n" in text
+    plan.write_text(text.replace(f"{own}\n", f"{heading}\n"), encoding="utf-8")
+    assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
         ("## Reference standard", "reference standard", True),
         ("## Gold standard", "reference standard", True),
         ("## Index test", "reference standard", False),

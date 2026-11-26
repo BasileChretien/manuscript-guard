@@ -51,7 +51,7 @@ every_plan:
     explain: >-
       A reader needs to know whom the results apply to, and who was left out and why.
   - id: exposure
-    heading: '(?i)\bexposure|intervention|predictor\b|^\W*(?:\d+(?:\.\d+)*\.?\s+)?(?:the\s+)?index tests?\W*$'
+    heading: '(?i)\bexposure|intervention|predictor\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?index tests?(?:\(s\))?(?:\s*\([^()]*\))?\W*$'
     says: what is being compared
     ask: >-
       What is being compared: which treatment, exposure or predictor, and against what?
@@ -59,7 +59,7 @@ every_plan:
       A comparison means something only when both of its sides are named: a treatment against
       no treatment, or against another one.
   - id: outcome
-    heading: '(?i)\boutcome|endpoint\b|^\W*(?:\d+(?:\.\d+)*\.?\s+)?(?:the\s+)?target conditions?\W*$'
+    heading: '(?i)\boutcome|endpoint\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?target conditions?(?:\(s\))?(?:\s*\([^()]*\))?\W*$'
     says: what is being measured
     ask: >-
       What will be measured to answer the question, and which outcome is the main one?

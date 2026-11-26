@@ -3,8 +3,8 @@
 Beyond the seven sections every plan has, a plan for a named design (`study_type` in
 `paper.yaml`) answers the questions below, one section each. G12 asks for a heading that
 names the section and something under it; whether the answers are sound is the author's and
-the panel's to judge. Each question cites the guideline item it comes from, read on its own
-page on the date its entry in `study_types.yaml` gives. Write the answer before the analysis exists, so that a change to it is a
+the panel's to judge. Each question cites the guideline item it comes from, read on its
+own page on the date its entry in `study_types.yaml` gives. Write the answer before the analysis exists, so that a change to it is a
 deviation. A study that is none of the designs below has `study_type: other`, and its plan
 the seven sections only.
 
@@ -78,7 +78,9 @@ a prevalence, an association, not which came first.
 ## diagnostic-accuracy
 
 The paper follows STARD 2015. The index test is the plan's exposure and the target
-condition its outcome, and G12 reads those headings as such.
+condition its outcome: G12 reads a heading that is "Index test" or "Target condition"
+alone, numbered, plural or with a qualifier in brackets, as such. A heading that holds
+more names the section exactly: `## Index test and comparator {#exposure}`.
 
 - **Sampling.** Where and how are potentially eligible participants identified, and are
   they a consecutive, random or convenience series? (STARD 2015, 7 to 9)

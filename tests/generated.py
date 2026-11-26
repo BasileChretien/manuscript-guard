@@ -2373,8 +2373,14 @@ def _back_matter(draw: st.DrawFn, words: st.SearchStrategy[str]) -> dict[str, An
     before = draw(st.integers(1, 3))
 
     def entry(at: int) -> list[str]:
+        """An entry author and year first, "Adam, K. (1994). Title.", before the statements;
+        numbered after them, in a journal's style no other reader knows, "5. Adam K. Title.
+        J Med (1994) 1:2-3." (pdf-biol-C4)."""
         title = (draw(words).split() or ["records"])[:3]
         year = draw(st.integers(1960, 2024))
+        if at >= before:
+            return [f"{at + 1}.", authors[at], "K.", title[0].capitalize(), *title[1:], "of",
+                    "the", "cohort.", "J", "Med", f"({year})", f"{at + 1}:2-3."]
         return [f"{authors[at]},", "K.", f"({year}).", title[0].capitalize(), *title[1:],
                 "of", "the", "cohort."]
 

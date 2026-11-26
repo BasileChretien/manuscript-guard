@@ -731,16 +731,21 @@ def _references_together(rows: tuple) -> tuple:
 #: The most lines of one paragraph an entry of a reference list is read over, from its
 #: first (`_opens_entry`).
 ENTRY_LINES = 6
+#: A line of the reference list that opens on an entry's number and a capital, "5. Olveda
+#: RM", "[12] Smith J": an entry, whatever style follows, "J Infect Dis (1996) 174(1):163"
+#: (Frontiers) among them.
+_NUMBERED_ENTRY = re.compile(r"\s*(?:\[\d{1,3}\]|\d{1,3}\.)\s+[A-Z]")
 
 
 def _opens_entry(rows: tuple, at: int) -> bool:
-    """Whether the row at `at` opens an entry of a reference list (`audit.looks_like_reference`):
-    alone, or with the rows after it of its paragraph, up to `ENTRY_LINES` in all, which a
-    numbered entry needs to reach its volume and pages."""
+    """Whether the row at `at`, a line of a reference list, opens an entry of it: on an
+    entry's number and a capital (`_NUMBERED_ENTRY`), or as the audit reads an entry
+    (`audit.looks_like_reference`), alone or with the rows after it of its paragraph, up to
+    `ENTRY_LINES` in all, which a numbered entry needs to reach its volume and pages."""
     from manuscript_guard.audit import looks_like_reference
 
     said = rows[at].text
-    if looks_like_reference(said):
+    if _NUMBERED_ENTRY.match(said) or looks_like_reference(said):
         return True
     for after in range(at + 1, min(at + ENTRY_LINES, len(rows))):
         if rows[after].paragraph != rows[at].paragraph:

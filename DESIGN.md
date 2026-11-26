@@ -29170,15 +29170,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A statement of the back matter that the reference list's entries stand on both sides of
     in reading order, as Frontiers sets them, is read before the list's heading: its heading
     and every line under it up to the next heading or the list's next entry, an entry being a
-    line, or the lines of its paragraph after it, of the shape the audit reads an entry by
+    line that opens on an entry's number and a capital, "5. Olveda RM", or a line, or the
+    lines of its paragraph after it, of the shape the audit reads an entry by
     (`audit.looks_like_reference`). A statement that ends with no stop, "online at:" and an
     address, keeps no entry the rebuild read on with it. A statement with entries on one side
     of it only, the list wholly before it or after it, is read where it stands, under its
     own heading; an entry of a shape the audit does not read, and a statement under a title
     none of the statements' names, are read as they stand, inside the list.
     Pinned by `tests/test_corruption.py::test_a_reference_list_the_statements_stand_inside_is_one_list`,
-    `tests/test_corruption.py::test_a_statement_s_every_paragraph_goes_with_it_and_only_inside_the_list`
-    and `tests/test_corruption.py::test_a_statement_inside_the_list_takes_no_entry_with_it`.
+    `tests/test_corruption.py::test_a_statement_s_every_paragraph_goes_with_it_and_only_inside_the_list`,
+    `tests/test_corruption.py::test_a_statement_inside_the_list_takes_no_entry_with_it`
+    and `tests/test_corruption.py::test_a_numbered_entry_after_a_statement_inside_the_list_stays_in_the_list`.
   - Inside a band of a page, two columns are read left then right, each block by its centre:
     a page of three columns, or a block set across one column and part of the next, is read
     in that order. Accepted.

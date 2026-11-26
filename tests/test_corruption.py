@@ -4042,6 +4042,34 @@ def test_a_legend_whose_label_a_dash_follows_is_a_legend(tmp_path: Path, label: 
     assert [f for f in run.language if f.message.split()[0] == "P1"] == [], run.language
 
 
+def test_a_numbered_entry_after_a_statement_inside_the_list_stays_in_the_list(
+    tmp_path: Path,
+) -> None:
+    """pdf-biol-C4 of the real-paper corpus, a Frontiers paper: its numbered entries, "5.
+    Olveda RM, Daniel BL. Title. J Infect Dis (1996) 174(1):163-72.", have no shape the
+    audit reads an entry by, so the "Acknowledgments" set inside the list was not moved
+    before it, and the entries after it were read as the text: "Miyaji EN" used the form
+    the text defines once and never again. A line that opens on an entry's number and a
+    capital, inside the reference list, opens an entry."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Discussion", "The endemic normal (EN) cohort was read and kept.", *[_FULL] * 4,
+            "References", "1. Adam K, Bowlby J. Suicidal behavior. J Med (1994) 1:1-2."]
+    right = ["Acknowledgments", "We thank the team of each of the sites for their work.",
+             "2. Coan J, Miyaji EN. A model of attachment. J Med (2008) 2:3-4.",
+             "3. Dozier M. Attachment in the cohort. J Med (1999) 3:5-6."]
+    pieces = (_column(left, LEFT, TOP, {7: 14.0})
+              + _column(right, RIGHT, TOP, {1: 4.0, 2: 6.0, 3: 4.0}, justified=False))
+    run, staged = _pieces_run(tmp_path, [pieces])
+    assert staged.index("We thank the team") < staged.index("# References"), staged
+    assert staged.index("# References") < staged.index("2. Coan J"), staged
+    said = [f.code for f in run.language if f.message.split()[0] == "EN"]
+    assert said == ["abbreviation-unused"], run.language
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

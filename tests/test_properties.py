@@ -3962,6 +3962,13 @@ def _a_statement_takes_the_entry_its_paragraph_goes_on_with(patch: pytest.Monkey
         at == 0 or rows[at - 1].paragraph != rows[at].paragraph))
 
 
+def _a_numbered_entry_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    """As before pdf-biol-C4: "5. Olveda RM ... J Infect Dis (1996) 174(1):163" no entry."""
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    patch.setattr(pdf_module, "_NUMBERED_ENTRY", re.compile(r"(?!)"))
+
+
 def _a_superscript_is_left_bare(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -26428,6 +26435,10 @@ BROKEN = {
     ),
     "a PDF's statement takes the list's entry its paragraph goes on with": (
         _a_statement_takes_the_entry_its_paragraph_goes_on_with,
+        test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
+    ),
+    "a PDF's numbered entry of a journal's own style is no entry": (
+        _a_numbered_entry_is_no_entry,
         test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,
     ),
     "a PDF's superscript citation is left a bare number": (

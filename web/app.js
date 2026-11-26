@@ -193,8 +193,9 @@ dropBox.addEventListener("drop", (event) => {
   }
   const [file] = event.dataTransfer.files;
   if (!file) return;
-  if (!/\.(docx|md)$/i.test(file.name)) {
-    say(`${file.name} is not a .docx or a .md file: drop or choose the paper itself.`);
+  if (!/\.(docx|md|zip|tar\.gz|tgz)$/i.test(file.name)) {
+    say(`${file.name} is not a .docx, a .md, or a LaTeX project's .zip or .tar.gz: drop or `
+      + "choose the paper itself.");
     return;
   }
   const chosen = new DataTransfer();

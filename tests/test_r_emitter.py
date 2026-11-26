@@ -2865,3 +2865,62 @@ def test_r_still_prints_what_the_author_says_where_a_logical_na_has_a_display(
     assert out.returncode == 0, out.stderr
     values = json.loads((root / "results" / "kept.json").read_text(encoding="utf-8"))["values"]
     assert values["ror.adjusted"]["display"] == "not estimable"
+
+
+# Round 1 of #812, as in tests/test_emit.py.
+
+
+def _r_with(tmp_path: Path, call: str) -> tuple[subprocess.CompletedProcess, Path]:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "round.R"
+    script.write_text(
+        NO_NUMBER_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), "call": call},
+        encoding="utf-8",
+    )
+    return _run_r(script, root), root
+
+
+def test_r_takes_an_infinity_with_a_display_its_check_accepts(tmp_path: Path) -> None:
+    out, root = _r_with(tmp_path, 'em$value("or.ci_high", Inf, display = ">100")\nem$write()')
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert values["or.ci_high"]["display"] == ">100"
+
+
+def test_r_tells_an_infinity_with_no_display_to_say_what_is_printed(tmp_path: Path) -> None:
+    out, _root = _r_with(tmp_path, 'em$value("or.ci_high", Inf, digits = 2)')
+    assert out.returncode != 0
+    assert "or.ci_high: the value is infinite" in out.stderr and ">100" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("display", ["NA", "NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None"])
+@pytest.mark.parametrize("missing", ["NA", "NA_character_"])
+def test_r_refuses_a_display_that_spells_a_missing_value_naming_the_key(
+    tmp_path: Path, missing: str, display: str
+) -> None:
+    out, _root = _r_with(tmp_path, f'em$value("ror.adjusted", {missing}, display = "{display}")')
+    assert out.returncode != 0
+    said = f"ror.adjusted: the value is NA, and its display '{display}' spells a missing value"
+    assert said in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'em$interval("ror", 1.5, NaN, 2, digits = 2)',
+        'em$interval("ror", 1.5, 1, Inf, digits = 2)',
+        'em$interval("ror", 1.5, 1.6, 2, digits = 2)',
+        'em$interval("ror", 1.5, 0.001, 2, digits = 2)',
+        'em$control("control.headache", 1.5, NaN, 2, digits = 2)',
+    ],
+)
+def test_r_leaves_no_key_behind_a_refused_interval_or_control(tmp_path: Path, call: str) -> None:
+    out, root = _r_with(
+        tmp_path,
+        f'refused <- tryCatch({{{call}; FALSE}}, error = function(e) TRUE)\n'
+        'if (!refused) stop("not refused")\n'
+        'em$interval("ror", 1.5, 1, 2, digits = 2)\nem$write()',
+    )
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert set(values) == {"ror.point", "ror.ci_low", "ror.ci_high"}

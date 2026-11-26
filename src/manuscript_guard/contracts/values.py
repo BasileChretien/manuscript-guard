@@ -29,17 +29,42 @@ class MissingValueError(DisplayError):
     """A value that is no number to print: NaN, infinite, or missing with no display."""
 
 
+#: Displays that spell a missing value rather than say what the paper prints in its place,
+#: compared without case and the white space around them; the R emitter's are the same.
+MISSING_SPELLINGS = frozenset({"na", "nan", "inf", "-inf", "null", "none"})
+INFINITE = "is infinite"
+
+
+def _absent(value: object) -> str | None:
+    """"is None" for None; "is NA" for pandas' NA and NaT and NumPy's NaT, which json cannot
+    write; None for anything else."""
+    if value is None:
+        return "is None"
+    pandas = sys.modules.get("pandas")
+    if pandas is not None and any(value is getattr(pandas, name, None) for name in ("NA", "NaT")):
+        return "is NA"
+    numpy = sys.modules.get("numpy")
+    if numpy is not None and isinstance(value, (numpy.datetime64, numpy.timedelta64)):
+        return "is NA" if bool(numpy.isnat(value)) else None
+    return None
+
+
 def missing_problem(value: object, display: str | None = None) -> str | None:
-    """What makes `value` no number to print, as a refusal says it: "is NaN", "is infinite",
-    and, where no `display` says what the paper prints in its place, "is NA" (pandas'); None
-    for a value that is one. None with no display is refused by `derive_display` as a value
-    of no type it formats, which it was before.
+    """What makes `value` no number to print, as a refusal says it; None for a value that
+    is one. The R emitter's `mg_missing_problem` is the same rule.
+
+    - "is NaN", whatever the display, since none renders it.
+    - "is infinite" with no display. With one, the display's own check decides: an unbounded
+      limit printed as a comparator (">100") was taken before, and is.
+    - "is NA" for pandas' and NumPy's missing values, whatever the display: json cannot
+      write them, as R refuses `NA_integer_` with one.
+    - None with a display that spells a missing value ("NA", "nan", "NULL"). With another,
+      it is the author saying what is printed where there is no number ("not estimable"),
+      taken before; with none, `derive_display` refuses it as a value of no type it formats.
 
     Found writing a real paper (2026-11-26): R stopped on `NaN` with `digits` in its own
     words, "missing value where TRUE/FALSE needed", in the session's language and naming no
-    key, and this emitter printed "nan". A NaN or an infinity is refused whatever the
-    display, since none renders it; None with a display is the author saying what is
-    printed where there is no number ("not estimable"), and was taken before.
+    key, and this emitter printed "nan".
     """
     if isinstance(value, numbers.Real) and not isinstance(value, numbers.Integral):
         try:
@@ -48,25 +73,34 @@ def missing_problem(value: object, display: str | None = None) -> str | None:
             return None
         if math.isnan(number):
             return "is NaN"
-        if math.isinf(number):
-            return "is infinite"
+        if math.isinf(number) and display is None:
+            return INFINITE
         return None
-    if display is not None:
+    absent = _absent(value)
+    if absent is None or display is None and absent == "is None":
         return None
-    pandas = sys.modules.get("pandas")
-    if pandas is not None and value is getattr(pandas, "NA", None):
-        return "is NA"
+    if absent == "is NA":
+        return absent
+    if str(display).strip().lower() in MISSING_SPELLINGS:
+        return f"{absent}, and its display {display!r} spells a missing value"
     return None
 
 
 def missing_refusal(key: str, problem: str) -> MissingValueError:
     """The refusal of a value that is no number to print, naming its key: the same words as
-    the R emitter's."""
-    return MissingValueError(
-        f"{key}: the value {problem}, so there is no number to print. Find out why the "
-        f"analysis computed none (a model that did not converge, a share whose denominator "
-        f"is 0) and emit the key only where there is a value"
-    )
+    the R emitter's, ending in what to do for that problem."""
+    if problem == INFINITE:
+        then = ("so there is no number to print. Say with `display` what the paper prints in "
+                'its place, a comparator such as ">100" for an unbounded limit, or emit the '
+                "key only where there is a value")  # fmt: skip
+    elif problem.endswith("spells a missing value"):
+        then = ("which is no number to print. Say with `display` what the paper prints in its "
+                'place ("not estimable"), or emit the key only where there is a value')  # fmt: skip
+    else:
+        then = ("so there is no number to print. Find out why the analysis computed none (a "
+                "model that did not converge, a share whose denominator is 0) and emit the "
+                "key only where there is a value")  # fmt: skip
+    return MissingValueError(f"{key}: the value {problem}, {then}")
 
 
 @dataclass(frozen=True)

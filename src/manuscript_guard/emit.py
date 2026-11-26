@@ -2201,29 +2201,39 @@ class Emitter:
             raise DisplayError(f"{key}: an interval needs both `low` and `high`")
 
         point_key = f"{key}.point"
-        if point is None:
+        given = point is not None
+        if not given:
             if point_key not in self._values:
                 raise DisplayError(
                     f"{key}: no `point` given and {point_key} has not been emitted. Publish "
                     f"the estimate with its first interval, then add further levels"
                 )
             point = self._values[point_key]["value"]
-        else:
-            self.value(point_key, point, digits=digits, unit=unit, quoted=quoted)
 
+        # Every part is read before any key is written, so that a refusal leaves nothing
+        # behind: the estimate was written first, and a script that caught a refused bound
+        # and called again was told "'ror.point' emitted twice" (round 1 of #812).
         stem = f"ci{_level_slug(level)}" if level else "ci"
-        # Before the bracket: a NaN brackets nothing, and the refusal said the arguments
-        # were in the wrong order.
-        for end, bound in ((low, "low"), (high, "high")):
-            problem = missing_problem(end)
+        parts = [(point_key, point)] if given else []
+        parts += [(f"{key}.{stem}_low", low), (f"{key}.{stem}_high", high)]
+        for part_key, part in parts:
+            # Before the bracket: a NaN brackets nothing, and the refusal said the
+            # arguments were in the wrong order.
+            problem = missing_problem(part)
             if problem is not None:
-                raise missing_refusal(f"{key}.{stem}_{bound}", problem)
+                raise missing_refusal(part_key, problem)
+            if part_key in self._values:
+                raise ValueError(f"{part_key!r} emitted twice by {self.script}")
         if not low <= point <= high:
             raise DisplayError(
                 f"{key}: the interval does not bracket the estimate — {low!r} to {high!r} "
                 f"around {point!r}. Check the order of the arguments"
             )
+        for part_key, part in parts:
+            derive_display(part_key, part, None, digits)
 
+        if given:
+            self.value(point_key, point, digits=digits, unit=unit, quoted=quoted)
         for end, bound in ((low, "low"), (high, "high")):
             self.value(
                 f"{key}.{stem}_{bound}", end, digits=digits, unit=unit, quoted=quoted,

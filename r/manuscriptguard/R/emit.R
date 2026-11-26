@@ -118,12 +118,21 @@ mg_check_display <- function(key, value, display) {
   invisible(NULL)
 }
 
+#' Displays that spell a missing value rather than say what the paper prints in its place,
+#' compared without case and the white space around them; Python's are the same.
+#' @noRd
+mg_missing_spellings <- c("na", "nan", "inf", "-inf", "null", "none")
+
 #' What makes a value no number to print, as a refusal says it
 #'
-#' "is NaN", "is NA" or "is infinite" for a number, whatever the display, since none renders
-#' it; "is NA" for a logical or a character NA where no `display` says what the paper prints
-#' in its place ("not estimable"), which was taken before, as Python takes None with one.
-#' NULL for a value that is one. Python's `missing_problem` is the same rule.
+#' NULL for a value that is one. Python's `missing_problem` is the same rule:
+#' - "is NaN", or "is NA" for a numeric NA, whatever the display, since none renders it;
+#' - "is infinite" with no display; with one, the display's own check decides, and an
+#'   unbounded limit printed as a comparator (">100") was taken before, and is;
+#' - "is NA" for a logical or a character NA with no display; with a display that spells a
+#'   missing value ("NA", "nan", "NULL"), that display is refused too, and with another it is
+#'   the author saying what is printed in its place ("not estimable"), taken before, as
+#'   Python takes None with one.
 #'
 #' Found writing a real paper (2026-11-26): with `digits`, a NaN stopped R with its own
 #' "missing value where TRUE/FALSE needed", in the session's language and naming no key, and
@@ -136,24 +145,38 @@ mg_missing_problem <- function(value, display = NULL) {
   if (is.numeric(value)) {
     if (is.nan(value)) return("is NaN")
     if (is.na(value)) return("is NA")
-    if (is.infinite(value)) return("is infinite")
+    if (is.infinite(value) && is.null(display)) return("is infinite")
     return(NULL)
   }
-  if (is.null(display) && (is.logical(value) || is.character(value)) && is.na(value)) {
+  if (!(is.logical(value) || is.character(value)) || !is.na(value)) {
+    return(NULL)
+  }
+  if (is.null(display)) {
     return("is NA")
+  }
+  if (tolower(trimws(as.character(display))) %in% mg_missing_spellings) {
+    return(paste0("is NA, and its display '", display, "' spells a missing value"))
   }
   NULL
 }
 
-#' Refuse a value that is no number to print, naming its key, in Python's words
+#' Refuse a value that is no number to print, naming its key, in Python's words, ending in
+#' what to do for that problem
 #' @noRd
 mg_missing_refusal <- function(key, problem) {
-  stop(
-    key, ": the value ", problem, ", so there is no number to print. Find out why the ",
-    "analysis computed none (a model that did not converge, a share whose denominator is 0) ",
-    "and emit the key only where there is a value",
-    call. = FALSE
-  )
+  then <- if (identical(problem, "is infinite")) {
+    paste0("so there is no number to print. Say with `display` what the paper prints in its ",
+           "place, a comparator such as \">100\" for an unbounded limit, or emit the key ",
+           "only where there is a value")
+  } else if (endsWith(problem, "spells a missing value")) {
+    paste0("which is no number to print. Say with `display` what the paper prints in its ",
+           "place (\"not estimable\"), or emit the key only where there is a value")
+  } else {
+    paste0("so there is no number to print. Find out why the analysis computed none (a ",
+           "model that did not converge, a share whose denominator is 0) and emit the key ",
+           "only where there is a value")
+  }
+  stop(key, ": the value ", problem, ", ", then, call. = FALSE)
 }
 
 #' Display string for a value
@@ -1761,16 +1784,26 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
           call. = FALSE
         )
       }
+      given <- FALSE
       point <- state$values[[point_key]]$value
     } else {
-      value(point_key, point, digits = digits, unit = unit, quoted = quoted)
+      given <- TRUE
     }
+    # Every part is read before any key is written, so that a refusal leaves nothing
+    # behind: the estimate was written first, and a script that caught a refused bound and
+    # called again was told it emitted the estimate twice (round 1 of #812), as in Python.
     stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
-    # Before the bracket: a NaN brackets nothing, and the comparison stopped R in its own
-    # words, naming no key.
-    for (end in list(list(low, "low"), list(high, "high"))) {
-      problem <- mg_missing_problem(end[[1]])
-      if (!is.null(problem)) mg_missing_refusal(paste0(key, ".", stem, "_", end[[2]]), problem)
+    parts <- list(list(paste0(key, ".", stem, "_low"), low),
+                  list(paste0(key, ".", stem, "_high"), high))
+    if (given) parts <- c(list(list(point_key, point)), parts)
+    for (part in parts) {
+      # Before the bracket: a NaN brackets nothing, and the comparison stopped R in its own
+      # words, naming no key.
+      problem <- mg_missing_problem(part[[2]])
+      if (!is.null(problem)) mg_missing_refusal(part[[1]], problem)
+      if (!is.null(state$values[[part[[1]]]])) {
+        stop(part[[1]], " emitted twice by ", script_path, call. = FALSE)
+      }
     }
     if (!(low <= point && point <= high)) {
       stop(
@@ -1779,6 +1812,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
         call. = FALSE
       )
     }
+    for (part in parts) mg_display(part[[1]], part[[2]], NULL, digits)
+    if (given) value(point_key, point, digits = digits, unit = unit, quoted = quoted)
     recorded <- if (is.null(level)) ci_level else level
     value(
       paste0(key, ".", stem, "_low"), low, digits = digits, unit = unit, quoted = quoted,

@@ -1692,3 +1692,73 @@ def test_pandas_na_is_refused_as_r_s_na_is(scratch: Path) -> None:
     pandas = pytest.importorskip("pandas")
     with pytest.raises(DisplayError, match="cohort.n: the value is NA"):
         emitter(scratch).value("cohort.n", pandas.NA)
+
+
+# Round 1 of #812.
+
+
+def test_an_infinity_with_a_display_its_check_accepts_is_taken_as_before(scratch: Path) -> None:
+    """An unbounded upper limit from an exact test is printed as a comparator."""
+    from manuscript_guard.contracts.values import derive_display
+
+    em = emitter(scratch)
+    em.value("or.ci_high", INF, display=">100")
+    assert em.document()["values"]["or.ci_high"]["display"] == ">100"
+    # And as `check` reads the fragment back.
+    assert derive_display("or.ci_high", INF, ">100", None) == ">100"
+
+
+def test_an_infinity_with_no_display_is_told_to_say_what_is_printed(scratch: Path) -> None:
+    with pytest.raises(DisplayError) as refused:
+        emitter(scratch).value("or.ci_high", INF, digits=2)
+    assert "the value is infinite" in str(refused.value)
+    assert "`display`" in str(refused.value) and ">100" in str(refused.value)
+
+
+@pytest.mark.parametrize("kind", ["NA", "NaT", "numpy NaT"])
+def test_a_missing_value_of_pandas_or_numpy_is_refused_whatever_its_display(
+    scratch: Path, kind: str
+) -> None:
+    """It never reaches json.dumps, which raised on pandas' NA (round 1 of #812)."""
+    pandas = pytest.importorskip("pandas")
+    numpy = pytest.importorskip("numpy")
+    value = {"NA": pandas.NA, "NaT": pandas.NaT, "numpy NaT": numpy.datetime64("NaT")}[kind]
+    with pytest.raises(DisplayError, match="cohort.n: the value is NA"):
+        emitter(scratch).value("cohort.n", value, display="not available")
+
+
+@pytest.mark.parametrize("display", ["NA", "NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None"])
+def test_a_display_that_spells_a_missing_value_is_refused_naming_the_key(
+    scratch: Path, display: str
+) -> None:
+    from manuscript_guard.contracts.values import derive_display
+
+    with pytest.raises(DisplayError) as refused:
+        emitter(scratch).value("ror.adjusted", None, display=display)
+    message = str(refused.value)
+    assert message.startswith(f"ror.adjusted: the value is None, and its display {display!r} "
+                              "spells a missing value"), message  # fmt: skip
+    # And as `check` reads a fragment an emitter wrote before.
+    with pytest.raises(DisplayError, match="spells a missing value"):
+        derive_display("ror.adjusted", None, display, None)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda em: em.interval("ror", 1.5, NAN, 2.0, digits=2),
+        lambda em: em.interval("ror", 1.5, 1.0, INF, digits=2),
+        lambda em: em.interval("ror", 1.5, 1.6, 2.0, digits=2),  # does not bracket
+        lambda em: em.interval("ror", 1.5, 0.001, 2.0, digits=2),  # rounds to 0.00
+        lambda em: em.control("control.headache", 1.5, NAN, 2.0, digits=2),
+    ],
+)
+def test_a_refused_interval_or_control_leaves_no_key_behind(scratch: Path, call) -> None:
+    """The estimate was recorded before its bounds were read, so a script that caught the
+    refusal and called again failed "'ror.point' emitted twice" (round 1 of #812)."""
+    em = emitter(scratch)
+    with pytest.raises(DisplayError):
+        call(em)
+    assert em.document()["values"] == {}
+    em.interval("ror", 1.5, 1.0, 2.0, digits=2)
+    assert set(em.document()["values"]) == {"ror.point", "ror.ci_low", "ror.ci_high"}

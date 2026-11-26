@@ -8,7 +8,9 @@ could not be told apart is a warning. By the same rule, once the two judges had 
 findings no verdict covered (2026-11-21): a number of the Abstract found nowhere, and a
 sentence that may now say the opposite, are notes. And on 2026-11-23 ("INFO on PDFs now"): a
 short form used before its definition is a note in text the audit read from a PDF, and keeps
-its warning from Word, LaTeX and Markdown. Every paper here is made up.
+its warning from Word, LaTeX and Markdown. On 2026-11-25 ("INFO in audit"), every finding of
+G6's `model-artefact` is a note in the two reports, a template's instruction and one left for
+the writer among them; `check` fails them as before. Every paper here is made up.
 """
 
 from __future__ import annotations
@@ -93,16 +95,19 @@ def test_a_bare_placeholder_is_a_note_in_an_audit(tmp_path: Path, capsys) -> Non
     assert [(f["severity"], "xxxx" in f["message"]) for f in bare] == [("info", True)]
 
 
-def test_a_template_s_instruction_still_fails_an_audit(tmp_path: Path, capsys) -> None:
+def test_a_template_s_instruction_is_a_note_in_an_audit(tmp_path: Path, capsys) -> None:
+    """A template's instruction the corpus judged in an audit was false, as was the one in
+    `check` (Basile, 2026-11-25)."""
     template = [f for f in _of(audited(_paper(tmp_path), capsys), "model-artefact")
                 if _rule(f) == TEMPLATE]  # fmt: skip
-    assert len(template) == 2 and {f["severity"] for f in template} == {"fail"}
+    assert len(template) == 2 and {f["severity"] for f in template} == {"info"}
     assert any("Click or tap" in f["message"] for f in template)
 
 
-#: A slot in brackets that tells the writer what to put, of each rule of the kind the corpus
-#: never judged, and instructions left for the writer in brackets, which the bracket's rule
-#: finds before `placeholder-filler` does: "[fill in later]", "[add your affiliation here]".
+#: A slot in brackets that tells the writer what to put, of each rule of the kind, and
+#: instructions left for the writer, in brackets, which the bracket's rule finds before
+#: `placeholder-filler` does, "[fill in later]", "[add your affiliation here]", and as words,
+#: "INSERT_SOURCE_URL", "TODO".
 INSTRUCTIONS = (
     "# Results\n\n"
     "The mean was [fill in later] for 212 pupils.\n\n"
@@ -114,11 +119,15 @@ INSTRUCTIONS = (
 )
 
 
-def test_a_slot_that_tells_the_writer_what_to_put_still_fails(tmp_path: Path, capsys) -> None:
+def test_a_slot_that_tells_the_writer_what_to_put_is_a_note_in_an_audit(
+    tmp_path: Path, capsys
+) -> None:
+    """A "todo" left in a paper, judged false on the corpus, is a note too, with every rule
+    of the kind (Basile, 2026-11-25)."""
     found = _of(audited(_paper(tmp_path, INSTRUCTIONS), capsys), "model-artefact")
     said = sorted((_rule(f), f["severity"]) for f in found)
-    assert said == sorted([("placeholder", "fail")] * 3 + [(BARE, "fail")] * 2 + [
-        ("placeholder-capitals", "fail"), ("placeholder-your", "fail")])  # fmt: skip
+    assert said == sorted([("placeholder", "info")] * 3 + [(BARE, "info")] * 2 + [
+        ("placeholder-capitals", "info"), ("placeholder-your", "info")])  # fmt: skip
 
 
 def test_a_latex_paper_is_audited_the_same_way(tmp_path: Path, capsys) -> None:
@@ -128,7 +137,7 @@ def test_a_latex_paper_is_audited_the_same_way(tmp_path: Path, capsys) -> None:
     found = audited(_paper(tmp_path, source, "paper.tex"), capsys)
     (names,) = _of(found, "code-name-in-prose")
     said = {_rule(f): f["severity"] for f in _of(found, "model-artefact")}
-    assert names["severity"] == "info" and said == {BARE: "info", TEMPLATE: "fail"}
+    assert names["severity"] == "info" and said == {BARE: "info", TEMPLATE: "info"}
 
 
 #: An Abstract with a number the paper reports nowhere, 57, and one it reports, 212.
@@ -163,14 +172,15 @@ def test_a_journal_s_abstract_missing_still_warns_in_an_audit(tmp_path: Path, ca
     assert said == [("G4", "warn")]
 
 
-def test_the_text_report_marks_only_the_template_as_failing(tmp_path: Path, capsys) -> None:
-    """The report's line for each place says "FAIL:" of a failure only (`auditing.summary`)."""
+def test_the_text_report_marks_no_artefact_as_failing(tmp_path: Path, capsys) -> None:
+    """The report's line for each place says "FAIL:" of a failure only (`auditing.summary`),
+    and no finding of `model-artefact` fails an audit."""
     assert main(["audit", str(_paper(tmp_path))]) == 0
     out = capsys.readouterr().out
     placed = [line.strip() for line in out.splitlines() if line.strip().startswith("line ")]
-    failing = [line for line in placed if ": FAIL: " in line]
-    assert len(failing) == 2 and all("template's instruction" in line for line in failing)
-    assert [line for line in placed if "'xxxx'" in line and ": FAIL: " not in line]
+    assert not [line for line in placed if ": FAIL: " in line]
+    assert [line for line in placed if "template's instruction" in line]
+    assert [line for line in placed if "'xxxx'" in line]
 
 
 # ------------------------------------------------------------------- read from a PDF
@@ -299,7 +309,7 @@ def test_compare_gives_v2_the_audit_s_severities(tmp_path: Path, capsys) -> None
     (names,) = _of(report, "code-name-in-prose")
     said = sorted((_rule(f), f["severity"]) for f in _of(report, "model-artefact"))
     assert names["severity"] == "info"
-    assert said == sorted([(BARE, "info"), (TEMPLATE, "fail"), (TEMPLATE, "fail")])
+    assert said == sorted([(BARE, "info"), (TEMPLATE, "info"), (TEMPLATE, "info")])
 
 
 #: Two sentences of v1, one made to say the opposite in v2 and one made to claim more.
@@ -401,30 +411,29 @@ def _artefact_rules() -> list[dict]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["artefacts"]
 
 
-def test_the_bare_placeholders_are_the_rules_judged() -> None:
-    """The two rules of the kind whose findings the corpus judged, each still a rule of
-    "Unfilled placeholder text"; a slot that tells the writer what to put, an instruction left
-    for the writer, `placeholder-filler`, and a template's keep failing."""
-    bare = {rule["id"] for rule in _artefact_rules() if rule["why"] == "Unfilled placeholder text"}
-    lowered = table.BARE_PLACEHOLDERS
-    assert lowered == {BARE, "placeholder-slot"} and lowered <= bare
-    kept = {"placeholder", "placeholder-your", "placeholder-capitals", "placeholder-filler"}
-    assert (kept | {TEMPLATE}).isdisjoint(table.BARE_PLACEHOLDERS)
+def test_every_rule_of_model_artefact_is_lowered() -> None:
+    """Each rule of the `artefacts` section of `data/ai_writing.yaml`, a template's and a
+    model's markup among them, gives a note in an audit (Basile, 2026-11-25)."""
+    rules = [rule["id"] for rule in _artefact_rules()]
+    assert TEMPLATE in rules and "placeholder-filler" in rules and len(rules) > 10
+    for rule in rules:
+        found = Finding("G6", "model-artefact", "said", FAIL, subject=f"{rule}: said")
+        assert table.measured(found).severity == INFO, rule
 
 
-@pytest.mark.parametrize(("subject", "severity"), [
-    ("placeholder-word: xxxx", INFO), ("placeholder-slot: [url]", INFO),
-    ("placeholder-word: tbd", INFO), ("placeholder-word: 2025-xx", INFO),
-    ("placeholder-word: todo", FAIL), ("placeholder-word: fixme", FAIL),
-    ("placeholder-word: insert_source_url", FAIL), ("placeholder-word: paste_table_2", FAIL),
-    ("placeholder: [fill in later]", FAIL), ("placeholder-your: [your name]", FAIL),
-    ("placeholder-capitals: [TO BE COMPLETED]", FAIL),
-    ("placeholder-filler: fill in later", FAIL), (f"{TEMPLATE}: keyword 1; keyword 2", FAIL),
-    ("chatgpt-markers: oaicite", FAIL), (None, FAIL),
+@pytest.mark.parametrize("subject", [
+    "placeholder-word: xxxx", "placeholder-slot: [url]", "placeholder-word: todo",
+    "placeholder-word: insert_source_url", "placeholder: [fill in later]",
+    "placeholder-your: [your name]", "placeholder-capitals: [TO BE COMPLETED]",
+    "placeholder-filler: fill in later", f"{TEMPLATE}: keyword 1; keyword 2",
+    "chatgpt-markers: oaicite", None,
 ])  # fmt: skip
-def test_only_a_bare_placeholder_is_lowered(subject: str | None, severity: str) -> None:
+def test_every_model_artefact_is_a_note(subject: str | None) -> None:
+    """Where #710 lowered the bare placeholders alone, every finding of the code is now
+    lowered: 1 true of 30 judged in an audit or compare on the corpus at 27b5cfb, the false
+    ones from 11 papers."""
     found = Finding("G6", "model-artefact", "said", FAIL, subject=subject)
-    assert table.measured(found).severity == severity
+    assert table.measured(found).severity == INFO
 
 
 def test_a_code_the_table_does_not_name_is_left_alone() -> None:

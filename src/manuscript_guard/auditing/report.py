@@ -55,7 +55,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.auditing import spreads
-from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report, placed_at, posix_path
 from manuscript_guard.keys import NONE, Keyed, keyed_json, paths_of, statistic
 
 INPUTS = "Inputs"
@@ -163,7 +163,7 @@ class Item:
             "section": self.section, "gate": self.gate, "code": self.code,
             "severity": self.severity, "counted": self.counted, "question": self.question,
             "message": self.message,
-            "path": None if self.path is None else str(self.path), "line": self.line,
+            "path": None if self.path is None else posix_path(self.path), "line": self.line,
             "context": self.context, "hint": self.hint, **(self.listed or {}),
         }  # fmt: skip
         return keyed_json([self.keyed()], [said])[0]
@@ -782,10 +782,11 @@ def _abstract_counts(read) -> dict[str, int]:
 
 
 class _Show:
-    """How the report names a file and a place in it: a file relative to `root`, a line as
-    "line 12", a line of a PDF's text as its page and its line (`auditing.pdf`), and a line
-    of a .docx's as its section and its paragraph (`auditing.paragraphs`): `placers`, by
-    the paper's path (`AuditReport.placers`)."""
+    """How the report names a file and a place in it: a file relative to `root`, with forward
+    slashes on every system as `--json` names it (`findings.placed_at`); a line as "line
+    12", a line of a PDF's text as its page and its line (`auditing.pdf`), and a line of a
+    .docx's as its section and its paragraph (`auditing.paragraphs`): `placers`, by the
+    paper's path (`AuditReport.placers`)."""
 
     def __init__(self, root: Path | None, placers: dict | None = None) -> None:
         self.root = root
@@ -795,7 +796,7 @@ class _Show:
         if self.root is None:
             return path.name
         try:
-            return str(path.relative_to(self.root))
+            return posix_path(path.relative_to(self.root))
         except ValueError:
             return path.name
 
@@ -844,14 +845,13 @@ def _rendered(found, root: Path | None, show: _Show) -> str:
     """Findings as `Report.render` gives them, a PDF's at its page and line, a .docx's at
     its section and paragraph."""
     if not any(show.placer(finding.path) is not None for finding in found):
-        return Report(tuple(found)).render(root)
+        return Report(tuple(found)).render(root, posix=True)
     lines: list[str] = []
     for finding in Report(tuple(found)).sorted().findings:
-        where = finding.located()
         if show.placer(finding.path) is not None:
             where = show.located(finding.path, finding.line)
-        elif root is not None and finding.path is not None and finding.path.is_relative_to(root):
-            where = where.replace(str(finding.path), str(finding.path.relative_to(root)), 1)
+        else:
+            where = placed_at(finding, root, posix=True)
         lines.append(f"  [{finding.severity.upper():4}] {finding.gate} {where}")
         lines.append(f"         {finding.message}")
         if finding.context:

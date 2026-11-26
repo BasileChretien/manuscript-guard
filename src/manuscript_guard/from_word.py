@@ -226,6 +226,15 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
 
 
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
+    """What pandoc prints, its lines ended by a line feed alone, as `audit.read_text` reads a
+    paper: the pandoc on Windows ends them "\\r\\n", and every reader of the text read a line
+    with "\\r" at its end; `count_tables` read no table in it, so `audit --journal` said
+    that not all of a .docx's tables were counted, on Windows alone (2026-11-25)."""
+    said = _run_pandoc(arguments, given, path)
+    return said.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _run_pandoc(arguments: list[str], given: str | None, path: Path) -> str:
     from manuscript_guard.build.document import BuildError, pandoc
 
     if runner is not None:

@@ -909,5 +909,15 @@ features:
     tests: [tests/test_audit_editor.py, tests/test_audit_editor_pdf.py]
     docs: docs/refereeing.md
     limits: >-
-      On the command line and in its PDF only: the audit page and a letter to the authors
-      do not give it yet.
+      On the command line and in its PDF only: the audit page does not give it yet.
+
+  - id: editor-letter
+    stage: others
+    title: A letter to the authors
+    says: >-
+      Drafts the letter that returns a paper to its authors before review, from the
+      editor's report: what to correct or answer and what to check, each with its places.
+    status: works
+    commands: [audit]
+    tests: [tests/test_audit_letter.py]
+    docs: docs/refereeing.md

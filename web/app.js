@@ -135,9 +135,13 @@ const booted = ask("boot").then((boot) => {
     `Loaded ${boot.loaded.length} files from ${location.host}, ${megabytes(sent)} over the network ` +
     `(nothing if they were already in this browser's cache).\n` +
     listRequests("Requests to any other host while loading:", boot.loaded);
-  for (const id of ["paper", "against", "english", "known", "noabstract", "noresults", "results",
-    "lookup", "run", "example"]) {
+  for (const id of ["paper", "tracked", "against", "english", "known", "noabstract", "noresults",
+    "results", "lookup", "design", "wholenumbers", "binary", "nonnegative", "mincount", "run",
+    "example"]) {
     $(id).disabled = false;
+  }
+  for (const box of $("journalbox").querySelectorAll("input, select, textarea, button")) {
+    box.disabled = false;
   }
   window.mgReady = true;
 }).catch((error) => {
@@ -204,11 +208,14 @@ for (const name of ["dragover", "drop"]) {
   });
 }
 
-// The paper chosen, said in its box, so that the reader sees it was taken.
+// The paper chosen, said in its box, so that the reader sees it was taken; and for a .docx,
+// the box for the copy with its corrections tracked, which only a Word document can have.
+const isDocx = (name) => /\.docx$/i.test(name);
 $("paper").addEventListener("change", () => {
   const file = $("paper").files[0];
   $("chosen").hidden = !file;
   $("chosen").textContent = file ? `${file.name} (${megabytes(file.size)}), ready to check` : "";
+  $("trackedbox").hidden = !(file && isDocx(file.name));
 });
 
 // What a check under way says: each step the audit says as it starts (worker.js `told`,
@@ -223,15 +230,16 @@ const STEPS = {
   report: ["Writing your report", 1.5],
   pdf: ["Making the PDF of the report", 2],
   copy: ["Making the Word copy with comments", 2],
+  tracked: ["Making the Word copy with tracked changes", 3],
 };
 // How long one reference takes to look up, before any has been.
 const PER_LOOKUP = 1.2;
 const running = { timer: null, started: 0, order: [], at: {}, now: null, done: 0, total: 0 };
 window.mgRunning = running;
 
-function runStarted(name, { lookup, docx }) {
+function runStarted(name, { lookup, docx, tracked = false }) {
   const order = ["read", "numbers", "words", ...(lookup ? ["lookup"] : []), "report", "pdf",
-    ...(docx ? ["copy"] : [])];
+    ...(docx ? ["copy"] : []), ...(docx && tracked ? ["tracked"] : [])];
   Object.assign(running, { order, at: {}, now: null, done: 0, total: 0, started: performance.now() });
   const list = $("steps");
   list.replaceChildren();
@@ -343,6 +351,16 @@ function showReport(result, paper) {
       + "finding" + (commented.placed === 1 ? "" : "s") + " as Word comments";
     $("savecommented").title = commented.name;
   }
+  if (result.tracked && result.tracked.error) {
+    note(`No copy of the paper with tracked changes was made: ${result.tracked.error}`);
+  }
+  if (result.tracked && result.tracked.data) {
+    tracked = result.tracked;
+    $("savetracked").hidden = false;
+    $("savetracked").textContent = `Download your paper with its ${tracked.tracked} `
+      + "correction" + (tracked.tracked === 1 ? "" : "s") + " as tracked changes";
+    $("savetracked").title = tracked.name;
+  }
   if (result.pdf && result.pdf.data) {
     pdf = result.pdf;
     pdfAddress = URL.createObjectURL(new Blob([pdf.data], { type: "application/pdf" }));
@@ -394,11 +412,13 @@ function outcome(view, inPdf = true) {
 // screen as this one's (round 2 of #527).
 function clearReport() {
   $("result").hidden = true;
-  for (const id of ["savecommented", "savepdf", "openpdf", "pdfbox", "pdfnote", "astext"]) {
+  for (const id of ["savecommented", "savetracked", "savepdf", "openpdf", "pdfbox", "pdfnote",
+    "astext"]) {
     $(id).hidden = true;
   }
   $("report").textContent = "";
   commented = null;
+  tracked = null;
   pdf = null;
   $("pdfview").removeAttribute("src");
   if (pdfAddress) URL.revokeObjectURL(pdfAddress);
@@ -407,12 +427,78 @@ function clearReport() {
   $("done").textContent = "";
 }
 
+// The journal's form, as `web.journal_files` takes it: null where nothing in it is set. The
+// date its instructions were read on is today's, in this computer's own time.
+const lines = (id) => $(id).value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+const LIMIT_BOXES = { abstract_words: "jabstract", main_text_words: "jmain", figures: "jfigures",
+  tables: "jtables", references: "jreferences", keywords: "jkeywords" };
+function journalForm() {
+  const today = new Date();
+  const two = (n) => String(n).padStart(2, "0");
+  const form = {
+    name: $("jname").value.trim(),
+    url: $("jurl").value.trim(),
+    date: `${today.getFullYear()}-${two(today.getMonth() + 1)}-${two(today.getDate())}`,
+    limits: Object.fromEntries(Object.entries(LIMIT_BOXES).map(([key, id]) => [key, $(id).value.trim()])),
+    sections: lines("jsections"),
+    abstract_headings: lines("jheadings"),
+    statements: [...document.querySelectorAll('input[name="jstatement"]:checked')].map((box) => box.value),
+    blinding: $("jblinding").value,
+  };
+  // The heading the journal asks for each statement ticked under, as typed; left empty, the
+  // usual one (`journal_form.STATEMENTS`).
+  form.headings = Object.fromEntries(form.statements.map((id) => [id, $(`jsh-${id}`).value.trim()]));
+  const set = form.name || form.url || Object.values(form.limits).some(Boolean) || form.sections.length
+    || form.abstract_headings.length || form.statements.length || form.blinding;
+  return set ? form : null;
+}
+// The authors the blind review's boxes name, as `web.journal_files` takes them: null where
+// the boxes are not shown or nothing in them is set.
+function authorsForm() {
+  if ($("blindbox").hidden) return null;
+  const authors = [...$("authorrows").children].map((row) => Object.fromEntries(
+    ["given", "family", "orcid", "email"].map((key) => [key, row.querySelector(`[id$="-${key}"]`).value.trim()])));
+  const affiliations = lines("affiliations");
+  const set = authors.some((one) => Object.values(one).some(Boolean)) || affiliations.length;
+  return set ? { authors, affiliations } : null;
+}
+async function journalChosen() {
+  const journalFile = $("jfile").files[0] ? await read($("jfile").files[0]) : null;
+  const authorsFile = !$("blindbox").hidden && $("authorsfile").files[0]
+    ? await read($("authorsfile").files[0]) : null;
+  return { journal: journalFile ? null : journalForm(), journalFile,
+    authors: authorsFile ? null : authorsForm(), authorsFile };
+}
+// The authors' boxes, for a blind review or a profile of the reader's own, whose review the
+// page cannot see.
+const blindShown = () => {
+  $("blindbox").hidden = !(["double", "triple"].includes($("jblinding").value) || $("jfile").files.length);
+};
+$("jblinding").addEventListener("change", blindShown);
+$("jfile").addEventListener("change", blindShown);
+// A row of boxes for one more author.
+$("addauthor").addEventListener("click", () => {
+  const number = $("authorrows").children.length + 1;
+  const row = $("authorrows").firstElementChild.cloneNode(true);
+  for (const box of row.querySelectorAll("input")) {
+    const key = box.id.split("-").pop();
+    box.id = `author-${number}-${key}`;
+    box.value = "";
+    box.setAttribute("aria-label", box.getAttribute("aria-label").replace(/^Author \d+/, `Author ${number}`));
+  }
+  $("authorrows").append(row);
+  row.querySelector("input").focus();
+});
+
 async function check(paper) {
   $("run").disabled = true;
   $("example").disabled = true;
   clearReport();
   const lookup = $("lookup").checked;
-  runStarted(paper.name, { lookup, docx: /\.docx$/i.test(paper.name) });
+  const docx = isDocx(paper.name);
+  // Asked for a .docx only, where its box is shown.
+  const wantsTracked = docx && $("tracked").checked;
+  runStarted(paper.name, { lookup, docx, tracked: wantsTracked });
   try {
     const result = await ask("run", {
       paper: await read(paper),
@@ -427,6 +513,17 @@ async function check(paper) {
       noAbstract: $("noabstract").checked,
       noResults: $("noresults").checked,
       results: $("results").value.trim(),
+      tracked: wantsTracked,
+      // A referee's or an editor's (`--design`, `--whole-numbers`, `--binary`,
+      // `--non-negative`, `--minimum-cell-count`).
+      design: $("design").value,
+      wholeNumbers: lines("wholenumbers"),
+      binary: lines("binary"),
+      nonNegative: lines("nonnegative"),
+      minimumCellCount: $("mincount").value.trim(),
+      // A journal's rules (`--journal`) and, for a blind review, the authors to look for
+      // (`--authors`): the form's, or a file of the reader's.
+      ...(await journalChosen()),
     });
     showReport(result, paper.name);
     $("netlog").textContent += "\n\n" + listRequests(
@@ -506,17 +603,21 @@ $("save").addEventListener("click", () => {
   URL.revokeObjectURL(link.href);
 });
 
-// The paper with the findings as Word comments (`web.commented`), from the last audit.
-let commented = null;
-$("savecommented").addEventListener("click", () => {
-  if (!commented) return;
+// A Word document the last audit wrote, saved under its name.
+function saveDocx({ data, name }) {
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([commented.data], {
+  link.href = URL.createObjectURL(new Blob([data], {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
-  link.download = commented.name;
+  link.download = name;
   link.click();
   URL.revokeObjectURL(link.href);
-});
+}
+// The paper with the findings as Word comments (`web.commented`), from the last audit; and
+// where the reader asked for it, with G14's corrections as tracked changes too.
+let commented = null;
+let tracked = null;
+$("savecommented").addEventListener("click", () => { if (commented) saveDocx(commented); });
+$("savetracked").addEventListener("click", () => { if (tracked) saveDocx(tracked); });
 
 // Tries what the page's policy must refuse, and shows that it did. Nothing is carried. One
 // counts as refused only where the browser reports refusing it under the policy, as in

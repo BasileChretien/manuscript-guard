@@ -138,9 +138,48 @@ const argument = (name) => (name.startsWith("-") ? "./" + name : name);
 // many of its items are done of how many, where it counts them.
 const told = (key, done, total) => self.postMessage({ step: { key, done, total } });
 
+// The designs `audit --design` takes, the only values the page passes it.
+const DESIGNS = ["observational", "trial"];
+// Labels of table rows, as typed, one a line: those that would be read as an option go, as a
+// word to leave alone does.
+const labels = (typed) => typed.map((label) => label.trim())
+  .filter((label) => label && !label.startsWith("-"));
+
+// The names the page gives the files its journal form makes, which no file chosen may have.
+const FORM_FILES = { profile: "journal.yaml", authors: "authors.yaml" };
+
+// The journal's profile and the authors' names the form describes, as `audit --journal` and
+// `--authors` read them (`web.journal_files`), where no file of the reader's stands in for
+// them: the text of each, by the name it is written under. Refused, before anything is
+// written, where the form cannot make one or a file chosen has its name.
+function formFiles(journal, authors, chosen) {
+  const wanted = { profile: journal, authors };
+  const clash = Object.entries(FORM_FILES).find(([kind, name]) => wanted[kind] && chosen.includes(name));
+  if (clash) {
+    throw new Error(`a file chosen is named ${clash[1]}, the name the page gives the `
+      + `${clash[0] === "profile" ? "journal's profile" : "authors' names"} it makes: rename it`);
+  }
+  if (!journal && !authors) return {};
+  py.globals.set("JOURNAL", journal ? py.toPy(journal) : null);
+  py.globals.set("AUTHORS", authors ? py.toPy(authors) : null);
+  const said = JSON.parse(py.runPython(`import json
+from manuscript_guard import web
+json.dumps(web.journal_files(JOURNAL, AUTHORS))`));
+  py.globals.delete("JOURNAL");
+  py.globals.delete("AUTHORS");
+  if (said.error) throw new Error(`the journal's form: ${said.error}`);
+  return Object.fromEntries(Object.keys(FORM_FILES).filter((kind) => said[kind] !== undefined)
+    .map((kind) => [FORM_FILES[kind], said[kind]]));
+}
+
 function run({ paper, against, lookup, details, english = "", known = [], noAbstract = false,
-  noResults = false, results = "" }) {
-  const [paperName, ...outputNames] = names([paper, ...against]);
+  noResults = false, results = "", tracked = false, design = "", wholeNumbers = [],
+  binary = [], nonNegative = [], minimumCellCount = "", journal = null, journalFile = null,
+  authors = null, authorsFile = null }) {
+  const own = [journalFile, authorsFile].filter(Boolean);
+  const chosen = names([paper, ...against, ...own]);
+  const [paperName, ...outputNames] = chosen.slice(0, 1 + against.length);
+  const made = formFiles(journalFile ? null : journal, authorsFile ? null : authors, chosen);
   py.runPython(`import os, shutil
 os.chdir("/")
 shutil.rmtree("/work", ignore_errors=True)
@@ -155,6 +194,13 @@ os.chdir("/work")`);
       args.push(argument(outputNames[at]));
     });
   }
+  for (const file of own) py.FS.writeFile("/work/" + file.name, new Uint8Array(file.data));
+  for (const [name, text] of Object.entries(made)) py.FS.writeFile("/work/" + name, text);
+  // The journal's rules and the authors' names, a file of the reader's or the form's.
+  const profileName = journalFile ? journalFile.name : made[FORM_FILES.profile] && FORM_FILES.profile;
+  const authorsName = authorsFile ? authorsFile.name : made[FORM_FILES.authors] && FORM_FILES.authors;
+  if (profileName) args.push("--journal", argument(profileName));
+  if (authorsName) args.push("--authors", argument(authorsName));
   if (english) args.push("--english", english);
   // A word that starts with "-" would be read as an option; one such word is no word.
   const words = known.filter((word) => !word.startsWith("-"));
@@ -163,10 +209,26 @@ os.chdir("/work")`);
   if (noResults) args.push("--no-results");
   // Joined to its flag, so that a heading that starts with "-" is read as the heading.
   if (results) args.push(`--results=${results}`);
+  // A referee's or an editor's: the study's design, and the table rows to hold to their
+  // kind of number (`--whole-numbers`, `--binary`, `--non-negative`), each flag once with
+  // its labels, and the data custodian's minimum count.
+  if (DESIGNS.includes(design)) args.push("--design", design);
+  for (const [flag, typed] of [["--whole-numbers", wholeNumbers], ["--binary", binary],
+    ["--non-negative", nonNegative]]) {
+    const rows = labels(typed);
+    if (rows.length) args.push(flag, ...rows);
+  }
+  if (/^[1-9][0-9]{0,5}$/.test(String(minimumCellCount))) {
+    args.push("--minimum-cell-count", String(minimumCellCount));
+  }
   if (lookup) args.push("--lookup");
   if (details) args.push("--details");
+  // The copy with G14's corrections as tracked changes, for a .docx, where the reader asked
+  // for it: worked out only then (Basile, 2026-11-12, "only when asked").
+  const correcting = Boolean(tracked) && /\.docx$/i.test(paperName);
   performance.clearResourceTimings();
   py.globals.set("ARGS", py.toPy(args));
+  py.globals.set("CORRECTED", correcting);
   // Each step the audit says as it starts (`auditing.progress`), passed to the page, which
   // shows what is being done and how long is left: the audit runs in this one call.
   py.globals.set("TOLD", told);
@@ -177,12 +239,13 @@ from manuscript_guard import web
 from manuscript_guard.auditing import progress
 progress.STEP = TOLD
 try:
-    said = json.dumps(web.view(ARGS))
+    said = json.dumps(web.view(ARGS, corrected=CORRECTED))
 finally:
     progress.STEP = None
 said`));
   py.globals.delete("ARGS");
   py.globals.delete("TOLD");
+  py.globals.delete("CORRECTED");
   const ms = now() - start;
   // A copy or a PDF that could not be written never costs the report (round 1 of #617).
   let pdf = null;
@@ -199,7 +262,17 @@ said`));
   } catch (error) {
     commented = { error: String((error && error.message) || error) };
   }
-  return { ...result, commented, pdf, args, ms, sent: requests(), refused: [...refused] };
+  let trackedCopy = null;
+  if (correcting) {
+    try {
+      told("tracked", 0, 0);
+      trackedCopy = commentedCopy(result, paperName, true);
+    } catch (error) {
+      trackedCopy = { error: String((error && error.message) || error) };
+    }
+  }
+  return { ...result, commented, tracked: trackedCopy, pdf, args, made, ms, sent: requests(),
+    refused: [...refused] };
 }
 
 // The report as a PDF with every place and every section, from that very audit
@@ -218,19 +291,25 @@ json.dumps(web.report_pdf("/out/report.pdf"))`));
 // The paper with the audit's findings as Word comments at their places, for a .docx the audit
 // drew a report of, written from that very audit (`web.commented`, as `audit --commented`
 // writes it): its name, its bytes and how many comments stand at their places; or null.
-function commentedCopy(result, paperName) {
+// `tracked`, with G14's corrections as tracked changes as well (`audit --tracked`), and how
+// many of them there are.
+function commentedCopy(result, paperName, tracked = false) {
   if (!result.view || !/\.docx$/i.test(paperName)) return null;
+  const file = tracked ? "/out/tracked.docx" : "/out/commented.docx";
   py.globals.set("PAPER", paperName);
+  py.globals.set("COPY", file);
+  py.globals.set("TRACKED", tracked);
   const said = JSON.parse(py.runPython(`import json, os
 from manuscript_guard import web
 os.makedirs("/out", exist_ok=True)
 # The last run's copy goes: the copy is never written over (fix round of #617).
-if os.path.exists("/out/commented.docx"): os.remove("/out/commented.docx")
-json.dumps(web.commented(PAPER, "/out/commented.docx"))`));
-  py.globals.delete("PAPER");
+if os.path.exists(COPY): os.remove(COPY)
+json.dumps(web.commented(PAPER, COPY, tracked=TRACKED))`));
+  for (const name of ["PAPER", "COPY", "TRACKED"]) py.globals.delete(name);
   if (said.error) return { error: said.error };
-  return { ...said, name: paperName.replace(/\.docx$/i, "") + " (commented).docx",
-    data: py.FS.readFile("/out/commented.docx") };
+  const stem = paperName.replace(/\.docx$/i, "");
+  return { ...said, name: stem + (tracked ? " (tracked changes).docx" : " (commented).docx"),
+    data: py.FS.readFile(file) };
 }
 
 // Requests the page's policy must refuse, made from this worker. None carries anything. One

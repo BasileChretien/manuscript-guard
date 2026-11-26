@@ -244,7 +244,8 @@ manuscript-guard communicate graphical-abstract [--template rct|observational|la
 draws two concepts from the brief into `communication/graphical-abstract/`: `concept-1.svg`,
 three panels left to right (what was asked and how, what was found, what it means), and
 `concept-2.svg`, the question above its answer. The template follows `study_type`, a trial
-`rct`, a cohort, case-control, self-controlled or disproportionality study `observational`,
+`rct`, a cohort, case-control, cross-sectional, self-controlled or disproportionality study
+`observational`,
 a prediction model `computational`; a paper that names no design, or `other`, gets
 `observational` unless `--template` names another. The primary finding is set large and the secondary ones
 smaller, below a rule; the colours are Okabe and Ito's; every `<text>` names its statement

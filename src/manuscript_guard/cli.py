@@ -2392,8 +2392,9 @@ def _reader(args: argparse.Namespace) -> _Reader | int | None:
     from manuscript_guard.auditing.journal import english_of, read_authors, read_profile
 
     if args.journal is None and args.authors is None:
-        if any(value is not None for value in (args.design, args.cited, args.package,
-                                               args.report_draft)):  # fmt: skip
+        if args.editor or any(value is not None for value in (
+                args.design, args.cited, args.package, args.report_draft,
+                getattr(args, "letter", None))):  # fmt: skip
             print(NOTICE, file=sys.stderr)
         return None
     if args.journal is None:
@@ -2630,7 +2631,8 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
-                 "tracked", "pdf", "lookup", "whole_numbers", "binary", "minimum_cell_count",
+                 "tracked", "pdf", "letter", "lookup", "whole_numbers", "binary",
+                 "minimum_cell_count",
                  "english", "known", "submission_residue", "non_negative", "no_abstract",
                  "no_results", "results")
 
@@ -2654,20 +2656,55 @@ def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
 #: (`web.view`), rather than auditing the paper a second time; None tells nothing.
 AUDITED: Callable[[object, object], None] | None = None
 
+#: Whether an audit works out G14's corrections of the .docx named first though no
+#: `--tracked` names a copy: the page sets it where the reader ticked the box for the copy,
+#: which it writes itself from the same audit, worded for the page (`web.commented`). The
+#: report is the same either way.
+CORRECTED = False
+
 #: The options of `audit` and `compare` the report draft names, in the order they are listed.
 _AUDIT_FLAGS = ("against", "figures", "english", "known", "no_abstract", "no_results", "results",
                 "submission_residue", "lookup",
                 "dry_run", "whole_numbers", "binary", "non_negative", "minimum_cell_count",
                 "journal", "authors", "design", "cited", "commented", "tracked", "pdf", "package",
-                "strict")  # fmt: skip
+                "strict", "editor", "letter")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
 def _draft_refused(args: argparse.Namespace, given: list[Path], command: str) -> int | None:
+    """Why the report draft, or `audit`'s letter, cannot be written where it is named: each
+    by the same rule (`draft.refused`), and neither to the other's file."""
     from manuscript_guard.auditing.draft import refused
 
-    said = refused(args.report_draft, given) if args.report_draft is not None else ""
+    letter = getattr(args, "letter", None)
+    said = ""
+    if args.report_draft is not None:
+        said = refused(args.report_draft, [*given, *([letter] if letter else [])])
+    if not said and letter is not None:
+        said = refused(letter, [*given, *([args.report_draft] if args.report_draft else [])],
+                       "--letter")  # fmt: skip
     return _audit_refused(args, f"manuscript-guard {command}: {said}") if said else None
+
+
+def _write_letter(args: argparse.Namespace, report) -> bool:
+    """The letter returning the paper to its authors, written to `--letter` from the
+    editor's report (`auditing.letter`); False, said on stderr, where not."""
+    from manuscript_guard.auditing.draft import write
+    from manuscript_guard.auditing.letter import for_audit
+
+    try:
+        write(args.letter, for_audit(report, Path.cwd()))
+    except FileExistsError:
+        print(f"manuscript-guard audit: --letter {args.letter} is there already, and was not "
+              "written over", file=sys.stderr)  # fmt: skip
+        return False
+    except OSError as exc:
+        print(f"manuscript-guard audit: --letter {args.letter} could not be written: "
+              f"{exc.strerror or exc}", file=sys.stderr)  # fmt: skip
+        return False
+    print(f"manuscript-guard audit: the draft of the letter to the authors is in {args.letter}",
+          file=sys.stderr)  # fmt: skip
+    return True
 
 
 def _write_draft(args: argparse.Namespace, text: str, command: str) -> bool:
@@ -2909,7 +2946,7 @@ def _audit(args: argparse.Namespace, package) -> int:
     report.gates = [
         # G14's corrections only for the paper `--tracked` copies (Basile, 2026-11-12).
         *(run_gates(path, english=english, residue=args.submission_residue, known=known,
-                    corrected=args.tracked is not None
+                    corrected=(args.tracked is not None or CORRECTED)
                     and Path(path).resolve() == args.paper[0].resolve())
           for path in papers if path.suffix.lower() != ".tex" and path in read),
         *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,
@@ -2946,8 +2983,13 @@ def _audit(args: argparse.Namespace, package) -> int:
                          sections._shown(Path.cwd(), report.placers))  # fmt: skip
         if not _write_draft(args, text, "audit"):
             return 2
+    if args.letter is not None and not _write_letter(args, report):
+        return 2
+    from manuscript_guard.auditing import editor
+
     if args.json:
-        print(sections.as_json(report, discrimination))
+        print(editor.as_json(report, discrimination) if args.editor
+              else sections.as_json(report, discrimination))  # fmt: skip
         if package is not None:
             from manuscript_guard.auditing.package import WORDING
 
@@ -2956,7 +2998,8 @@ def _audit(args: argparse.Namespace, package) -> int:
         # Told only of a report whose text is rendered and printed (#601: a draft that could
         # not be written, or a text that could not be rendered, printed none, and the page
         # drew one).
-        text = sections.render(report, discrimination, Path.cwd(), details=args.details)
+        text = (editor.render(report, Path.cwd(), details=args.details) if args.editor
+                else sections.render(report, discrimination, Path.cwd(), details=args.details))
         if AUDITED is not None:
             AUDITED(report, discrimination)
         print(text)
@@ -7273,6 +7316,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="also write the findings and their places to FILE (.md, which must not exist "
         "yet), as the start of your report: what was read and not checked, the exact "
         "findings, the rest by section, and each check that found nothing with what it read",
+    )
+    audit.add_argument(
+        "--editor",
+        action="store_true",
+        help="give the report as an editor reads it, each finding in one of four parts: what "
+        "to look at before you decide, what to ask the authors, what is for copyediting and "
+        "what the check read, with how often each kind was right on published papers where "
+        "that was measured; with --json, each finding gains its part (docs/refereeing.md)",
+    )
+    audit.add_argument(
+        "--letter",
+        type=Path,
+        metavar="FILE",
+        help="also write to FILE (.md, which must not exist yet) the draft of the letter "
+        "returning the paper to its authors before review: what the editor's report would ask "
+        "the authors, under 'Please correct or answer before review', and what it would have "
+        "you look at, under 'Please check', each kind in a sentence written for the authors "
+        "with each place it was found; for you to read, change and send (docs/refereeing.md)",
     )
     audit.add_argument(
         "--strict",

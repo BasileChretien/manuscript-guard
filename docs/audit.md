@@ -121,8 +121,8 @@ section in full and every finding with its place, its context and its hint, as o
 | Cited sentences, with `--cited FILE` | how many citations were listed in FILE, each beside its sentence and its entry | no |
 | Self-citation, with `--journal` and `--authors` or `--lookup` | the references whose registry record lists an author, and those the journal published, counted | no |
 
-`--journal`, `--authors`, `--design` and `--cited` are for an editor or a referee, reading a
-paper someone else wrote: [For editors and reviewers](refereeing.md).
+`--journal`, `--authors`, `--design`, `--cited` and `--editor` are for an editor or a
+referee, reading a paper someone else wrote: [For editors and reviewers](refereeing.md).
 
 **Questions for the author.** Where no exact rule can decide, the audit asks. A question
 says what the audit saw, asks one question and names the answer that ends it. It is a
@@ -256,7 +256,8 @@ any is asked, and neither is a number that does not fit:
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests
 on reading a sentence or rounding (the author, 2026-10-28). `--json` prints the report in the shape `check --json` gives,
 each finding with its section and whether `--strict` counts it; `ok` is what `--strict`
-would say.
+would say. The report and `--json` name a file with forward slashes on every system,
+`journals/examples.yaml` on Windows too, as the [audit page](audit-page.md) does.
 
 **Keys.** Each finding `check --json`, `audit --json` and `compare --json` print has a
 `key`, `gate|code|subject|digest`, by which the findings of two runs can be paired. The

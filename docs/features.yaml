@@ -876,6 +876,16 @@ features:
     tests: [tests/test_web.py]
     docs: docs/audit-page.md
 
+  - id: false-alarm-rates
+    stage: others
+    title: How often a warning is wrong
+    says: >-
+      Publishes, for each kind of warning, the share judged false on real papers, with the
+      papers and the version it was measured on and what that share does not measure.
+    status: works
+    tests: [tests/test_false_alarms.py]
+    docs: docs/false-alarms.md
+
   - id: compare
     stage: others
     title: Compare two versions

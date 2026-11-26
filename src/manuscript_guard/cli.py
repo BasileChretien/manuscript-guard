@@ -2393,7 +2393,8 @@ def _reader(args: argparse.Namespace) -> _Reader | int | None:
 
     if args.journal is None and args.authors is None:
         if args.editor or any(value is not None for value in (
-                args.design, args.cited, args.package, args.report_draft)):  # fmt: skip
+                args.design, args.cited, args.package, args.report_draft,
+                getattr(args, "letter", None))):  # fmt: skip
             print(NOTICE, file=sys.stderr)
         return None
     if args.journal is None:
@@ -2630,7 +2631,8 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
 
 #: The options that read a paper, refused with `--package` and no paper.
 _READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "commented",
-                 "tracked", "pdf", "lookup", "whole_numbers", "binary", "minimum_cell_count",
+                 "tracked", "pdf", "letter", "lookup", "whole_numbers", "binary",
+                 "minimum_cell_count",
                  "english", "known", "submission_residue", "non_negative", "no_abstract",
                  "no_results", "results")
 
@@ -2665,15 +2667,44 @@ _AUDIT_FLAGS = ("against", "figures", "english", "known", "no_abstract", "no_res
                 "submission_residue", "lookup",
                 "dry_run", "whole_numbers", "binary", "non_negative", "minimum_cell_count",
                 "journal", "authors", "design", "cited", "commented", "tracked", "pdf", "package",
-                "strict", "editor")  # fmt: skip
+                "strict", "editor", "letter")  # fmt: skip
 _COMPARE_FLAGS = ("response", "comments")
 
 
 def _draft_refused(args: argparse.Namespace, given: list[Path], command: str) -> int | None:
+    """Why the report draft, or `audit`'s letter, cannot be written where it is named: each
+    by the same rule (`draft.refused`), and neither to the other's file."""
     from manuscript_guard.auditing.draft import refused
 
-    said = refused(args.report_draft, given) if args.report_draft is not None else ""
+    letter = getattr(args, "letter", None)
+    said = ""
+    if args.report_draft is not None:
+        said = refused(args.report_draft, [*given, *([letter] if letter else [])])
+    if not said and letter is not None:
+        said = refused(letter, [*given, *([args.report_draft] if args.report_draft else [])],
+                       "--letter")  # fmt: skip
     return _audit_refused(args, f"manuscript-guard {command}: {said}") if said else None
+
+
+def _write_letter(args: argparse.Namespace, report) -> bool:
+    """The letter returning the paper to its authors, written to `--letter` from the
+    editor's report (`auditing.letter`); False, said on stderr, where not."""
+    from manuscript_guard.auditing.draft import write
+    from manuscript_guard.auditing.letter import for_audit
+
+    try:
+        write(args.letter, for_audit(report, Path.cwd()))
+    except FileExistsError:
+        print(f"manuscript-guard audit: --letter {args.letter} is there already, and was not "
+              "written over", file=sys.stderr)  # fmt: skip
+        return False
+    except OSError as exc:
+        print(f"manuscript-guard audit: --letter {args.letter} could not be written: "
+              f"{exc.strerror or exc}", file=sys.stderr)  # fmt: skip
+        return False
+    print(f"manuscript-guard audit: the draft of the letter to the authors is in {args.letter}",
+          file=sys.stderr)  # fmt: skip
+    return True
 
 
 def _write_draft(args: argparse.Namespace, text: str, command: str) -> bool:
@@ -2955,6 +2986,8 @@ def _audit(args: argparse.Namespace, package) -> int:
                          sections._shown(Path.cwd(), report.placers))  # fmt: skip
         if not _write_draft(args, text, "audit"):
             return 2
+    if args.letter is not None and not _write_letter(args, report):
+        return 2
     from manuscript_guard.auditing import editor
 
     if args.json:
@@ -7206,6 +7239,16 @@ def build_parser() -> argparse.ArgumentParser:
         "to look at before you decide, what to ask the authors, what is for copyediting and "
         "what the check read, with how often each kind was right on published papers where "
         "that was measured; with --json, each finding gains its part (docs/refereeing.md)",
+    )
+    audit.add_argument(
+        "--letter",
+        type=Path,
+        metavar="FILE",
+        help="also write to FILE (.md, which must not exist yet) the draft of the letter "
+        "returning the paper to its authors before review: what the editor's report would ask "
+        "the authors, under 'Please correct or answer before review', and what it would have "
+        "you look at, under 'Please check', each kind in a sentence written for the authors "
+        "with each place it was found; for you to read, change and send (docs/refereeing.md)",
     )
     audit.add_argument(
         "--strict",

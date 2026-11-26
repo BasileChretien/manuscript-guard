@@ -50,17 +50,18 @@ _KINDS = {".docx": "Word", ".md": "Markdown", ".markdown": "Markdown", ".txt": "
 Show = Callable[[Path], str]
 
 
-def refused(target: Path, given: Iterable[Path]) -> str:
-    """Why the draft cannot be written to `target`, or ""."""
+def refused(target: Path, given: Iterable[Path], flag: str = "--report-draft") -> str:
+    """Why the draft cannot be written to `target`, or "": said of `flag`, the option that
+    names it (`--letter` writes its letter by the same rule, `auditing.letter`)."""
     if target.suffix.lower() not in (".md", ".markdown"):
-        return f"--report-draft writes Markdown: name a file ending .md, not {target.name}"
+        return f"{flag} writes Markdown: name a file ending .md, not {target.name}"
     if target.exists():
-        return (f"--report-draft {target}: the file is there already, and may hold your own "
+        return (f"{flag} {target}: the file is there already, and may hold your own "
                 "words; name another, or move it away")  # fmt: skip
     if not target.parent.is_dir():
-        return f"--report-draft {target}: its folder does not exist"
+        return f"{flag} {target}: its folder does not exist"
     if any(target.resolve() == path.resolve() for path in given):
-        return f"--report-draft {target}: that is a file the command reads"
+        return f"{flag} {target}: that is a file the command reads"
     return ""
 
 

@@ -6,13 +6,16 @@
 //   node web/test/names.mjs < cases.json
 //
 // Each case is {"paper": name, "against": [names]}, with "english", "known", "noAbstract",
-// "noResults" and "results" where the reader set them; each answer {"args", "written"}, or
-// {"error", "written"} where the worker refuses the names.
+// "noResults", "results", "tracked", "design", "wholeNumbers", "binary", "nonNegative" and
+// "minimumCellCount" where the reader set them; each answer {"args", "written", "corrected"},
+// "corrected" whether the audit was asked to work out G14's corrections, or {"error",
+// "written"} where the worker refuses the names.
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 
 const source = readFileSync(new URL("../worker.js", import.meta.url), "utf-8");
 const written = [];
+const set = {};
 const context = createContext({
   BASE: "/",
   self: { addEventListener() {}, postMessage() {} },
@@ -22,7 +25,7 @@ const context = createContext({
     runPython: (code) => (code.includes("web.view")
       ? '{"code": 0, "out": "", "err": "", "view": null}' : undefined),
     FS: { writeFile: (path) => written.push(path) },
-    globals: { set() {}, delete() {} },
+    globals: { set: (name, value) => { set[name] = value; }, delete() {} },
     toPy: (value) => value,
   },
 });
@@ -31,14 +34,14 @@ runInContext("py = stub;", context);
 
 const file = (name) => ({ name, data: new ArrayBuffer(0) });
 const cases = JSON.parse(readFileSync(0, "utf-8"));
-const answers = cases.map(({ paper, against, english = "", known = [], noAbstract = false,
-  noResults = false, results = "" }) => {
+const answers = cases.map(({ paper, against, ...chosen }) => {
   written.length = 0;
+  delete set.CORRECTED;
   context.payload = { paper: file(paper), against: against.map(file), lookup: false,
-    english, known, noAbstract, noResults, results };
+    ...chosen };
   try {
     const { args } = runInContext("run(payload)", context);
-    return { args: [...args], written: [...written] };
+    return { args: [...args], written: [...written], corrected: set.CORRECTED };
   } catch (error) {
     return { error: String(error.message), written: [...written] };
   }

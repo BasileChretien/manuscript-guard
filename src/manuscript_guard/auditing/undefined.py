@@ -40,7 +40,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.findings import INFO, Finding
+from manuscript_guard.findings import INFO, Finding, posix_path
 from manuscript_guard.keys import NONE, Keyed
 
 #: The code of G14's warning for one short form used and not defined.
@@ -124,7 +124,7 @@ def listed(finding: Finding) -> dict:
         return {}
     out: dict = {
         "forms": [{"form": form, "message": warning.message,
-                   "path": None if warning.path is None else str(warning.path),
+                   "path": None if warning.path is None else posix_path(warning.path),
                    "line": warning.line, "context": warning.context, "key": warning.key}
                   for form, warning in finding.forms],
     }  # fmt: skip

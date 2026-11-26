@@ -79,6 +79,8 @@ path.fill-card.stroke-teal { fill: var(--card); }
 
 form { display: grid; gap: 1rem; margin: 0; }
 label { display: grid; gap: .3rem; }
+/* A box shown only for some papers (the tracked copy's, for a .docx). */
+label[hidden] { display: none; }
 .field { font-weight: 600; }
 .help { color: var(--muted); font-size: .92rem; font-weight: 400; }
 label.drop { justify-items: center; text-align: center; gap: .35rem; cursor: pointer;
@@ -96,17 +98,28 @@ input[type="file"] { font: inherit; color: var(--ink); }
 input[type="file"]::file-selector-button { font: inherit; margin-right: .7rem; padding: .4rem .9rem;
   border: 1px solid var(--teal); border-radius: 999px; background: transparent; color: var(--teal);
   cursor: pointer; }
-input[type="text"], select { font: inherit; color: var(--ink); background: var(--field);
+input[type="text"], input[type="number"], textarea, select { font: inherit; color: var(--ink); background: var(--field);
   border: 1px solid var(--line); border-radius: 10px; padding: .5rem .7rem; max-width: 100%; }
 input[type="checkbox"] { width: 1.15rem; height: 1.15rem; margin: .2rem 0 0; accent-color: var(--teal); }
-input:disabled, select:disabled { opacity: .55; }
+textarea { resize: vertical; }
+input[type="number"] { width: 8rem; }
+input:disabled, textarea:disabled, select:disabled { opacity: .55; }
 label.tick { grid-template-columns: auto 1fr; align-items: start; gap: .7rem; }
 label.tick > span { display: grid; gap: .2rem; }
 details.options { border: 1px solid var(--line); border-radius: 12px; padding: .6rem .9rem; }
 details.options summary { font-weight: 600; }
 .optionlist { display: grid; gap: 1rem; margin-top: .9rem; }
+.optionlist[hidden] { display: none; }
+/* The journal's form: its limits side by side, its statements a column of ticks, and a row
+   of boxes for each author. */
+.limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .8rem; }
+fieldset.statements { border: 0; padding: 0; margin: 0; display: grid; gap: .45rem; }
+fieldset.statements legend { padding: 0; margin-bottom: .2rem; }
+.statement { display: grid; grid-template-columns: minmax(11rem, auto) 1fr; gap: .3rem .8rem; align-items: center; }
+.authorrows { display: grid; gap: .6rem; }
+.author { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; }
 summary { cursor: pointer; }
-input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible,
+input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible,
 label.drop:focus-within { outline: 3px solid color-mix(in srgb, var(--teal) 55%, transparent);
   outline-offset: 2px; }
 

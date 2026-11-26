@@ -30,7 +30,8 @@ standards:
     version: Revision 11, July 2023, revised chapter by chapter since
     url: https://encepp.europa.eu/encepp-toolkit/methodological-guide_en
     read_on: 2026-10-21
-    applies_to: [cohort, case-control, self-controlled, disproportionality, systematic-review]
+    applies_to: [cohort, case-control, cross-sectional, self-controlled, disproportionality,
+                 systematic-review]
     domains:
       - Formulating the research question and objectives and assessing study feasibility
       - Development of the study protocol
@@ -138,7 +139,7 @@ standards:
     doi: 10.1371/journal.pmed.0040297
     url: https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0040297
     read_on: 2026-10-21
-    applies_to: [cohort, case-control]
+    applies_to: [cohort, case-control, cross-sectional]
     # The Methods items, 4 to 12.
     domains:
       - Study design
@@ -157,7 +158,7 @@ standards:
     doi: 10.1136/bmj.k3532
     url: https://pmc.ncbi.nlm.nih.gov/articles/PMC6234471/
     read_on: 2026-10-21
-    applies_to: [cohort, case-control, self-controlled]
+    applies_to: [cohort, case-control, cross-sectional, self-controlled]
     # The Methods headings of its checklist: STROBE's, and RECORD's two of its own.
     domains:
       - Study design

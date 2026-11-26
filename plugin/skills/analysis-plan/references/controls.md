@@ -46,7 +46,7 @@ since that run dated no real result. No design requires a control. Some to consi
 
 | Design | Controls to consider |
 |---|---|
-| cohort, case-control | a negative control outcome the exposure could not cause, or a negative control exposure that shares the biases and has no effect |
+| cohort, case-control, cross-sectional | a negative control outcome the exposure could not cause, or a negative control exposure that shares the biases and has no effect |
 | self-controlled | a negative control outcome, with the same risk windows |
 | disproportionality | drug-event pairs with no known association; a known adverse reaction of a drug in the database as a positive control |
 | trial, systematic-review | data simulated with a known effect, through the analysis code |

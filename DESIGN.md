@@ -29152,7 +29152,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     paragraph of the text that goes on in lower case, "Figure 2 (A) shows", "Table 1 (n =
     300) gives", is the text's, and so is a legend set at the text's size whose title opens
     on a lower-case word or a number.
-    Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`
+    and `tests/test_corruption.py::test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_legend`.
   - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
     reference list are read as prose, as before (answer 9). Accepted.
   - A statement of the back matter that a reference list's lines stand on both sides of in

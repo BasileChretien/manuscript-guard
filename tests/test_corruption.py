@@ -3914,6 +3914,28 @@ def test_a_reference_list_the_statements_stand_inside_is_one_list(tmp_path: Path
     assert staged.index("Ethics statement") < staged.index("# References"), staged
 
 
+def test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_legend(
+    tmp_path: Path,
+) -> None:
+    """pdf-biol-C3 of the real-paper corpus, a Nature paper: its legends open "Fig. 2 Title",
+    no stop after the number, and are set larger than its Methods' small type, the size most
+    of its words are set at. Read as the text's, a legend's restatement of a definition was
+    a redefinition. A label whose title opens on a capital opens a legend at any size."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import LEFT, RIGHT, TOP
+
+    left = ["Results", "We saw three unbinding pathways, pathway 1 (P1) the first.",
+            *[_FULL] * 4]
+    legend = ["Fig. 2 Three pathways of the complex under load. In pathway 1 (P1) it",
+              "ruptured at high force."]
+    right = [*legend, "", "The P1 held in each of the sites.", *_UNSAID]
+    pieces = _column(left, LEFT, TOP) + _column(right, RIGHT, TOP, {3: 14.0}, justified=False)
+    run, _staged = _pieces_run(tmp_path, [pieces])
+    assert [f for f in run.language if f.message.split()[0] == "P1"] == [], run.language
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

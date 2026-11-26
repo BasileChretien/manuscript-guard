@@ -99,7 +99,29 @@ def test_init_ships_the_gitattributes_the_digests_depend_on(tmp_path: Path) -> N
     # Figures and the built .docx are digested as bytes; normalising them would corrupt them.
     # Matched on the fields, not the spacing, which is column-aligned for reading.
     marked = {line.split()[0] for line in written.splitlines() if line.endswith("binary")}
-    assert {"*.docx", "*.png", "*.pdf", "*.xlsx"} <= marked
+    assert {"*.docx", "*.png", "*.pdf", "*.xlsx", "*.svg"} <= marked
+
+
+def test_an_svg_figure_is_kept_byte_for_byte(tmp_path: Path) -> None:
+    """The bisphosphonates paper (2026-11-26): svglite on Windows writes an SVG with CRLF line
+    endings, `* text=auto eol=lf` stored it with LF, and in another checkout the figure's
+    bytes were not the ones `figures/*.render.json` and its review had recorded, so both
+    read as changed. The project's fix was `*.svg binary`, which `init` now writes, and git
+    reads it so: the SVG is not text to normalise."""
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    root = tmp_path / "paper"
+    init_project(root)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    said = subprocess.run(["git", "-C", str(root), "check-attr", "text", "diff", "--",
+                           "figures/forest.svg", "figures/forest.R"], check=True,
+                          capture_output=True, text=True).stdout.splitlines()  # fmt: skip
+    assert "figures/forest.svg: text: unset" in said
+    assert "figures/forest.svg: diff: unset" in said
+    assert "figures/forest.R: text: auto" in said
 
 
 def test_init_keeps_the_copies_of_cited_works_out_of_git(tmp_path: Path) -> None:
@@ -686,9 +708,11 @@ _MOVED = "paths:\n  build: out\n  literature: refs\n"
     ({".gitignore": _BOM + "build/\nliterature/sources/*\n"}, {".gitignore": ["build/"]}),
     ({".gitignore": " build/\nliterature/sources/*\n"}, {}),
     # Only a `*` line with both `text=auto` and `eol=lf` counts.
-    ({".gitattributes": "* text eol=lf\n"}, {".gitattributes": ["* text=auto eol=lf"]}),
-    ({".gitattributes": "* text=auto\n* eol=lf\n"}, {".gitattributes": ["* text=auto eol=lf"]}),
-    ({".gitattributes": "* text=auto eol=lf\n"}, {}),
+    ({".gitattributes": "* text eol=lf\n*.svg binary\n"},
+     {".gitattributes": ["* text=auto eol=lf"]}),
+    ({".gitattributes": "* text=auto\n* eol=lf\n*.svg binary\n"},
+     {".gitattributes": ["* text=auto eol=lf"]}),
+    ({".gitattributes": "* text=auto eol=lf\n*.svg binary\n"}, {}),
     # The folders are build/ and literature/sources/* whatever `paths:` names.
     ({".gitignore": "out/\nrefs/sources/*\n", "paper.yaml": _MOVED},
      {".gitignore": ["build/", "literature/sources/*"]}),
@@ -712,6 +736,55 @@ def test_init_s_git_advice_reads_spellings_and_not_git_s_rules(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text.encode("utf-8"))
     assert git_lines_to_add(tmp_path) == wanted
+
+
+@pytest.mark.parametrize(("attributes", "wanted"), [
+    ("* text=auto eol=lf\n", ["*.svg binary"]),
+    ("*.R text\n", ["* text=auto eol=lf", "*.svg binary"]),
+    # Any rule of the file's own for SVGs is the author's, and is not asked again.
+    ("* text=auto eol=lf\n*.svg -text\n", []),
+    ("* text=auto eol=lf\n*.svg   binary\n", []),
+    ("* text=auto eol=lf\n*.svg text eol=lf\n", []),
+    # Another pattern that holds SVGs is not read as one: asked again, a false alarm.
+    ("* text=auto eol=lf\nfigures/*.svg binary\n", ["*.svg binary"]),
+    ("* text=auto eol=lf\n*.SVG binary\n", ["*.svg binary"]),
+], ids=["normalised, no svg rule", "neither", "-text", "spaced", "the author's own",
+        "a folder's svgs", "in capitals"])  # fmt: skip
+def test_init_asks_for_svgs_byte_for_byte_where_the_file_has_no_rule_for_them(
+    tmp_path: Path, attributes: str, wanted: list[str]
+) -> None:
+    """svglite on Windows writes CRLF, and `* text=auto eol=lf` normalises an SVG to LF, so its
+    render record and its review do not hold in another checkout (the bisphosphonates paper,
+    2026-11-26). An existing `.gitattributes` with no line for `*.svg` is asked for
+    `*.svg binary`. The line is found by its spelling, as the others are (DESIGN.md, Known
+    gaps, "`init`'s advice on an existing `.gitignore` and `.gitattributes` reads spellings,
+    not git's rules")."""
+    from manuscript_guard.scaffold import git_lines_to_add
+
+    (tmp_path / ".gitattributes").write_bytes(attributes.encode("utf-8"))
+    assert git_lines_to_add(tmp_path) == ({".gitattributes": wanted} if wanted else {})
+
+
+def test_init_says_why_each_gitattributes_line_is_asked_for(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The reason printed for `.gitattributes` is the one for the lines it lacks: a file that
+    checks text out as LF and has no rule for SVGs is not told it does not."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "analysis-repo"
+    root.mkdir()
+    (root / ".gitattributes").write_text("* text=auto eol=lf\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert ".gitattributes was already there" in out
+    assert "LF line endings" not in out
+    assert "svglite" in out and "\n*.svg binary" in out
+    (root / ".gitattributes").write_text("*.R text\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "LF line endings" in out and "svglite" in out
+    assert "\n* text=auto eol=lf\n*.svg binary" in out
 
 
 def test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing(
@@ -763,7 +836,7 @@ def test_init_in_a_repository_says_which_git_lines_its_files_lack(tmp_path: Path
     assert (root / ".gitignore").read_text(encoding="utf-8") == "*.csv\n/build\n"
     # With the lines there, and with files init wrote itself, nothing is said of them.
     (root / ".gitignore").write_text("build/\nliterature/sources/*\n", encoding="utf-8")
-    (root / ".gitattributes").write_text("*   eol=lf text=auto\n", encoding="utf-8")
+    (root / ".gitattributes").write_text("*   eol=lf text=auto\n*.svg binary\n", encoding="utf-8")
     assert main(["init", str(root)]) == 0
     out = capsys.readouterr().out
     assert ".gitignore was already" not in out and ".gitattributes was already" not in out

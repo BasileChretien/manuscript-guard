@@ -240,6 +240,11 @@ GITATTRIBUTES = """\
 *.xlsx binary
 *.zip  binary
 *.RData binary
+
+# An SVG figure is text, but it is kept byte for byte: svglite on Windows writes CRLF, and
+# normalised to LF it is no longer the file figures/*.render.json and its review recorded, so
+# both read as changed in every other checkout.
+*.svg  binary
 """
 
 README = """\
@@ -521,6 +526,8 @@ _IGNORED = {
 }  # fmt: skip
 #: The line of `.gitattributes` the digests need, as its words.
 _EOL = "* text=auto eol=lf"
+#: The line that keeps an SVG figure's bytes as its script wrote them.
+SVG_BINARY = "*.svg binary"
 
 
 def git_lines_to_add(root: Path) -> dict[str, list[str]]:
@@ -530,7 +537,9 @@ def git_lines_to_add(root: Path) -> dict[str, list[str]]:
     without `build/` commits what the build writes, one without `literature/sources/*` the
     stored copies of cited works, paywalled papers among them, and a `.gitattributes`
     without `* text=auto eol=lf` checks text out with each machine's line endings, which
-    the byte-exact digests then read as edits. A private repository whose paper.yaml says
+    the byte-exact digests then read as edits. One with no line for `*.svg` normalises an
+    SVG figure, or is told to, and svglite's CRLF on Windows is then no longer the file the
+    render record and the review hold. A private repository whose paper.yaml says
     `sources_in_git: true` commits the copies, and is not asked to leave them out."""
     root = Path(root).resolve()
     wanted: dict[str, list[str]] = {}
@@ -543,8 +552,13 @@ def git_lines_to_add(root: Path) -> dict[str, list[str]]:
         if missing:
             wanted[".gitignore"] = missing
     attributes = _lines(root / ".gitattributes")
-    if attributes is not None and not any(_is_eol(line) for line in attributes):
-        wanted[".gitattributes"] = [_EOL]
+    if attributes is not None:
+        missing = [] if any(_is_eol(line) for line in attributes) else [_EOL]
+        # Any rule of the file's own for `*.svg` is the author's choice, binary or not.
+        if not any(line.split()[:1] == ["*.svg"] for line in attributes):
+            missing.append(SVG_BINARY)
+        if missing:
+            wanted[".gitattributes"] = missing
     return wanted
 
 

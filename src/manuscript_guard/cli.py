@@ -6781,9 +6781,16 @@ _GIT_LINES = {
     ".gitignore": "it does not leave out what the build writes (`build/`) or the stored copies "
                   "of cited works, paywalled papers among them, which a public repository "
                   "would publish (`literature/sources/*`)",
-    ".gitattributes": "it does not check text out with LF line endings everywhere, and "
-                      "manuscript-guard's digests, taken over the bytes, then differ between "
-                      "machines and read as edits nobody made",
+}  # fmt: skip
+#: Why each line of `.gitattributes` belongs there: one reason a line, said for those missing.
+_ATTRIBUTE_LINES = {
+    "* text=auto eol=lf": "it does not check text out with LF line endings everywhere, and "
+                          "manuscript-guard's digests, taken over the bytes, then differ "
+                          "between machines and read as edits nobody made",
+    "*.svg binary": "it does not keep SVG figures byte for byte: svglite on Windows writes "
+                    "them with CRLF, and normalised to LF a figure is no longer the file its "
+                    "render record and its review hold, so both read as changed in another "
+                    "checkout",
 }  # fmt: skip
 
 
@@ -6791,7 +6798,8 @@ def _say_git_lines(wanted: dict[str, list[str]]) -> None:
     """What `init` says of an existing .gitignore or .gitattributes that lacks a line the
     project needs: it never writes over them, so it prints the lines, as for AGENTS.md."""
     for name, lines in wanted.items():
-        print(f"\n{name} was already there and was left as it was, and {_GIT_LINES[name]}. "
+        why = _GIT_LINES.get(name) or ", and ".join(_ATTRIBUTE_LINES[line] for line in lines)
+        print(f"\n{name} was already there and was left as it was, and {why}. "
               "Add these lines to it:\n\n" + "\n".join(lines))
 
 

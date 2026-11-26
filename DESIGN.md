@@ -28668,7 +28668,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   first line leaves that line unread, and a leading space makes ` build/` count, where git
   does the opposite (finding 4). In `.gitattributes` only a `*` line with both
   `text=auto` and `eol=lf` counts, so `* text eol=lf`, or the two on separate lines, both of
-  which check out LF, are asked for again (finding 5). The folders are `build/` and
+  which check out LF, are asked for again (finding 5); and only a line whose pattern is
+  `*.svg` counts as the file's rule for SVG figures, so `figures/*.svg binary` or
+  `*.SVG binary` is answered with `*.svg binary` again. The folders are `build/` and
   `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
   reason printed for `.gitignore` is one sentence that names both lines whichever is
   missing, so it can say the file does not leave out `build/` when `/build` does, or warn
@@ -28676,8 +28678,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Closed by asking `git check-ignore`, as `literature/away.py`'s `ignored_by_git` does, by
   `project.path` for the folders, and by a reason for each missing line.
   Pinned by `tests/test_scaffold.py::test_init_s_git_advice_reads_spellings_and_not_git_s_rules`,
-  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`
-  and `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`.
+  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`,
+  `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`
+  and `tests/test_scaffold.py::test_init_asks_for_svgs_byte_for_byte_where_the_file_has_no_rule_for_them`.
 - **The status line's "Next:" is the first action's title and no more.** Its options, its
   command and who runs it are in `next`; a status line that has to say a choice is due says
   only its title, "Name the study design", and an agent that acts on the line alone has not

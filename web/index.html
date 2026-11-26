@@ -52,7 +52,7 @@
 
   <ol class="how" aria-label="How it works">
     <li><span class="num">1</span><span><strong>Drop your paper</strong>
-      A Word file (.docx) or Markdown (.md).</span></li>
+      A Word file (.docx), Markdown (.md), or a LaTeX project as a .zip or .tar.gz.</span></li>
     <li><span class="num">2</span><span><strong>We read it here</strong>
       On this computer, in this browser tab.</span></li>
     <li><span class="num">3</span><span><strong>Read your report</strong>
@@ -74,9 +74,10 @@
       <label class="drop">
         <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path class="fill-card stroke-teal" d="M12 4h17l9 9v29a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path class="stroke-teal" d="M29 4v9h9M24 34V20M18 26l6-6 6 6"/></svg>
         <span class="field">The paper</span>
-        <span class="help">Drop your .docx or .md file here, or click to choose it.</span>
+        <span class="help">Drop your .docx or .md file, or your LaTeX project as a .zip or
+          .tar.gz, here, or click to choose it.</span>
         <span id="chosen" class="chosen" hidden></span>
-        <input id="paper" name="paper" type="file" accept=".docx,.md" required disabled></label>
+        <input id="paper" name="paper" type="file" accept=".docx,.md,.zip,.gz,.tgz" required disabled></label>
       <!-- Shown for a .docx only: the copy is of a Word document (app.js). -->
       <label id="trackedbox" class="tick" hidden><input id="tracked" type="checkbox" disabled>
         <span><span class="field">Also make a copy with the corrections as tracked changes</span>
@@ -353,8 +354,8 @@
     <details>
       <summary>What does it not check?</summary>
       <ul>
-        <li>PDFs, LaTeX projects, figures and reproducibility packages. The command line reads
-          them, with the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
+        <li>PDFs, figures and reproducibility packages. The command line reads them, with
+          the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
         <li>Whether a number is right. A number found in the outputs may be there by chance,
           and the report says how often that would happen.</li>
       </ul>

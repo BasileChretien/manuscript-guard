@@ -145,6 +145,29 @@ const DESIGNS = ["observational", "trial"];
 const labels = (typed) => typed.map((label) => label.trim())
   .filter((label) => label && !label.startsWith("-"));
 
+// A paper's project as an archive: a .zip, as Overleaf downloads one, or a .tar.gz, as
+// arXiv gives a paper's source (`unpack.ARCHIVES`).
+const ARCHIVE = /\.(zip|tar\.gz|tgz)$/i;
+
+// The archive written outside the folder the audit reads, unpacked into a folder of it named
+// after the archive with the checks a package's .zip is held to (`web.unpack_paper`), and
+// the archive itself removed: the folder's name, or the refusal, which says why.
+function unpacked(paper, paperName) {
+  const archive = "/upload/" + paperName;
+  py.FS.writeFile(archive, new Uint8Array(paper.data));
+  py.globals.set("ARCHIVE", archive);
+  const said = JSON.parse(py.runPython(`import json, os
+from manuscript_guard import web
+try:
+    said = json.dumps(web.unpack_paper(ARCHIVE, "/work"))
+finally:
+    if os.path.exists(ARCHIVE): os.remove(ARCHIVE)
+said`));
+  py.globals.delete("ARCHIVE");
+  if (said.error) throw new Error(said.error);
+  return said.folder;
+}
+
 // The names the page gives the files its journal form makes, which no file chosen may have.
 const FORM_FILES = { profile: "journal.yaml", authors: "authors.yaml" };
 
@@ -180,13 +203,22 @@ function run({ paper, against, lookup, details, english = "", known = [], noAbst
   const chosen = names([paper, ...against, ...own]);
   const [paperName, ...outputNames] = chosen.slice(0, 1 + against.length);
   const made = formFiles(journalFile ? null : journal, authorsFile ? null : authors, chosen);
+  // A LaTeX project as a .zip or a .tar.gz is unpacked into a folder named after it, and the
+  // audit is given the folder, as the command line is given the one the reader unpacks.
+  const archived = ARCHIVE.test(paperName);
+  if (archived && chosen.includes(paperName.replace(ARCHIVE, ""))) {
+    throw new Error(`a file chosen is named ${paperName.replace(ARCHIVE, "")}, the name of the `
+      + `folder ${paperName} is unpacked into: rename it`);
+  }
   py.runPython(`import os, shutil
 os.chdir("/")
 shutil.rmtree("/work", ignore_errors=True)
 os.makedirs("/work", exist_ok=True)
+os.makedirs("/upload", exist_ok=True)
 os.chdir("/work")`);
-  py.FS.writeFile("/work/" + paperName, new Uint8Array(paper.data));
-  const args = ["audit", argument(paperName)];
+  const given = archived ? unpacked(paper, paperName) : paperName;
+  if (!archived) py.FS.writeFile("/work/" + paperName, new Uint8Array(paper.data));
+  const args = ["audit", argument(given)];
   if (against.length) {
     args.push("--against");
     against.forEach((file, at) => {

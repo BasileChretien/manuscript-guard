@@ -23956,6 +23956,11 @@ def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> N
     # A plan with no such section is plan-section-missing's, not this.
     plan.write_bytes(text.replace("## Population and data source", "## Cohort").encode())
     assert _sources_said(project) == []
+    # Named exactly, `{#population}`, it is the Population this check reads (round 1 of
+    # #824: plan-section-missing fell silent for it, and so did this check).
+    plan.write_bytes(text.replace("## Population and data source", "## Cohort {#population}")
+                     .encode())  # fmt: skip
+    assert _sources_said(project) == [("plan-source-unnamed", "warn")]
 
 
 def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:
@@ -39691,6 +39696,61 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+def test_a_heading_names_its_section_exactly_whatever_its_words(project: Path) -> None:
+    """A section is found by the words of its heading (DESIGN.md, Known gaps), and a heading
+    in other words was a false alarm the author could answer only by renaming it. The
+    identifier its attribute block gives names the section exactly, `{#time-zero-and-
+    follow-up}`, and the warning says which identifier names it."""
+    from manuscript_guard.gates import check_design
+    from manuscript_guard.text.attributes import heading_identifier
+
+    assert heading_identifier("## Study sample {#sampling}") == "sampling"
+    assert heading_identifier("## Study sample {.unnumbered #sampling}") == "sampling"
+    assert heading_identifier("## Results {-}") is None
+    assert heading_identifier("## Notes {and more}") is None  # pandoc prints the braces
+    assert heading_identifier("# [Ref]{#a}") is None  # a span's block, not the heading's
+
+    _paper_has(project, study_type="cohort")
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8")
+                    + "\n## When people enter the study\n\nAt the first report.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert "time zero and follow-up" in _plan_asked(project)
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert hints["the plan says nothing about time zero and follow-up"].endswith(
+        "name the section on that heading: {#time-zero-and-follow-up}")
+    text = plan.read_text(encoding="utf-8")
+    plan.write_text(text.replace("## When people enter the study\n",
+                                 "## When people enter the study {#time-zero-and-follow-up}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert "time zero and follow-up" not in _plan_asked(project)
+    # An identifier names one section: another's is no answer to it.
+    plan.write_text(text.replace("## When people enter the study\n",
+                                 "## When people enter the study {#confounding}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert "time zero and follow-up" in _plan_asked(project)
+
+
+def test_the_deviations_are_found_by_their_words_and_never_named(project: Path) -> None:
+    """Round 1 of #824: every reader of the plan's Deviations finds it by its words (what it
+    says since the first results, the planned results it excuses, the controls, the
+    registration, the brief), so a Deviations named `{#deviations}` under other words was
+    found by G12's check of the sections and read by none of the rest. It cannot be named so,
+    and its warning does not say it can."""
+    from manuscript_guard.gates import check_design
+
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Deviations from the plan\n",
+                                 "## Since the start {#deviations}\n"), encoding="utf-8")
+    assert "deviations" in _plan_asked(project)
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "{#" not in hints["the plan says nothing about deviations"]
+
+
 def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
     project: Path,
 ) -> None:
@@ -39705,9 +39765,9 @@ def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
     assert {"sampling", "measurement", "bias"} <= set(asked), asked
     hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
              if f.code == "plan-section-missing"}  # fmt: skip
-    assert hints["the plan says nothing about sampling"].endswith(
-        "(STROBE, items 6a and 12d (cross-sectional))")
-    assert hints["the plan says nothing about bias"].endswith("(STROBE, item 9 (cross-sectional))")
+    assert "(STROBE, items 6a and 12d (cross-sectional))" in hints[
+        "the plan says nothing about sampling"]
+    assert "(STROBE, item 9 (cross-sectional))" in hints["the plan says nothing about bias"]
     # Its sample size is the example's own section, which every design that asks for one finds.
     assert "sample size" not in asked
 

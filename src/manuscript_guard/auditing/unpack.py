@@ -14,16 +14,23 @@ character, one of `<>"|?*`, a part ending in a stop or a space, a part kept for 
 cannot be written all the same, on any system, refuses the package with a sentence. The
 members are written into a new temporary folder, each no larger than the archive says it is,
 and the folder is removed when the audit ends. Nothing in the package is run.
+
+A paper's project, a .zip or a .tar.gz, the audit page unpacks the same way
+(`unpack_archive`) into a folder of its own, which it audits: a tar's members are held to the
+same checks, and a member that is neither a file nor a folder (a link, a device) refuses it.
 """
 
 from __future__ import annotations
 
+import gzip
 import os
 import shutil
 import stat
+import tarfile
 import tempfile
 import zipfile
-from collections.abc import Iterator
+import zlib
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -90,7 +97,53 @@ def _windows_cannot_hold(parts: list[str]) -> str:
     return ""
 
 
-def members(archive: Path) -> list[zipfile.ZipInfo]:
+def _checked(shown: str, entries: list[tuple[str, int, object]],
+             refused: Callable[[object], str], max_members: int | None,
+             max_bytes: int | None) -> None:  # fmt: skip
+    """`Refused` where one of an archive's members, each its name (a folder's ending in
+    "/"), its size and what the archive keeps of it, or the whole, is not safe to unpack:
+    a name `_unsafe` refuses or one `refused` says why of, two names in one case, a name both
+    a file and a folder, more members or bytes than the limits (`MAX_MEMBERS`, `MAX_BYTES`
+    where none is given)."""
+    max_members = MAX_MEMBERS if max_members is None else max_members
+    max_bytes = MAX_BYTES if max_bytes is None else max_bytes
+    if len(entries) > max_members:
+        raise Refused(f"{shown} holds {len(entries)} members, more than the "
+                      f"{max_members} the audit unpacks")  # fmt: skip
+    seen: dict[str, str] = {}
+    folders: set[str] = set()
+    total = 0
+    for name, size, kept in entries:
+        why = _unsafe(name) or refused(kept)
+        if why:
+            raise Refused(f"{shown}: the member {name!r} {why}; nothing was unpacked")
+        key = name.rstrip("/").casefold()
+        if key in seen:
+            raise Refused(f"{shown}: the members {seen[key]!r} and {name!r} are one name "
+                          "on a system that ignores case; nothing was unpacked")  # fmt: skip
+        seen[key] = name
+        parts = key.split("/")
+        folders.update("/".join(parts[:end]) for end in range(1, len(parts)))
+        total += size
+    both = sorted(key for key, name in seen.items() if not name.endswith("/") and key in folders)
+    if both:
+        raise Refused(f"{shown}: the member {seen[both[0]]!r} is both a file and a folder "
+                      "of other members; nothing was unpacked")  # fmt: skip
+    if total > max_bytes:
+        raise Refused(f"{shown} unpacks to {total} bytes, more than the {max_bytes} the "
+                      "audit unpacks")  # fmt: skip
+
+
+def _zip_refused(info: zipfile.ZipInfo) -> str:
+    if stat.S_ISLNK(info.external_attr >> 16):
+        return "is a link"
+    if info.flag_bits & 0x1:
+        return "is encrypted"
+    return ""
+
+
+def members(archive: Path, *, max_members: int | None = None,
+            max_bytes: int | None = None) -> list[zipfile.ZipInfo]:  # fmt: skip
     """The members of a .zip, each checked; `Refused` where one, or the whole, is not safe
     to unpack."""
     try:
@@ -98,42 +151,14 @@ def members(archive: Path) -> list[zipfile.ZipInfo]:
             infos = opened.infolist()
     except (zipfile.BadZipFile, OSError, EOFError, ValueError) as exc:
         raise Refused(f"{archive.name} is not a .zip the audit can read ({exc})") from None
-    if len(infos) > MAX_MEMBERS:
-        raise Refused(f"{archive.name} holds {len(infos)} members, more than the "
-                      f"{MAX_MEMBERS} the audit unpacks")  # fmt: skip
-    seen: dict[str, str] = {}
-    folders: set[str] = set()
-    total = 0
-    for info in infos:
-        name = info.filename
-        why = _unsafe(name)
-        if why:
-            raise Refused(f"{archive.name}: the member {name!r} {why}; nothing was unpacked")
-        if stat.S_ISLNK(info.external_attr >> 16):
-            raise Refused(f"{archive.name}: the member {name!r} is a link; nothing was unpacked")
-        if info.flag_bits & 0x1:
-            raise Refused(f"{archive.name}: the member {name!r} is encrypted; nothing was "
-                          "unpacked")  # fmt: skip
-        key = name.rstrip("/").casefold()
-        if key in seen:
-            raise Refused(f"{archive.name}: the members {seen[key]!r} and {name!r} are one name "
-                          "on a system that ignores case; nothing was unpacked")  # fmt: skip
-        seen[key] = name
-        parts = key.split("/")
-        folders.update("/".join(parts[:end]) for end in range(1, len(parts)))
-        total += info.file_size
-    both = sorted(key for key, name in seen.items() if not name.endswith("/") and key in folders)
-    if both:
-        raise Refused(f"{archive.name}: the member {seen[both[0]]!r} is both a file and a folder "
-                      "of other members; nothing was unpacked")  # fmt: skip
-    if total > MAX_BYTES:
-        raise Refused(f"{archive.name} unpacks to {total} bytes, more than the {MAX_BYTES} the "
-                      "audit unpacks")  # fmt: skip
+    _checked(archive.name, [(info.filename, info.file_size, info) for info in infos],
+             _zip_refused, max_members, max_bytes)  # fmt: skip
     return infos
 
 
-def _unpack(archive: Path, into: Path) -> None:
-    infos = members(archive)
+def _unpack(archive: Path, into: Path, *, max_members: int | None = None,
+            max_bytes: int | None = None) -> None:  # fmt: skip
+    infos = members(archive, max_members=max_members, max_bytes=max_bytes)
     with zipfile.ZipFile(archive) as opened:
         for info in infos:
             target = into.joinpath(*PurePosixPath(info.filename).parts)
@@ -156,6 +181,130 @@ def _unpack(archive: Path, into: Path) -> None:
             except OSError as exc:
                 raise Refused(f"{archive.name}: the member {info.filename!r} cannot be written "
                               f"here ({exc.strerror or exc}); nothing in it is read") from None
+
+
+#: What an archive of a paper's project is named: a .zip, as Overleaf downloads one, or a
+#: .tar.gz, as arXiv gives a paper's source. The audit page unpacks one into a folder of its
+#: own and audits the folder (`unpack_archive`, docs/audit-page.md).
+ARCHIVES = (".zip", ".tar.gz", ".tgz")
+
+
+def archive_stem(name: str) -> str:
+    """The archive's name without its suffix, the folder it is unpacked into: "project" of
+    "project.zip" and of "project.tar.gz"; "" for a name that is no archive's."""
+    lowered = name.lower()
+    for suffix in ARCHIVES:
+        if lowered.endswith(suffix) and len(name) > len(suffix):
+            return name[: -len(suffix)]
+    return ""
+
+
+def _tar_refused(info: tarfile.TarInfo) -> str:
+    if info.issym() or info.islnk():
+        return "is a link"
+    if not (info.isreg() or info.isdir()):
+        return "is neither a file nor a folder"
+    return ""
+
+
+def _tar_entries(infos: list[tarfile.TarInfo]) -> list[tuple[str, int, tarfile.TarInfo]]:
+    """Each member of a tar as `_checked` takes it: its name without the "./" a tar made of
+    a folder's contents puts before each, a folder's ending in "/", and the folder "."
+    itself left out, which is the folder it is unpacked into."""
+    entries = []
+    for info in infos:
+        name = info.name
+        while name.startswith("./"):
+            name = name[2:]
+        if info.isdir():
+            if name.rstrip("/") in ("", "."):
+                continue
+            name = name.rstrip("/") + "/"
+        entries.append((name, info.size if info.isreg() else 0, info))
+    return entries
+
+
+def _copied(source, target: Path, size: int, shown: str, name: str) -> None:
+    """A member's bytes written to `target`, which must not be there, and no more than the
+    archive says it holds."""
+    written = 0
+    with source, target.open("xb") as out:
+        for block in iter(lambda: source.read(_CHUNK), b""):  # noqa: B023
+            written += len(block)
+            if written > size:
+                raise Refused(f"{shown}: the member {name!r} is larger than the archive says")
+            out.write(block)
+
+
+def _untar(archive: Path, into: Path, max_members: int | None, max_bytes: int | None) -> None:
+    """A .tar.gz unpacked into `into`, every member checked before any is written; one
+    gzipped file that is no tar, as arXiv gives a paper of one file, written as its own
+    `.tex`."""
+    try:
+        opened = tarfile.open(archive, "r:gz")  # noqa: SIM115 - closed below
+    except tarfile.ReadError:
+        _ungzip(archive, into, MAX_BYTES if max_bytes is None else max_bytes)
+        return
+    except (OSError, EOFError, ValueError, zlib.error) as exc:
+        raise Refused(f"{archive.name} is not a .tar.gz the audit can read ({exc})") from None
+    with opened:
+        try:
+            entries = _tar_entries(opened.getmembers())
+        except (tarfile.TarError, OSError, EOFError, zlib.error) as exc:
+            raise Refused(f"{archive.name} is not a .tar.gz the audit can read ({exc})") from None
+        _checked(archive.name, entries, _tar_refused, max_members, max_bytes)
+        for name, size, info in entries:
+            target = into.joinpath(*PurePosixPath(name).parts)
+            try:
+                if info.isdir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _copied(opened.extractfile(info), target, size, archive.name, name)
+            except (tarfile.TarError, EOFError, zlib.error) as exc:
+                raise Refused(f"{archive.name}: the member {name!r} cannot be read "
+                              f"({exc})") from None  # fmt: skip
+            except OSError as exc:
+                raise Refused(f"{archive.name}: the member {name!r} cannot be written here "
+                              f"({exc.strerror or exc}); nothing in it is read") from None
+
+
+def _ungzip(archive: Path, into: Path, max_bytes: int) -> None:
+    """One gzipped file, written as `<the archive's stem>.tex`, and no more of it than
+    `max_bytes`."""
+    name = f"{archive_stem(archive.name)}.tex"
+    why = _unsafe(name)
+    if why:
+        raise Refused(f"{archive.name}: the file it holds would be named {name!r}, which {why}")
+    written = 0
+    try:
+        with gzip.open(archive) as source, (into / name).open("xb") as out:
+            for block in iter(lambda: source.read(_CHUNK), b""):  # noqa: B023
+                written += len(block)
+                if written > max_bytes:
+                    raise Refused(f"{archive.name} unpacks to more than the {max_bytes} bytes "
+                                  "the audit unpacks")  # fmt: skip
+                out.write(block)
+    except (OSError, EOFError, zlib.error) as exc:
+        raise Refused(f"{archive.name} is not a .tar.gz the audit can read ({exc})") from None
+
+
+def unpack_archive(archive: Path, into: Path, *, max_members: int | None = None,
+                   max_bytes: int | None = None) -> None:  # fmt: skip
+    """The .zip or .tar.gz `archive` of a paper's project unpacked into the new folder
+    `into`, with the checks a package's .zip is held to (`members`), and in a tar no member
+    but a file or a folder; `Refused`, and the folder removed, where it cannot be."""
+    if into.exists():
+        raise Refused(f"{archive.name}: the folder {into.name} is there already")
+    into.mkdir(parents=True)
+    try:
+        if archive.name.lower().endswith(".zip"):
+            _unpack(archive, into, max_members=max_members, max_bytes=max_bytes)
+        else:
+            _untar(archive, into, max_members, max_bytes)
+    except BaseException:
+        shutil.rmtree(into, ignore_errors=True)
+        raise
 
 
 def _links(folder: Path) -> list[str]:
@@ -202,4 +351,5 @@ def opened(given: Path) -> Iterator[Path]:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-__all__ = ["MANIFEST", "MAX_BYTES", "MAX_MEMBERS", "Refused", "members", "opened", "root_of"]
+__all__ = ["ARCHIVES", "MANIFEST", "MAX_BYTES", "MAX_MEMBERS", "Refused", "archive_stem",
+           "members", "opened", "root_of", "unpack_archive"]  # fmt: skip

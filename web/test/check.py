@@ -6,8 +6,9 @@
 For each case (the .docx against the results, the .docx alone, the Markdown alone, the
 .docx against the results under names a reader may give them, outside ASCII and with
 spaces, under names that start with "-", against two outputs whose names the page once
-made one, with a referee's options set, with the copy with tracked changes asked for, and
-held to a journal's rules typed in the page's form, its review double-blind),
+made one, with a referee's options set, with the copy with tracked changes asked for,
+held to a journal's rules typed in the page's form, its review double-blind, and a LaTeX
+project as a .zip and as a .tar.gz, which the command line is given as the folder they hold),
 the command line's `audit` is run here, then the same command is run as the page runs it,
 in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its `--json`
 must be the command line's. Where the copy with tracked changes is asked for, the command
@@ -31,7 +32,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 
 TEST = Path(__file__).resolve().parent
@@ -72,6 +75,11 @@ JOURNAL_FORM = {"name": "Journal of Examples", "url": "", "date": "",
 AUTHORS_FORM = {"authors": [{"given": "Ada", "family": "Example", "orcid": "", "email": ""}],
                 "affiliations": ["Department of Examples"]}
 JOURNAL = (["--journal", "journal.yaml", "--authors", "authors.yaml"], JOURNAL_BOXES)
+#: A LaTeX project as the page is given it, and the folder the command line is given, which
+#: is the one the page unpacks it into.
+ARCHIVED = {"project.zip": "project", "project.tar.gz": "project"}
+#: The LaTeX project the cases are made of (tests/data/latex), where no other is named.
+LATEX = TEST.parents[1] / "tests" / "data" / "latex" / "manuscript"
 #: How many corrections `audit --tracked` says it wrote as tracked changes.
 CORRECTIONS = re.compile(r"(\d+) corrections? as tracked changes")
 
@@ -88,8 +96,11 @@ def native(folder: Path, arguments: list[str]) -> dict:
     return {"code": done.returncode, "out": done.stdout, "err": done.stderr}
 
 
-def in_node(site: Path, folder: Path, arguments: list[str]) -> dict:
-    done = subprocess.run([NODE, str(TEST / "parity.mjs"), str(site), str(folder), "--",
+def in_node(site: Path, folder: Path, arguments: list[str], unpack: str | None = None) -> dict:
+    """The command as the page runs it, in Node; `unpack`, an archive the page is given,
+    unpacked there first as the page unpacks one (`parity.mjs --unpack`)."""
+    done = subprocess.run([NODE, str(TEST / "parity.mjs"), str(site), str(folder),
+                           *(["--unpack", unpack] if unpack else []), "--",
                            *arguments], capture_output=True, text=True, encoding="utf-8",
                           timeout=900, check=False)  # fmt: skip
     if done.returncode != 0:
@@ -111,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--docx", type=Path, required=True, help="the worked example, built")
     parser.add_argument("--results", type=Path, required=True, help="its results file")
     parser.add_argument("--markdown", type=Path, required=True, help="its manuscript/main.md")
+    parser.add_argument("--latex", type=Path, default=LATEX,
+                        help="a LaTeX project's folder (default tests/data/latex/manuscript)")
     parser.add_argument("--browsers", default="chrome,firefox",
                         help="comma-separated, or none (default chrome,firefox)")  # fmt: skip
     args = parser.parse_args(argv)
@@ -126,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
         ("a referee's options", "paper.docx", ["results.json"], REFEREE),
         ("the copy with tracked changes", "paper.docx", [], TRACKED),
         ("a journal's rules, its review double-blind", "paper.docx", [], JOURNAL),
+        ("a LaTeX project as a .zip", "project.zip", [], ([], {})),
+        ("a LaTeX project as a .tar.gz", "project.tar.gz", [], ([], {})),
     ]
     failed = 0
     with tempfile.TemporaryDirectory(prefix="mg-page-") as scratch:
@@ -140,6 +155,16 @@ def main(argv: list[str] | None = None) -> int:
                 "authors.yaml": as_text(authors_of(AUTHORS_FORM))}
         for name, text in made.items():
             (folder / name).write_bytes(text.encode("utf-8"))
+        # The LaTeX project as a folder, and as the archives a reader would drop: a .zip as
+        # Overleaf writes one, and a .tar.gz of "./" names as arXiv's are.
+        shutil.copytree(args.latex, folder / "project")
+        files = sorted(path for path in (folder / "project").rglob("*") if path.is_file())
+        with zipfile.ZipFile(folder / "project.zip", "w") as archive:
+            for path in files:
+                archive.write(path, path.relative_to(folder / "project").as_posix())
+        with tarfile.open(folder / "project.tar.gz", "w:gz") as archive:
+            for path in files:
+                archive.add(path, "./" + path.relative_to(folder / "project").as_posix())
         for source, names in ((args.docx, ("paper.docx", PAPER, DASHED_PAPER)),
                               (args.results, ("results.json", OUTPUT, DASHED_OUTPUT, *ALIKE)),
                               (args.markdown, ("paper.md",))):  # fmt: skip
@@ -147,14 +172,15 @@ def main(argv: list[str] | None = None) -> int:
                 shutil.copyfile(source, folder / name)
         listed = []
         for number, (name, paper, against, (options, form)) in enumerate(cases):
-            arguments = ["audit", argument(paper),
+            arguments = ["audit", argument(ARCHIVED.get(paper, paper)),
                          *(["--against", *map(argument, against)] if against else []), *options]
             said = native(folder, arguments)
             page = args.site / AUDIT
-            wrong = [*differences(said, in_node(page, folder, arguments), False),
+            unpack = paper if paper in ARCHIVED else None
+            wrong = [*differences(said, in_node(page, folder, arguments, unpack), False),
                      *(f"--json {part}" for part in differences(
                          native(folder, [*arguments, "--json"]),
-                         in_node(page, folder, [*arguments, "--json"]), True))]  # fmt: skip
+                         in_node(page, folder, [*arguments, "--json"], unpack), True))]  # fmt: skip
             print(f"node, {name}: {'same' if not wrong else 'DIFFERENT: ' + ', '.join(wrong)}",
                   flush=True)  # fmt: skip
             failed += bool(wrong)

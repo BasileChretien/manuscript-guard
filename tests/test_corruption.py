@@ -3609,6 +3609,34 @@ def test_a_pdf_s_heading_with_a_format_character_ends_its_abstract(tmp_path: Pat
     assert _rebuilt_said(run, "BMD") == [], run.language
 
 
+def test_a_word_a_pdf_kerns_in_two_is_one_word(tmp_path: Path) -> None:
+    """pdf-educ-A1 of the real-paper corpus kerns its code names, "T" then
+    "U1_effect" touching it, and poppler gives each word of the two apart: read as
+    "T U1_effect", no name from the code was left, and G14's question on them went. Two
+    words set with no gap between them are one, as pdftotext's text reading prints them."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import Piece, knows_word_places, pdf, width
+
+    from manuscript_guard.auditing import pdf as pdf_module
+    from manuscript_guard.auditing.gates import run_gates
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    before = "The effect was large in U1 (T"
+    pieces = [Piece(72.0, 760.0, "Results", size=11.0), Piece(72.0, 740.0, before, size=11.0),
+              Piece(72.0 + width(before, 11.0), 740.0, "U1_effect = .06).", size=9.5)]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(pdf([pieces]))
+    pdf_module._REBUILT.clear()
+    run = run_gates(paper, paragraphs=True)
+    assert run.places is not None, run.read
+    assert "(TU1_effect = .06)." in run.places.text, run.places.text
+    assert any(f.code == "code-name-in-prose" and "TU1_effect" in f.message
+               for f in run.language), run.language
+
+
 def test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs(tmp_path: Path) -> None:
     """pdf-educ-B2 of the real-paper corpus, a preprint set double-spaced with its lines
     numbered in the margin: poppler gives each line a block of its own, and the first

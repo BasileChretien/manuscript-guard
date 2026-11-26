@@ -28808,6 +28808,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     A line of a block of one line, as a double-spaced manuscript sets each, ends its
     paragraph only where it ends short of the lines beside it on a stop.
     Pinned by `tests/test_corruption.py::test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs`.
+  - Two words poppler sets apart are read as one where the gap between them is under a tenth
+    of the line's height, as `pdftotext`'s text reading joins them; two words set touching
+    that are two, a typesetter's tight pair, are read as one.
+    Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`.
+  - A display reaches only as far as its blocks stand one under the other, or beside, over
+    some of its width, on its page: a table whose rows a page break cuts is two, the
+    second read as the text's where it has no legend of its own. Accepted.
   - A line drawn twice is read once only where it repeats word for word, at the same place.
     Pinned by `tests/test_corruption.py::test_a_line_a_pdf_draws_twice_is_read_once`.
   - A short form broken at a line's end is joined only where its two parts hold two capitals

@@ -404,22 +404,37 @@ def _one_digest(figure: Path) -> str:
     return hashlib.sha256(figure.read_bytes()).hexdigest()
 
 
-def _svg_content_nodes(root: ET.Element):
+#: What an SVG holds as text and never draws: a stylesheet and a script. svglite writes
+#: `stroke: #000000; stroke-miterlimit: 10.00;` in a `<style>` at the head of every figure,
+#: which G3 read as two numbers the figure drew. Kept apart from `_METADATA_TAGS`, which the
+#: review's digest also leaves out: a stylesheet changes what the figure looks like.
+_NOT_DRAWN = {f"{SVG_NS}style", f"{SVG_NS}script", "style", "script"}
+
+
+def _svg_content_nodes(root: ET.Element, *, drawn_only: bool = True):
+    """The elements of an SVG below `root` that hold its content: not its metadata, and,
+    with `drawn_only`, not its stylesheets and scripts either."""
+    skipped = _METADATA_TAGS | _NOT_DRAWN if drawn_only else _METADATA_TAGS
     for node in root:
-        if node.tag in _METADATA_TAGS:
+        if node.tag in skipped:
             continue
         yield node
-        yield from _svg_content_nodes(node)
+        yield from _svg_content_nodes(node, drawn_only=drawn_only)
 
 
-def _extract_text(path: Path) -> str | None:
+def _extract_text(path: Path, *, drawn_only: bool = True) -> str | None:
+    """The text of a figure: an SVG's elements' text, the values of their attributes left
+    out, or a PDF's text layer. `drawn_only` False keeps an SVG's stylesheets and scripts,
+    for the blind check, which looks for a name anywhere a reader of the file could see it."""
     if path.suffix.lower() == ".svg":
         try:
             root = ET.fromstring(path.read_text(encoding="utf-8", errors="replace"))
         except ET.ParseError:
             return None
         return "\n".join(
-            node.text for node in _svg_content_nodes(root) if node.text and node.text.strip()
+            node.text
+            for node in _svg_content_nodes(root, drawn_only=drawn_only)
+            if node.text and node.text.strip()
         )
 
     # The same poppler-then-pypdf chain the literature reader uses. This had only the

@@ -606,6 +606,19 @@ The presentation list is deliberately narrow. `x`, `y`, `n` and `digits` are **n
 because allowing bare coordinates would allow `data.frame(x = c(1, 2, 3))` — data typed
 into a figure script, which gets its own error message.
 
+Three readings are neither drawn nor data, and pass whatever surrounds them, as the
+bisphosphonates paper's R figures showed (2026-11-26). A string that is, whole, one of R's
+colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gray 0 to 100,
+and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
+`"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
+bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`) is an
+index. A zero compared by `==` or `!=` with a process's exit status is the test of whether it
+failed: a name the script assigns, outside any call's brackets, from `system2()`, `system()`,
+`os.system()` or `subprocess.call()`, or from a `$status` or a `.returncode`, and any of those
+written in place. A rendered SVG's `<style>` and `<script>` draw nothing either, so their text
+is not read as the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind
+check still reads them, for a name.
+
 **The marks the script computes.** Labels drawn from the results say nothing about the marks.
 `sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
 `stat_summary` draws a mean and its standard error, `geom_smooth` a fitted line and its
@@ -19491,6 +19504,22 @@ Added by the adversarial review, verified and **not** fixed:
   as a difference, not as the environment: the dictionary is data.
   Pinned by `tests/test_corruption.py::test_a_typed_dictionary_release_fails_and_only_beside_its_name`
   and `tests/test_emit.py::test_a_release_file_that_does_not_open_with_a_version_is_refused`.
+- **G3's script check passes three readings by their form alone.** Pinned by
+  `tests/test_figures.py::test_a_string_that_is_no_colour_name_is_still_read`.
+  - A colour is known by its whole name and the script's language only: R's spelling with a
+    space (`"grey 50"`, which R reads) and a grey level matplotlib takes as a string
+    (`color="0.5"`) are read as drawn numbers, while a label that is, whole, one of R's names
+    (`labs(title = "red3")`) is taken for a colour and its number is not read. Pinned by
+    `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
+  - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
+    (`edges[1:3]`) are read as numbers bound to nothing. Pinned by
+    `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read`.
+  - An exit status is known by the calls that return one and by `$status` and `.returncode`:
+    R's `system2(stdout = TRUE)`, which returns the output, is taken for a status, while
+    `Popen(...).wait()`, a status returned by a function of the script's own and one assigned
+    in a function's argument are not, and their zero is read. Pinned by
+    `tests/test_figures.py::test_a_zero_compared_with_an_exit_status_is_no_number` and
+    `tests/test_figures.py::test_a_zero_compared_with_anything_else_is_still_read`.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.

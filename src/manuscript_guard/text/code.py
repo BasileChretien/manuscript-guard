@@ -13,6 +13,7 @@ parser for two languages would be a great deal of machinery for those three answ
 
 from __future__ import annotations
 
+import keyword
 import re
 from dataclasses import dataclass, field
 
@@ -55,6 +56,16 @@ class CodeNumber:
     # numbers sharing a digit string, and a checker that matches them by text rather than
     # by position judges the wrong one.
     col: int = 0
+    # For a number inside a string, what the string holds between its quotes: "grey50" for
+    # the 50 of `colour = "grey50"`, so that a check can tell a colour's name from a label.
+    string: str | None = None
+    # The number is the whole subscript of a bracket after a name, a call or another
+    # subscript: the 1 of `edges[1]`, `fits[[1]]`, `edges[-1]`. An index, in either language.
+    subscript: bool = False
+    # The number is 0 (or 0L), compared by `==` or `!=` with a process's exit status: a name
+    # assigned from `system2()`, `system()`, `os.system()` or `subprocess.call()`, or from a
+    # `$status` or `.returncode`, or any of those written in place (`_exit_statuses`).
+    exit_status: bool = False
 
     @property
     def context(self) -> str:
@@ -142,6 +153,10 @@ def numbers_in(text: str, language: str) -> list[CodeNumber]:
     scale_y_log10, and one look-up against the presentation list settles it.
     """
     tokens = lex(text, language)
+    # What a subscript and a comparison are read in: the code, without its comments.
+    code = [token for token in tokens if token.kind not in ("comment", "docstring")]
+    at = {token.start: index for index, token in enumerate(code)}
+    statuses = _exit_statuses(code)
     found: list[CodeNumber] = []
 
     stack: list[list[str | None]] = []  # [function, current named argument]
@@ -165,6 +180,7 @@ def numbers_in(text: str, language: str) -> list[CodeNumber]:
                         in_string=True,
                         names=_names(stack, target),
                         col=col,
+                        string=_between_quotes(token.text),
                     )
                 )
             continue
@@ -181,6 +197,8 @@ def numbers_in(text: str, language: str) -> list[CodeNumber]:
                     in_string=False,
                     names=_names(stack, target),
                     col=col,
+                    subscript=_whole_subscript(code, at[token.start]),
+                    exit_status=_compared_with_a_status(code, at[token.start], statuses),
                 )
             )
             continue
@@ -212,6 +230,163 @@ def _identifier(token: Token | None) -> str | None:
     if token is None or token.kind != "code":
         return None
     return token.text if _IDENT.fullmatch(token.text) else None
+
+
+def _between_quotes(literal: str) -> str:
+    """What a string literal holds: its text without the quotes around it."""
+    quote = literal[:1]
+    return literal[1:-1] if len(literal) > 1 and literal.endswith(quote) else literal[1:]
+
+
+#: Words before a bracket that open no subscript: `x in [1]`, `return [1]`, `else [1]`.
+_KEYWORDS = frozenset(keyword.kwlist) | {"function", "repeat", "next", "break", "print"}
+
+
+def _text(tokens: list[Token], index: int) -> str | None:
+    """The code token's text at `index`; None out of range, or for a string or a number."""
+    if 0 <= index < len(tokens) and tokens[index].kind == "code":
+        return tokens[index].text
+    return None
+
+
+def _whole_subscript(tokens: list[Token], index: int) -> bool:
+    """Whether the number at `index` is all a subscript holds, signed or not: `x[1]`,
+    `x[-1]`, `x[[2]]`, `f(x)[1]`, `rows[0][1]`. A bracket after anything but a name, a call
+    or another subscript is a list (`ticks = [1]`), and its number is read as before."""
+    opener = index - 1
+    if _text(tokens, opener) in ("-", "+"):
+        opener -= 1
+    if _text(tokens, opener) != "[" or _text(tokens, index + 1) != "]":
+        return False
+    owner = opener - 1
+    if _text(tokens, owner) == "[":  # R's `x[[2]]`
+        if _text(tokens, index + 2) != "]":
+            return False
+        owner -= 1
+    before = _text(tokens, owner)
+    if before in (")", "]"):
+        return True
+    return owner >= 0 and _identifier(tokens[owner]) is not None and before not in _KEYWORDS
+
+
+#: The calls whose value is the exit status of the process they ran, in R and in Python.
+_STATUS_CALLS = frozenset({"system", "system2", "base::system", "base::system2", "os.system",
+                           "subprocess.call"})  # fmt: skip
+#: A zero as an exit status is written: R's integer, and the number of either language.
+_ZERO = frozenset({"0", "0L"})
+
+
+def _matching(tokens: list[Token], index: int, step: int) -> int | None:
+    """The index of the bracket that closes (`step` 1) or opens (`step` -1) the one at
+    `index`; None where there is none."""
+    depth = 0
+    while 0 <= index < len(tokens):
+        text = _text(tokens, index)
+        if text in ("(", "[", "{"):
+            depth += step
+        elif text in (")", "]", "}"):
+            depth -= step
+        if depth == 0:
+            return index
+        index += step
+    return None
+
+
+def _called(tokens: list[Token], opener: int) -> str | None:
+    """The name of the call whose `(` is at `opener`, with its package where it is written
+    `processx::run`."""
+    name = _identifier(tokens[opener - 1]) if opener > 0 else None
+    if name is None:
+        return None
+    if _text(tokens, opener - 2) == ":" and _text(tokens, opener - 3) == ":":
+        package = _identifier(tokens[opener - 4]) if opener > 3 else None
+        return f"{package}::{name}" if package else name
+    return name
+
+
+def _status_field(tokens: list[Token], index: int) -> bool:
+    """Whether the operand ends at `index` in a process's status: `res$status`,
+    `proc.returncode`, `subprocess.run(...).returncode`."""
+    text = _text(tokens, index)
+    if text is None:
+        return False
+    return text.endswith(".returncode") or (text == "status" and _text(tokens, index - 1) == "$")
+
+
+def _ends_in_a_status(tokens: list[Token], index: int, statuses: frozenset[str]) -> bool:
+    """Whether the operand of a comparison that ends at `index` is an exit status."""
+    text = _text(tokens, index)
+    if text == ")":
+        opener = _matching(tokens, index, -1)
+        return opener is not None and _called(tokens, opener) in _STATUS_CALLS
+    return _status_field(tokens, index) or (text in statuses
+                                            and _text(tokens, index - 1) not in ("$", "."))
+
+
+def _starts_a_status(tokens: list[Token], index: int, statuses: frozenset[str]) -> bool:
+    """Whether the expression that opens at `index` is an exit status: a status call, a
+    call's `$status` or `.returncode`, a name holding one, or its own field."""
+    if index >= len(tokens) or _identifier(tokens[index]) is None:
+        return False
+    after = index + 1
+    if _text(tokens, after) == ":" and _text(tokens, after + 1) == ":":
+        after += 3
+    if _text(tokens, after) == "(":
+        closer = _matching(tokens, after, 1)
+        if closer is None:
+            return False
+        following = _text(tokens, closer + 1)
+        if following == "$":
+            return _text(tokens, closer + 2) == "status"
+        if following is not None and following.startswith(".returncode"):
+            return following == ".returncode"
+        return _called(tokens, after) in _STATUS_CALLS
+    if _text(tokens, after) == "$":
+        return _text(tokens, after + 1) == "status"
+    return tokens[index].text.endswith(".returncode") or tokens[index].text in statuses
+
+
+def _assigns(tokens: list[Token], index: int) -> bool:
+    """Whether the token at `index` assigns: `<-`, `:=`, or an `=` that is no part of `==`,
+    `!=`, `<=` or `>=`."""
+    text = _text(tokens, index)
+    if text in ("<-", ":="):
+        return True
+    return text == "=" and _text(tokens, index - 1) not in ("!", "=", "<", ">") and \
+        _text(tokens, index + 1) != "="  # fmt: skip
+
+
+def _exit_statuses(tokens: list[Token]) -> frozenset[str]:
+    """The names the script assigns an exit status to, outside any call's brackets: `status
+    <- system2(...)`, `code = subprocess.run(...).returncode`. A name given one as a call's
+    argument (`f(status = system2(...))`) is the call's, not the script's."""
+    names: set[str] = set()
+    brackets: list[str] = []
+    for index in range(len(tokens)):
+        text = _text(tokens, index)
+        if text in ("(", "[", "{"):
+            brackets.append(text)
+        elif text in (")", "]", "}"):
+            if brackets:
+                brackets.pop()
+        elif (_assigns(tokens, index) and (not brackets or brackets[-1] == "{")
+              and index > 0 and _identifier(tokens[index - 1]) is not None
+              and index + 1 < len(tokens)
+              and _starts_a_status(tokens, index + 1, frozenset(names))):  # fmt: skip
+            names.add(tokens[index - 1].text)
+    return frozenset(names)
+
+
+def _compared_with_a_status(tokens: list[Token], index: int, statuses: frozenset[str]) -> bool:
+    """Whether the number at `index` is a zero compared, by `==` or `!=`, with an exit
+    status, on either side: `status != 0`, `0 != status`, `system2(...) == 0L`."""
+    if tokens[index].text not in _ZERO:
+        return False
+    if _text(tokens, index - 1) == "=" and _text(tokens, index - 2) in ("!", "="):
+        return _ends_in_a_status(tokens, index - 3, statuses)
+    if _text(tokens, index + 1) in ("!", "=") and _text(tokens, index + 2) == "=":
+        return index + 3 < len(tokens) and _starts_a_status(tokens, index + 3, statuses)
+    return False
 
 
 def _names(stack: list[list[str | None]], target: str | None) -> tuple[str, ...]:

@@ -26175,6 +26175,134 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+# ------------------------------------------------------- what a figure script names by number
+
+from generated import _SCRIPT_NAMES, figure_scripts, svg_figures  # noqa: E402
+
+
+def test_a_generated_script_s_names_are_nobody_s_in_the_plotting_vocabulary() -> None:
+    """A name the plotting vocabulary knows makes its line's numbers layout, whatever else the
+    line holds: `parts` was one, by the pattern `^par`, and a list `parts = [1]` was passed."""
+    from manuscript_guard.gates.figure_source import load_vocabulary
+
+    vocabulary = load_vocabulary()
+    for name in _SCRIPT_NAMES:
+        for names in ((name,), (f"{name}_one",)):
+            assert vocabulary.presentation(names) is None, names
+            assert vocabulary.data_constructor(names) is None, names
+            assert not vocabulary.machinery(names) and not vocabulary.tick_label(names), names
+
+
+@holds(40, figure_scripts())
+def test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else(
+    drawn: list[tuple[str, str, list[str]]],
+) -> None:
+    """A figure script in R and one in Python, with a line of each kind: a colour named with
+    digits (`"grey50"`, `"steelblue4"`, `"C0"`), a number that is a whole subscript
+    (`edges[1]`) and a zero compared with an exit status (`if (status != 0) stop()`), none of
+    them a number the figure draws or data typed into it (the bisphosphonates paper,
+    2026-11-26); and beside each what only looks like it, which G3 reports as before: a name
+    R has no colour by, R's names in Python, a subscript with arithmetic in it or two numbers,
+    a list of one number, a zero compared with another name, a status compared with another
+    number, and a status assigned as a call's argument. G3 reports the second kind's numbers,
+    in the order of the lines, and no other."""
+    read = READINGS["figure script numbers"]()
+    for suffix, text, said in drawn:
+        found = read({"suffix": suffix, "text": text})["findings"]
+        reported = [f["message"].split("'")[1] for f in found
+                    if f["code"].startswith("figure-source-")]  # fmt: skip
+        assert reported == said, (suffix, text, found)
+
+
+@holds(40, svg_figures())
+def test_g3_reads_the_text_an_svg_draws_and_nothing_else(drawn: tuple[str, list[str]]) -> None:
+    """An SVG with a part of each kind: a `<text>`, one in a group, a stylesheet (svglite's
+    `stroke: #000000; stroke-miterlimit: 10.00`, the bisphosphonates paper, 2026-11-26), a
+    script, a title and an element whose attributes hold numbers. G3 reads the text the
+    figure draws, in document order, and nothing of the others."""
+    svg, said = drawn
+    assert READINGS["figure svg text"]()(svg).split("\n") == said, svg
+
+
+def _any_word_with_digits_is_a_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.figure_source import PlotVocabulary
+
+    patch.setattr(PlotVocabulary, "colour", lambda self, string, language: bool(
+        string and re.fullmatch(r"[A-Za-z]+[0-9]+", string)))  # fmt: skip
+
+
+def _r_s_colours_are_python_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.figure_source import PlotVocabulary
+
+    kept = PlotVocabulary.colour
+    patch.setattr(PlotVocabulary, "colour", lambda self, string, language: kept(
+        self, string, "r") or kept(self, string, language))  # fmt: skip
+
+
+def _a_number_after_a_bracket_is_an_index(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_whole_subscript", lambda tokens, index: code._text(
+        tokens, index - 1) == "[")  # fmt: skip
+
+
+def _any_zero_compared_is_a_status(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_compared_with_a_status", lambda tokens, index, statuses: tokens[
+        index].text in code._ZERO and "=" in (code._text(tokens, index - 1),
+                                              code._text(tokens, index + 2)))  # fmt: skip
+
+
+def _a_status_in_a_call_is_the_script_s(patch: pytest.MonkeyPatch) -> None:
+    """The bracket rule of `_exit_statuses` taken out: a name assigned a status anywhere."""
+    from manuscript_guard.text import code
+
+    def every(tokens: list[Any]) -> frozenset[str]:
+        return frozenset(
+            tokens[at - 1].text for at in range(1, len(tokens) - 1)
+            if code._assigns(tokens, at) and code._identifier(tokens[at - 1]) is not None
+            and code._starts_a_status(tokens, at + 1, frozenset()))  # fmt: skip
+
+    patch.setattr(code, "_exit_statuses", every)
+
+
+def _a_stylesheet_is_drawn(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_NOT_DRAWN", set())
+
+
+def _a_stylesheet_ends_the_figure(patch: pytest.MonkeyPatch) -> None:
+    """What follows a stylesheet taken for part of it: the walk stops at the first one."""
+    from manuscript_guard.gates import figures
+
+    def walk(root: Any, *, drawn_only: bool = True) -> Any:
+        for node in root:
+            if node.tag in figures._NOT_DRAWN:
+                return
+            if node.tag in figures._METADATA_TAGS:
+                continue
+            yield node
+            yield from walk(node, drawn_only=drawn_only)
+
+    patch.setattr(figures, "_svg_content_nodes", walk)
+
+
+def _attributes_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    kept = figures._svg_content_nodes
+
+    def walk(root: Any, *, drawn_only: bool = True) -> Any:
+        for node in kept(root, drawn_only=drawn_only):
+            if node.attrib and not (node.text or "").strip():
+                node.text = " ".join(node.attrib.values())
+            yield node
+
+    patch.setattr(figures, "_svg_content_nodes", walk)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -33664,6 +33792,38 @@ BROKEN = {
     "an ordinal counts across the paper": (
         _an_ordinal_counts_across_the_paper,
         test_the_ordinal_of_a_key_counts_in_its_sentence_only,
+    ),
+    "any word with digits names a colour": (
+        _any_word_with_digits_is_a_colour,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "R's colour names are Python's": (
+        _r_s_colours_are_python_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a number after a bracket is an index": (
+        _a_number_after_a_bracket_is_an_index,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "any zero compared is an exit status": (
+        _any_zero_compared_is_a_status,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a status assigned in a call is the script's": (
+        _a_status_in_a_call_is_the_script_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "an SVG's stylesheet is drawn text": (
+        _a_stylesheet_is_drawn,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "an SVG's stylesheet ends what is read of it": (
+        _a_stylesheet_ends_the_figure,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "an SVG's attributes are read as its text": (
+        _attributes_are_read,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
     ),
 }
 

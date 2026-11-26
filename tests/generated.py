@@ -19742,6 +19742,153 @@ def rewrapped(text: str, every: int = 3) -> str:
     return "\n".join(wrapped(line) for line in text.split("\n"))
 
 
+# ------------------------------------------------------- what a figure script names by number
+
+#: R's colour names with digits that a figure script names a colour by: grey and gray from
+#: 0 to 100, and a colour of `grDevices::colors()` followed by 1 to 4, in any case.
+_R_GREYS = ("grey", "gray", "Grey", "GRAY")
+_R_NUMBERED = ("red", "steelblue", "darkslategray", "lightgoldenrod", "antiquewhite", "Tomato")
+#: The same words in a label that only looks like a colour's name: not in capitals, which the
+#: prose rules read as a code's name ("GRAY604", as "CYP2C19") and pass in any figure.
+_LABEL_GREYS = ("grey", "gray", "Grey")
+#: The names a generated script gives its variables: letters only, so that a name holds no
+#: number of its own, none the plotting vocabulary knows (`parts` was layout, by `^par`), and
+#: each line its own.
+_SCRIPT_NAMES = ("edges", "fits", "counts", "rows", "cells", "levels", "breaks_at", "pieces",
+                 "shown", "kept", "drawn", "made", "held", "found", "taken", "given", "seen",
+                 "read", "left", "used", "named", "built")  # fmt: skip
+
+
+def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple[str, list[str]]:
+    """One line of a generated figure script of the `kind` drawn, and the numbers G3 reports
+    in it, in order. `names` hands out a name no other line of the script has."""
+    name = names.pop()
+    n = str(draw(st.integers(1, 9)))
+    if kind == "colour":
+        if r:
+            word, shade = draw(st.one_of(
+                st.tuples(st.sampled_from(_R_GREYS), st.integers(0, 100)),
+                st.tuples(st.sampled_from(_R_NUMBERED), st.integers(1, 4))))  # fmt: skip
+            return f'p <- p + geom_line(colour = "{word}{shade}")', []
+        return f'ax.plot(x, y, color="C{draw(st.integers(0, 19))}")', []
+    if kind == "not a colour":
+        if r:
+            drawn = draw(st.one_of(
+                st.tuples(st.sampled_from(_LABEL_GREYS), st.integers(101, 999)),
+                st.tuples(st.sampled_from(_R_NUMBERED), st.integers(5, 9)),
+                st.tuples(st.just("C"), st.integers(0, 9)),
+                st.tuples(st.sampled_from(_LABEL_GREYS), st.integers(0, 100).map(
+                    lambda shade: f"{shade} reports"))).map(lambda pair: f"{pair[0]}{pair[1]}"))
+            return f'p <- p + labs(title = "{drawn}")', re.findall(r"\d+", drawn)
+        grey = f"{draw(st.sampled_from(_LABEL_GREYS))}{draw(st.integers(0, 100))}"
+        return f'ax.set_title("{grey}")', re.findall(r"\d+", grey)
+    if kind == "subscript":
+        forms = (["{x}[{n}]", "{x}[[{n}]]", "{x}[-{n}]", "{x}[{n}L]", "sort({x})[{n}]"] if r
+                 else ["{x}[{n}]", "{x}[-{n}]", "{x}[0][{n}]", "sorted({x})[{n}]"])  # fmt: skip
+        index = draw(st.sampled_from(forms)).format(x=name, n=n)
+        return (f"{name}_one <- {index}" if r else f"{name}_one = {index}"), []
+    if kind == "not a subscript":
+        if r:
+            form = draw(st.sampled_from(["{x}[length({x}) - {n}]", "{x}[{n}, {n}]"]))
+            line = f"{name}_one <- {form.format(x=name, n=n)}"
+            return line, [n, n] if ", " in form else [n]
+        form = draw(st.sampled_from(["[{n}]", "[[{n}]]", "[{n}, {n}]"]))
+        return f"{name} = {form.format(n=n)}", [n, n] if ", " in form else [n]
+    zero = draw(st.sampled_from(["0", "0L"])) if r else "0"
+    if kind == "status":
+        if r:
+            form = draw(st.sampled_from([
+                '{x} <- system2("python", "x.py"); if ({x} != {z}) stop()',
+                '{x} <- system("make"); stopifnot({x} == {z})',
+                '{x} <- processx::run("python", "x.py")$status; if ({z} != {x}) stop()',
+                '{x} <- processx::run("python", "x.py"); if ({x}$status != {z}) stop()',
+                'if (system2("python", "x.py") != {z}) stop()']))  # fmt: skip
+            return form.format(x=name, z=zero), []
+        form = draw(st.sampled_from([
+            "{x} = subprocess.call(['x'])\nif {x} != 0:\n    raise SystemExit",
+            "{x} = subprocess.run(['x'])\nif {x}.returncode != 0:\n    raise SystemExit",
+            "{x} = subprocess.run(['x']).returncode\nassert 0 == {x}",
+            "if os.system('x') != 0:\n    raise SystemExit"]))  # fmt: skip
+        return form.format(x=name), []
+    # Not a status: another name compared with zero, a status compared with another number,
+    # and a status assigned as a call's argument, which is the call's and not the script's.
+    if r:
+        form, said = draw(st.sampled_from([
+            ("if ({x} != {z}) stop()", [zero]),
+            ('{x} <- system2("python", "x.py"); if ({x} == {n}) stop()', [n]),
+            ('f({x} = system2("x")); if ({x} != {z}) stop()', [zero])]))  # fmt: skip
+        return form.format(x=name, z=zero, n=n), said
+    form, said = draw(st.sampled_from([
+        ("if {x} == 0:\n    raise SystemExit", ["0"]),
+        ("{x} = subprocess.call(['x'])\nif {x} == {n}:\n    raise SystemExit", [n]),
+        ("f({x}=subprocess.call(['x']))\nif {x} != 0:\n    raise SystemExit", ["0"])]))  # fmt: skip
+    return form.format(x=name, n=n), said
+
+
+#: The kinds of line a generated figure script holds: three that name a colour, an index or
+#: an exit status by a number, and beside each what only looks like it.
+FIGURE_SCRIPT_KINDS = ("colour", "not a colour", "subscript", "not a subscript", "status",
+                       "not a status")  # fmt: skip
+
+
+@st.composite
+def figure_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[str]]]:
+    """A figure script in R and one in Python, each with a line of every kind of
+    `FIGURE_SCRIPT_KINDS`, more where drawn, in an order drawn, each given as its suffix, its
+    text and the numbers G3 reports in it, in the order of its lines. Both languages in every
+    example, so that no seed draws only one of them."""
+    scripts = []
+    for r in (True, False):
+        kinds = list(FIGURE_SCRIPT_KINDS) + draw(
+            st.lists(st.sampled_from(FIGURE_SCRIPT_KINDS), max_size=4))
+        names = list(draw(st.permutations(_SCRIPT_NAMES)))
+        lines = [_script_line(draw, kind, r, names) for kind in draw(st.permutations(kinds))]
+        text = "\n".join(line for line, _said in lines) + "\n"
+        scripts.append((".R" if r else ".py", text, [n for _line, said in lines for n in said]))
+    return scripts
+
+
+#: An SVG's parts as G3 reads it: what holds text it draws (`<text>`, alone and in a group),
+#: and what holds text it never draws: a stylesheet (svglite writes one first), a script,
+#: metadata (matplotlib's), and the values of attributes.
+SVG_PARTS = ("text", "grouped text", "style", "script", "title", "attributes")
+
+
+@st.composite
+def svg_figures(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """An SVG with a part of every kind of `SVG_PARTS`, more where drawn, in an order drawn,
+    and the text it draws, in document order: what G3 reads of a figure as what it shows."""
+    parts = list(SVG_PARTS) + draw(st.lists(st.sampled_from(SVG_PARTS), max_size=4))
+    body, drawn = [], []
+    for part in draw(st.permutations(parts)):
+        number = f"{draw(st.integers(0, 99))}.{draw(st.integers(0, 99)):02d}"
+        word = draw(st.sampled_from(FILLER))
+        said = draw(st.sampled_from([number, f"{word} {number}", word]))
+        if part == "text":
+            body.append(f"<text x='{number}' y='1.50' style='font-size: {number}px;'>{said}</text>")
+            drawn.append(said)
+        elif part == "grouped text":
+            body.append(f"<g transform='translate({number}, 2)'><text>{said}</text></g>")
+            drawn.append(said)
+        elif part == "style":
+            css = (f"line, path {{ stroke: #000000; stroke-miterlimit: {number}; }}\n"
+                   f"text {{ font-size: {number}px; }}")  # fmt: skip
+            body.append(draw(st.sampled_from([
+                f"<style type='text/css'><![CDATA[\n{css}\n]]></style>",
+                f"<defs><style type='text/css'>{css}</style></defs>"])))  # fmt: skip
+        elif part == "script":
+            body.append(f"<script type='text/javascript'>var width = {number};</script>")
+        elif part == "title":
+            body.append(f"<title>{said}</title>")
+        else:
+            body.append(f"<rect x='{number}' width='{number}' height='100%' "
+                        f"style='stroke-width: {number}; fill: #FFFFFF;'/>")  # fmt: skip
+    svg = ("<?xml version='1.0' encoding='UTF-8' ?>\n"
+           "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720.00 360.00'>\n"
+           + "\n".join(body) + "\n</svg>\n")  # fmt: skip
+    return svg, drawn
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "word paragraphs": word_paragraphs().map(lambda drawn: drawn[0]),
     "pdf headings": st.one_of(
@@ -20122,4 +20269,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         for kind, design in (("markdown", "trial"), ("latex", "trial"),
                              ("markdown", drawn[0]["other"]))])),  # fmt: skip
     "software in the methods": software_methods().map(lambda drawn: drawn[0]),
+    "figure script numbers": figure_scripts().flatmap(lambda drawn: st.sampled_from(
+        [{"suffix": suffix, "text": text} for suffix, text, _said in drawn])),
+    "figure svg text": svg_figures().map(lambda drawn: drawn[0]),
 }

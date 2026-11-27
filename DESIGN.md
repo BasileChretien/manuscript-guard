@@ -3078,8 +3078,9 @@ its own note, which says what `sync-bib` would do, and is not listed in the file
 counts and lists entries alone: an `@string`, an `@preamble` or an `@comment` names no work,
 and is neither in it nor warned of. In a LaTeX paper an entry two cited entries name in
 `crossref`, or in biblatex's `xref`, is printed by BibTeX and biblatex (`min-crossrefs`,
-`mincrossrefs` and `minxrefs`, 2 by default), keys matched without case, so it is left out
-of the note and not warned of either; one a single cited entry names stays in it. Pandoc's
+`mincrossrefs` and `minxrefs`, 2 by default), keys matched without case, so where only the
+works cited print it is left out of the note and not warned of; one a single cited entry
+names stays in it. Where every entry prints, it is warned of like any other. Pandoc's
 citeproc prints no such entry, so a Markdown paper's note lists it (round 1 of #835).
 
 **A reference's identifiers are read offline.** Nothing read `references.bib` but for its
@@ -31105,6 +31106,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The `crossref` rule counts the cited entries that name an entry directly: one named
     only through a chain of `crossref`s, or by `xdata`, stays in the note, though BibTeX
     or biblatex may print it. Accepted.
+  - The rule adds `crossref` and `xref` into one count, takes `xref` in a BibTeX paper too,
+    which BibTeX does not know, and reads no `min-crossrefs`, `mincrossrefs` or `minxrefs`
+    the paper sets: in each case an entry it takes for printed is left out of the note
+    though nothing prints it (round 2 of #835). Accepted.
+  - A metadata block in the body counts though it stands in an HTML comment, which pandoc
+    reads as raw HTML and not as metadata, so such a paper keeps the warnings (round 2 of
+    #835). Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

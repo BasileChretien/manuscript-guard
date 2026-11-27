@@ -21825,6 +21825,16 @@ def test_the_note_counts_and_lists_the_entries_alone(project: Path) -> None:
                             "reach the paper: @zeta2001"), note.message  # fmt: skip
 
 
+def test_where_every_entry_prints_no_string_or_comment_is_warned_of(project: Path) -> None:
+    """Round 2 of #835: where `nocite` asks for every entry, each entry nothing cites is
+    warned of, and an `@string` or an `@comment`, which names no work, is not."""
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@comment{jabref-meta: x;}\n'
+                           + _one_entry("zeta2001", "Zeta, Zoe"),
+                  header="nocite: '@*'\n")  # fmt: skip
+    said = sorted(f.message for f in _one_note(project))
+    assert said == ["references.bib holds @zeta2001, which nothing cites"], said
+
+
 _CROSSREF_BIB = """
 @inproceedings{a2019,
   author = {Ant, Ann}, title = {A}, year = {2019}, crossref = {proc2019},

@@ -177,17 +177,18 @@ def check_citations(project: Project, literature: Literature) -> Report:
     # reaches the paper: one note for the file, not a warning for each (Basile, 2026-11-27).
     every = bool(stale) and prints_every_entry(project)
     untyped = {key for key in stale if typed.get(key) is None}
+    # An `@string`, an `@preamble` or an `@comment` names no work: it is neither warned of
+    # nor in the note.
+    text = bib_path.read_text(encoding="utf-8", errors="replace") if untyped else ""
+    entries = set(_ENTRY_KEY.findall(text))
     for citekey in stale:
-        if every or citekey not in untyped:
+        if citekey not in untyped or every and citekey in entries:
             report = report.with_findings(
                 _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen), latex=latex)
             )
     if untyped and not every:
-        # Of the rest, an `@string`, an `@preamble` or an `@comment` names no work, and an
-        # entry two cited ones name in `crossref` or `xref` is printed by BibTeX and biblatex:
-        # neither is in the note, and neither is warned of.
-        text = bib_path.read_text(encoding="utf-8", errors="replace")
-        entries = set(_ENTRY_KEY.findall(text))
+        # Of the rest, an entry two cited ones name in `crossref` or `xref` is printed by
+        # BibTeX and biblatex: it is not in the note, and not warned of.
         printed = _printed_by_cited(bib_path, seen) if latex else frozenset()
         nowhere = [key for key in stale if key in untyped and key in entries
                    and key.casefold() not in printed]  # fmt: skip

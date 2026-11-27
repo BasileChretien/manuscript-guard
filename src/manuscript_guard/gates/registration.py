@@ -72,7 +72,8 @@ RETROSPECTIVE = re.compile(
     r"|\bregist(?:ered|ration)\s+(?:was\s+)?retrospective(?:ly)?\b"
 )
 #: The designs a registry calls observational, and the one it calls interventional. A
-#: diagnostic accuracy study is in neither: registries hold them under both.
+#: diagnostic accuracy study is in neither: registries hold them under both. Nor is a case
+#: report, which has no study to register.
 OBSERVATIONAL = frozenset({"cohort", "case-control", "cross-sectional", "self-controlled",
                            "disproportionality"})
 #: What ISRCTN writes in the field for a trial that has none.

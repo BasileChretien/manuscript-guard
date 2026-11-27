@@ -43,6 +43,23 @@ def test_each_section_says_where_it_comes_from_and_when_it_was_read(design: str)
         _asked(section)
 
 
+def test_a_design_sets_aside_only_sections_of_the_seven_and_says_why() -> None:
+    """A case report has no analysis to plan and no plan to depart from (Basile,
+    2026-11-27): a design names under `not_asked` the sections of the seven it has no use
+    for, each with why, and its plan is asked for the rest of the seven and its own."""
+    from manuscript_guard.gates.design import required_for
+
+    seven = [name for name, _pattern, _purpose in REQUIRED]
+    assert set(study_types()["case-report"]["not_asked"]) == {"analysis", "deviations"}
+    for design, entry in study_types().items():
+        aside = entry.get("not_asked", {})
+        assert set(aside) < set(seven), (design, aside)
+        assert all(_sentence_part(why) for why in aside.values()), design
+        assert [name for name, _pattern, _says in required_for(design)] == [
+            name for name in seven if name not in aside
+        ] + [section["id"] for section in entry["sections"]], design
+
+
 def _sentence_part(text: object) -> bool:
     """Words that run on from a label: a lower-case start, no full stop at the end."""
     return isinstance(text, str) and text[:1].islower() and not text.rstrip().endswith(".")

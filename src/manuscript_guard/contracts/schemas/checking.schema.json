@@ -246,6 +246,20 @@
           "already": {
             "type": "string",
             "description": "Why this item needs no checking, where someone has already done it: the sentence is shown instead of asking again."
+          },
+          "unstored": {
+            "type": "array",
+            "description": "Each work the item cites of which the computer that built the page holds no full copy under literature/sources/, with what the page says of it. The toolkit writes it for a cited sentence and a value quoted from the literature, and `checker build` lists them. Outside the item's digest: a copy stored later asks nothing again of a person who answered.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "state", "says"],
+              "properties": {
+                "key": { "type": "string", "minLength": 1 },
+                "state": { "enum": ["nothing stored", "only its abstract", "kept out of git, not on this computer"] },
+                "says": { "type": "string", "minLength": 1 }
+              }
+            }
           }
         }
       }

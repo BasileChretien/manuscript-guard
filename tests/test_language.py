@@ -1655,9 +1655,13 @@ def test_what_only_looks_exempt_is_still_reported(project: Path, sentence: str) 
         ("The plant gave 5 MW, 3 MJ, 2 MV, 40 MDa, 1 TWh, 400 IU and 30 HU.",
          [("undefined", short) for short in ("HU", "IU", "MDa", "MJ", "MV", "MW", "TWh")]),
         # A word in capitals for emphasis is reported, unless its paragraph is all in bold
-        # with no small letter.
+        # with no small letter, or all in bold and of 150 characters or fewer, a heading
+        # typed in Word (decision D5).
         ("This was NOT a randomised trial.", [("undefined", "NOT")]),
-        ("**This was NOT a randomised trial**", [("undefined", "NOT")]),
+        ("**This was NOT a randomised trial**", []),
+        ("**This was NOT a randomised trial of the drug, and nothing in the records of the "
+         "sites tells how each patient came to be given it or how long each was followed up "
+         "for**", [("undefined", "NOT")]),
         ("**THIS WAS NOT A RANDOMISED TRIAL**", []),
     ],
 )  # fmt: skip
@@ -3187,3 +3191,55 @@ def test_a_latex_name_underscores_join_is_no_use_of_a_short_form(tmp_path: Path)
     )
     report = _judge(_latex_read(tmp_path, None), _Known(frozenset(), frozenset()), tmp_path)
     assert not report.findings, [f.message for f in report.findings]
+
+
+# ---------------------------------------- the list of abbreviations typed in Word (2026-11-27)
+
+
+def test_a_glossary_line_whose_tab_word_printed_as_a_space_defines_where_its_words_spell_it(
+    project: Path,
+) -> None:
+    """docx-meta-2: Word's list of abbreviations puts a tab between the short form and its
+    long form, which converted text prints as a space, "DTL Dutch Techcentre for Life Science
+    (www.dtls.nl)". Under a glossary's heading such a line is an entry where the words after
+    the short form spell it whole, its long form cut before the bracket; one whose words do
+    not, "HANDS Handbook Handbook for the staff", and a sentence under the heading are not."""
+    report = written(
+        project,
+        "# Abbreviations\n\nDTL Dutch Techcentre for Life Science (www.dtls.nl)\n\n"
+        "RDA Research Data Alliance\n\nLO Local Office\n\nHANDS Handbook Handbook for the "
+        "staff\n\nNPOS was set up in 2016.\n\n# Methods\n\nThe DTL and the RDA met. The HANDS "
+        "and the NPOS were read.\n",
+    )
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-undefined", "HANDS"),
+        ("abbreviation-undefined", "NPOS"),
+        ("abbreviation-unused", "LO"),
+    ], found(report)
+    from manuscript_guard.gates import glossary
+
+    text = "DTL Dutch Techcentre for Life Science (www.dtls.nl)\n"
+    assert [(entry.short, entry.long) for entry in glossary.entries(text, text, (0, len(text)))] \
+        == [("DTL", "Dutch Techcentre for Life Science")]  # fmt: skip
+
+
+# ------------------------------------ a statistical abbreviation defined later (2026-11-27)
+
+
+def test_a_statistical_abbreviation_defined_later_was_not_used_before_its_definition(
+    project: Path,
+) -> None:
+    """Decision D2 (docx-psych-C4): a form of the statistical list, which may stand undefined
+    where the journal does not ask, is not used before its definition where the paper defines
+    it later, SD here. A form of the shipped list, DOI, still is; and where the journal asks
+    the statistics defined, SD is too."""
+    text = ("# Methods\n\nThe mean (SD) age and the DOI of each record were read.\n\n"
+            "# Results\n\nThe standard deviation (SD) was 12, and the digital object "
+            "identifier (DOI) was kept. The SD and the DOI were read again.\n")  # fmt: skip
+    report = written(project, text)
+    assert [f.message.split()[0] for f in report.findings
+            if f.code == "abbreviation-used-before-defined"] == ["DOI"], found(report)
+    journal_asks(project, {"define_statistics": True})
+    report = written(project, text)
+    assert sorted(f.message.split()[0] for f in report.findings
+                  if f.code == "abbreviation-used-before-defined") == ["DOI", "SD"]

@@ -66,6 +66,18 @@ DEFINING = (
     ("hereafter", "We used the Deep Field Survey (hereafter DFS) throughout.", "DFS"),
     # docx-sport-A3: a definition in a heading.
     ("a heading", "## Grip strength and electromyography (EMG)", "EMG"),
+    # docx-educ-A3: a bracket of pairs a semicolon divides, each long form then its short
+    # form, of which only the last was read (Basile, 2026-11-27).
+    ("a bracket of pairs", "Answers were coded (strongly agree, SA; neutral answer, NA; "
+     "strongly disagree, SDA).", "SA"),
+    # docx-sport-A3: a colon pair whose long form holds a comma.
+    ("a colon pair with a comma", "Note. DASS: Depression, Anxiety and Stress Scale; HQ: "
+     "Health Questionnaire.", "DASS"),
+    # docx-psych-C4: a pointer to a display after the semicolon.
+    ("a pointer after it", "Each held a low rank position (LR hierarchy; Figure 1, Panel B).",
+     "LR"),
+    # docx-med-A3: one word in the bracket after the short form (decision D8).
+    ("one word after it", "Patients took HCQ (hydroxychloroquine) daily.", "HCQ"),
 )  # fmt: skip
 
 #: The same shapes with words that do not hold the short form's letters, or a long form
@@ -84,6 +96,15 @@ NOT_DEFINING = (
     ("known as", "We read the main survey, known as XQZ.", "XQZ"),
     ("called", "We used a scale called WTB in all.", "WTB"),
     ("a heading", "## Grip strength (EGX)", "EGX"),
+    # A bracket of a statistic's values a semicolon divides, each the short form and a value.
+    ("a bracket of pairs", "The estimates were close (XRR, 1.2; XRR, 0.8; XRR, 1.1).", "XRR"),
+    # A short form and its word before a semicolon after which no display is pointed to.
+    ("a pointer after it", "Each held a rank (QR arm; the low one).", "QR"),
+    # One word in the bracket that does not open with the short form's first letter, is not
+    # three letters longer than it, or does not hold its letters.
+    ("one word after it", "The XY (Kenya) site joined.", "XY"),
+    ("one word after it", "The HRS (hours) were logged.", "HRS"),
+    ("one word after it", "The QRD (quarterly) totals were logged.", "QRD"),
 )  # fmt: skip
 
 #: A LaTeX citation's optional argument: the prenote, and the postnote where the prenote is
@@ -173,6 +194,59 @@ def test_pandoc_s_citation_prefix_is_read_as_a_square_bracket() -> None:
         read = _file(0, Path("main.md"), f"the Sloan Digital Sky Survey [{prefix}; @york2000]\n",
                      [], False)  # fmt: skip
         assert [short for _at, short, _long in read.definitions] == ["SDSS"], prefix
+
+
+def test_a_bracket_of_pairs_defines_each_pair_and_one_item_of_another_shape_voids_it() -> None:
+    """docx-educ-A3: "(strongly agree, SA; agree A; neutral, N; disagree, D; strongly
+    disagree, SD)" defines SA and SD, each long form the item's words before its short form,
+    the comma there or not; a bracket of two items is no such list, and nor is one with an
+    item that is no long form and short form in capitals."""
+    def defined(text: str) -> list[tuple[str, str]]:
+        read = _file(0, Path("main.md"), f"{text}\n", [], False)
+        return sorted((short, long) for _at, short, long in read.definitions)
+
+    assert defined("Answers (strongly agree, SA; agree A; neutral, N; disagree, D; strongly "
+                   "disagree, SD) were kept.") == [("SA", "strongly agree"),
+                                                   ("SD", "strongly disagree")]  # fmt: skip
+    assert defined("Answers (strongly agree, SA; strongly disagree, SD) were kept.") == [
+        ("SD", "strongly disagree")]
+    assert defined("Answers (strongly agree, SA; most of them; strongly disagree, SD) were "
+                   "kept.") == [("SD", "strongly disagree")]  # fmt: skip
+
+
+def test_a_pointer_s_long_form_ends_at_the_last_word_holding_a_letter() -> None:
+    """docx-psych-C4 (decision D10): in "a low rank position (LR hierarchy; Figure 1, Panel
+    B)" the bracket's word is the long form's head, so the long form is "low rank", and the
+    paper's later "Low rank (LR) hierarchy" gives LR again, not another meaning."""
+    text = ("# Methods\n\nEach held a low rank position (LR hierarchy; Figure 1, Panel B).\n\n"
+            "# Results\n\nThe Low rank (LR) hierarchy held, and LR fell.\n")  # fmt: skip
+    read = _file(0, Path("main.md"), text, [], False)
+    assert [(short, long) for _at, short, long in read.definitions] == [
+        ("LR", "low rank"), ("LR", "Low rank")]
+    from manuscript_guard.gates.language import _judge, _Known
+
+    report = _judge([read], _Known(frozenset(), frozenset()), Path("."))
+    assert [f.message.split(";")[0] for f in report.findings] == ["LR is defined again"]
+    # A limit written down in DESIGN.md's Known gaps: an appendix is no display pointed to.
+    read = _file(0, Path("main.md"), "Each held a low rank position (LR hierarchy; Appendix "
+                 "2).\n", [], False)  # fmt: skip
+    assert read.definitions == []
+
+
+def test_a_one_word_long_form_defines_only_in_the_bracket_after_the_short_form() -> None:
+    """Decision D8: "HCQ (Hydroxychloroquine,)" defines HCQ, the comma Word left aside;
+    after a sign the long form is still two words at least, so "XY: Kenya" and "HCQ =
+    hydroxychloroquine" define nothing."""
+    # A limit written down in DESIGN.md's Known gaps: "hours" is three letters longer than HR
+    # and holds its letters.
+    for text, short in (("the HCQ (Hydroxychloroquine,) dose", "HCQ"),
+                        ("the MTX (methotrexate) dose", "MTX"),
+                        ("the HR (hours) total", "HR")):  # fmt: skip
+        read = _file(0, Path("main.md"), f"{text}\n", [], False)
+        assert [found for _at, found, _long in read.definitions] == [short], text
+    for text in ("Countries: XY: Kenya.", "Note. HCQ = hydroxychloroquine."):
+        read = _file(0, Path("main.md"), f"{text}\n", [], False)
+        assert read.definitions == [], text
 
 
 def _judged(project: Path, text: str) -> list[tuple[str, str]]:

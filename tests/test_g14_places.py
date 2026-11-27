@@ -457,3 +457,47 @@ def test_mdpi_s_abbreviations_before_the_references(tmp_path: Path) -> None:
     assert checked(tmp_path, {"main.md": text}) == [(
         "abbreviation-used-before-defined", "QXL is used here and not spelt out; only the list "
         "of abbreviations defines it, at manuscript/main.md:13")]
+
+
+# ------------------------------------------------ a Word paper's bold headings (2026-11-27)
+
+
+def test_a_short_paragraph_wholly_in_bold_owes_no_definition_and_is_a_use(tmp_path: Path) -> None:
+    """Decision D5 (docx-educ-B1): a heading typed in Word as a paragraph in bold, "**QPS**"
+    over the sentence that defines it, owes no definition, as a heading made with a style
+    does, and is still a use, so a form used again only there is not unused. A paragraph in
+    bold longer than 150 characters, and a word in bold inside a sentence, are text."""
+    long = ("**The QPS results of each of the classes of the second year of the study were read "
+            "again by a second reader who did not know which class each of them came from**")
+    assert len(long) > 150
+    text = ("# Methods\n\n**QPS**\n\nThe quiet play scale (QPS) was read. The QPS rose.\n\n"
+            "The quiet zone time (QZT) was set.\n\n**QZT**\n\n# Results\n\nIt held.\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    # A limit written down in DESIGN.md's Known gaps: a short sentence in bold is a heading.
+    text = ("# Methods\n\n**The QPS rose.**\n\nThe quiet play scale (QPS) was read. The QPS "
+            "rose.\n")  # fmt: skip
+    assert checked(tmp_path, {"main.md": text}) == []
+    for early in (long, "The **QPS** rose in the first class."):
+        text = (f"# Methods\n\n{early}\n\nThe quiet play scale (QPS) was read. The QPS "
+                "rose.\n")
+        assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
+            "abbreviation-used-before-defined"], early
+
+
+# ------------------------------------------- a citation's author typed as text (2026-11-27)
+
+
+def test_a_citation_s_author_owes_no_definition_and_is_a_use(tmp_path: Path) -> None:
+    """docx-pharm-epi-A1: "(Kaye et al. 2009, NIH 2016a, NIH 2016b)", author-year citations a
+    comma divides, and "(QXW, 2016)" name their authors, which owe no definition there: NIH
+    defined later says nothing of them. A form defined and then cited only as an author,
+    "(APA, 2020)", is used. "the NIH 2016 guidelines" in a sentence still owes one."""
+    text = ("# Introduction\n\nRules were set (Kaye et al. 2009, NIH 2016a, NIH 2016b), and "
+            "kept (QXW, 2016).\n\n# Methods\n\nThe National Institutes of Health (NIH) paid. "
+            "The NIH rose. The American Psychological Association (APA) set the style (APA, "
+            "2020).\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    text = ("# Introduction\n\nThe NIH 2016 guidelines were kept.\n\n# Methods\n\nThe National "
+            "Institutes of Health (NIH) paid. The NIH rose.\n")
+    assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
+        "abbreviation-used-before-defined"]

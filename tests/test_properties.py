@@ -2511,6 +2511,14 @@ def test_no_definition_is_asked_where_none_is_due(
         assert found == expected, files
 
 
+def _a_bold_heading_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_bold_headings", lambda prose: [])
+
+
+def _a_citation_s_author_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_authors_a_citation", lambda prose, end: False)
+
+
 def _the_title_page_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_fronts", lambda files: {})
 
@@ -3449,23 +3457,97 @@ from generated import (  # noqa: E402
 
 @holds(60, statistics_used())
 def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
-    drawn: tuple[str, list[str]],
+    drawn: tuple[str, list[str], tuple[str, str]],
 ) -> None:
     """The statistical abbreviations G14's list holds are not reported as undefined, and
     the others are; a journal that asks for the statistical ones defined has all of them
-    reported, and one that names some has those reported, from either list."""
-    text, named = drawn
+    reported, and one that names some has those reported, from either list. One of each
+    list the paper defines after using it: the statistical one, where the journal does not
+    ask it defined, was not used before its definition, and the other was (decision D2,
+    the author, 2026-11-27)."""
+    text, named, (exempt, other) = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     read = [_file(0, Path("main.md"), text, [], False)]
 
-    def undefined(statistics: bool, asked: frozenset[str]) -> list[str]:
+    def said(statistics: bool, asked: frozenset[str]) -> list[tuple[str, str]]:
         known = language_gate._asked(nothing, statistics, asked)
         report = _g14_warned(read, known, Path("."))
-        return sorted(f.message.split()[0] for f in report.findings)
+        return sorted((f.code, f.message.split()[0]) for f in report.findings)
 
-    assert undefined(False, frozenset()) == sorted(STATISTICS_NOT), text
-    assert undefined(True, frozenset()) == sorted(STATISTICS_EXEMPT + STATISTICS_NOT), text
-    assert undefined(False, frozenset(named)) == sorted({*STATISTICS_NOT, *named}), text
+    def expected(reported: set[str]) -> list[tuple[str, str]]:
+        early = {other} | ({exempt} & reported)
+        return sorted([*(("abbreviation-undefined", short) for short in reported - {exempt, other}),
+                       *(("abbreviation-used-before-defined", short) for short in early)])
+
+    assert said(False, frozenset()) == expected(set(STATISTICS_NOT)), text
+    assert said(True, frozenset()) == expected({*STATISTICS_EXEMPT, *STATISTICS_NOT}), text
+    assert said(False, frozenset(named)) == expected({*STATISTICS_NOT, *named}), text
+
+
+def _a_statistical_abbreviation_owes_a_later_definition(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_may_stand_undefined", lambda short, known: False)
+
+
+from generated import pointer_restated  # noqa: E402
+
+
+@holds(60, pointer_restated())
+def test_a_pointer_s_bracket_defines_up_to_its_last_word_holding_a_letter(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """A bracket of a short form and its word before a semicolon, after which it points to a
+    display of each kind, defines the short form, its long form the words before it up to
+    the last that holds a letter of it: "a low rank position (LR group; Figure 1, Panel B)"
+    and the paper's later "Low rank (LR)" give one meaning, LR defined again (decision D10,
+    the author, 2026-11-27)."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    assert sorted(f.message.split(";")[0] for f in report.findings) == expected, text
+
+
+def _a_pointer_after_a_semicolon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_before_a_pointer", lambda prose, bracket: None)
+
+
+def _a_pointer_s_long_form_runs_to_its_bracket(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_trimmed", lambda short, long: long)
+
+
+def _a_bracket_of_pairs_reads_its_last_item_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_bracket_pairs", lambda prose, bracket: [])
+
+
+def _a_colon_pair_s_long_form_ends_at_its_first_comma(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_paired_past_commas",
+                  lambda prose, lines, pair, short, after_long: None)  # fmt: skip
+
+
+def _a_long_form_of_one_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_one_word", lambda short, words: False)
+
+
+from generated import spaced_glossaries  # noqa: E402
+
+
+@holds(30, spaced_glossaries())
+def test_a_word_list_s_spaced_line_defines_where_its_words_spell_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A line of a list of abbreviations whose tab Word printed as a space is an entry where
+    the words after its short form, up to a bracket, spell it whole: with a link's address or
+    text after it, its short form in bold; one whose words do not, and a sentence under the
+    heading, are no entry, and their short forms are never defined (Basile, 2026-11-27)."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == expected, text
+
+
+def _a_glossary_line_with_a_space_for_its_tab_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_spelt_entry", lambda line, begin: None)
 
 
 def _the_statistical_list_is_empty(patch: pytest.MonkeyPatch) -> None:
@@ -29857,6 +29939,46 @@ BROKEN = {
     "no title page is found": (
         _no_title_page_is_found,
         test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a heading typed in bold is read as text": (
+        _a_bold_heading_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a citation's author is read as text": (
+        _a_citation_s_author_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statistical abbreviation owes a later definition": (
+        _a_statistical_abbreviation_owes_a_later_definition,
+        test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a pointer after a bracket's semicolon defines nothing": (
+        _a_pointer_after_a_semicolon_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a pointer after a bracket's semicolon defines nothing, restated": (
+        _a_pointer_after_a_semicolon_defines_nothing,
+        test_a_pointer_s_bracket_defines_up_to_its_last_word_holding_a_letter,
+    ),
+    "a pointer's long form runs to its bracket": (
+        _a_pointer_s_long_form_runs_to_its_bracket,
+        test_a_pointer_s_bracket_defines_up_to_its_last_word_holding_a_letter,
+    ),
+    "a bracket of pairs reads its last item alone": (
+        _a_bracket_of_pairs_reads_its_last_item_alone,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon pair's long form ends at its first comma": (
+        _a_colon_pair_s_long_form_ends_at_its_first_comma,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form of one word defines nothing": (
+        _a_long_form_of_one_word_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a glossary line with a space for its tab is no entry": (
+        _a_glossary_line_with_a_space_for_its_tab_is_no_entry,
+        test_a_word_list_s_spaced_line_defines_where_its_words_spell_it,
     ),
     "the title page is read as text": (
         _the_title_page_is_read_as_text,

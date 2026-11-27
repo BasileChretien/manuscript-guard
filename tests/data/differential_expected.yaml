@@ -73,24 +73,23 @@ expected:
       in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
-      a long form that closes a bracket it does not open defines nothing, unless the
-      bracket's first item is a part its short form opens with, "warning score (WSE) at 1
-      hour (WSE1)" (the real-paper corpus, row 4 of window C; Basile, 2026-11-24, "Keep
-      WSE1, drop WSE2"), or a hyphen follows the bracket and none of its items is the short
-      form, "(TdT)-mediated ... (TUNEL)": "20.6 mg (DM1) to 21.5 mg (DM2)" and the
-      elliptical "at entry (SCE1) and after 2 hours (SCE2)" define nothing, so the base's
-      unused definition of SCE2 is now a use of a form never defined. The inputs now hold
-      those pieces, a list's bracket closed inside a long form, and the bracket shapes kept
-      (tests/generated.py, `DEFINING` and `NOT_DEFINING`). The entry it replaces, for "Table
-      stands alone", is spent
+      G14 reads four more shapes of definition and two more places that owe none, as the
+      Word papers of the real-paper corpus type them (Basile, 2026-11-27, decisions D2, D5,
+      D8, D10): a bracket of three pairs or more, "(strongly agree, SA; neutral answer, NA;
+      strongly disagree, SDA)", defines each pair where the base read the last alone; a
+      colon pair's long form is read past its commas, "DASS: Depression, Anxiety and Stress
+      Scale;"; a short form and its word before a semicolon after which the bracket points
+      to a display, "(LR hierarchy; Figure 1, Panel B)" and "(SSS DR3; see table 3)",
+      define; and one word after the short form, "HCQ (hydroxychloroquine)", does. A
+      paragraph wholly in bold of 150 characters or fewer and a citation's author typed as
+      text owe no definition, and a statistical abbreviation is not used before a later
+      definition. The inputs now hold those pieces and their lookalikes (tests/generated.py,
+      `DEFINING` and `NOT_DEFINING`). The entry it replaces, for a long form closing a
+      bracket it does not open, is spent
   - reading: abbreviations of a PDF's text
     why: >-
-      in a file the audit staged from a PDF, a long form holding a word broken at a line's
-      end, "inter-\nquartile range", is compared with each way of joining its first four
-      breaks as well as read (the real-paper corpus, row 7 of window C), so a definition
-      given again across such a break gives the same meaning, "defined again", where the
-      base said another; and a hyphen proper and a non-breaking hyphen are read as a hyphen
-      (round 1 of #784). The inputs now hold `line_broken()` (tests/generated.py)
+      the same, in a file the audit staged from a PDF (the entry for `abbreviations`); the
+      entry it replaces, for a word a PDF breaks at a line's end, is spent
   - reading: abbreviation edits
     why: >-
       the same: a short form whose long form closes a bracket it does not open, and is not
@@ -98,9 +97,8 @@ expected:
       out in place of SCE2 (the entry for `abbreviations`)
   - reading: audit abbreviations
     why: >-
-      the audit gives G14's findings, so the same: a long form that closes a bracket it does
-      not open, and does not hold the part its short form opens with, defines nothing (the
-      entry for `abbreviations`). The entry it replaces, for "Table stands alone", is spent
+      the audit gives G14's findings, so the same (the entry for `abbreviations`); the entry
+      it replaces, for a long form closing a bracket it does not open, is spent
   - reading: abstract against results
     why: >-
       a number of the Abstract not found where the paper reports that the Introduction, its

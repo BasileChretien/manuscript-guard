@@ -288,8 +288,8 @@ def items(report) -> list[Item]:
                                                      if looked.came == "kept" else ""),
                                 INFO, False, where, entry.line), entry.label))  # fmt: skip
         found += [
-            about(Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line),
-                  p.subject)
+            about(Item(REFERENCES, "G7", p.code, p.message, p.severity, False, p.path, p.line,
+                       hint=p.hint), p.subject)
             for p in looked.problems
         ]  # fmt: skip
     found += _title_items(report)
@@ -1606,7 +1606,10 @@ def _looked(looked: list, paper: Path, show) -> list[str]:
     lines = [f"    looked up {len(looked)} entr{'y' if len(looked) == 1 else 'ies'}"
              + (f", {kept} from the records kept" if kept else "")]  # fmt: skip
     said = [problem for one in looked for problem in one.problems]
-    lines += [f"    {_at(p.path, p.line, paper, show)}{p.message}" for p in said]
+    for p in said:
+        lines.append(f"    {_at(p.path, p.line, paper, show)}{p.message}")
+        if p.hint:
+            lines.append(f"      {p.hint}")
     if not said:
         known = sum(1 for one in looked if one.known)
         lines.append(f"    no registry said a work was retracted, withdrawn or under concern: "

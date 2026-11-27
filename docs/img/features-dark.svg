@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1144" width="880" height="1144" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 73 work, 3 work in part and 2 are planned.</title>
-  <rect width="880" height="1144" fill="#0d1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1170" width="880" height="1170" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 74 work, 3 work in part and 2 are planned.</title>
+  <rect width="880" height="1170" fill="#0d1117"/>
   <circle cx="25" cy="22" r="4.5" fill="#3fb950"/>
-  <text x="36" y="26" font-size="12.5" fill="#9198a1">works (73)</text>
+  <text x="36" y="26" font-size="12.5" fill="#9198a1">works (74)</text>
   <circle cx="125" cy="22" r="4.5" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/><path d="M 125 17.5 A 4.5 4.5 0 0 0 125 26.5 Z" fill="#d29922"/>
   <text x="136" y="26" font-size="12.5" fill="#9198a1">works in part (3)</text>
   <circle cx="274" cy="22" r="4.5" fill="#0d1117" stroke="#9198a1" stroke-width="1.5"/>
@@ -196,7 +196,7 @@
   <rect x="600" y="630" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="612" cy="640.5" r="4.5" fill="#3fb950"/>
   <text x="624" y="645" font-size="12" fill="#f0f6fc">What a change reaches</text>
-  <rect x="20" y="786" width="266" height="338" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <rect x="20" y="786" width="266" height="364" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
   <text x="32" y="810" font-size="15" font-weight="600" fill="#f0f6fc">7 &#183; Review</text>
   <text x="32" y="828" font-size="11.5" fill="#9198a1">Have the paper read by co-authors, a panel</text>
   <text x="32" y="843" font-size="11.5" fill="#9198a1">and the people who sign.</text>
@@ -218,7 +218,7 @@
   <rect x="28" y="988" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="998.5" r="4.5" fill="#3fb950"/>
   <text x="52" y="1003" font-size="12" fill="#f0f6fc">Text hidden in a file</text>
-  <rect x="306" y="786" width="266" height="338" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <rect x="306" y="786" width="266" height="364" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
   <text x="318" y="810" font-size="15" font-weight="600" fill="#f0f6fc">8 &#183; Submit</text>
   <text x="318" y="828" font-size="11.5" fill="#9198a1">Send the paper, answer the reviewers, and</text>
   <text x="318" y="843" font-size="11.5" fill="#9198a1">publish what it rests on.</text>
@@ -243,7 +243,7 @@
   <rect x="314" y="1014" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="326" cy="1024.5" r="4.5" fill="#3fb950"/>
   <text x="338" y="1029" font-size="12" fill="#f0f6fc">Posts and summaries</text>
-  <rect x="592" y="786" width="266" height="338" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
+  <rect x="592" y="786" width="266" height="364" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
   <text x="604" y="810" font-size="15" font-weight="600" fill="#f0f6fc">Other people&#x27;s papers</text>
   <text x="604" y="828" font-size="11.5" fill="#9198a1">Read a paper written some other way, as</text>
   <text x="604" y="843" font-size="11.5" fill="#9198a1">its author, an editor or a referee.</text>
@@ -276,5 +276,8 @@
   <text x="624" y="1081" font-size="12" fill="#f0f6fc">The trial&#x27;s registration</text>
   <rect x="600" y="1092" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="612" cy="1102.5" r="4.5" fill="#3fb950"/>
-  <text x="624" y="1107" font-size="12" fill="#f0f6fc">A letter to the authors</text>
+  <text x="624" y="1107" font-size="12" fill="#f0f6fc">A DOI of another work</text>
+  <rect x="600" y="1118" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="612" cy="1128.5" r="4.5" fill="#3fb950"/>
+  <text x="624" y="1133" font-size="12" fill="#f0f6fc">A letter to the authors</text>
 </svg>

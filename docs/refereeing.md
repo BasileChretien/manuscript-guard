@@ -262,7 +262,8 @@ parts, by its code, from one table (`auditing/editor.py`, the author's of 2026-1
 Each kind is said in a sentence, with no gate and no option, and the first three parts say how
 often findings of that kind were right on the corpus of published papers
 ([corpus.md](corpus.md)) where ten or more were judged ("Right in 13 of 13 judged on published
-papers"), and "Not yet measured on published papers" where not. Most kinds an option brings,
+papers"), with "too few to rate it" after a record of fewer, and "Not yet measured on
+published papers" where none was taken. Most kinds an option brings,
 `--lookup`, `--journal`, `--design` or `--package`, are not measured: the corpus runs the audit
 without them. `--details` lists every place of the copyediting and of what was read; with
 `--json`, each finding gains its `part` and its `kind`, and `editor` gives the count of each

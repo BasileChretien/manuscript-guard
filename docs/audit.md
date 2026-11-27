@@ -392,6 +392,18 @@ published since, a DOI or a PMID no registry has, and a registry that did not an
 does in a project. Only where no registry reported anything of any entry does it say how many
 entries were asked and how many a registry knew; an entry answered from the records kept
 counts as asked.
+Each entry's DOI is held to its title too (Basile, 2026-11-26): where the record Crossref or
+OpenAlex holds for the DOI is of a work whose title, with its subtitle, holds under half the
+searched words of the title the entry gives, the DOI is said to be another work's
+(`reference-title-differs`), with both titles. A real DOI with an invented title is the
+commonest fabricated citation, and its DOI alone looks right. It is a note, never a warning:
+on 100 published papers (2026-11-27), 1 of the 6 such notes two readers judged was right,
+and most of the others gave in English the title of a work written in Portuguese or
+Spanish, which no count of shared words tells from another work's. A title of fewer than
+three searched words is not compared, nor one the entry's reader took from the citation's
+tail (a link, a DOI, a year with a volume and pages), nor an entry that holds its record's
+title word for word, nor one that says its title is a translation ("[Article in Spanish]").
+The editor's report asks it of the authors, with its record (Basile, 2026-11-27).
 An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
 journal article, a book or a chapter; a web page or a legal or official text, listed as "no
 DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official

@@ -105,7 +105,8 @@ a paper clean: a paper with no findings may still be wrong in ways the check can
 Its findings are measured on real papers, where a person judged each one true or false
 ([how the measuring works](corpus.md)). The editor's report gives the result beside each
 kind of finding, as *Right in N of M judged on published papers*, wherever ten or more were
-judged, and says *Not yet measured on published papers* elsewhere. A kind that is often
+judged, adds *too few to rate it* where fewer were, and says *Not yet measured on published
+papers* where none were. A kind that is often
 wrong is marked as a note rather than a warning.
 
 ## Versions, licences and help

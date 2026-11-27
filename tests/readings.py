@@ -1401,6 +1401,22 @@ def _registration_named() -> Reading:
     return read
 
 
+@reading("doi title differs")
+def _doi_title_differs() -> Reading:
+    from manuscript_guard.auditing.references import NUMBERED, Entry, _title_differs
+
+    def read(given: dict[str, str]) -> list[str]:
+        """What `audit --lookup` says of a numbered entry whose DOI's record Crossref holds
+        with the title and subtitle given (`auditing.references._title_differs`): the
+        message, or nothing where the record holds enough of the entry's title."""
+        entry = Entry("entry 1", 1, 1, dois=("10.5555/given.1",), text=given["entry"])
+        answers = {"crossref": {"status": "found", "title": given["title"],
+                                "subtitle": given["subtitle"] or None}}  # fmt: skip
+        return [problem.message for problem in _title_differs(entry, answers, None, NUMBERED)]
+
+    return read
+
+
 @reading("registration identifiers")
 def _registration_identifiers() -> Reading:
     from manuscript_guard.registrations import NAMED_IN_TEXT

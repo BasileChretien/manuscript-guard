@@ -31017,6 +31017,37 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whether it happened or was planned, and a registration after a start that was only
     planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
     by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
+- **A DOI is said to be another work's where the entry gives its title in translation.**
+  Under `--lookup`, an entry whose DOI's record, at Crossref or OpenAlex, holds under half
+  the searched words of the title the entry gives is said to cite another work
+  (`reference-title-differs`, item 7b; Basile, 2026-11-26). A paper in English that gives in
+  English the title of a work written in Portuguese or Spanish, as a Brazilian or Spanish
+  journal's own English title, shares no words with the record, which holds the title as
+  the work was written. On 100 openly licensed PMC papers (2026-11-27), two readers judged
+  the 9 findings the check first made: 1 was right, an entry whose DOI is of the same
+  authors' paper on another protein; 5 gave a title in translation and 3 took a journal's
+  name or a publisher for the title. Two that hold their record's title word for word and
+  one marked as a translation are now passed over, and the check, run again on those
+  papers, was right in 1 of the 6 it still makes there, the false ones from 3 papers: a
+  note, never a warning, each with that record (`TITLE_RECORD`), as Basile asked of a check
+  right under half the time. Accepted.
+  - An entry that says its title is a translation, "[Article in Spanish]", "(in Japanese
+    with English abstract)", is not compared; one that does not say so is, which is most of
+    them. Pinned by `tests/test_audit_doi_title.py::test_an_entry_that_says_its_title_is_a_translation_is_not_compared`.
+  - An entry that holds its record's title word for word is not said, wherever its reader
+    took its title to be. One whose reader took the journal for its title and whose record
+    is not in it word for word is said, and quotes the journal's name as the title given:
+    an entry giving a work's Spanish title, whose record at OpenAlex is its English one, was
+    said with "Rev Panam Salud Publica" as its title. Accepted.
+  - A fabricated title that shares half the searched words of the DOI's work, or more, is
+    not said: the share was chosen so that a title cut short or split into a subtitle is
+    not said either. Pinned by `tests/test_audit_doi_title.py::test_a_title_the_record_holds_most_of_is_not_said`.
+  - Only Crossref's and OpenAlex's records are compared. A DOI only DataCite or doi.org
+    knows, and a PMID, are not held to a title. Accepted.
+  - Its record, 6 judged, is under the 10 the editor's report rates a kind by
+    (`auditing.editor.SHOWN_FROM`): the report shows it as too few to rate, and puts the kind
+    under "Ask the authors", not "Look at before you decide" (Basile, 2026-11-27). Pinned by
+    `tests/test_audit_doi_title.py::test_the_editor_s_report_asks_it_of_the_authors_with_its_record`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -74,6 +74,10 @@ kinds:
   identifier-unknown: >-
     A DOI or PMID given in the reference list is not known to its registry, or a reference was
     not found as it is printed. Please check it.
+  doi-title-differs: >-
+    A reference's DOI leads to a work with another title than the one the reference gives.
+    Please check the reference and its DOI against the work you mean to cite; where you give
+    a title in translation, please mark it as one, for example "[Article in Spanish]".
   not-found-by-title: >-
     A reference with no DOI was not found by its title and first author. Please check its
     details, and give its DOI if it has one.

@@ -108,9 +108,10 @@ the profile's schema, as it holds a profile the reader chooses, and only then fi
 form, keeping the date the rules were read on until a box of them is changed; a link it did
 not make, or one cut short, fills nothing and says why above the form. A link pasted into
 the page already open is read the same way. On a page a journal's host built, the rules a
-link carries take the place of a journal its `?journal=` chose, and the page says so. The
-button makes a link only of rules the checker takes, and says why where it does not, so
-that no link is sent that every editor would find refused. Where the browser does not let
+link carries take the place of the journal chosen, and the page says so. The button makes
+a link only of rules a page opened at it takes (the form's boxes, the profile's schema and
+a link's length), and says why where it does not, so that no link is sent that every
+editor would find refused. Where the browser does not let
 the page copy, the link is shown to copy by hand. The page reads its address and never writes
 it, and keeps nothing: the link is the reader's to keep and to send.
 

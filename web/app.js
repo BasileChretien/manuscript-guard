@@ -1,6 +1,6 @@
 // The page: start the checker, hand it the files the reader chooses, show what it says.
 // Nothing here sends anything anywhere; the checker runs in worker.js, in this browser.
-import { RULES, packed, shaped, unpacked } from "./rules.js";
+import { RULES, RULES_CHARS, packed, shaped, unpacked } from "./rules.js";
 
 const $ = (id) => document.getElementById(id);
 const say = (text) => { $("status").textContent = text; };
@@ -603,15 +603,21 @@ $("copyrules").addEventListener("click", async () => {
     rulesSaid("Type the journal's rules first: the link carries them.");
     return;
   }
-  // Only rules the checker takes, so that no link is sent that every editor finds refused
-  // (round 1 of #847).
+  // Only rules a page opened at the link takes: the form's shape, the checker's schema and
+  // a link's length, so that no link is sent that every editor finds refused (rounds 1 and 2
+  // of #847).
+  let text = "";
   try {
+    const wrong = shaped(form, offeredBoxes());
+    if (wrong) throw new Error(wrong);
     await ask("rules", form);
+    text = await packed(form);
+    if (text.length > RULES_CHARS) throw new Error("the rules are too long for a link");
   } catch (error) {
     rulesSaid(`No link was made: ${error.message.replace(/^the journal's form: /, "")}.`);
     return;
   }
-  const link = `${location.origin}${location.pathname}${RULES}${await packed(form)}`;
+  const link = `${location.origin}${location.pathname}${RULES}${text}`;
   $("ruleslink").value = link;
   $("ruleslink").hidden = false;
   try {
@@ -628,7 +634,11 @@ $("copyrules").addEventListener("click", async () => {
 // and only then put in the form, in place of a journal the page offers that ?journal= chose;
 // or nothing put in it, and why said above the form, where it is seen whether the form is
 // open or not (round 1 of #847).
+// Two links read at once, pasted one after the other: only the latest says what came of it
+// (round 2 of #847).
+let reading = 0;
 async function rulesOpened(text) {
+  const mine = ++reading;
   window.mgRulesRead = false;
   $("journalnote").hidden = true;
   try {
@@ -636,6 +646,7 @@ async function rulesOpened(text) {
     const wrong = shaped(form, offeredBoxes());
     if (wrong) throw new Error(wrong);
     await ask("rules", form);
+    if (mine !== reading) return;
     const replaced = offered();
     if (journals.size) {
       $("journal").value = "other";
@@ -656,9 +667,10 @@ async function rulesOpened(text) {
     linked.date = form.date;
     $("journalbox").open = true;
     rulesSaid(`These rules came with the link, read from the journal's instructions on `
-      + `${form.date}${replaced ? `, in place of ${replaced.name}'s, which the link also named` : ""}. `
+      + `${form.date}${replaced ? `, in place of ${replaced.name}'s` : ""}. `
       + "Check them against the instructions before relying on them.");
   } catch (error) {
+    if (mine !== reading) return;
     $("journalnote").textContent = "The link's rules were not put in the form: "
       + `${error.message.replace(/^the journal's form: /, "")}.`;
     $("journalnote").hidden = false;

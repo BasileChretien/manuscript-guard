@@ -220,7 +220,8 @@ def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
     and each kind's displays are cited in a sentence each, one in every example out of order:
     two of its first citations swapped. The last of each kind is cited nowhere, and a pointer
     past the last legend is planted, so that every example holds one of each finding of each
-    kind. Citations again, after the first, come anywhere.
+    kind. Citations again, after the first, come anywhere, three of each kind opening their
+    paragraphs as a legend does.
 
     Returns the text and the findings it must give, by code and line."""
 
@@ -252,6 +253,15 @@ def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
         paragraphs += [(f"again {kind} {at}", f"{words().capitalize()} {word} {number} "
                                               f"{words()}.")
                        for at, number in enumerate(again)]  # fmt: skip
+        # A citation that opens its paragraph, in each form one takes, is no legend: a
+        # sentence, a Word cross-reference's link and a range (round 1 of #837).
+        cites, low = draw(st.integers(1, count - 1)), draw(st.integers(1, count - 2))
+        dash = draw(st.sampled_from(("\N{EN DASH}", "-")))
+        paragraphs += [
+            (f"opens {kind}", f"{word} {cites} shows {words()}."),
+            (f"link {kind}", f"[{word} {cites}](#_Ref{cites}) shows {words()}."),
+            (f"range {kind}", f"{word}s {low}{dash}{low + 1} show {words()}."),
+        ]
         for number, form in enumerate(forms, 1):
             title = words()
             legend = form.format(word=word, n=number, title=title, Title=title.capitalize())

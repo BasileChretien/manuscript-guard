@@ -29857,16 +29857,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_audit_displays.py::test_legends_that_do_not_number_a_kind_1_to_n_leave_it_uncounted`
     and
     `tests/test_audit_displays.py::test_a_kind_pointed_at_with_no_legend_is_said_not_counted_and_one_with_neither_is_silent`.
-  - *A file that holds more tables, or more pictures, than its legends number* leaves that
-    kind unchecked, since a legend it does not read, in a layout table or inside a picture,
-    would make the citation of it point at nothing (the corpus run of ea3fc52). A paper with a
-    picture that is no figure, a logo or a graphical abstract, and figure legends that number
-    one fewer, has its figures unchecked too. Pinned by
+  - *A file that holds more tables, or more pictures, than its legends number*, the
+    supplement's legends it gives among them, leaves that kind unchecked, since a legend it
+    does not read, in a layout table or inside a picture, would make the citation of it point
+    at nothing (the corpus run of ea3fc52). A paper with a picture that is no figure, a logo
+    or a graphical abstract, has its figures unchecked too. Pinned by
     `tests/test_audit_displays.py::test_a_file_that_holds_more_of_a_kind_than_its_legends_number_leaves_it_uncounted`.
   - *A legend in a form the check does not read* is read as a citation, or not at all where
-    G2's pointer does not see it (bold set with underscores, which pandoc never writes). Where
-    it is the last of its kind, the legends number one fewer, and the citation of it is said
-    to point at nothing. Pinned by
+    G2's pointer does not see it: bold set with underscores, which pandoc never writes,
+    pandoc's own caption under a table (`: Table 1. X`), and a legend set as a heading
+    (`## Figure 2. B`), which round 1 of #837 found. Where it is the last of its kind, and the
+    file holds no more tables or pictures than the legends read, the legends number one
+    fewer, and the citation of it is said to point at nothing. Pinned by
     `tests/test_audit_displays.py::test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing`.
   - *A PDF whose lines were not rebuilt into paragraphs* is not checked: a legend cannot be
     told from a line of prose there. Pinned by

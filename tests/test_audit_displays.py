@@ -59,6 +59,7 @@ def test_a_file_that_holds_more_of_a_kind_than_its_legends_number_leaves_it_unco
 
 @pytest.mark.parametrize("legend", [
     "![Figure 1. Flow of patients](media/image1.png)", "Fig. 1. Flow", "Figure 1: Flow",
+    '![Figure 1](media/image1.png){width="5in"}', "Figure 1\N{EM DASH}Flow",
 ])  # fmt: skip
 def test_a_figure_s_legend_as_a_picture_or_with_fig_counts_its_figure(legend: str) -> None:
     read = said(f"The flow is in Figure 1.\n\n{legend}\n")
@@ -77,6 +78,31 @@ def test_a_sentence_that_opens_with_a_pointer_is_a_citation_and_no_legend(text: 
     # them but that.
     assert read.findings == () and read.counted == 0, read
     assert ["not 1 to 1 once each" in note.message for note in read.notes] == [True], read
+
+
+@pytest.mark.parametrize("opening", [
+    # Round 1 of #837: a Word cross-reference's link, and a range, opening a paragraph.
+    "[Table 1](#_Ref1) shows the patients.", "Tables 1\N{EN DASH}2 show the patients.",
+    "Tables 1-2 show the patients.", "Table 1 shows the patients.",
+])  # fmt: skip
+def test_a_citation_that_opens_its_paragraph_is_no_legend(opening: str) -> None:
+    read = said(f"Outcomes: Table 2.\n\n{opening}\n\nTable 1. A\n\nTable 2. B\n")
+    assert codes(read) == [("cited-out-of-order", 1)] and read.notes == (), read
+
+
+def test_the_supplement_s_legends_in_the_file_count_against_the_tables_it_holds() -> None:
+    """Round 1 of #837: a file holding the main text's tables and the supplement's, each
+    with its legend, has its main tables counted."""
+    table = "| a |\n|---|\n| 1 |\n"
+    read = said(f"In Table 2, then Table 1 and Table S1.\n\nTable 1. A\n\n{table}\n"
+                f"Table 2. B\n\n{table}\nTable S1. C\n\n{table}")  # fmt: skip
+    assert codes(read) == [("cited-out-of-order", 1)] and read.notes == (), read
+
+
+def test_a_display_cited_nowhere_is_not_said_to_be_cited_after_the_next() -> None:
+    """Round 1 of #837: tables cited 1 then 3, with 2 cited nowhere, are cited in order."""
+    read = said("In Table 1 and Table 3.\n\nTable 1. A\n\nTable 2. B\n\nTable 3. C\n")
+    assert codes(read) == [("display-not-cited", 5)], read
 
 
 def test_the_three_findings_each_at_its_place() -> None:
@@ -131,11 +157,16 @@ def test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_whereve
     assert found == [] and len(notes) == 1 and "read 1, 3" in notes[0].message
 
 
-def test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing() -> None:
-    """DESIGN.md, Known gaps: a legend in a form G2's pointer does not see, bold set with
-    underscores, which pandoc never writes, leaves its kind one short where it is the last,
-    and the citation of it reads as a pointer to nothing."""
-    read = said("In Table 1 and Table 2.\n\nTable 1. A\n\n__Table 2__ B\n")
+@pytest.mark.parametrize(("word", "last"), [
+    ("Table", "__Table 2__ B"),
+    # Round 1 of #837: a legend set as a heading.
+    ("Figure", "## Figure 2. B"),
+])  # fmt: skip
+def test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing(word: str, last: str) -> None:
+    """DESIGN.md, Known gaps: a legend in a form the check does not read, bold set with
+    underscores, which pandoc never writes, or a heading, leaves its kind one short where it
+    is the last, and the citation of it reads as a pointer to nothing."""
+    read = said(f"In {word} 1 and {word} 2.\n\n{word} 1. A\n\n{last}\n")
     assert codes(read) == [("pointer-to-nothing", 1)], read
 
 
@@ -143,6 +174,59 @@ def test_a_pdf_whose_lines_were_not_rebuilt_is_said_not_checked() -> None:
     read = displays.unread_pdf(Path("paper.pdf"))
     assert read.findings == () and read.counted == 0
     assert read.notes[0].message == displays.UNREBUILT and read.notes[0].path == Path("paper.pdf")
+
+
+def _latex(tmp_path: Path, body: str) -> None:
+    (tmp_path / "paper.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\n" + body
+        + "\\end{document}\n", encoding="utf-8")  # fmt: skip
+
+
+def test_a_latex_paper_s_kind_not_counted_is_what_the_check_read_and_asks_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Round 1 of #837: G2's note on a LaTeX kind it cannot count is a project's, which
+    declares in paper.yaml what it sends as files, and no editor's kind took its code, so the
+    letter asked the authors to look at it. The audit says its own, among what it read."""
+    monkeypatch.chdir(tmp_path)
+    _latex(tmp_path, "Patients are in Table 1 and the flow in Figure 1.\n\n"
+                     "\\begin{table}\\caption{Patients}\\end{table}\n"
+                     "\\begin{figure}\\includegraphics{flow}\\end{figure}\n")  # fmt: skip
+    assert main(["audit", "paper.tex", "--json"]) == 0
+    found = [f for f in json.loads(capsys.readouterr().out)["findings"] if f["gate"] == "G2"]
+    assert [(f["code"], f["severity"]) for f in found] == [(displays.NOT_COUNTED, "info")]
+    assert "its figures were not counted" in found[0]["message"]
+    assert "paper.yaml" not in json.dumps(found)
+    assert main(["audit", "paper.tex", "--letter", "letter.md"]) == 0
+    capsys.readouterr()
+    letter = (tmp_path / "letter.md").read_text(encoding="utf-8")
+    assert "figure" not in letter.lower() and "Please look at this point" not in letter
+
+
+def test_a_latex_paper_s_pointer_to_nothing_warns_with_the_audit_s_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Round 1 of #837: G2 fails a project's pointer to nothing, and tells it to declare in
+    paper.yaml a table sent as a file; a paper audited is warned of it, as in every format."""
+    monkeypatch.chdir(tmp_path)
+    _latex(tmp_path, "Patients are in Table 1, and costs in Table 2.\n\n"
+                     "\\begin{table}\\caption{Patients}\\end{table}\n")  # fmt: skip
+    assert main(["audit", "paper.tex", "--json"]) == 0
+    found = [f for f in json.loads(capsys.readouterr().out)["findings"] if f["gate"] == "G2"]
+    assert [(f["code"], f["severity"]) for f in found] == [("pointer-to-nothing", "warn")]
+    assert "paper.yaml" not in found[0]["hint"] and "\\caption" in found[0]["hint"]
+
+
+def test_a_latex_paper_with_no_table_or_figure_says_none_is_numbered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Round 1 of #837: a LaTeX paper with no float and no pointer was counted as two kinds
+    checked, and the summary said each was cited in order."""
+    monkeypatch.chdir(tmp_path)
+    _latex(tmp_path, "The patients did well.\n")
+    assert main(["audit", "paper.tex"]) == 0
+    assert "Tables and figures        no table or figure is numbered by a legend or pointed " \
+        "at" in capsys.readouterr().out
 
 
 def test_the_audit_reports_them_in_their_section_and_in_its_summary(

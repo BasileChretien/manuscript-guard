@@ -11,9 +11,11 @@ writing one it missed.
 
 - **A legend** is the first pointer of a line that opens its paragraph, after nothing but
   the marks of emphasis or the `![` of a picture, set off from its title by a stop, a colon,
-  a dash or the end of the marks, as G2 tells a caption from a citation, by a space and a
-  capital, as BMC and Springer set one ("Table 1 Baseline characteristics"), or alone on its
-  line. Every other pointer is a citation ("as Table 2 shows").
+  a dash no number follows or the end of the marks, as G2 tells a caption from a citation,
+  by a space and a capital, as BMC and Springer set one ("Table 1 Baseline
+  characteristics"), or alone on its line, the end of a picture's or a link's text and its
+  target standing between. Every other pointer is a citation ("as Table 2 shows", "Figures
+  1-3 show", a Word cross-reference's link opening a sentence).
 - **The main text's kinds** are held to ICMJE ("Number tables consecutively in the order of
   their first citation in the text"): each cited (`display-not-cited`), the first citations
   in the order of their numbers (`cited-out-of-order`), and none to a number past the last
@@ -22,7 +24,8 @@ writing one it missed.
   to the supplement's legends, read in every paper the audit is given, the main text's file
   among them, and only where some are: they are then counted as the main text's are.
 - **A LaTeX paper** numbers its own floats, and is held by G2's own reader of one
-  (`gates.pointers_latex`), as `check` holds a LaTeX project.
+  (`gates.pointers_latex`), as `check` holds a LaTeX project, with the audit's notes and
+  hints rather than a project's.
 - **A PDF** is read where its lines were rebuilt into paragraphs (`auditing.pdf`), each
   display a block opening with its legend; where they were not, a legend cannot be told from a
   line of prose, and a note says the PDF was not checked.
@@ -45,14 +48,18 @@ GATE = "G2"
 NOT_COUNTED = "displays-not-counted"
 #: A legend's line, as the paper sets it: its pointer opens the line, after a Word
 #: bookmark, the `![` of a picture or the `[` of a link, and the marks of emphasis, and is
-#: set off from its title (see the module's text). Any space but a line's end, Word's
-#: no-break space among them, stands where a space does.
+#: set off from its title (see the module's text). A link's or a picture's text may end
+#: there, its target after it, and the set-off then follows that. A dash sets a title off
+#: where no number follows it, which a range's does ("Figures 1–3 show", round 1 of
+#: #837). Any space but a line's end, Word's no-break space among them, stands where a
+#: space does.
 _LEGEND = re.compile(
     r"[^\S\n]*(?:\[\]\{[^}\n]*\}[^\S\n]*)*(?:!?\[)?(?:\[\]\{[^}\n]*\}[^\S\n]*)*(?:\*\*\*|\*\*|__|\*|_)?[^\S\n]*"
     r"(?i:(?:supplementary|supplemental)[^\S\n]+|e|s)?"
     r"(?i:tables?|figures?|figs?\.?)[^\S\n]*S?\d+[A-Za-z]?(?:\*\*\*|\*\*|__|\*|_)?"
-    "(?:[^\\S\\n]*[.:|\N{EN DASH}\N{EM DASH}-]|[^\\S\\n]+(?=[A-Z])"
-    "|[^\\S\\n]*\\]|[^\\S\\n]*$)"
+    r"(?:[^\S\n]*\](?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?"
+    r"(?:[^\S\n]*[.:|]|[^\S\n]*[\N{EN DASH}\N{EM DASH}-](?![^\S\n]*\d)|[^\S\n]+(?=[A-Z])"
+    r"|[^\S\n]*$)"
 )
 #: A picture, as pandoc writes one: what a figure the file holds may be.
 _PICTURE = re.compile(r"!\[[^\]\n]*\]\(")
@@ -99,7 +106,10 @@ def of_files(files: dict[str, str], folder: Path) -> Displays:
         for kind in ("table", "figure"):
             main = [p for p in legends if p.kind == kind and not p.supplementary]
             pointed = [p for p in cited if p.kind == kind and not p.supplementary]
-            got, said = _counted(kind, main, pointed, folder / name, held[kind])
+            # The supplement's legends a file gives are of tables and pictures it holds too
+            # (round 1 of #837).
+            elsewhere = sum(p.kind == kind and p.supplementary for p in legends)
+            got, said = _counted(kind, main, pointed, folder / name, held[kind], elsewhere)
             found += got
             notes += said
             counted += bool(main) and not said
@@ -114,14 +124,50 @@ def of_files(files: dict[str, str], folder: Path) -> Displays:
 
 def of_latex(project) -> Displays:
     """A LaTeX paper's tables and figures, as G2 holds a LaTeX project's: the floats its
-    captions number, and its pointers typed and cross-referenced (`gates.pointers_latex`)."""
-    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+    captions number, and its pointers typed and cross-referenced (`gates.pointers_latex`).
+    G2's notes and its hint on a pointer to nothing are a project's, which declares in
+    paper.yaml what goes to the journal as files; the audit says its own, under the notes on
+    what it read (round 1 of #837), and counts the main text's kinds G2 counted."""
+    from manuscript_guard.gates.pointers_latex import read_pointers_latex
+    from manuscript_guard.text.latex.structure import ENTRY
 
-    report = check_pointers_latex(project)
-    notes = tuple(f for f in report.findings if f.severity == INFO)
-    # Each kind G2 leaves uncounted says so in a note of its own.
-    return Displays(tuple(f for f in report.findings if f.severity != INFO), notes,
-                    counted=max(0, 2 - len(notes)))  # fmt: skip
+    read = read_pointers_latex(project)
+    # Each warns, as a paper's of another format does, where G2 fails a project.
+    found = tuple(replace(f, severity=WARN, **({"hint": _LATEX_TO_NOTHING}
+                                               if f.code == "pointer-to-nothing" else {}))
+                  for f in read.report.findings if f.severity != INFO)  # fmt: skip
+    notes: list[Finding] = []
+    counted = 0
+    for supplementary in (False, True):
+        for kind in ("table", "figure"):
+            key = (supplementary, kind)
+            if read.total[key] and key not in read.uncounted:
+                counted += not supplementary
+                continue
+            pointed = any((p.supplementary, p.kind) == key for p in read.pointers)
+            # A supplement with no float at all was not given, and says nothing, as in a
+            # paper of another format.
+            if pointed and (key in read.uncounted or not supplementary):
+                notes.append(_latex_note(kind, supplementary, key in read.uncounted,
+                                         project.path("manuscript") / ENTRY))  # fmt: skip
+    return Displays(found, tuple(notes), counted=counted)
+
+
+#: The hint on a LaTeX paper's pointer past what its floats number.
+_LATEX_TO_NOTHING = ("point at a table or figure the paper numbers, with `\\ref` to its "
+                     "`\\label`, or give the one it means a float with a `\\caption`")
+
+
+def _latex_note(kind: str, supplementary: bool, uncounted: bool, path: Path) -> Finding:
+    """The note on a kind of a LaTeX paper pointed at and not counted."""
+    which = f"{'supplementary ' if supplementary else ''}{kind}s"
+    if uncounted:
+        why = (f"{'its supplement' if supplementary else 'it'} has a {kind} that no float's "
+               "`\\caption` numbers")
+    else:
+        why = f"{kind}s are pointed at and no float's `\\caption` numbers one"
+    return Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path, subject=which,
+                   message=f"{why}, so its {which} were not counted")
 
 
 def unread_pdf(path: Path) -> Displays:
@@ -206,12 +252,12 @@ def _held(text: str) -> dict[str, int]:
 
 
 def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Path,
-             held: int = 0) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
+             held: int = 0, elsewhere: int = 0) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
     """The findings on one kind of a file's main text, and the note where it is not counted:
     where its legends do not number it 1 to n once each, or where the file holds more of the
-    kind than they number, as where a legend stands in a layout table or in a picture the
-    check does not read (the corpus run of ea3fc52), and its citations would point at
-    nothing."""
+    kind than they number with the supplement's legends it gives (`elsewhere`), as where a
+    legend stands in a layout table or in a picture the check does not read (the corpus run
+    of ea3fc52), and its citations would point at nothing."""
     numbers = sorted(p.number for p in legends)
     if not numbers:
         if not cited:
@@ -221,12 +267,13 @@ def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Pa
                             message=f"{kind}s are pointed at and no legend numbers "
                             f"one, so its {kind}s were not counted")]  # fmt: skip
     count = len(numbers)
-    if numbers == list(range(1, count + 1)) and held > count:
+    if numbers == list(range(1, count + 1)) and held > count + elsewhere:
         what = "tables" if kind == "table" else "pictures"
+        given = count + elsewhere
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
                             line=legends[0].line, subject=f"{kind}s",
                             message=f"it holds {held} {what}, and its legends "
-                            f"number {count} {kind}{'s' if count != 1 else ''}, so its {kind}s "
+                            f"number {given} {kind}{'s' if given != 1 else ''}, so its {kind}s "
                             "were not counted")]  # fmt: skip
     if numbers != list(range(1, count + 1)):
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
@@ -240,7 +287,9 @@ def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Pa
             first.setdefault(pointer.number, pointer)
         else:
             found.append(_counting(_to_nothing(pointer, "the paper", path), count))
-    for expected, (number, pointer) in zip(range(1, count + 1), first.items(), strict=False):
+    # Held among the numbers cited: one cited nowhere is said so below, and is not said to be
+    # cited after the next (round 1 of #837).
+    for expected, (number, pointer) in zip(sorted(first), first.items(), strict=True):
         if number != expected:
             found.append(Finding(gate=GATE, code="cited-out-of-order", severity=WARN, path=path,
                                  line=pointer.line, context=pointer.shown,

@@ -3895,6 +3895,19 @@ def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
     _a_legend_without(patch, r"|figs?\.?)", ")")
 
 
+def _a_sentence_opening_with_a_pointer_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?=[A-Z])", "")
+
+
+def _a_link_opening_a_sentence_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #837: a link's end, whatever follows it, read as a legend's.
+    _a_legend_without(patch, r"(?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?", r".*)?")
+
+
+def _a_range_s_dash_sets_off_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?![^\S\n]*\d)", "")
+
+
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -26522,6 +26535,18 @@ BROKEN = {
     ),
     "an audited paper's legend opened by Fig. is read as a citation": (
         _a_fig_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's sentence opening with a pointer is read as a legend": (
+        _a_sentence_opening_with_a_pointer_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's cross-reference link opening a sentence is read as a legend": (
+        _a_link_opening_a_sentence_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range opening a sentence is read as a legend": (
+        _a_range_s_dash_sets_off_a_legend,
         test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
     ),
     "registration numbers are read in the reference list too": (

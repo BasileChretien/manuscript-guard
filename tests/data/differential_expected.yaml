@@ -26,13 +26,10 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a case report is a design of `data/study_types.yaml`: a plan whose paper.yaml names
-      it is asked for its de-identification, timeline, diagnostic assessment, patient
-      perspective and informed consent, each from its CARE item, and not for the analysis
-      or the deviations every other plan has, where main read `study_type: case-report` as
-      no design of its table and refused it; and every plan's population is found under
-      CARE's words, "Patient information" or "The patient" as a whole heading, which the
-      drawn plans now hold
+      a descriptive case series is a design of `data/study_types.yaml`: a plan whose
+      paper.yaml names it is asked for its case selection, follow-up, comparison, and
+      consent and ethics, each from its PROCESS 2023 item, beside the seven every plan has,
+      where main read `study_type: case-series` as no design of its table and refused it
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,
@@ -435,3 +432,17 @@ expected:
       paper.yaml's, which the reading now hands `read` (READUS-PV 1a and 1b on the
       bisphosphonates paper), where the base names no part for it; a quote of the title's
       words under a heading stands in "the title in paper.yaml"
+  - reading: figure script numbers
+    why: >-
+      a new reading of G3's script check, on inputs that hold the three kinds it now passes
+      (the bisphosphonates paper, 2026-11-26): a string that is, whole, one of R's colour names
+      with digits in an R script ("grey50", "steelblue4") or matplotlib's "C0" in a Python
+      one, a number that is a whole subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and a
+      zero compared with an exit status (`if (status != 0) stop()`), each of which the base
+      reports as a number the figure draws or one bound to nothing; what only looks like each
+      is reported on both
+  - reading: figure svg text
+    why: >-
+      a new reading: the text of an SVG's `<style>` and `<script>` is not read as text the
+      figure draws, where the base read svglite's `stroke-miterlimit: 10.00` as two numbers
+      of the figure; its `<text>`, its metadata and its attributes are read as before

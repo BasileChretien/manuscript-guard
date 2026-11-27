@@ -73,7 +73,8 @@ RETROSPECTIVE = re.compile(
 )
 #: The designs a registry calls observational, and the one it calls interventional. A
 #: diagnostic accuracy study is in neither: registries hold them under both. Nor is a case
-#: report, which has no study to register.
+#: report, which has no study to register, nor a case series: a prospective series of an
+#: intervention given by protocol is registered as interventional (round 1 of #849).
 OBSERVATIONAL = frozenset({"cohort", "case-control", "cross-sectional", "self-controlled",
                            "disproportionality"})
 #: What ISRCTN writes in the field for a trial that has none.

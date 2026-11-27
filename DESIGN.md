@@ -606,6 +606,24 @@ The presentation list is deliberately narrow. `x`, `y`, `n` and `digits` are **n
 because allowing bare coordinates would allow `data.frame(x = c(1, 2, 3))` — data typed
 into a figure script, which gets its own error message.
 
+Three readings are neither drawn nor data, and pass whatever surrounds them, as the
+bisphosphonates paper's R figures showed (2026-11-26). A string that is, whole, one of R's
+colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gray 0 to 100,
+and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
+`"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
+bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and
+not after a keyword (`x in [3]`, `return [3]`), unless the word is a field's (`d$class[1]`),
+is an index. A zero compared by `==` or `!=` with a process's exit status is the test of
+whether it failed: a name the script assigns, at the top level or inside braces (a
+function's body, `local({ })`, `tryCatch({ })`) but not as a call's argument, from
+`system2()`, `system()`, `os.system()` or `subprocess.call()`, or from a `.returncode` or a
+run's `$status`; a run being processx's `run()`, with its package or without, sys's
+`exec_internal()`, or callr's `rcmd()`, `rcmd_safe()` or `rscript()`; and any of those
+written in place. A `$status` of anything else, a data frame's column, is read as before.
+A rendered SVG's `<style>` and `<script>` draw nothing either, so their text is not read as
+the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind check still
+reads them, for a name.
+
 **The marks the script computes.** Labels drawn from the results say nothing about the marks.
 `sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
 `stat_summary` draws a mean and its standard error, `geom_smooth` a fitted line and its
@@ -17689,13 +17707,17 @@ guideline's own page on the day of its pull request, as the file requires, and
 `choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
 have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
-(labelled "self-controlled design (case series or case-crossover)"); its label says so, and
-which guideline it answers to is read before its entry is written.
+(labelled "self-controlled design (case series or case-crossover)"); its label,
+"descriptive case series", says so. No guideline is written for case series in every
+field, so G5 takes PROCESS 2023, written for surgical case series, or Kempen 2011, for
+uncontrolled case series, and its sections cite PROCESS 2023 (Basile, 2026-11-27).
 
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
 #801, and case reports since 2026-11-27, their plans not asked for an analysis or
-deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27), and
+descriptive case series since 2026-11-28, whose plans are asked for all seven (Basile,
+2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17732,8 +17754,11 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of SRQR and COREQ, and which guideline a case series
-  answers to. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
+- The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
+  PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
+  2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
+  whose full text Europe PMC's service does not return, so its checklist was not read for
+  this design; no guideline written for case series in any field was found. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
   site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
   2013 article that publishes it CC BY-NC-ND 3.0 at Europe PMC (PMC3833570). STROBE's checklist for cross-sectional studies was read on its own page on
   2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
@@ -19677,6 +19702,35 @@ Added by the adversarial review, verified and **not** fixed:
   as a difference, not as the environment: the dictionary is data.
   Pinned by `tests/test_corruption.py::test_a_typed_dictionary_release_fails_and_only_beside_its_name`
   and `tests/test_emit.py::test_a_release_file_that_does_not_open_with_a_version_is_refused`.
+- **G3's script check passes three readings by their form alone.** Pinned by
+  `tests/test_figures.py::test_a_string_that_is_no_colour_name_is_still_read`.
+  - A colour is known by its whole name and the script's language only: R's spelling with a
+    space (`"grey 50"`, which R reads) and a grey level matplotlib takes as a string
+    (`color="0.5"`) are read as drawn numbers, while a label that is, whole, one of R's names
+    (`labs(title = "red3")`) is taken for a colour and its number is not read. Pinned by
+    `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
+  - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
+    (`edges[1:3]`) are read as numbers bound to nothing, and so is the subscript of a name
+    that is a keyword in either language and no field's (`from[1]` in R, whose `from` is
+    a keyword of Python's). A soft keyword
+    of Python's is read as a name, so `case [3]:` is taken for an index and its number is
+    not read: the tokens do not say whether `match` or `case` opens a statement (round 2
+    of #817). Pinned by
+    `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read` and
+    `tests/test_figures.py::test_a_number_that_is_a_whole_subscript_is_an_index`.
+  - An exit status is known by the calls that return one, by `.returncode`, and by the
+    `$status` of a run (processx's `run()`, sys's `exec_internal()`, callr's `rcmd()`,
+    `rcmd_safe()` and `rscript()`, sys's and callr's with their package written, so
+    `library(callr)` then `rcmd()` is no run): R's `system2(stdout = TRUE)` and
+    `system(intern = TRUE)`, which return the output, are taken for a status, and so is the
+    `$status` of a function of the script's own called `run`; while `Popen(...).wait()`, a
+    status returned by a function of the script's own, one assigned in a function's argument,
+    one in an annotated assignment (`rc: int = subprocess.call(...)`, read as assigning to
+    `int`, since the tokens hold no line breaks and a block's colon before `rc =` reads the
+    same way), a run kept by another call (`res <- tryCatch(processx::run(...))`) and one
+    kept in a list's item (`results[[i]]$status`) are not, and their zero is read. Pinned by
+    `tests/test_figures.py::test_a_zero_compared_with_an_exit_status_is_no_number` and
+    `tests/test_figures.py::test_a_zero_compared_with_anything_else_is_still_read`.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.
@@ -19812,13 +19866,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Ten designs are named, a case report the last added; a design outside
-  them (a narrative review, a descriptive case series, a qualitative study,
+  not. Eleven designs are named, a descriptive case series the last added; a design
+  outside them (a narrative review, a qualitative study,
   a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case series and qualitative
+  from a draft" (above) plans qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19840,7 +19894,14 @@ Added by the adversarial review, verified and **not** fixed:
   plan is not asked for its analysis or its deviations (`not_asked`), since it describes
   one patient's care, which followed no protocol (Basile, 2026-11-27); a plan of one changed
   after its first results is still told to say so under Deviations, which it may then
-  hold (round 1 of #840). The author answers such a false alarm, for any design and any section but
+  hold (round 1 of #840). A descriptive case series' sections are found by words they
+  alone use: case selection, identification or finding, consecutive, recruitment;
+  follow-up; a comparator, a comparison with, to or against something, a comparison
+  group, historical or external controls, a benchmark, or "Comparison" as the whole
+  heading; consent, ethics. So the comparisons an analysis makes, "Statistical
+  comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
+  not its comparison, and a "Patient selection" or "Length of observation" heading names
+  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19858,6 +19919,8 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_the_patient_is_the_population_where_the_heading_is_the_patient_whole`,
   `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
+  `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
@@ -23883,6 +23946,16 @@ Open, recorded as each change landed:
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
   recipe would be one to download and use, not to share. Accepted.
+- **A descriptive case series is held to a surgical guideline or to one with no recipe.**
+  No guideline is written for case series in every field, so the design names PROCESS
+  2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
+  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
+  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
+  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
+  open licence. So a paper that declares either is told its checklist is not retrieved.
+  The design's four sections cite PROCESS 2023, whose items on preparing the patient for
+  the intervention (6g), the operator (6j) and the variation between operators (6k) a
+  series outside surgery answers as not applying. Accepted.
 - **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
   checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
   under some, which no recipe option reads. Table 1 of the statement paper (Global

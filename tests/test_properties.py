@@ -27135,6 +27135,212 @@ def _a_translation_s_marker_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(references, "_TRANSLATED", re.compile(r"(?!)"))
 
 
+# ------------------------------------------------------- what a figure script names by number
+
+from generated import _SCRIPT_NAMES, figure_scripts, svg_figures  # noqa: E402
+
+
+def test_a_generated_script_s_names_are_nobody_s_in_the_plotting_vocabulary() -> None:
+    """A name the plotting vocabulary knows makes its line's numbers layout, whatever else the
+    line holds: `parts` was one, by the pattern `^par`, and a list `parts = [1]` was passed."""
+    from manuscript_guard.gates.figure_source import load_vocabulary
+
+    vocabulary = load_vocabulary()
+    for name in _SCRIPT_NAMES:
+        for names in ((name,), (f"{name}_one",)):
+            assert vocabulary.presentation(names) is None, names
+            assert vocabulary.data_constructor(names) is None, names
+            assert not vocabulary.machinery(names) and not vocabulary.tick_label(names), names
+
+
+@holds(40, figure_scripts())
+def test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else(
+    drawn: list[tuple[str, str, list[str]]],
+) -> None:
+    """A figure script in R and one in Python, with a line of each kind: a colour named with
+    digits (`"grey50"`, `"steelblue4"`, `"C0"`), a number that is a whole subscript
+    (`edges[1]`) and a zero compared with an exit status (`if (status != 0) stop()`), none of
+    them a number the figure draws or data typed into it (the bisphosphonates paper,
+    2026-11-26), a status assigned in braces or straight after a block's colon (`try:`) and an
+    index of a field named by a keyword (`d$class[1]`) or of `type` among them; and beside
+    each what only looks like it, which G3 reports as before: a name R has no
+    colour by, R's names in Python, a subscript with arithmetic in it or two numbers, a list
+    of one number, after a keyword too (`in [3]`, `return [3]`), a zero compared
+    with another name, a status compared with another number, a status assigned as a call's
+    argument, and a column called status (round 1 of #817). G3 reports the second kind's
+    numbers, in the order of the lines, and no other."""
+    read = READINGS["figure script numbers"]()
+    for suffix, text, said in drawn:
+        found = read({"suffix": suffix, "text": text})["findings"]
+        reported = [f["message"].split("'")[1] for f in found
+                    if f["code"].startswith("figure-source-")]  # fmt: skip
+        assert reported == said, (suffix, text, found)
+
+
+@holds(40, svg_figures())
+def test_g3_reads_the_text_an_svg_draws_and_nothing_else(drawn: tuple[str, list[str]]) -> None:
+    """An SVG with a part of each kind: a `<text>`, one in a group, a stylesheet (svglite's
+    `stroke: #000000; stroke-miterlimit: 10.00`, the bisphosphonates paper, 2026-11-26), a
+    script, a title and an element whose attributes hold numbers. G3 reads the text the
+    figure draws, in document order, and nothing of the others."""
+    svg, said = drawn
+    assert READINGS["figure svg text"]()(svg).split("\n") == said, svg
+
+
+def _any_word_with_digits_is_a_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.figure_source import PlotVocabulary
+
+    patch.setattr(PlotVocabulary, "colour", lambda self, string, language: bool(
+        string and re.fullmatch(r"[A-Za-z]+[0-9]+", string)))  # fmt: skip
+
+
+def _r_s_colours_are_python_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.figure_source import PlotVocabulary
+
+    kept = PlotVocabulary.colour
+    patch.setattr(PlotVocabulary, "colour", lambda self, string, language: kept(
+        self, string, "r") or kept(self, string, language))  # fmt: skip
+
+
+def _a_number_after_a_bracket_is_an_index(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_whole_subscript", lambda tokens, index: code._text(
+        tokens, index - 1) == "[")  # fmt: skip
+
+
+def _any_zero_compared_is_a_status(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_compared_with_a_status", lambda tokens, index, statuses: tokens[
+        index].text in code._ZERO and "=" in (code._text(tokens, index - 1),
+                                              code._text(tokens, index + 2)))  # fmt: skip
+
+
+def _statuses_assigned(code: Any, tokens: list[Any], *, where: Callable[[list[str]], bool],
+                       name: Callable[[list[Any], int], str | None]) -> Any:  # fmt: skip
+    """`_exit_statuses` with the brackets it reads in, and the name each assignment assigns
+    to, decided by `where` and `name`: what a broken rule of its puts in their place."""
+    names: set[str] = set()
+    runs: set[str] = set()
+    brackets: list[str] = []
+    for at in range(len(tokens) - 1):
+        text = code._text(tokens, at)
+        if text in ("(", "[", "{"):
+            brackets.append(text)
+        elif text in (")", "]", "}"):
+            if brackets:
+                brackets.pop()
+        elif code._assigns(tokens, at) and where(brackets) and name(tokens, at) is not None:
+            held = code._Statuses(frozenset(names), frozenset(runs))
+            if code._starts_a_status(tokens, at + 1, held):
+                names.add(name(tokens, at))
+            elif code._starts_a_run(tokens, at + 1):
+                runs.add(name(tokens, at))
+    return code._Statuses(frozenset(names), frozenset(runs))
+
+
+def _a_status_in_a_call_is_the_script_s(patch: pytest.MonkeyPatch) -> None:
+    """The bracket rule of `_exit_statuses` taken out: a name assigned a status anywhere."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_exit_statuses", lambda tokens: _statuses_assigned(
+        code, tokens, where=lambda brackets: True, name=code._assigned))  # fmt: skip
+
+
+def _a_status_is_assigned_at_the_top_level_only(patch: pytest.MonkeyPatch) -> None:
+    """A status assigned in braces, a function's body, not read (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_exit_statuses", lambda tokens: _statuses_assigned(
+        code, tokens, where=lambda brackets: not brackets, name=code._assigned))  # fmt: skip
+
+
+def _the_word_before_a_colon_is_assigned(patch: pytest.MonkeyPatch) -> None:
+    """Round 1's reading of an annotated assignment, which round 2 of #817 took out: the
+    name before a colon taken for the one assigned, so `try:` then `rc = ...` records `try`."""
+    from manuscript_guard.text import code
+
+    def annotated(tokens: list[Any], index: int) -> str | None:
+        if index < 1 or code._identifier(tokens[index - 1]) is None:
+            return None
+        if code._text(tokens, index - 2) == ":" and index > 2 and code._identifier(
+                tokens[index - 3]):  # fmt: skip
+            return tokens[index - 3].text
+        return tokens[index - 1].text
+
+    patch.setattr(code, "_assigned", annotated)
+
+
+def _any_dollar_status_is_a_status(patch: pytest.MonkeyPatch) -> None:
+    """Every `$status` taken for an exit status, a data frame's column too (round 1 of
+    #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_status_field", lambda tokens, index, statuses: (
+        code._text(tokens, index) or "").endswith(".returncode") or (
+        code._text(tokens, index) == "status" and code._text(tokens, index - 1) == "$"))
+
+
+def _type_is_a_keyword(patch: pytest.MonkeyPatch) -> None:
+    """`type` put back among the keywords, as round 1 of #817 had it: `type[1]` read."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_KEYWORDS", code._KEYWORDS | {"type"})
+
+
+def _a_field_named_by_a_keyword_is_a_keyword(patch: pytest.MonkeyPatch) -> None:
+    """The `$` and `@` test of `_whole_subscript` taken out: `d$class[1]` read (round 3 of
+    #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_FIELD", ())
+
+
+def _keywords_open_subscripts(patch: pytest.MonkeyPatch) -> None:
+    """The keyword test of `_whole_subscript` taken out: `x in [3]` and `return [3]` read as
+    indices (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_KEYWORDS", frozenset())
+
+
+def _a_stylesheet_is_drawn(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_NOT_DRAWN", set())
+
+
+def _a_stylesheet_ends_the_figure(patch: pytest.MonkeyPatch) -> None:
+    """What follows a stylesheet taken for part of it: the walk stops at the first one."""
+    from manuscript_guard.gates import figures
+
+    def walk(root: Any, *, drawn_only: bool = True) -> Any:
+        for node in root:
+            if node.tag in figures._NOT_DRAWN:
+                return
+            if node.tag in figures._METADATA_TAGS:
+                continue
+            yield node
+            yield from walk(node, drawn_only=drawn_only)
+
+    patch.setattr(figures, "_svg_content_nodes", walk)
+
+
+def _attributes_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    kept = figures._svg_content_nodes
+
+    def walk(root: Any, *, drawn_only: bool = True) -> Any:
+        for node in kept(root, drawn_only=drawn_only):
+            if node.attrib and not (node.text or "").strip():
+                node.text = " ".join(node.attrib.values())
+            yield node
+
+    patch.setattr(figures, "_svg_content_nodes", walk)
+
+
 @holds(40, saved_pages())
 def test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown(
     described: dict[str, Any],
@@ -34970,6 +35176,62 @@ BROKEN = {
     "an ordinal counts across the paper": (
         _an_ordinal_counts_across_the_paper,
         test_the_ordinal_of_a_key_counts_in_its_sentence_only,
+    ),
+    "any word with digits names a colour": (
+        _any_word_with_digits_is_a_colour,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "R's colour names are Python's": (
+        _r_s_colours_are_python_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a number after a bracket is an index": (
+        _a_number_after_a_bracket_is_an_index,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "any zero compared is an exit status": (
+        _any_zero_compared_is_a_status,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a status assigned in a call is the script's": (
+        _a_status_in_a_call_is_the_script_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a status is assigned at the top level only": (
+        _a_status_is_assigned_at_the_top_level_only,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "the word before a colon is the name assigned": (
+        _the_word_before_a_colon_is_assigned,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "any $status is an exit status": (
+        _any_dollar_status_is_a_status,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a keyword before a bracket opens a subscript": (
+        _keywords_open_subscripts,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "type is a keyword": (
+        _type_is_a_keyword,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a field named by a keyword is a keyword": (
+        _a_field_named_by_a_keyword_is_a_keyword,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "an SVG's stylesheet is drawn text": (
+        _a_stylesheet_is_drawn,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "an SVG's stylesheet ends what is read of it": (
+        _a_stylesheet_ends_the_figure,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "an SVG's attributes are read as its text": (
+        _attributes_are_read,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
     ),
     "a comment under a heading is printed": (
         _a_comment_is_printed,

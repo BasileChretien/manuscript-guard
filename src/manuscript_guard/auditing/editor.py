@@ -333,6 +333,9 @@ KINDS: tuple[Kind, ...] = (
     Kind("displays-unread", READ,
          "Where the tables or the figures could not be counted from their legends, and were "
          "not held to their order.", _codes("G2", "displays-not-counted")),
+    Kind("displays-past-unchecked", READ,
+         "Where a pointer past the legends was not checked, the paper holding more tables or "
+         "pictures than its legends number.", _codes("G2", "pointers-unchecked")),
     Kind("cited", READ, "The table of cited sentences, and what it could not hold.",
          _codes("audit", "cited-written", "cited-not-listed", "would-ask")),
     Kind("self-citation-read", READ, "What the self-citation counts were read from.",

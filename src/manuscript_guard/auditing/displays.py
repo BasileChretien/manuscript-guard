@@ -48,6 +48,10 @@ from manuscript_guard.findings import INFO, WARN, Finding
 GATE = "G2"
 #: What `audit` says of a kind it did not count, and of a PDF it did not read for this.
 NOT_COUNTED = "displays-not-counted"
+#: What it says of a counted kind's pointers past its legends where the file holds more
+#: tables or pictures than they number: G2's code for pointers it could not check (the
+#: fix-only round on df69672 of #837).
+PAST_UNCHECKED = "pointers-unchecked"
 #: A legend's line, as the paper sets it: its pointer opens the line, after a Word
 #: bookmark, the `![` of a picture or the `[` of a link, and the marks of emphasis, and is
 #: set off from its title (see the module's text). A link's or a picture's text may end
@@ -315,8 +319,8 @@ def _past_unchecked(kind: str, past: list[_Pointer], path: Path, held: int,
     pictures of it than they number."""
     what = "tables" if kind == "table" else "pictures"
     shown = list(dict.fromkeys(repr(pointer.shown) for pointer in past))
-    return Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path, line=past[0].line,
-                   subject=f"{kind}s",
+    return Finding(gate=GATE, code=PAST_UNCHECKED, severity=INFO, path=path,
+                   line=past[0].line, subject=f"{kind}s",
                    message=f"{', '.join(shown)} past its {kind} legends "
                    f"{'was' if len(shown) == 1 else 'were'} not checked: it holds {held} "
                    f"{what}, and its legends number {count} {kind}{'s' if count != 1 else ''}, "
@@ -345,5 +349,5 @@ def _listing(numbers: list[int]) -> str:
     return ", ".join(str(number) for number in numbers)
 
 
-__all__ = ["GATE", "NOT_COUNTED", "UNREBUILT", "Displays", "of_files", "of_latex",
-           "supplement_findings", "unread_pdf"]  # fmt: skip
+__all__ = ["GATE", "NOT_COUNTED", "PAST_UNCHECKED", "UNREBUILT", "Displays", "of_files",
+           "of_latex", "supplement_findings", "unread_pdf"]  # fmt: skip

@@ -29888,9 +29888,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     a table (`: Table 1. X`) (the corpus run of ea3fc52). Which of the tables and pictures
     are the supplement's, or panels of one figure, the check does not tell: three rules that
     guessed at it each failed on a layout a review found (rounds 1 and 2 of #837 and the
-    fix-only round on f0bd603), so a pointer past the legends of a paper that also holds its
-    supplement's displays, a figure in several pictures, a logo or a graphical abstract is
-    not checked either. The kind is held to the rest, its order and its citations. Pinned by
+    fix-only round on f0bd603), so a pointer past the legends is not checked either where
+    the supplement's displays, a figure in several pictures, a logo or a graphical abstract
+    make the file hold more than the legends number. The kind is held to the rest, its order
+    and its citations, and the note is G2's `pointers-unchecked`, among what the check read
+    (the fix-only round on df69672). Pinned by
     `tests/test_audit_displays.py::test_a_file_holding_more_of_a_kind_than_its_legends_leaves_pointers_past_them_unchecked`,
     `tests/test_audit_displays.py::test_the_supplement_s_legends_listed_alone_do_not_hide_a_legend_unread`
     and

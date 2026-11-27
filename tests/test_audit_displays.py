@@ -57,7 +57,7 @@ def test_a_file_holding_more_of_a_kind_than_its_legends_leaves_pointers_past_the
     word = "Table" if kind == "tables" else "Figure"
     read = said(f"In {word} 1 and {word} 2.\n\n{word} 1. A\n\n{body}")
     assert read.findings == () and read.counted == 1, read
-    assert [note.code for note in read.notes] == [displays.NOT_COUNTED], read
+    assert [note.code for note in read.notes] == [displays.PAST_UNCHECKED], read
     assert read.notes[0].message.startswith(f"'{word} 2' past its {kind[:-1]} legends was not "
                                             "checked"), read.notes  # fmt: skip
     assert f"and its legends number 1 {kind[:-1]}," in read.notes[0].message, read.notes
@@ -315,6 +315,12 @@ def test_the_section_claims_nothing_of_a_pointer_it_did_not_check(
     assert "nothing points at one the legends do not number" not in out
     assert "Each table and figure counted from its legends is cited, in the order of its " \
         "number." in out
+    # The fix-only round on df69672: the figures were counted and held to their order, and
+    # the editor is told only that a pointer past their legends was not checked.
+    assert main(["audit", "paper.md", "--editor"]) == 0
+    out = capsys.readouterr().out
+    assert "could not be counted from their legends" not in out
+    assert "Where a pointer past the legends was not checked" in out
 
 
 def test_a_failure_of_the_check_is_recorded_and_leaves_the_words_checked(

@@ -279,6 +279,10 @@ _HEADER_OUT = (f"{_IN_PAPER_YAML}; the manuscript's header, which cannot hold it
 _LINE_OUT = (f"{_IN_PAPER_YAML}; its line in the manuscript's header, which cannot hold it as "
              "typed, is taken out")  # fmt: skip
 _NO_TITLE = f"{_IN_PAPER_YAML}; the manuscript's header holds none, and is left as it is"
+_NO_MANUSCRIPT = f"{_IN_PAPER_YAML}; no main.md or main.tex was found to give it"
+_COMMENTS = _Keep("the manuscript's header holds comments of the authors' beside the "
+                  "placeholder, and cannot hold this title as typed; change the title in both "
+                  "by hand")  # fmt: skip
 _OWN_TITLE = _Keep("the manuscript's header holds a title of its own; change the two "
                    "together by hand")  # fmt: skip
 _BOM = chr(0xFEFF)
@@ -297,9 +301,10 @@ def _markdown_header(text: str, title: str) -> tuple[str, str] | None | _Keep:
     """`text`, a main.md, with `title` on the line of its header that holds `init`'s
     placeholder, or that line taken out where the header cannot hold the title, as `init`
     then writes none (round 3 of #844); None where the header holds no title, or there is
-    none; `_Keep` where it holds a title of its own. The text comes with what was done to it.
-    Each line keeps its ending, and a byte-order mark is kept; a header left with nothing but
-    comments and blank lines goes whole (round 4 of #844)."""
+    none; `_Keep` where it holds a title of its own, or comments of the authors' that would be
+    left as the header's only lines (round 5 of #844). The text comes with what was done to
+    it. Each line keeps its ending, and a byte-order mark is kept; a header that held the title
+    alone goes whole."""
     from manuscript_guard.scaffold import UNTITLED, _header
 
     mark = _BOM if text.startswith(_BOM) else ""
@@ -326,11 +331,15 @@ def _markdown_header(text: str, title: str) -> tuple[str, str] | None | _Keep:
         lines[held[0]] = ours[1] + line[len(line.rstrip("\r\n")):]
         return mark + "".join(lines), _IN_THE_HEADER
     rest = [lines[n] for n in range(1, close) if n != held[0]]
-    if all(not entry.strip() or entry.lstrip().startswith("#") for entry in rest):
+    if all(not entry.strip() for entry in rest):
         # The header held the title alone: it goes, and the blank line after it.
         blank = 1 if len(lines) > close + 1 and not lines[close + 1].strip() else 0
         del lines[: close + 1 + blank]
         return mark + "".join(lines), _HEADER_OUT
+    if all(not entry.strip() or entry.lstrip().startswith("#") for entry in rest):
+        # Comments alone are no metadata to pandoc, which would print what is left, and they
+        # are the authors': the header stays as it is (round 5 of #844).
+        return _COMMENTS
     del lines[held[0]]
     return mark + "".join(lines), _LINE_OUT
 
@@ -352,10 +361,11 @@ def _latex_header(text: str, title: str) -> tuple[str, str] | None | _Keep:
     return made, _IN_THE_HEADER
 
 
-def _header_with(folder: Folder, title: str) -> tuple[Path, str, str] | None | _Keep:
+def _header_with(folder: Folder, title: str) -> tuple[Path, str, str] | str | _Keep:
     """The manuscript of a project under way with `title` in its header where the header holds
-    `init`'s placeholder; None where it holds no title to replace; `_Keep`, with why, where it
-    holds a title of its own or cannot be read, which setup does not write over."""
+    `init`'s placeholder, with what was done to it; where nothing is written into it, why the
+    title goes into paper.yaml alone; `_Keep`, with why, where it holds a title of its own or
+    cannot be read, which setup does not write over."""
     paths = folder.setting("paths")
     named = paths.get("manuscript", "manuscript") if isinstance(paths, dict) else "manuscript"
     for path, edit in ((folder.root / named / "main.md", _markdown_header),
@@ -366,8 +376,10 @@ def _header_with(folder: Folder, title: str) -> tuple[Path, str, str] | None | _
                 return _Keep(f"{path.name} is not UTF-8, so its header was not read; change "
                              "the title in both by hand")  # fmt: skip
             made = edit(text, title)
+            if made is None:
+                return _NO_TITLE
             return (path, *made) if isinstance(made, tuple) else made
-    return None
+    return _NO_MANUSCRIPT
 
 
 def _title_kept(paper: _Paper, folder: Folder) -> tuple[Path, str] | None:
@@ -382,9 +394,9 @@ def _title_kept(paper: _Paper, folder: Folder) -> tuple[Path, str] | None:
         paper.kept.append(Change("paper.yaml", f"title: {folder.setting('title')}",
                                  header.reason))  # fmt: skip
         return None
-    said = _NO_TITLE if header is None else header[2]
+    said = header if isinstance(header, str) else header[2]
     paper.edits[paper.edits.index(edit)] = (*edit[:3], said)
-    return None if header is None else header[:2]
+    return None if isinstance(header, str) else header[:2]
 
 
 def _writable(folder: Folder, paper: _Paper) -> None:

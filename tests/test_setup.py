@@ -855,12 +855,27 @@ def test_a_title_answered_over_two_lines_is_written_on_one(tmp_path: Path) -> No
     assert text.startswith('---\ntitle: "Patients views"\n---\n')
 
 
-def test_a_header_left_with_only_a_comment_goes_whole(tmp_path: Path) -> None:
+def test_a_header_with_comments_of_the_author_s_is_left_untouched(tmp_path: Path) -> None:
+    """Round 5 of #844: a header holding comments beside the placeholder was deleted whole,
+    the author's comments with it. A header of comments alone is no metadata to pandoc, so
+    its lines are not left either: the header stays as it is, and the title is kept, said."""
     root = no_git(tmp_path / "paper")
     assert main(["init", str(root)]) == 0
     main_md = root / "manuscript" / "main.md"
-    main_md.write_text('---\ntitle: "Untitled manuscript"\n# note\n---\n\n# Introduction\n',
-                       encoding="utf-8")  # fmt: skip
+    text = '---\ntitle: "Untitled manuscript"\n# submit to BMJ by May\n---\n\n# Introduction\n'
+    main_md.write_text(text, encoding="utf-8")
     answered(root, {**ANSWERS, "title": '"Wait and see": patients' + "'" + " views"})
-    assert apply_answers(root).ok
-    assert main_md.read_text(encoding="utf-8") == "# Introduction\n"
+    done = apply_answers(root)
+    assert done.ok
+    assert main_md.read_text(encoding="utf-8") == text
+    assert settings(root)["title"] == "Untitled manuscript"
+    assert any("comments" in change.why for change in done.kept)
+
+
+def test_a_project_with_no_main_manuscript_says_none_was_found(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    (root / "manuscript" / "main.md").rename(root / "manuscript" / "01_intro.md")
+    answered(root, {**ANSWERS, "title": "Plain"})
+    reason = _title_reason(apply_answers(root, dry_run=True))
+    assert "holds none" not in reason and "no main.md or main.tex" in reason

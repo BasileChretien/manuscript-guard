@@ -1421,6 +1421,16 @@ order is `printed_order`.
   maths. So are optidef's problems, `mini`, `maxi`, `argmini` and `argmaxi`, each also with
   `*`, `!` and `e`, whose variables, objective and constraints optidef.sty sets in an
   `align` (decision 13, 2026-11-13: tex-qbio-pe-A2's `w_{min}` was read as prose).
+- Inside maths, a text argument is prose: `\text`, `\mbox`, `\intertext`, mathtools'
+  `\shortintertext` and amsmath's `\tag`, starred too. Inline maths in it, `\tag{\(1\)}` or
+  `\text{if $x > 0$}`, is a formula of its own and balances as it does in text. Inline maths
+  in the display's own maths is still refused, since LaTeX stops on it (Basile, 2026-11-27:
+  `\tag{\(1\)}` was refused as unbalanced, and nothing past it was read). A paper's own
+  definition of `\tag` or `\shortintertext`, by `\newcommand`, `\renewcommand`, `\def` or
+  `\let`, as one that does not load mathtools may make, makes it the author's command, read
+  as an unknown one is, whatever the paper loads, as the reader read both before it knew
+  them (`AUTHORS_IF_DEFINED`; round 1 of #836: known, each use of one so defined was refused
+  as defined again). So does a `\providecommand` of either (Known gaps).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
@@ -30112,9 +30122,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The page's own host is the host's server*, which `connect-src 'self'` lets the page send
     to. It sends nothing once loaded, and the network test covers it, as on GitHub Pages.
     Accepted.
-  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. The page
-    reads nothing else of its address and writes nothing to it. Pinned by
-    `tests/test_web_host.py::test_the_page_reads_one_thing_of_its_address_and_writes_nothing_to_it`.
+  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. Of its
+    address the page reads that and a link's rules after `#rules=`, which no browser sends to
+    a server, and writes nothing to it. Pinned by
+    `tests/test_web_host.py::test_the_page_reads_two_things_of_its_address_and_writes_nothing_to_it`.
   - *Every journal's profile is fetched before the page says Ready*, so that the page works
     with the network off; a host with hundreds of journals makes the start that many requests
     longer. Accepted.
@@ -31319,6 +31330,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whether it happened or was planned, and a registration after a start that was only
     planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
     by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
+- **A link with a journal's rules is as long as its rules, and anyone who holds it reads
+  them.** The audit page's *Copy a link with these rules* (item 4 of the editor's list;
+  Basile, 2026-11-26) packs the journal form's values into the link after `#rules=`,
+  deflated and in base64url: a few hundred characters for a journal's usual rules. A mail
+  client that cuts a long link, or breaks it across lines, leaves a link the page refuses,
+  and the form is left empty with the reason said. Pinned by
+  `tests/test_web.py::test_a_link_this_page_did_not_make_is_refused_with_why`.
+  - The rules are not hidden from whoever has the link, nor from a browser extension: they
+    are a journal's published instructions, and the authors' names are never in it. A
+    browser does not send the part after `#` to the page's host. Accepted.
 - **The statements every paper makes are found by their headings and labels.** G4's check of
   empty headings and of the statements every paper makes (`gates/statements.py`, built
   2026-11-26 after a draft built its declarations as headings over comments) has these
@@ -31366,6 +31387,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     denial wherever it stands and whatever its emphasis, so "*Ethical approval was not
     required.*" alone is an ethics statement.
     Pinned by `tests/test_statements.py::test_a_short_sentence_wholly_in_emphasis_reads_as_a_label`.
+
+- **A `\providecommand` of `\tag` or `\shortintertext` makes it the author's command.** LaTeX
+  defines nothing where amsmath or mathtools already gives the command, but the reader takes
+  it, as any definition of either, for the author's, read as an unknown one is, so inline
+  maths in it is refused where the package's text argument would hold it, as before #836
+  (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
+  Pinned by
+  `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

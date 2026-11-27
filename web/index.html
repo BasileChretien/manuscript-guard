@@ -75,7 +75,8 @@
     <form id="form">
       <!-- Shown on a page a journal's host built with its journals (web/build.py --host,
            app.js): the journal whose profile the paper is held to, as the host gave it. A link
-           may choose one, ?journal=<slug>, and nothing else of the address is read. -->
+           may choose one, ?journal=<slug>; of the address, this and a link's rules after
+           "#rules=" are all that is read. -->
       <div id="journalpick" class="journalpick" hidden>
         <label><span class="field">Which journal are you submitting to?</span>
           <span class="help">The paper is held to its rules: its limits, the sections and
@@ -284,6 +285,14 @@
             <label><span class="field">Or an authors.yaml you keep</span>
               <span class="help">Used in place of the names above.</span>
               <input id="authorsfile" type="file" accept=".yaml,.yml,.json" disabled></label>
+          </div>
+          <div class="ruleslink">
+            <button id="copyrules" type="button" class="quiet small" disabled>Copy a link with these rules</button>
+            <span class="help">Whoever opens it has these rules in this form: the journal's
+              rules alone, never the authors' names, and nothing of the paper. The page keeps
+              nothing.</span>
+            <input id="ruleslink" type="text" readonly hidden aria-label="The link with these rules">
+            <p id="rulesnote" class="note" role="status" hidden></p>
           </div>
           <label><span class="field">Or a journal profile you keep</span>
             <span class="help">A profile manuscript-guard reads (.yaml), used in place of the

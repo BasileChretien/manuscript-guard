@@ -316,27 +316,39 @@ async function rulesLinkHeld(page) {
   await page.waitForFunction("window.mgReady || /could not start/.test(document.getElementById('status').textContent)");
   const typed = { jname: "Journal of Links", jurl: "https://example.org/authors", jabstract: "250",
     jtables: "4", jsections: "Introduction\nMéthodes", jblinding: "open" };
-  const { link, unmade } = await page.evaluate(async (typed) => {
+  const { link, unmade, long } = await page.evaluate(async (typed) => {
     const note = document.getElementById("rulesnote");
     document.getElementById("journalbox").open = true;
-    for (const [id, value] of Object.entries({ ...typed, jabstract: "0" })) {
+    const said = async () => {
+      note.textContent = "";
+      document.getElementById("copyrules").click();
+      while (!note.textContent) await new Promise((wait) => setTimeout(wait, 50));
+      return { note: note.textContent, shown: !document.getElementById("ruleslink").hidden };
+    };
+    for (const [id, value] of Object.entries({ ...typed, jabstract: "4.5" })) {
       const box = document.getElementById(id);
       box.value = value;
       box.dispatchEvent(new Event("input", { bubbles: true }));
     }
     document.getElementById("jst-funding").checked = true;
-    // A limit the checker refuses makes no link, and says why (round 1 of #847).
-    document.getElementById("copyrules").click();
-    while (!note.textContent) await new Promise((wait) => setTimeout(wait, 50));
-    const unmade = { note: note.textContent, shown: !document.getElementById("ruleslink").hidden };
+    // A limit the checker refuses makes no link, and the checker names its box, before the
+    // form's shape is asked (rounds 1 and 3 of #847).
+    const unmade = await said();
+    // Rules that pack short and unpack to more than a page opened at the link takes.
     document.getElementById("jabstract").value = typed.jabstract;
+    document.getElementById("jsections").value = Array(100).fill("a".repeat(2000)).join("\n");
+    const long = await said();
+    document.getElementById("jsections").value = typed.jsections;
     note.textContent = "";
     document.getElementById("copyrules").click();
     while (document.getElementById("ruleslink").hidden) await new Promise((wait) => setTimeout(wait, 50));
-    return { link: document.getElementById("ruleslink").value, unmade };
+    return { link: document.getElementById("ruleslink").value, unmade, long };
   }, typed);
-  if (unmade.shown || !unmade.note.startsWith("No link was made: the limit on")) {
+  if (unmade.shown || !unmade.note.startsWith("No link was made: the limit on the words in the abstract")) {
     fail(`a link of rules the checker refuses: ${JSON.stringify(unmade)}`);
+  }
+  if (long.shown || long.note !== "No link was made: the rules are too long for a link.") {
+    fail(`a link of rules that unpack to too much: ${JSON.stringify(long)}`);
   }
   if (!link.startsWith(`${origin}${PAGE_AT}#rules=`)) fail(`the link with the rules is "${link.slice(0, 80)}"`);
   const opened = await browser.newPage();

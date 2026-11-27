@@ -273,6 +273,11 @@ function render() {
     `<p class="ask">${esc(g.ask)}</p><p class="title">${esc(it.title)}</p>` +
     (facts ? `<table class="facts">${facts}</table>` : "") + sentences + more +
     (it.evidence || [{ kind: "none" }]).map(evidence).join("") +
+    // Each cited work the builder held no copy of, in the builder's words: what is missing, and
+    // what the co-author can do without it.
+    (it.unstored || []).map((u) =>
+      `<div class="ev"><div class="evhead">@${esc(u.key)} · ${esc(u.state)}</div>` +
+      `<div class="evbody"><p class="warn">${esc(u.says)}</p></div></div>`).join("") +
     (a.status ? `<p class="note">You answered: <b>${esc(labelOf(g, a.status))}</b>${a.note ? " — " + esc(a.note) : ""}</p>` : "");
   $("note").value = a.note || "";
   $("why").hidden = true;

@@ -135,7 +135,10 @@ adds only the new items.
 A heading alone is satisfied by any manuscript, since every paper has a Methods. So each item
 answered with `where` also carries `quote:`, the sentence (or four words or more of it) that
 addresses the item, and `check` looks for it under that heading, subsections and the
-supplement included, or in the caption of the table or figure `where` names ("Table 1"). A
+supplement included, or in the caption of the table or figure `where` names ("Table 1"). An
+item addressed in the title (STROBE 1a, READUS-PV 1a and 1b) has `where: Title`, and its quote
+is held to the title the document prints: `paper.yaml`'s for Markdown, the one `\title{}`
+for LaTeX (where there are several, `check` asks to keep one). A
 missing quote, or one not there, is a warning from internal review and a failure at
 submission (`checklist-quote-missing`, `checklist-quote-not-found`).
 
@@ -171,6 +174,7 @@ that names none: choose the guideline that fits it with the author.
 | case-control | STROBE, RECORD | |
 | cross-sectional | STROBE, RECORD | |
 | diagnostic-accuracy | STARD | |
+| case-report | CARE (no recipe yet) | |
 | self-controlled | STROBE, RECORD (no guideline is written for the design) | |
 | disproportionality | READUS-PV | |
 | systematic-review | PRISMA | PRISMA-P |

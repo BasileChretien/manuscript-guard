@@ -152,7 +152,7 @@ def _language(folder: Folder, answers: dict):
 
 def _design(folder: Folder, answers: dict):
     from manuscript_guard.gates.design import OTHER, study_types
-    from manuscript_guard.guide.rules import _either
+    from manuscript_guard.guide.rules import _OTHER_STUDIES, _either
 
     held = folder.setting("study_type")
     if held is not None:
@@ -162,9 +162,8 @@ def _design(folder: Folder, answers: dict):
                f"sections this design needs, and it is reported with "
                f"{_either(entry['guidelines']) if entry.get('guidelines') else 'none'}")
         for key, entry in study_types().items()
-    ) + (Option(OTHER, "None of these", "a descriptive case series or a case report, a "
-                "qualitative study, a narrative review or any other study: the plan is asked "
-                "for the seven sections every plan has"),)  # fmt: skip
+    ) + (Option(OTHER, "None of these", f"{_OTHER_STUDIES}: the plan is asked for the "
+                "seven sections every plan has"),)  # fmt: skip
     return Question("study_type", "What kind of study is this?", "The design decides which "
                     "sections the analysis plan needs and which reporting guideline fits.",
                     "choice", options, shortlist=3)  # fmt: skip

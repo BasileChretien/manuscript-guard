@@ -28859,7 +28859,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
   an agent asked each one, rather than wrote what it guessed of a name or a design, nothing
   can see. The read-back and the one yes before `apply` are the skill's too. Accepted.
 - **The three designs offered are the agent's pick.** `study_type` carries `shortlist: 3`
-  (Basile, 2026-11-27): the agent chooses which three of the ten to show from the author's
+  (Basile, 2026-11-27): the agent chooses which three of the designs to show from the author's
   description of the study, and a poor reading shows three that do not fit. "None of these"
   lists the rest, so the author can still choose any of them.
   Pinned by `tests/test_setup.py::test_the_study_design_is_offered_whole_for_a_shortlist_of_three`.

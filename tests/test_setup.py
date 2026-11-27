@@ -216,9 +216,16 @@ def test_every_question_is_a_place_the_answers_schema_takes() -> None:
             assert rest in schema[first]["properties"], place
 
 
-def test_the_answers_schema_takes_what_paper_and_authors_take() -> None:
+def test_the_answers_schema_takes_what_paper_and_authors_take(tmp_path: Path) -> None:
+    """A design is held to paper.yaml's own list, which a design added to the toolkit (#840's
+    case report) extends; the CRediT roles are authors.yaml's."""
     setup, paper, authors = load_schema("setup"), load_schema("paper"), load_schema("authors")
-    assert setup["properties"]["study_type"]["enum"] == paper["properties"]["study_type"]["enum"]
+    root = no_git(tmp_path / "paper")
+    for design in paper["properties"]["study_type"]["enum"]:
+        answered(root, {"schema": "manuscript-guard/setup/1", "study_type": design})
+        assert "study_type" not in {q.id for q in asked(root).questions if q.problem}, design
+    answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "anecdote"})
+    assert any(q.id == "study_type" and q.problem for q in asked(root).questions)
     credit = setup["properties"]["authors"]["items"]["properties"]["credit"]["items"]["enum"]
     assert credit == authors["$defs"]["author"]["properties"]["credit"]["items"]["enum"]
 

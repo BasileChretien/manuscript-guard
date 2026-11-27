@@ -198,6 +198,13 @@ def _journal_problem(journal: Any, answers: dict, folder: Folder) -> str | None:
             "`journal: {name: <its name>}`")  # fmt: skip
 
 
+def _study_type_problem(design: Any, answers: dict, folder: Folder) -> str | None:
+    """A design is one paper.yaml takes: its schema is the one list of them, which a design
+    added to the toolkit extends here too."""
+    designs = load_schema("paper")["properties"]["study_type"]["enum"]
+    return None if design in designs else f"{design!r} is not one of {', '.join(designs)}"
+
+
 def _authors_of(answers: dict) -> list:
     authors = answer(answers, "authors")
     return authors if isinstance(authors, list) else []
@@ -228,6 +235,7 @@ def _data_folder_problem(name: Any, answers: dict, folder: Folder) -> str | None
 CHECKS = (
     ("start", _start_problem),
     ("title", _title_problem),
+    ("study_type", _study_type_problem),
     ("journal", _journal_problem),
     ("authors", _authors_problem),
     ("statistician", _statistician_problem),

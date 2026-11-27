@@ -12,7 +12,7 @@
     "start": {"type": "string", "minLength": 1, "description": "How the manuscript is written: `markdown`, `latex`, or the name of a .docx in the folder, brought in from Word."},
     "title": {"type": "string", "description": "The working title. Empty with a Word paper: the title its Title style holds."},
     "language": {"enum": ["en-GB", "en-US", "other"], "description": "British or American English, or another language, for which no English is declared and the writing checks, which read English, do not apply."},
-    "study_type": {"enum": ["cohort", "case-control", "cross-sectional", "diagnostic-accuracy", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model", "other"]},
+    "study_type": {"type": "string", "minLength": 1, "description": "One of the designs paper.yaml's study_type takes: `setup questions` lists them, and an answer outside them keeps its question open."},
     "reporting_guideline": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "pattern": "\\S"}, "description": "The guidelines the paper follows; empty for none yet."},
     "journal": {
       "description": "`later`, `help` (the journal is chosen with the journal-profile skill), the name of a profile the project has, or the journal named, whose profile `setup apply` starts.",

@@ -83,6 +83,11 @@ NARRATIVE_LUA = Path(__file__).with_name("narrative.lua")
 # Also ours, run on every docx build: the paragraph after a figure is styled as its caption,
 # so a reader can see where the caption ends. See the file's header and `build/styles.py`.
 FIGURE_CAPTION_LUA = Path(__file__).with_name("figure_caption.lua")
+# Ours, run on every docx build that cites: a heading over the reference list, unless the
+# author wrote one. Before citeproc offline, and zotero_word.lua live. See the file's header.
+REFERENCES_HEADING_LUA = Path(__file__).with_name("references_heading.lua")
+#: The heading over the reference list where the journal's profile names none.
+REFERENCES_HEADING = "References"
 ZOTERO_STYLES = "http://www.zotero.org/styles/"
 
 
@@ -472,6 +477,73 @@ def _zotero_style(project) -> str | None:
     return None
 
 
+def references_heading(project) -> str:
+    """The heading over the reference list: the target journal's, where its profile names one
+    under `references.heading`, and "References" otherwise."""
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    if path is not None:
+        # A profile that does not read is G4's to report; the build titles the list as any.
+        with contextlib.suppress(Exception):
+            document = read_structured(path)
+            heading = ((document or {}).get("references") or {}).get("heading")
+            if isinstance(heading, str) and one_line(heading).strip():
+                return one_line(heading).strip()
+    return REFERENCES_HEADING
+
+
+def _references_filter(
+    project, csl: Path | None = None, *, citeproc: bool = False
+) -> list[str]:
+    """The arguments that run `references_heading.lua`, with the heading in the metadata as
+    JSON in hexadecimal, as narrative.lua takes its names; none where the style an offline
+    build formats with, `csl`, prints no reference list (`prints_a_list`). `citeproc` says
+    the build is one citeproc formats, which honours `suppress-bibliography`."""
+    if csl is not None and not prints_a_list(csl):
+        return []
+    title = json.dumps(references_heading(project), ensure_ascii=False).encode("utf-8").hex()
+    arguments = [
+        f"--lua-filter={REFERENCES_HEADING_LUA.resolve()}",
+        f"--metadata=mg-references-heading:{title}",
+    ]
+    if citeproc:
+        arguments.append("--metadata=mg-references-citeproc:true")
+    return arguments
+
+
+def _local(tag: object) -> str:
+    """An element's name without its namespace."""
+    return str(tag).rsplit("}", 1)[-1]
+
+
+def prints_a_list(style: Path, *, parent: bool = True) -> bool:
+    """Whether a CSL style prints a reference list: an independent style has a
+    `<bibliography>`; a dependent one says by its parent's, which `style` keeps beside it as
+    `<parent>.csl`. A note style may have none, and then citeproc fills the `refs` div with
+    nothing. A style that does not read, or whose parent is not there, is taken to print one,
+    as the build did before it asked."""
+    from manuscript_guard.safexml import UnsafeDocument, parse_xml
+
+    try:
+        root = parse_xml(style.read_bytes(), what=style.name)
+    except (OSError, UnsafeDocument, ValueError):
+        return True
+    # By local names, as citeproc reads a style: one written with no `xmlns` is the same.
+    if any(_local(child.tag) == "bibliography" for child in root):
+        return True
+    link = next((node for node in root.iter() if _local(node.tag) == "link"
+                 and node.get("rel") == "independent-parent"), None)  # fmt: skip
+    if link is None:
+        return False
+    named = style.with_name(str(link.get("href", "")).rstrip("/").rsplit("/", 1)[-1] + ".csl")
+    if not parent or not named.is_file() or named == style:
+        return True
+    return prints_a_list(named, parent=False)
+
+
 def _zotero_version() -> str | None:
     """The running Zotero's version, as Better BibTeX reports it; None if it does not answer."""
     from manuscript_guard.zotero import ZoteroUnavailable, rpc
@@ -736,8 +808,11 @@ def build_document(
 
         if mode == LIVE:
             command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
-            # A document with no citations gets no bibliography field (a supplement of tables).
+            # A document with no citations gets no bibliography field (a supplement of tables),
+            # and no heading over one. The heading goes first: the field takes the place of the
+            # `refs` div it is put before.
             if cites:
+                command += _references_filter(project)
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         elif mode == PLAIN:
             # No citeproc and no Zotero: a citation prints as the source writes it, a
@@ -750,7 +825,9 @@ def build_document(
                     f"--lua-filter={NARRATIVE_LUA.resolve()}",
                     f"--metadata=mg-narrative:{names}",
                 ]
+            # As the live build has them, which this one stands in for.
             if cites:
+                command += _references_filter(project)
                 command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
         else:
             bib = project.path("literature") / "references.bib"
@@ -758,6 +835,10 @@ def build_document(
                 raise BuildError(
                     f"{bib} does not exist; run `manuscript-guard sync-bib` with Zotero open"
                 )
+            # Before citeproc, which runs where it stands among the filters: the list is given
+            # its place, under the author's heading of it where there is one, and its heading.
+            if cites:
+                command += _references_filter(project, csl, citeproc=True)
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:
                 command += [f"--csl={relative_to_root(project, csl.resolve())}"]

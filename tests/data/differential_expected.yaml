@@ -26,12 +26,13 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a diagnostic accuracy study is a design of `data/study_types.yaml`: a plan whose
-      paper.yaml names it is asked for its sampling, reference standard, thresholds,
-      blinding, indeterminate results, missing data and sample size, each from its STARD
-      2015 item, where main read `study_type: diagnostic-accuracy` as no design of its table
-      and refused it; and every plan's exposure and outcome are found under STARD's words,
-      "Index test" and "Target condition", which the drawn plans now hold
+      a case report is a design of `data/study_types.yaml`: a plan whose paper.yaml names
+      it is asked for its de-identification, timeline, diagnostic assessment, patient
+      perspective and informed consent, each from its CARE item, and not for the analysis
+      or the deviations every other plan has, where main read `study_type: case-report` as
+      no design of its table and refused it; and every plan's population is found under
+      CARE's words, "Patient information" or "The patient" as a whole heading, which the
+      drawn plans now hold
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,
@@ -430,3 +431,9 @@ expected:
       paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
       view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix),
       so G14's vocabulary counts no term in one, " *CYP2D6*4* "
+  - reading: checklist quotes
+    why: >-
+      an answer whose `where` is "Title" or "the title" is held to the paper's title,
+      paper.yaml's, which the reading now hands `read` (READUS-PV 1a and 1b on the
+      bisphosphonates paper), where the base names no part for it; a quote of the title's
+      words under a heading stands in "the title in paper.yaml"

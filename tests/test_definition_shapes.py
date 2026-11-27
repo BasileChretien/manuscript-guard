@@ -108,6 +108,8 @@ NOT_DEFINING = (
     ("one word after it", "The XY (Kenya) site joined.", "XY"),
     ("one word after it", "The HRS (hours) were logged.", "HRS"),
     ("one word after it", "The QRD (quarterly) totals were logged.", "QRD"),
+    # A number, no word, before the pointer (round 1 of #838).
+    ("a pointer after it", "The quick odds rose (QOR 3; Table 2).", "QOR"),
 )  # fmt: skip
 
 #: A LaTeX citation's optional argument: the prenote, and the postnote where the prenote is
@@ -217,10 +219,15 @@ def test_a_bracket_of_pairs_defines_each_pair_and_one_item_of_another_shape_void
                    "kept.") == [("SD", "strongly disagree")]  # fmt: skip
 
 
-def test_a_pointer_s_long_form_ends_at_the_last_word_holding_a_letter() -> None:
+def test_a_pointer_s_long_form_drops_its_last_words_while_the_rest_spells_it() -> None:
     """docx-psych-C4 (decision D10): in "a low rank position (LR hierarchy; Figure 1, Panel
-    B)" the bracket's word is the long form's head, so the long form is "low rank", and the
-    paper's later "Low rank (LR) hierarchy" gives LR again, not another meaning."""
+    B)" the long form loses its last words while the words before them still spell LR, two
+    kept at the least, so it is "low rank", and the paper's later "Low rank (LR) hierarchy"
+    gives LR again, not another meaning. A last word that holds a letter of LR goes too:
+    "low rank role (LR group; Figure 1)" gives "low rank" (round 1 of #838)."""
+    roled = _file(0, Path("main.md"), "Each held a low rank role (LR group; Figure 1).\n", [],
+                  False)  # fmt: skip
+    assert [(short, long) for _at, short, long in roled.definitions] == [("LR", "low rank")]
     text = ("# Methods\n\nEach held a low rank position (LR hierarchy; Figure 1, Panel B).\n\n"
             "# Results\n\nThe Low rank (LR) hierarchy held, and LR fell.\n")  # fmt: skip
     read = _file(0, Path("main.md"), text, [], False)

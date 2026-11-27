@@ -1630,10 +1630,12 @@ def _before_a_pointer(prose: str, bracket: re.Match[str]) -> tuple[int, str, str
     """A definition with its short form and one word in the bracket before a semicolon, after
     which the bracket points to a display: "a low rank position (LR hierarchy; Figure 1,
     Panel B)" (decision D10, the author, 2026-11-27). The bracket's word is the long form's
-    head, so the long form ends at its last word that holds a letter of the short form,
-    "low rank" (`_trimmed`). None otherwise: "(LR hierarchy; the low arm)"."""
+    head, so the long form loses its last words while the rest still spells the short form
+    (`_trimmed`), "low rank". The word holds a letter (`_a_word_before`): "(OR 3; Table 2)"
+    gives a value. None otherwise: "(LR hierarchy; the low arm)"."""
     opening = _BEFORE_A_CITATION.match(bracket.group(1))
-    if opening is None or not _POINTER_AFTER.match(bracket.group(1), opening.end()):
+    if (opening is None or not _POINTER_AFTER.match(bracket.group(1), opening.end())
+            or not _a_word_before(bracket.group(1), opening)):  # fmt: skip
         return None
     short = opening.group("short")
     if not _may_be_defined(short):
@@ -1645,9 +1647,17 @@ def _before_a_pointer(prose: str, bracket: re.Match[str]) -> tuple[int, str, str
     return bracket.start(1) + opening.start("short"), _stem(short, long), long
 
 
+def _a_word_before(inside: str, opening: re.Match[str]) -> bool:
+    """Whether what stands between a bracket's short form and its semicolon, `opening` of
+    `inside`, holds a letter: "LR hierarchy" does, "OR 3" and "SD 12" give a value (round 1
+    of #838)."""
+    return re.search(r"[^\W\d_]", inside[opening.end("short") : opening.end()]) is not None
+
+
 def _trimmed(short: str, long: str) -> str:
-    """`long` without the words after the last that holds a letter of `short`, two words
-    kept at the least: "low rank position" for LR is "low rank"."""
+    """`long` less its last words while the words before them still spell `short` whole (the
+    letter rule, `_long_form`), two words kept at the least: "low rank position" for LR is
+    "low rank", and so is "low rank role", though "role" holds an R (round 1 of #838)."""
     words = long.split()
     while len(words) > 2 and _long_form(short, " ".join(words[:-1])) == " ".join(words[:-1]):
         words = words[:-1]
@@ -2709,8 +2719,6 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
 
 #: A citation's year after its author, a comma between them or none: "NIH 2016a", "APA, 2020".
 _YEAR_AFTER = re.compile(r"[ \t]*,?[ \t]*(?P<year>(?:1[89]|20)\d\d[a-z]?)(?![\w])")
-#: A year that ends a citation of a list a comma or a semicolon divides.
-_LISTED_YEAR = re.compile(r"(?:1[89]|20)\d\d[a-z]?(?=[,;)])")
 #: How far a citation's bracket is looked for on either side of its author, in characters.
 _CITATION_REACH = 300
 
@@ -2733,9 +2741,33 @@ def _authors_a_citation(prose: str, end: int) -> bool:
     closed = prose.find(")", end, end + _CITATION_REACH)
     if opened < 0 or closed < 0 or ")" in prose[opened:end] or "\n" in prose[opened:closed]:
         return False
-    if prose[year.end("year") : year.end("year") + 1] not in (",", ";", ")"):
+    if not _ends_its_part(prose, year.end("year")):
         return False
-    return len(_LISTED_YEAR.findall(prose, opened, closed + 1)) >= 2
+    # A list of citations: every other part of the bracket an author and a year, so "(IQR
+    # 1850, 2010)" and "(ICD-10 2019, DSM-5 2013)" are none (round 1 of #838).
+    parts = re.split(r"[,;]", prose[opened + 1 : closed])
+    own = len(re.findall(r"[,;]", prose[opened + 1 : year.start("year")]))
+    return len(parts) >= 2 and all(_cited_part(part) for at, part in enumerate(parts)
+                                   if at != own)  # fmt: skip
+
+
+#: A part of a list of citations typed as text: an author, its words of letters, "et al." and
+#: "&" among them, then a year: "Kaye et al. 2009", "NIH 2016a".
+_CITED_PART = re.compile(
+    r"\s*[^\W\d_](?:[^\W\d_]|['’.&-])*(?:\s+(?:[^\W\d_](?:[^\W\d_]|['’.&-])*|&))*,?\s+"
+    r"(?:1[89]|20)\d\d[a-z]?\s*"
+)
+
+
+def _cited_part(part: str) -> bool:
+    """Whether a part of a bracket is an author-year citation typed as text (`_CITED_PART`)."""
+    return _CITED_PART.fullmatch(part) is not None
+
+
+def _ends_its_part(prose: str, at: int) -> bool:
+    """Whether the year ending at `at` ends its part of the bracket: a comma, a semicolon or
+    the close follows it."""
+    return prose[at : at + 1] in (",", ";", ")")
 
 
 def _apart(file: _File, word: int, offset: int) -> bool:

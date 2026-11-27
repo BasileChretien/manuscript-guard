@@ -3505,7 +3505,7 @@ from generated import pointer_restated  # noqa: E402
 
 
 @holds(60, pointer_restated())
-def test_a_pointer_s_bracket_defines_up_to_its_last_word_holding_a_letter(
+def test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need(
     drawn: tuple[str, list[str]],
 ) -> None:
     """A bracket of a short form and its word before a semicolon, after which it points to a
@@ -3538,6 +3538,31 @@ def _a_colon_pair_s_long_form_ends_at_its_first_comma(patch: pytest.MonkeyPatch)
 
 def _a_colon_pair_runs_into_the_next_pair(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_before_the_next_pair", lambda prose, wider: wider.group(0))
+
+
+def _a_bold_paragraph_of_any_length_is_a_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_BOLD_HEADING_MOST", 10**6)
+
+
+def _a_citation_s_own_part_may_go_on_past_its_year(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ends_its_part", lambda prose, at: True)
+
+
+def _any_bracket_of_years_is_a_list_of_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_cited_part", lambda part: True)
+
+
+def _a_year_after_a_word_makes_it_a_citation_s_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_authors_a_citation",
+                  lambda prose, end: language_gate._YEAR_AFTER.match(prose, end) is not None)
+
+
+def _a_bracket_of_two_pairs_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_FEWEST_PAIRS", 2)
+
+
+def _a_number_before_a_pointer_is_its_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_a_word_before", lambda inside, opening: True)
 
 
 def _a_long_form_of_one_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -30464,11 +30489,11 @@ BROKEN = {
     ),
     "a pointer after a bracket's semicolon defines nothing, restated": (
         _a_pointer_after_a_semicolon_defines_nothing,
-        test_a_pointer_s_bracket_defines_up_to_its_last_word_holding_a_letter,
+        test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
     ),
     "a pointer's long form runs to its bracket": (
         _a_pointer_s_long_form_runs_to_its_bracket,
-        test_a_pointer_s_bracket_defines_up_to_its_last_word_holding_a_letter,
+        test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
     ),
     "a bracket of pairs reads its last item alone": (
         _a_bracket_of_pairs_reads_its_last_item_alone,
@@ -30481,6 +30506,34 @@ BROKEN = {
     "a colon pair runs into the next pair": (
         _a_colon_pair_runs_into_the_next_pair,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bold paragraph of any length is a heading": (
+        _a_bold_paragraph_of_any_length_is_a_heading,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a citation's own part may go on past its year": (
+        _a_citation_s_own_part_may_go_on_past_its_year,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "any bracket of years is a list of citations": (
+        _any_bracket_of_years_is_a_list_of_citations,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a year after a word makes it a citation's author": (
+        _a_year_after_a_word_makes_it_a_citation_s_author,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a bracket of two pairs is read": (
+        _a_bracket_of_two_pairs_is_read,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a number before a pointer is its word": (
+        _a_number_before_a_pointer_is_its_word,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a one-word glossary line is no entry": (
+        _a_long_form_of_one_word_defines_nothing,
+        test_a_word_list_s_spaced_line_defines_where_its_words_spell_it,
     ),
     "a long form of one word defines nothing": (
         _a_long_form_of_one_word_defines_nothing,

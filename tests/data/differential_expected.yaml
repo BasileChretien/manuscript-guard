@@ -91,11 +91,6 @@ expected:
     why: >-
       the same, in a file the audit staged from a PDF (the entry for `abbreviations`); the
       entry it replaces, for a word a PDF breaks at a line's end, is spent
-  - reading: abbreviation edits
-    why: >-
-      the same: a short form whose long form closes a bracket it does not open, and is not
-      the long form's own, is no definition, so no edit writes "SCE1) and after 2 hours"
-      out in place of SCE2 (the entry for `abbreviations`)
   - reading: audit abbreviations
     why: >-
       the audit gives G14's findings, so the same (the entry for `abbreviations`); the entry

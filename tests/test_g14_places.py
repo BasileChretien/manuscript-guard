@@ -501,3 +501,13 @@ def test_a_citation_s_author_owes_no_definition_and_is_a_use(tmp_path: Path) -> 
             "Institutes of Health (NIH) paid. The NIH rose.\n")
     assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
         "abbreviation-used-before-defined"]
+    # Round 1 of #838: a bracket of years that is no list of citations owes a definition.
+    for bracket in ("(NIH 1850, 2010)", "(NIH-10 2019, DSM-5 2013)",
+                    "(Kaye 2009, NIH 2016 and 2017)"):
+        text = (f"# Introduction\n\nRanges held {bracket}.\n\n# Methods\n\nThe National "
+                "Institutes of Health (NIH) paid. The NIH rose.\n")
+        assert "abbreviation-used-before-defined" in [
+            code for code, _message in checked(tmp_path, {"main.md": text})], bracket
+    text = ("# Introduction\n\nRules were set (AERA, 2014; APA, 2020).\n\n# Methods\n\nThe "
+            "American Educational Research Association (AERA) set them. The AERA held.\n")
+    assert checked(tmp_path, {"main.md": text}) == []

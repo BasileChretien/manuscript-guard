@@ -998,6 +998,11 @@ NOT_DEFINING = (
     ("the XY (Kenya) site", "XY (", "XY"),
     ("the HRS (hours) total", "HRS (", "HRS"),
     ("the QRD (quarterly) total", "QRD (", "QRD"),
+    # Round 1 of #838: a bracket of two pairs, which reads its last pair alone; and a number
+    # before a pointer, which is no word.
+    ("answers were coded (fully agree, FG; fully disagree, FDG)", "FG;", "FG"),
+    ("the odds rose (OR 3; Table 2)", "(OR", "OR"),
+    ("the spread of the data (SD 12; Table 1)", "(SD", "SD"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -1660,6 +1665,15 @@ UNDUE_ABSTRACTS = ("heading", "bold", "run in", "next file", "bold, next file", 
 #: The short forms the places hold, drawn in an order, none a word or a known form.
 UNDUE_FORMS = ("QXA", "QXB", "QXC", "QXD", "QXE", "QXF", "QXG", "QXH", "QXJ", "QXK", "QXL",
                "QXM", "QXN", "QXP", "QXQ", "QXR", "QXS", "QXT")  # fmt: skip
+#: What looks like those places and owes a definition (round 1 of #838): a paragraph in bold
+#: of more than 150 characters, a word in bold inside a sentence, a year after the form in a
+#: sentence, a bracket of years that is no list of citations, and one whose own part goes on
+#: past its year; `{}` is the short form each holds, used nowhere else.
+UNDUE_OWED = ("**The {} results of each of the classes of the second year of the study were read "
+              "again by a second reader who did not know which class each of them came from**",
+              "The **{}** rose in the first class.", "The {} 2016 guidelines were kept.",
+              "Ranges held ({} 1850, 2010).", "Rules held (Kaye 2009, {} 2016 and 2017).")
+UNDUE_OWED_FORMS = ("QYA", "QYB", "QYC", "QYD", "QYE")
 #: The kinds of place, in the order the paper has them; and a heading typed in Word as a
 #: paragraph in bold (decision D5) and a citation's author, in a list of author-year
 #: citations a comma divides (Basile, 2026-11-27).
@@ -1692,7 +1706,10 @@ def undue_places(
             "# Methods", f"**The {both['bold heading']} study**",
             f"Keyword-based retrieval used the {keyword} index.",
             f"Rules held (Kaye et al. 2009, {only['citation author']} 2016a, "
-            f"{also['citation author']} 2016b).", "# Results",
+            f"{also['citation author']} 2016b).",
+            *(owed.format(short) for owed, short in zip(UNDUE_OWED, UNDUE_OWED_FORMS,
+                                                       strict=True)),  # fmt: skip
+            "# Results",
             "The " + ", the ".join(also[kind] for kind in UNDUE_KINDS) + " fell.",
             "# Discussion", "It held."]  # fmt: skip
     # The running line between three of the body's paragraphs, drawn.
@@ -1720,7 +1737,7 @@ def undue_places(
         else:
             files = [_undue_file([*title, *opening, keywords, *body, *end], running)]
         where = "the abstract" if way in ("heading", "next file") else "the main text"
-        times = dict.fromkeys([*also.values(), keyword], "once")
+        times = dict.fromkeys([*also.values(), keyword, *UNDUE_OWED_FORMS], "once")
         times[alone] = "once"
         if way == "none":
             # No title page: its short forms are the text's, and its use of the one the
@@ -1977,8 +1994,10 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
 SPACED_ENTRIES = ("DTL Dutch Techcentre for Life Science (www.dtls.nl)",
                   "**RDA** Research Data Alliance",
                   "NPOS National Platform for Open Science [website]",
-                  "LERU League of European Research Universities")  # fmt: skip
-SPACED_USED = ("DTL", "RDA", "NPOS", "LERU")
+                  "LERU League of European Research Universities",
+                  # One word, as the short form's bracket reads it (round 1 of #838).
+                  "HCQ Hydroxychloroquine")  # fmt: skip
+SPACED_USED = ("DTL", "RDA", "NPOS", "LERU", "HCQ")
 SPACED_NOT = (("HANDS Handbook Handbook for the staff", "HANDS"),
               ("EOSC was set up in 2016.", "EOSC"))  # fmt: skip
 

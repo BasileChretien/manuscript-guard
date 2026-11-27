@@ -36,10 +36,14 @@ shape. The shapes:
   one more word or a whole number and nothing else, "changing-look AGNs (CL AGNs)", "(ESM
   1)", or before a typed author-year citation, "(SDSS DR15; York et al., 2000)", or before a
   pointer to a display, "low rank position (LR hierarchy; Figure 1, Panel B)", whose long
-  form ends at its last word holding a letter, "low rank"; each short form of a bracket that
+  form loses its last words while the rest still spells the short form, two words kept at
+  the least, "low rank", as "low rank role (LR group; Figure 1)" gives "low rank" too, the
+  word before the semicolon holding a letter, so "(OR 3; Table 2)" defines nothing; each
+  short form of a bracket that
   lists them, "(CAP, CAP-T)", each read against the words before the bracket on its own;
 - a bracket of three pairs or more a semicolon divides, each a long form then its short form
-  in capitals: "(strongly agree, SA; agree A; neutral, N; disagree, D)";
+  in capitals: "(strongly agree, SA; neutral answer, NA; strongly disagree, SDA)", a single
+  capital being no short form;
 - the short form, then its long form in brackets: "ROR (reporting odds ratio)", one word
   enough where it opens with the short form's first letter and is three letters longer at
   least, "HCQ (hydroxychloroquine)";

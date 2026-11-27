@@ -3221,6 +3221,10 @@ def test_a_glossary_line_whose_tab_word_printed_as_a_space_defines_where_its_wor
     text = "DTL Dutch Techcentre for Life Science (www.dtls.nl)\n"
     assert [(entry.short, entry.long) for entry in glossary.entries(text, text, (0, len(text)))] \
         == [("DTL", "Dutch Techcentre for Life Science")]  # fmt: skip
+    # One word, as in the short form's bracket (decision D8; round 1 of #838).
+    text = "HCQ Hydroxychloroquine\n"
+    assert [(entry.short, entry.long) for entry in glossary.entries(text, text, (0, len(text)))] \
+        == [("HCQ", "Hydroxychloroquine")]  # fmt: skip
 
 
 # ------------------------------------ a statistical abbreviation defined later (2026-11-27)

@@ -5679,22 +5679,24 @@ an underscore that joins no two parts, an emphasis mark's, joins nothing.
 `abbreviation-used-before-defined` findings judged false on the corpus's Word papers).** Four
 shapes of definition, each read through the same letters. A bracket of three pairs or more a
 semicolon divides, each a long form then its short form in capitals, a comma between them or
-none, "(strongly agree, SA; agree A; neutral, N; disagree, D)", defines each pair, as "long
-form (SHORT)" would; where an item is of another shape, or the bracket holds two, only its
+none, "(strongly agree, SA; neutral answer, NA; strongly disagree, SDA)", defines each pair,
+as "long form (SHORT)" would, a single capital, "agree A", being no short form; where an item is of another shape, or the bracket holds two, only its
 last pair is read, as before, so "(OR, 1.2; HR, 0.8; RR, 1.1)" gives statistics. A colon pair
 or an equals sign's whose long form cut at its first comma spells nothing is read on to the
 next semicolon, stop, sign, bracket or line's end, by the same rules, "DASS: Depression,
 Anxiety and Stress Scale;". A short form and its word before a semicolon after which the
 bracket points to a display, "a low rank position (LR hierarchy; Figure 1, Panel B)", defines
-as one before a typed citation does, and its long form ends at its last word that holds a
-letter of the short form, "low rank": the bracket's word is the long form's head, so the
-paper's later "Low rank (LR) hierarchy" gives LR again and not another meaning (decision
-D10). And in the bracket after the short form one word is a long form where it is of letters
+as one before a typed citation does, the word before the semicolon holding a letter, and
+its long form loses its last words while those before them still spell the short form, two
+kept at the least, "low rank": the bracket's word is the long form's head, so the paper's
+later "Low rank (LR) hierarchy" gives LR again and not another meaning (decision D10), and
+"low rank role (LR group; Figure 1)" gives "low rank" too. And in the bracket after the short form one word is a long form where it is of letters
 only, opens with the short form's first letter and is three letters longer at least, "HCQ
 (Hydroxychloroquine,)" (decision D8); after a sign two words are still the least. A list of
 abbreviations under its heading reads a line whose tab Word printed as a space, "DTL Dutch
 Techcentre for Life Science (www.dtls.nl)", as an entry where the words after the short form,
-up to a bracket, spell it whole, as they would in the short form's bracket. Two places owe no
+up to a bracket, spell it whole, as they would in the short form's bracket, one word
+among them, "HCQ Hydroxychloroquine" (decision D8; round 1 of #838). Two places owe no
 definition, as a keywords line does, and a use there is still one: a paragraph wholly in bold
 of 150 characters or fewer, which is how a heading is typed in Word with no heading's style
 (decision D5); and a citation's author typed as text, its year after it, "(EOSC-HLEG,
@@ -30958,10 +30960,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_definition_shapes.py::test_a_bracket_of_pairs_defines_each_pair_and_one_item_of_another_shape_voids_it`.
   - A pointer after a bracket's semicolon is a figure's, a table's, a box's or a panel's with
     its number, "see" and "Supplementary" or "online" before it allowed: "(LR hierarchy;
-    Appendix 2)" defines nothing. Its long form is cut while the words before the last still
-    spell the short form whole, two kept at the least, so a head word that holds the short
-    form's last letter stays in it. Pinned by
-    `tests/test_definition_shapes.py::test_a_pointer_s_long_form_ends_at_the_last_word_holding_a_letter`.
+    Appendix 2)" defines nothing. Its long form loses its last word while the words before it
+    still spell the short form whole, two kept at the least, so a last word goes though it
+    holds one of the short form's letters: "low rank role (LR group; Figure 1)" gives "low
+    rank". Pinned by
+    `tests/test_definition_shapes.py::test_a_pointer_s_long_form_drops_its_last_words_while_the_rest_spells_it`.
   - A colon pair is read past its commas only where it has one short form and the reading
     cut at the first comma spells nothing, and never into the next pair of a list a comma
     divides, so "CM: Cameroon, AZ: Azerbaijan" defines nothing; a long form with a stop in

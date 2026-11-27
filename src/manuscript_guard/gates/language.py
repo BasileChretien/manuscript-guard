@@ -1041,6 +1041,16 @@ def _lines_at(text: str, numbers: Iterable[int]) -> list[tuple[int, int]]:
     return spans
 
 
+def _lines_spanned(text: str, spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
+    """Where each run of lines `(first, last)` of `text`, from 1, runs, from the first's
+    start to the last's break, in order."""
+    starts = [0]
+    for line in text.split("\n"):
+        starts.append(starts[-1] + len(line) + 1)
+    return tuple(sorted((starts[first - 1], starts[last] - 1) for first, last in spans
+                        if 0 < first <= last < len(starts)))  # fmt: skip
+
+
 def _united(spans: Iterable[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
     """`spans` in order, those that meet made one, so that none is inside another
     (`_inside`)."""
@@ -1925,13 +1935,17 @@ def _file(
     opens: bool | None = None,
     from_pdf: bool = False,
     running: Iterable[int] = (),
+    displays: Iterable[tuple[int, int]] | None = None,
 ) -> _File:
     """A Markdown file read. `opens` where it is the first file of the paper or of the
     supplement, which a title page may open; by default, where `order` is 0. `from_pdf`
-    where the audit staged it from a PDF, whose text holds no table, legend or note G14 can
-    find, so none is a display of its own and all of it is the text's (DESIGN.md, Known
-    gaps). `running` are the lines, from 1, that a PDF the file was staged from repeats at
-    the top or the foot of its pages (`auditing.pdf.PdfText.repeated`)."""
+    where the audit staged it from a PDF, whose lines as pdftotext reads them hold no table,
+    legend or note G14 can find, so none is a display of its own and all of it is the text's
+    (DESIGN.md, Known gaps); unless `displays` gives where each display runs, `(first,
+    last)` lines from 1, as for a PDF whose lines were rebuilt into paragraphs from where
+    each word is set (`auditing.gates._staged_paragraphs`): each is read as a Word paper's
+    display is. `running` are the lines, from 1, that a PDF the file was staged from repeats
+    at the top or the foot of its pages (`auditing.pdf.PdfText.repeated`)."""
     headings = find_headings(text)
     hidden, code = _views(text)
     if opens is None:
@@ -1961,6 +1975,9 @@ def _file(
     # display of its own (window C of the real-paper corpus, row 6).
     displayed = None if from_pdf else (
         lambda paired: markdown_displays(text, prose, captions, _noted(text, paired), spans))
+    if displays is not None:
+        given = _lines_spanned(text, displays)
+        displayed = lambda paired: given  # noqa: E731 - the same shape as above
     return _assembled(
         order, path, text, hidden, prose, regions,
         captions=captions,
@@ -2418,12 +2435,14 @@ def _read(
     project: Project,
     running: Mapping[str, Iterable[int]] | None = None,
     pdf: Collection[str] = (),
+    displays: Mapping[str, Iterable[tuple[int, int]]] | None = None,
 ) -> list[_File]:
     """The manuscript as a reader meets it: the paper's files in printed order, then the
     supplement's. The abstract is the section the journal's profile names as one, where it
     names one ("Summary"), as G4 reads it. `running` gives, by a file's path under
     `manuscript/`, the lines a PDF it was staged from repeats at its pages' edges; `pdf`, by
-    the same paths, the files the audit staged from a PDF."""
+    the same paths, the files the audit staged from a PDF; `displays`, by the same paths,
+    where a rebuilt PDF's displays run."""
     from manuscript_guard.gates.journal import abstract_title
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
@@ -2444,8 +2463,11 @@ def _read(
         for at, path in enumerate(document):
             text = read_text(path)
             lines = _running_at(running, root, path)
+            shown = (tuple(_running_at(displays, root, path))
+                     if displays and _staged_as(displays, root, path) else None)  # fmt: skip
             files.append(_file(len(files), path, text, chain, supplementary, named, at == 0,
-                               from_pdf=_staged_as(pdf, root, path), running=lines))  # fmt: skip
+                               from_pdf=_staged_as(pdf, root, path), running=lines,
+                               displays=shown))  # fmt: skip
     return files
 
 
@@ -3103,6 +3125,7 @@ def check_language(
     results: Results | None = None,
     running: Mapping[str, Iterable[int]] | None = None,
     pdf: Collection[str] = (),
+    displays: Mapping[str, Iterable[tuple[int, int]]] | None = None,
 ) -> Report:
     """The five readings of the manuscript: its abbreviations, the terms it keeps to, its
     spelling, its notation and the names from its code; and where its prose is in a script
@@ -3113,8 +3136,10 @@ def check_language(
     the top or the foot of its pages, where no use of a short form is owed its definition;
     `pdf` names, by the same paths, the files the audit staged from a PDF, whose notation is
     read as pdftotext prints it, and whose long forms are compared with a word broken at a
-    line's end joined (`_rejoined`)."""
-    files = _read(project, running, pdf)
+    line's end joined (`_rejoined`); `displays`, by the same paths, where each display of a
+    PDF whose lines were rebuilt into paragraphs runs, `(first, last)` lines from 1
+    (`auditing.gates._staged_paragraphs`), read as a Word paper's displays are."""
+    files = _read(project, running, pdf, displays)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     from_pdf = frozenset(file.path for file in files if file.from_pdf)
     prose = [Prose(file.path, file.text, file.printed, file.code, file.line_of, file.tables,

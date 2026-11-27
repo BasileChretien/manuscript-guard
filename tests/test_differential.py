@@ -79,10 +79,12 @@ EXAMPLES = dict.fromkeys(READINGS, 300) | {"check": 20, "import": 15, "finding k
                                             "abstract questions": 40,
                                             "word abstract": 40,
                                             "written shares": 40,
-                                            "plan sections asked": 100}
+                                            "plan sections asked": 100,
+                                            # A PDF typeset and read by pdftotext, twice.
+                                            "pdf paragraphs": 20}
 #: And how many when the two sides are this same source under two hash seeds.
 RESEEDED = dict.fromkeys(READINGS, 40) | {"check": 3, "import": 2, "finding keys": 3,
-                                          "plan sections asked": 20}
+                                          "plan sections asked": 20, "pdf paragraphs": 4}
 
 
 # ------------------------------------------------------------------------- the two sides
@@ -609,8 +611,8 @@ def test_what_stops_a_reading_being_made_is_told_apart() -> None:
 #: that changes it, with `tests/readings.py` brought up to date in the same pull request.
 _ANOTHER_ARGUMENT = (
     "gates/language.py",
-    "    running: Iterable[int] = (),\n) -> _File:\n",
-    "    running: Iterable[int] = (),\n    *,\n    kind: str,\n) -> _File:\n",
+    "    displays: Iterable[tuple[int, int]] | None = None,\n) -> _File:\n",
+    "    displays: Iterable[tuple[int, int]] | None = None,\n    *,\n    kind: str,\n) -> _File:\n",
 )
 
 

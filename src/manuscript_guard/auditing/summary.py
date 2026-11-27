@@ -349,6 +349,7 @@ def rows(report) -> list[tuple[str, str]]:
                           ("Baseline tables", report.baseline),
                           ("Cited sentences", report.cited),
                           ("Self-citation", report.self_citation),
+                          ("Registration", getattr(report, "registration", None)),
                           ("Package", report.package)):  # fmt: skip
         if present is not None:
             rows.append((name, "see its section below"))
@@ -446,6 +447,7 @@ def standings(report) -> dict[str, str]:
     # The sections a flag adds, by what the report says in them (round 1 of #635).
     from manuscript_guard.auditing import report as sections
     from manuscript_guard.auditing.baseline import SECTION as BASELINE
+    from manuscript_guard.auditing.registration import SECTION as REGISTRATION
     from manuscript_guard.auditing.report import items
 
     said = None
@@ -454,6 +456,7 @@ def standings(report) -> dict[str, str]:
             report.causal), ("Baseline tables", BASELINE, report.baseline),
             ("Cited sentences", sections.CITED, report.cited),
             ("Self-citation", sections.SELF_CITATION, report.self_citation),
+            ("Registration", REGISTRATION, getattr(report, "registration", None)),
             ("Package", sections.PACKAGE, report.package)):  # fmt: skip
         if present is not None:
             said = items(report) if said is None else said
@@ -464,8 +467,10 @@ def standings(report) -> dict[str, str]:
 
 #: The notes of a flag's section that leave a reader something to look at: what G4 did not
 #: check, a rule to check by hand, a file or part not read, and what a dry run would ask.
+#: A registry's record of the paper's trial is an INFO for the editor to set beside the paper.
 _TO_LOOK_AT = frozenset({"journal-not-checked", "journal-manual-rule", "causal-words-not-read",
-                         "cited-not-listed", "would-ask", "baseline-tables-not-read"})  # fmt: skip
+                         "cited-not-listed", "would-ask", "baseline-tables-not-read",
+                         "registration-record", "registration-by-hand"})  # fmt: skip
 
 
 def _flagged(name: str, present, mine: list) -> str:

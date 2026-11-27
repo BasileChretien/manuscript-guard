@@ -469,12 +469,12 @@ def test_an_entry_holds_for_the_format_it_was_measured_on(
 
 
 def test_the_entry_for_a_pdf_says_so_and_its_figures_are_the_corpus_s() -> None:
-    """35 true of the 81 reported from text read from a PDF at main-77abd45db, the false ones
-    from 17 papers: the `audit` of a PDF paper (25 of 65, from 12) and the `audit-pdf` of a
-    LaTeX paper (10 of 16, from 5). The corpus holds no Word paper's own PDF."""
+    """49 true of the 85 judged findings present on text read from a PDF at f1bd2fad5, its
+    paragraphs rebuilt (#802), the false ones from 16 papers; lowered at main-77abd45db on
+    35 of 81. The corpus holds no Word paper's own PDF."""
     entry = table.MEASURED[BEFORE]
     assert (entry.severity, entry.true, entry.judged, entry.papers, entry.gate,
-            entry.read_from) == (INFO, 35, 81, 17, "G14", table.PDF)  # fmt: skip
+            entry.read_from) == (INFO, 49, 85, 16, "G14", table.PDF)  # fmt: skip
     assert [code for code, one in table.MEASURED.items() if one.read_from] == [BEFORE]
 
 
@@ -486,10 +486,13 @@ def test_a_finding_lowered_keeps_its_key() -> None:
 
 def test_each_entry_keeps_to_the_rule() -> None:
     """A code lowered has 10 or more judged, under half true and its false ones from 3 papers
-    or more; one raised, 10 or more judged and 0.9 or more true."""
+    or more; one raised, 10 or more judged and 0.9 or more true. A code lowered and measured
+    again after a fix, the PDF's entry after #802 rebuilt a PDF's paragraphs, stays lowered
+    under 0.75 (DESIGN.md; Basile, 2026-11-26, "Keep INFO, the 0.75 rule")."""
     for code, entry in table.MEASURED.items():
         assert entry.judged >= 10, code
         if entry.severity == INFO:
-            assert entry.true / entry.judged < 0.5 and (entry.papers or 0) >= 3, code
+            bar = 0.75 if entry.read_from == table.PDF else 0.5
+            assert entry.true / entry.judged < bar and (entry.papers or 0) >= 3, code
         else:
             assert entry.severity == WARN and entry.true / entry.judged >= 0.9, code

@@ -145,11 +145,12 @@ def _pdftotext(path: Path, extra: list[str]) -> str | None:
     return done.stdout
 
 
-def _pdftotext_name() -> str:
-    """Which pdftotext it is: poppler's and Xpdf's read a page differently."""
+def _pdftotext_name(program: str = "pdftotext") -> str:
+    """Which pdftotext it is, the one on PATH or `program`: poppler's and Xpdf's read a page
+    differently."""
     try:
         done = subprocess.run(
-            ["pdftotext", "-v"], capture_output=True, text=True, encoding="utf-8",
+            [program, "-v"], capture_output=True, text=True, encoding="utf-8",
             errors="replace", timeout=30, check=False,
         )  # fmt: skip
     except (OSError, subprocess.SubprocessError):

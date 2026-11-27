@@ -15087,6 +15087,78 @@ def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_module, "_MONTHS", frozenset())
 
 
+# ------------------------------------------- a bibliography that prints every entry, G7
+
+from generated import nocite_files  # noqa: E402
+
+from manuscript_guard.gates import printed_entries as printed_module  # noqa: E402
+
+
+@holds(40, nocite_files())
+def test_a_nocite_of_every_entry_is_told_from_one_of_single_keys(
+    drawn: tuple[list[tuple[str, bool]], list[tuple[str, bool]]],
+) -> None:
+    """The author's decision of 2026-11-27: the entries nothing cites are one note where the
+    bibliography prints only the works cited, and a warning each where it prints them all.
+    A LaTeX file asks for every entry by a `\\nocite` whose keys hold `*`, wherever it stands
+    but in a comment, and a Markdown file by a `nocite` holding `@*` in its front matter or
+    in a metadata block of its body.
+    Single keys, another command, an address, another key of the header or the body ask
+    for none, and a set of files asks where one of them does."""
+    tex, markdown = drawn
+    read = READINGS["every entry printed"]()
+    for files, latex in ((tex, True), (markdown, False)):
+        said = [read({"text": text, "latex": latex}) for text, _asks in files]
+        assert said == [asks for _text, asks in files], [
+            (text, asks) for (text, asks), one in zip(files, said, strict=True) if one != asks]
+        assert printed_module.every_entry_printed(
+            [text for text, asks in files if not asks], latex=latex) is False
+        assert printed_module.every_entry_printed([text for text, _ in files], latex=latex)
+
+
+def _a_tex_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_COMMENT", re.compile(r"(?!)()"))
+
+
+def _an_escaped_percent_opens_a_comment_before_nocite(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_COMMENT", re.compile(r"()%[^\n]*"))
+
+
+def _only_a_lone_star_asks_for_every_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_NOCITE", re.compile(r"\\nocite\s*\{(\*)\}"))
+
+
+def _any_command_ending_in_nocite_asks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_NOCITE", re.compile(r"\\nocite\w*\s*\{([^{}]*)\}"))
+
+
+def _any_citation_in_nocite_asks_for_every_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_EVERY", re.compile(r"@"))
+
+
+def _nocite_is_read_anywhere_in_the_file(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "every_entry_markdown",
+                  lambda text: re.search(r"nocite:.*@\*", text, re.DOTALL) is not None)
+
+
+def _a_body_metadata_block_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "metadata_blocks", lambda text: [])
+
+
+def _a_merged_nocite_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    said = masking.front_matter_said
+
+    def own(text: str, name: str) -> tuple[str, ...]:
+        found = masking.FRONTMATTER.match(text)
+        return said(text, name) if found and f"\n{name}:" in "\n" + found.group("yaml") else ()
+
+    patch.setattr(masking, "front_matter_said", own)
+
+
 # ------------------------------------------- an entry cited only as typed text, G7
 
 from generated import typed_only_papers  # noqa: E402
@@ -27211,6 +27283,38 @@ BROKEN = {
     "a DOI's two records are counted together": (
         _both_records_are_counted_together,
         test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a TeX comment is read for a \\nocite of every entry": (
+        _a_tex_comment_is_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "an escaped percent opens a TeX comment": (
+        _an_escaped_percent_opens_a_comment_before_nocite,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "only a lone star in \\nocite asks for every entry": (
+        _only_a_lone_star_asks_for_every_entry,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "any command whose name begins with nocite asks for every entry": (
+        _any_command_ending_in_nocite_asks,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite of single keys asks pandoc for every entry": (
+        _any_citation_in_nocite_asks_for_every_entry,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite is read anywhere in a Markdown file": (
+        _nocite_is_read_anywhere_in_the_file,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite merged into the front matter is not read": (
+        _a_merged_nocite_is_not_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite in a metadata block of the body is not read": (
+        _a_body_metadata_block_is_not_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
     ),
     "an audited paper's legend set as BMC sets it is read as a citation": (
         _a_bmc_legend_is_a_citation,

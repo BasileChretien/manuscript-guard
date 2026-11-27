@@ -21279,11 +21279,16 @@ _TYPED_ONLY_BIB = """
 
 def _uncited(root: Path, typed: str, bib: str = _TYPED_ONLY_BIB) -> dict:
     """G7's `reference-uncited` findings by key, the manuscript holding `typed` and
-    `references.bib` the entries of `bib` beside its own."""
+    `references.bib` the entries of `bib` beside its own. Its header asks pandoc for every
+    entry (`nocite: '@*'`), where each entry nothing cites reaches the paper and is a warning
+    of its own: what these tests tell apart is that warning from the note on an entry cited
+    only as typed text. Where only the cited works print, the warnings are one note
+    (`_one_note`)."""
     path = root / "literature" / "references.bib"
     path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
     main = main_md(root)
-    main.write_text(main.read_text(encoding="utf-8") + f"\n{typed}\n", encoding="utf-8")
+    text = main.read_text(encoding="utf-8").replace("---\n", "---\nnocite: '@*'\n", 1)
+    main.write_text(text + f"\n{typed}\n", encoding="utf-8")
     found = [f for f in _g7(root).findings if f.code == "reference-uncited"]
     return {re.search(r"@(\w+)", f.message).group(1): f for f in found}
 
@@ -21813,9 +21818,14 @@ def test_no_hint_sends_one_entry_s_removal_through_sync_bib(project: Path) -> No
 
 
 def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -> None:
-    """A LaTeX manuscript cites by command, so the key is offered as one."""
+    """A LaTeX manuscript cites by command, so the key is offered as one. Its list prints
+    every entry, by a `\\nocite{*}` in a hook, which the reader records as no citation."""
     entry = _twin(project)
     _into_results(entry, "A claim.")
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}",
+                                  "\\AtBeginDocument{\\nocite{*}}\n\\begin{document}", 1),
+                     encoding="utf-8")  # fmt: skip
     path = project / "literature" / "references.bib"
     path.write_text(path.read_text(encoding="utf-8") + _TYPED_ONLY_BIB, encoding="utf-8")
     (found,) = [f for f in _g7(project).findings if f.code == "reference-uncited"
@@ -21839,6 +21849,244 @@ def test_a_latex_manuscript_keeps_its_warning(project: Path) -> None:
     assert typed_only(loaded, ["imaginary2018"]) == {}
 
 
+# The entries nothing cites, where the bibliography prints only the works cited: one note
+# for the file (Basile, 2026-11-27, "One note per .bib").
+
+_NOWHERE_BIB = _one_entry("zeta2001", "Zeta, Zoe") + _one_entry("alpha2002", "Alpha, Al")
+
+
+def _one_note(root: Path) -> list:
+    """G7's findings on the entries of `references.bib` no citation key points to."""
+    from manuscript_guard.gates.citations import UNCITED_ENTRIES
+
+    return [f for f in _g7(root).findings if f.code in ("reference-uncited", UNCITED_ENTRIES)]
+
+
+def _with_entries(root: Path, bib: str = _NOWHERE_BIB, *, header: str = "",
+                  typed: str = "") -> None:  # fmt: skip
+    """`references.bib` with the entries of `bib` beside its own, the manuscript's header
+    with `header` in it and its text with `typed` after it."""
+    path = root / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8").replace("---\n", f"---\n{header}", 1)
+    main.write_text(text + f"\n{typed}\n", encoding="utf-8")
+
+
+def test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print(
+    project: Path,
+) -> None:
+    """Pandoc's citeproc prints only the works cited, so an entry nothing cites never
+    reaches the paper: the file's such entries are one note, which counts them, says why
+    none is printed and lists their keys. Its key names the file and no sentence. An entry
+    cited only as typed text keeps its own note and is not listed."""
+    from manuscript_guard.findings import INFO
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 3
+    _with_entries(project, _NOWHERE_BIB + _one_entry("imaginary2018", "Imaginary, Anne", 2018),
+                  typed="A claim (Imaginary, 2018).")  # fmt: skip
+    found = _one_note(project)
+    (note,) = [f for f in found if f.code == "bib-entries-uncited"]
+    assert note.severity == INFO and note.path.name == "references.bib", note
+    said = (f"2 of the {held} entries of references.bib are cited nowhere, and the "
+            "bibliography prints only the works cited, so none of them reaches the paper: "
+            "@alpha2002, @zeta2001")  # fmt: skip
+    assert note.message == said, note.message
+    assert 'cites one of these works in words, as in "Smith (2020) showed"' in note.hint
+    assert "as in [@alpha2002], or the work is not printed" in note.hint, note.hint
+    assert "do not use `sync-bib` for this" in note.hint, note.hint
+    said = note.as_dict()
+    assert said["key"] == "G7|bib-entries-uncited|references.bib|-" and "key_from" not in said
+    (typed,) = [f for f in found if f.code == "reference-uncited"]
+    assert typed.severity == INFO and "@imaginary2018" in typed.message, typed
+    assert "cites only as typed text" in typed.message, typed.message
+
+
+def test_one_entry_cited_nowhere_is_said_in_the_singular(project: Path) -> None:
+    _with_entries(project, _one_entry("zeta2001", "Zeta, Zoe"))
+    (note,) = _one_note(project)
+    assert re.match(r"1 of the \d+ entries of references\.bib is cited nowhere, ",
+                    note.message), note.message  # fmt: skip
+    assert note.message.endswith("so it does not reach the paper: @zeta2001"), note.message
+
+
+@pytest.mark.parametrize("header", [
+    "nocite: '@*'\n",
+    'nocite: "@*"\n',
+    "nocite: |\n  @*\n",
+    "nocite: ['@zeta2001', '@*']\n",
+    "base: &every\n  nocite: '[@*]'\n<<: *every\n",
+])  # fmt: skip
+def test_a_list_that_prints_every_entry_keeps_a_warning_for_each(
+    project: Path, header: str
+) -> None:
+    """`nocite` holding `@*` asks pandoc for every entry of the file, its own or merged into
+    the header, so each entry nothing cites reaches the printed list: a warning each, as
+    before, and no note."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, header=header)
+    found = _one_note(project)
+    said = {f.message: f.severity for f in found}
+    if header.startswith("nocite: ['@zeta2001'"):
+        # A key under `nocite:` is a citation of it, and it is not uncited.
+        assert said == {"references.bib holds @alpha2002, which nothing cites": WARN}, said
+    else:
+        assert said == {"references.bib holds @alpha2002, which nothing cites": WARN,
+                        "references.bib holds @zeta2001, which nothing cites": WARN}, said
+
+
+@pytest.mark.parametrize("header", [
+    "nocite: '@zeta2001'\n",
+    "nocite: 'email@*'\n",
+    "title: 'nocite: @*'\n",
+    "nocite: ''\n",
+])  # fmt: skip
+def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
+    project: Path, header: str
+) -> None:
+    """A `nocite` of one key cites that key, and the rest of the list still prints only the
+    works cited: the note stays, without the key `nocite` names. Nor is `@*` read in an
+    address, in another key's value or in the body."""
+    _with_entries(project, header=header, typed="The header said nocite: '@*' once.")
+    (note,) = _one_note(project)
+    assert note.code == "bib-entries-uncited", note
+    listed = "@alpha2002" if "zeta2001" in header else "@alpha2002, @zeta2001"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
+
+
+@pytest.mark.parametrize(("snippet", "where", "printed"), [
+    ("\\nocite{*}", "body", None),
+    ("\\AtBeginDocument{\\nocite{*}}", "preamble", True),
+    ("\\newcommand{\\every}{\\nocite{alpha2002,*}}", "preamble", True),
+    ("\\iffalse \\nocite{*} \\fi", "body", True),
+    ("\\begin{lstlisting}\n\\nocite{*}\n\\end{lstlisting}", "body", True),
+    ("% \\nocite{*}", "body", False),
+    ("\\nocite{zeta2001}", "body", False),
+])  # fmt: skip
+def test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings(
+    project: Path, snippet: str, where: str, printed: bool | None
+) -> None:
+    """`\\nocite{*}` the reader records cites every entry, so none is uncited. One it does
+    not record, in a hook or a definition, still makes BibTeX print them all: a warning
+    each. So does one in an `\\iffalse` block or a listing, which TeX never runs (DESIGN.md,
+    Known gaps). In a comment, or of single keys, it asks for no other entry, and the rest
+    are one note, whose hint cites by command."""
+    from manuscript_guard.findings import WARN
+
+    entry = _twin(project)
+    if where == "preamble":
+        text = entry.read_text(encoding="utf-8")
+        entry.write_text(text.replace("\\begin{document}", snippet + "\n\\begin{document}", 1),
+                         encoding="utf-8")  # fmt: skip
+    else:
+        _into_results(entry, snippet)
+    path = project / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + _NOWHERE_BIB, encoding="utf-8")
+    found = _one_note(project)
+    if printed is None:
+        assert found == [], found
+    elif printed:
+        assert sorted((f.code, f.severity, f.message) for f in found) == [
+            ("reference-uncited", WARN, f"references.bib holds @{key}, which nothing cites")
+            for key in ("alpha2002", "zeta2001")], found  # fmt: skip
+    else:
+        (note,) = found
+        assert note.code == "bib-entries-uncited", note
+        assert "\\cite{" in note.hint and "[@" not in note.hint, note.hint
+        assert ("@zeta2001" in note.message) == ("zeta2001" not in snippet), note.message
+
+
+@pytest.mark.parametrize(("typed", "printed"), [
+    ("\n---\nnocite: '@*'\n---\n", True),
+    ("\n---\ntitle: Kept\nnocite: [ '@*' ]\n...\n", True),
+    # Not a block: no blank line before it, or inside a fence.
+    ("Text.\n---\nnocite: '@*'\n---\n", False),
+    ("\n```\n\n---\nnocite: '@*'\n---\n```\n", False),
+])  # fmt: skip
+def test_a_metadata_block_in_the_body_asks_for_every_entry(
+    project: Path, typed: str, printed: bool
+) -> None:
+    """Round 1 of #835: the build strips the front matter, and passes a YAML metadata block
+    of the body to pandoc as it stands (`masking.metadata_blocks`). Its `nocite: '@*'` makes
+    citeproc print every entry, so each entry nothing cites is a warning; text that is no
+    such block asks for nothing."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, typed=typed)
+    found = _one_note(project)
+    if printed:
+        assert sorted((f.code, f.severity) for f in found) == [
+            ("reference-uncited", WARN), ("reference-uncited", WARN)], found  # fmt: skip
+    else:
+        assert [f.code for f in found] == ["bib-entries-uncited"], found
+
+
+def test_the_note_counts_and_lists_the_entries_alone(project: Path) -> None:
+    """Round 1 of #835: an `@string`, an `@preamble` and an `@comment` name no work, so the
+    note neither counts nor lists them, and nothing warns of them."""
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 1
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@STRING{lancet = "Lancet"}\n'
+                           '@preamble{"\\newcommand{\\noop}[1]{}"}\n'
+                           "@comment{jabref-meta: databaseType:bibtex;}\n"
+                           + _one_entry("zeta2001", "Zeta, Zoe"))  # fmt: skip
+    (note,) = _one_note(project)
+    assert note.message == (f"1 of the {held} entries of references.bib is cited nowhere, and "
+                            "the bibliography prints only the works cited, so it does not "
+                            "reach the paper: @zeta2001"), note.message  # fmt: skip
+
+
+def test_where_every_entry_prints_no_string_or_comment_is_warned_of(project: Path) -> None:
+    """Round 2 of #835: where `nocite` asks for every entry, each entry nothing cites is
+    warned of, and an `@string` or an `@comment`, which names no work, is not."""
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@comment{jabref-meta: x;}\n'
+                           + _one_entry("zeta2001", "Zeta, Zoe"),
+                  header="nocite: '@*'\n")  # fmt: skip
+    said = sorted(f.message for f in _one_note(project))
+    assert said == ["references.bib holds @zeta2001, which nothing cites"], said
+
+
+_CROSSREF_BIB = """
+@inproceedings{a2019,
+  author = {Ant, Ann}, title = {A}, year = {2019}, crossref = {proc2019},
+}
+@inproceedings{b2019,
+  author = {Bee, Bo}, title = {B}, year = {2019}, crossref = {Proc2019},
+}
+@inproceedings{c2020,
+  author = {Cee, Cy}, title = {C}, year = {2020}, xref = {proc2020},
+}
+@proceedings{proc2019,
+  title = {Proceedings 2019}, year = {2019},
+}
+@proceedings{proc2020,
+  title = {Proceedings 2020}, year = {2020},
+}
+"""
+
+
+@pytest.mark.parametrize("latex", [True, False])
+def test_an_entry_two_cited_entries_crossref_is_printed_in_latex(
+    project: Path, latex: bool
+) -> None:
+    """Round 1 of #835: BibTeX and biblatex print an entry that two cited entries name in
+    `crossref` (`min-crossrefs`, biblatex's `mincrossrefs` and `minxrefs`, 2 by default), so
+    a LaTeX paper's note leaves it out, without warning of it, keys matched without case. An
+    entry one cited entry names is not printed, and stays in the note. Pandoc's citeproc
+    prints neither, so a Markdown paper's note lists both."""
+    if latex:
+        entry = _twin(project)
+        _into_results(entry, "A claim \\cite{a2019, b2019, c2020}.")
+        path = project / "literature" / "references.bib"
+        path.write_text(path.read_text(encoding="utf-8") + _CROSSREF_BIB, encoding="utf-8")
+    else:
+        _with_entries(project, _CROSSREF_BIB, typed="A claim [@a2019; @b2019; @c2020].")
+    (note,) = _one_note(project)
+    listed = "@proc2020" if latex else "@proc2019, @proc2020"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:

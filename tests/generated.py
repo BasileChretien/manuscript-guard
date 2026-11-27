@@ -17167,6 +17167,75 @@ def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | No
     return text, found
 
 
+# ------------------------------------------- a bibliography that prints every entry, G7
+
+#: Each way a LaTeX file asks, or seems to ask, for every entry (`gates/printed_entries.py`):
+#: the file's text with `{keys}` for a `\nocite`'s keys, `{s}` for spaces, and whether it
+#: asks. `{keys}` holds `*` among one single key or more, parted by commas and spaces.
+NOCITE_TEX = (
+    ("\\nocite{s}{*}", True),
+    ("\\nocite{s}{{keys}}", True),
+    ("\\AtBeginDocument{\\nocite{s}{{keys}}}", True),
+    ("\\newcommand{\\every}{\\nocite{{keys}}}", True),
+    ("50\\%{s}\\nocite{{keys}}", True),
+    ("%{s}\\nocite{{keys}}", False),
+    ("a line\\\\%{s}\\nocite{{keys}}", False),
+    ("\\nocite{s}{{one}}", False),
+    ("\\nocitemeta{{keys}}", False),
+    ("\\cite{{one}} and \\nocite{s}{{one}}", False),
+)
+#: Each way a Markdown file's front matter asks, or seems to ask, pandoc for every entry:
+#: the file's text with `{q}` for a quotation mark and `{one}` for single keys.
+NOCITE_MARKDOWN = (
+    ("---\nnocite: {q}@*{q}\n---\n", True),
+    ("---\nnocite: |\n  {one}, @*\n---\n", True),
+    ("---\nnocite: [{q}{one}{q}, {q}@*{q}]\n---\n", True),
+    ("---\nbase: &every\n  nocite: {q}[@*]{q}\n<<: *every\n---\n", True),
+    ("---\nnocite: {q}{one}{q}\n---\n", False),
+    ("---\nnocite: {q}me@*{q}\n---\n", False),
+    ("---\nnote: {q}@*{q}\n---\n", False),
+    ("---\ntitle: A study\n---\n\nnocite: '@*'\n", False),
+    ("---\n\nnocite: '@*'\n---\n", False),
+    # A YAML metadata block of the body, which the build passes to pandoc as it stands
+    # (round 1 of #835); not one where no blank line comes before it, nor one in a fence.
+    ("---\ntitle: A study\n---\n\nText.\n\n---\nnocite: {q}@*{q}\n---\n", True),
+    ("Text.\n\n---\nnocite: [{q}{one}{q}, {q}@*{q}]\n...\n", True),
+    ("---\ntitle: A study\n---\n\nText.\n---\nnocite: {q}@*{q}\n---\n", False),
+    ("Text.\n\n```\n\n---\nnocite: {q}@*{q}\n---\n```\n", False),
+)
+
+
+@st.composite
+def nocite_files(draw: st.DrawFn) -> tuple[list[tuple[str, bool]], list[tuple[str, bool]]]:
+    """A LaTeX file for each way of `NOCITE_TEX` and a Markdown file for each of
+    `NOCITE_MARKDOWN`, each with whether it asks for every entry, filler before and after
+    it: one of every kind in each example, so that a rule broken for one fails under any
+    seed."""
+    words = st.lists(st.sampled_from(FILLER), max_size=4).map(" ".join)
+    named = st.sampled_from(("smith2019", "lee2020", "ab12"))
+    keys = st.lists(named, max_size=2, unique=True)
+    some = st.lists(named, min_size=1, max_size=2, unique=True)
+
+    def around(text: str) -> str:
+        return f"{draw(words)}\n{text}\n{draw(words)}\n"
+
+    tex = []
+    for shape, asks in NOCITE_TEX:
+        listed = draw(some)
+        listed.insert(draw(st.integers(0, len(listed))), "*")
+        parted = draw(st.sampled_from((",", ", ", " ,")))
+        filled = (shape.replace("{keys}", parted.join(listed))
+                  .replace("{one}", ",".join(draw(keys)) or "smith2019")
+                  .replace("{s}", draw(st.sampled_from(("", " ")))))  # fmt: skip
+        tex.append((around(filled), asks))
+    markdown = []
+    for shape, asks in NOCITE_MARKDOWN:
+        one = ", ".join(f"@{key}" for key in draw(keys)) or "@smith2019"
+        filled = shape.replace("{q}", draw(st.sampled_from(("'", '"')))).replace("{one}", one)
+        markdown.append((filled + f"\n{draw(words)}\n", asks))
+    return tex, markdown
+
+
 # --------------------------------------------- an entry cited only as typed text, G7
 
 #: A typed citation, `{n}`, `{o}` and `{p}` its entry's authors, `{y}` the entry's year and
@@ -21031,6 +21100,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
     "typed references": st.one_of(typed_reference_papers().map(lambda drawn: drawn[0]), texts()),
+    "every entry printed": nocite_files().flatmap(
+        lambda drawn: st.sampled_from(
+            [{"text": text, "latex": True} for text, _asks in drawn[0]]
+            + [{"text": text, "latex": False} for text, _asks in drawn[1]])),
     "cited as typed": st.one_of(
         typed_only_papers().map(lambda drawn: {"bib": drawn[0], "text": drawn[1]}),
         texts().map(lambda text: {"bib": "", "text": text}),

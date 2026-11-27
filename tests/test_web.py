@@ -1195,6 +1195,27 @@ def test_with_the_programs_put_a_pdf_is_read_through_them_by_the_command_lines_c
                      ("pdfinfo", ["-enc", "UTF-8", "paper.pdf"], str(tmp_path))]  # fmt: skip
 
 
+def test_the_programs_check_gives_the_command_line_name_the_page_from_any_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """web/test/check.py runs the command line from each case's own folder, and CI names the
+    site as `--site _site`: a pdftotext script that named the page so looked for it under the
+    case's folder, and read no PDF (#850's first run in CI). Each script names it whole."""
+    import importlib.util
+    import shlex
+
+    spec = importlib.util.spec_from_file_location("web_check", WEB / "test" / "check.py")
+    check = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check)
+    monkeypatch.chdir(tmp_path)
+    for name in check.PROGRAMS:
+        shebang, line = check.script_for(Path("_site") / check.AUDIT, name).splitlines()
+        assert shebang == "#!/bin/sh"
+        assert shlex.split(line) == ["exec", check.NODE, str(check.TEST / "program.mjs"),
+                                     str((tmp_path / "_site" / check.AUDIT).resolve()), name,
+                                     "$@"]  # fmt: skip
+
+
 POPPLER_PACKAGE = WEB / "node_modules" / "@ai-ecoverse" / "wasm-poppler"
 
 

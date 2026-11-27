@@ -159,11 +159,17 @@ def programs_for(page: Path, folder: Path) -> dict[str, str]:
     folder.mkdir(parents=True, exist_ok=True)
     for name in PROGRAMS:
         script = folder / name
-        command = [NODE, str(TEST / "program.mjs"), str(page), name]
-        script.write_text(f"#!/bin/sh\nexec {shlex.join(command)} \"$@\"\n", encoding="utf-8")
+        script.write_text(script_for(page, name), encoding="utf-8")
         script.chmod(0o755)
     environment["PATH"] = os.pathsep.join([str(folder), environment.get("PATH", "")])
     return environment
+
+
+def script_for(page: Path, name: str) -> str:
+    """The shell script that runs the page's program `name` in Node. The command line runs it
+    from each case's own folder, so the page's folder is named whole, not as `--site` gave it."""
+    command = [NODE, str(TEST / "program.mjs"), str(page.resolve()), name]
+    return f"#!/bin/sh\nexec {shlex.join(command)} \"$@\"\n"
 
 
 def pdf_of(docx: Path) -> bytes:

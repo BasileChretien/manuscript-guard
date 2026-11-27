@@ -1,6 +1,6 @@
 // The page: start the checker, hand it the files the reader chooses, show what it says.
 // Nothing here sends anything anywhere; the checker runs in worker.js, in this browser.
-import { RULES, RULES_CHARS, packed, shaped, unpacked } from "./rules.js";
+import { RULES, RULES_BYTES, RULES_CHARS, packed, shaped, unpacked } from "./rules.js";
 
 const $ = (id) => document.getElementById(id);
 const say = (text) => { $("status").textContent = text; };
@@ -608,11 +608,15 @@ $("copyrules").addEventListener("click", async () => {
   // of #847).
   let text = "";
   try {
-    const wrong = shaped(form, offeredBoxes());
-    if (wrong) throw new Error(wrong);
+    // The checker first, which names the box a value is wrong in (round 3 of #847). What the
+    // form makes and the checker takes can then fail the form's shape only by its length: a
+    // text or a list longer than a link carries.
     await ask("rules", form);
     text = await packed(form);
-    if (text.length > RULES_CHARS) throw new Error("the rules are too long for a link");
+    if (shaped(form, offeredBoxes()) || text.length > RULES_CHARS
+      || new TextEncoder().encode(JSON.stringify(form)).length > RULES_BYTES) {
+      throw new Error("the rules are too long for a link");
+    }
   } catch (error) {
     rulesSaid(`No link was made: ${error.message.replace(/^the journal's form: /, "")}.`);
     return;

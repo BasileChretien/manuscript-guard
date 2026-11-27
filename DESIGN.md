@@ -31022,10 +31022,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     be told from the second year of "(IQR 1850, 2010)", which is no citation. Accepted.
   - The words before a part's year are not asked to be a name, so "(UKB 2006, Finland
     2012)" is a list and UKB there owes nothing. And the typed-citation reading
-    (`typed_citations.typed_citation`, which is main's and which `_authors_a_citation`, this
-    pull request's, asks first) takes a capitalised word with a year and the close after it
-    for a citation, so "(SD 1950)" leaves SD owing nothing at that use. Both shapes are rare
-    in a paper's prose. Accepted.
+    (`typed_citations.typed_citation`, which `_authors_a_citation` asks first) takes a
+    capitalised word with a year and the close after it for a citation, so "(SD 1950)"
+    leaves SD owing nothing at that use (round 2 of #838). Both shapes are rare in a paper's
+    prose. Accepted.
   - Only the statistical list's forms owe no later definition, and only one a table's or a
     figure's own text gives; one the running text gives later, and one listed in paper.yaml,
     on the shipped list or among G2's names, is used before it. A PDF whose lines are not

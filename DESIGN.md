@@ -17558,13 +17558,16 @@ guideline's own page on the day of its pull request, as the file requires, and
 `choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
 have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
-(labelled "self-controlled design (case series or case-crossover)"); its label says so, and
-which guideline it answers to is read before its entry is written.
+(labelled "self-controlled design (case series or case-crossover)"); its label,
+"descriptive case series", says so. No guideline is written for case series in every
+field, so G5 takes PROCESS 2023, written for surgical case series, or Kempen 2011, for
+uncontrolled case series, and its sections cite PROCESS 2023 (Basile, 2026-11-27).
 
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
 #801, and case reports since 2026-11-27, their plans not asked for an analysis or
-deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27), and
+descriptive case series since 2026-11-28, whose plans are asked for all seven. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -23762,6 +23765,16 @@ Open, recorded as each change landed:
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
   recipe would be one to download and use, not to share. Accepted.
+- **A descriptive case series is held to a surgical guideline or to one with no recipe.**
+  No guideline is written for case series in every field, so the design names PROCESS
+  2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
+  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
+  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
+  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
+  open licence. So a paper that declares either is told its checklist is not retrieved.
+  The design's four sections cite PROCESS 2023, whose items on preparing the patient for
+  the intervention (6g), the operator (6j) and the variation between operators (6k) a
+  series outside surgery answers as not applying. Accepted.
 - **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
   checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
   under some, which no recipe option reads. Table 1 of the statement paper (Global

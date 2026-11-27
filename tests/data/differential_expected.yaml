@@ -26,13 +26,10 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a case report is a design of `data/study_types.yaml`: a plan whose paper.yaml names
-      it is asked for its de-identification, timeline, diagnostic assessment, patient
-      perspective and informed consent, each from its CARE item, and not for the analysis
-      or the deviations every other plan has, where main read `study_type: case-report` as
-      no design of its table and refused it; and every plan's population is found under
-      CARE's words, "Patient information" or "The patient" as a whole heading, which the
-      drawn plans now hold
+      a descriptive case series is a design of `data/study_types.yaml`: a plan whose
+      paper.yaml names it is asked for its case selection, follow-up, comparison, and
+      consent and ethics, each from its PROCESS 2023 item, beside the seven every plan has,
+      where main read `study_type: case-series` as no design of its table and refused it
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,

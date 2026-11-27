@@ -3649,6 +3649,43 @@ def _changed(before: dict[str, bytes], after: dict[str, bytes]) -> set[str]:
     return {name for name in {*before, *after} if before.get(name) != after.get(name)}
 
 
+# ------------------------------------------------------------------------- figures (G3)
+
+
+@reading("figure script numbers")
+def _figure_script_numbers() -> Reading:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        """What G3 says of a figure script's source, given as its suffix (`.R`, `.py`) and its
+        text: each finding with its line and what it says, the file named by its name alone,
+        and the counts."""
+        with tempfile.TemporaryDirectory() as folder:
+            script = Path(folder) / f"figure{given['suffix']}"
+            script.write_bytes(given["text"].encode("utf-8"))
+            told = _told(check_figure_source(script, Classifier.load()))
+        for finding in told["findings"]:
+            finding["path"] = finding["path"] and Path(finding["path"]).name
+        return told
+
+    return read
+
+
+@reading("figure svg text")
+def _figure_svg_text() -> Reading:
+    from manuscript_guard.gates.figures import _extract_text
+
+    def read(svg: str) -> str | None:
+        """The text of an SVG figure as G3 reads it for the numbers it draws."""
+        with tempfile.TemporaryDirectory() as folder:
+            figure = Path(folder) / "figure.svg"
+            figure.write_bytes(svg.encode("utf-8"))
+            return _extract_text(figure)
+
+    return read
+
+
 # -------------------------------------------------------------------------- the round trip
 
 #: The word a block of a generated paper is known by. No two blocks have the same one.

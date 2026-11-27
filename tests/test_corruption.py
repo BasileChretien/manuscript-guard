@@ -793,6 +793,46 @@ def test_a_minus_sign_in_a_figure_is_the_hyphen_of_its_sidecar(
     assert _unbound_in_the_figure(project) == ["\N{MINUS SIGN}0.7"]
 
 
+def test_a_number_typed_beside_a_colour_an_index_or_a_status_is_caught(project: Path) -> None:
+    """G3 lets through the digits of a colour's name, a number that is a whole subscript and
+    the zero an exit status is compared with (the bisphosphonates paper, 2026-11-26). A result
+    typed beside each, on the same line, is still a number the script draws or holds."""
+    script = project / "figures" / "forest.py"
+    text = script.read_text(encoding="utf-8")
+    planted = (
+        '    ax.set_title("ROR 3.84", color="C0")\n'
+        "    scaled = [estimate][0] * 3.85\n"
+        "    status = subprocess.call(['true'])\n"
+        "    if status != 0 and estimate > 3.86:\n"
+        "        raise SystemExit(status)\n"
+    )
+    opening = "    fig, ax = plt.subplots("
+    changed = text.replace(opening, planted + opening, 1)
+    assert changed != text, "the fixture's figure call changed; update this test"
+    script.write_text(changed, encoding="utf-8")
+    projekt, _ = load_project(project)
+    found = sorted(f.message.split("'")[1] for f in check_figures(projekt, load_namespace(
+        projekt)[1]).findings if f.code.startswith("figure-source-"))  # fmt: skip
+    assert found == ["3.84", "3.85", "3.86"]
+
+
+def test_a_number_drawn_in_an_svg_with_a_stylesheet_is_caught(project: Path) -> None:
+    """An SVG's `<style>` is not read for numbers any more, so svglite's `stroke-miterlimit:
+    10.00` is no number the figure draws. A number edited into a label of the same figure is
+    still one, and so is one in a `<text>` written after the stylesheet."""
+    svg = project / "figures" / "forest.svg"
+    text = svg.read_text(encoding="utf-8")
+    text = text.replace(
+        '<style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>',
+        '<style type="text/css">*{stroke: #000000; stroke-miterlimit: 10.00; width: 7.77}'
+        "</style>\n  <text>6.66</text>",
+        1,
+    )
+    text = re.sub(r">(\d+\.\d+) \(", ">7.70 (", text, count=1)
+    svg.write_text(text, encoding="utf-8")
+    assert _unbound_in_the_figure(project) == ["6.66", "7.70"]
+
+
 def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     script = project / "figures" / "forest.py"
     text = script.read_text(encoding="utf-8")

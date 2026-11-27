@@ -606,6 +606,24 @@ The presentation list is deliberately narrow. `x`, `y`, `n` and `digits` are **n
 because allowing bare coordinates would allow `data.frame(x = c(1, 2, 3))` — data typed
 into a figure script, which gets its own error message.
 
+Three readings are neither drawn nor data, and pass whatever surrounds them, as the
+bisphosphonates paper's R figures showed (2026-11-26). A string that is, whole, one of R's
+colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gray 0 to 100,
+and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
+`"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
+bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and
+not after a keyword (`x in [3]`, `return [3]`), unless the word is a field's (`d$class[1]`),
+is an index. A zero compared by `==` or `!=` with a process's exit status is the test of
+whether it failed: a name the script assigns, at the top level or inside braces (a
+function's body, `local({ })`, `tryCatch({ })`) but not as a call's argument, from
+`system2()`, `system()`, `os.system()` or `subprocess.call()`, or from a `.returncode` or a
+run's `$status`; a run being processx's `run()`, with its package or without, sys's
+`exec_internal()`, or callr's `rcmd()`, `rcmd_safe()` or `rscript()`; and any of those
+written in place. A `$status` of anything else, a data frame's column, is read as before.
+A rendered SVG's `<style>` and `<script>` draw nothing either, so their text is not read as
+the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind check still
+reads them, for a name.
+
 **The marks the script computes.** Labels drawn from the results say nothing about the marks.
 `sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
 `stat_summary` draws a mean and its standard error, `geom_smooth` a fitted line and its
@@ -19684,6 +19702,35 @@ Added by the adversarial review, verified and **not** fixed:
   as a difference, not as the environment: the dictionary is data.
   Pinned by `tests/test_corruption.py::test_a_typed_dictionary_release_fails_and_only_beside_its_name`
   and `tests/test_emit.py::test_a_release_file_that_does_not_open_with_a_version_is_refused`.
+- **G3's script check passes three readings by their form alone.** Pinned by
+  `tests/test_figures.py::test_a_string_that_is_no_colour_name_is_still_read`.
+  - A colour is known by its whole name and the script's language only: R's spelling with a
+    space (`"grey 50"`, which R reads) and a grey level matplotlib takes as a string
+    (`color="0.5"`) are read as drawn numbers, while a label that is, whole, one of R's names
+    (`labs(title = "red3")`) is taken for a colour and its number is not read. Pinned by
+    `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
+  - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
+    (`edges[1:3]`) are read as numbers bound to nothing, and so is the subscript of a name
+    that is a keyword in either language and no field's (`from[1]` in R, whose `from` is
+    a keyword of Python's). A soft keyword
+    of Python's is read as a name, so `case [3]:` is taken for an index and its number is
+    not read: the tokens do not say whether `match` or `case` opens a statement (round 2
+    of #817). Pinned by
+    `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read` and
+    `tests/test_figures.py::test_a_number_that_is_a_whole_subscript_is_an_index`.
+  - An exit status is known by the calls that return one, by `.returncode`, and by the
+    `$status` of a run (processx's `run()`, sys's `exec_internal()`, callr's `rcmd()`,
+    `rcmd_safe()` and `rscript()`, sys's and callr's with their package written, so
+    `library(callr)` then `rcmd()` is no run): R's `system2(stdout = TRUE)` and
+    `system(intern = TRUE)`, which return the output, are taken for a status, and so is the
+    `$status` of a function of the script's own called `run`; while `Popen(...).wait()`, a
+    status returned by a function of the script's own, one assigned in a function's argument,
+    one in an annotated assignment (`rc: int = subprocess.call(...)`, read as assigning to
+    `int`, since the tokens hold no line breaks and a block's colon before `rc =` reads the
+    same way), a run kept by another call (`res <- tryCatch(processx::run(...))`) and one
+    kept in a list's item (`results[[i]]$status`) are not, and their zero is read. Pinned by
+    `tests/test_figures.py::test_a_zero_compared_with_an_exit_status_is_no_number` and
+    `tests/test_figures.py::test_a_zero_compared_with_anything_else_is_still_read`.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.

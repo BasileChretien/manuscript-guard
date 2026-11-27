@@ -950,3 +950,44 @@ def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Pat
     # The build rewrites two forms and sees no other, so a target written any other way
     # arrives as it was: one that is relative fails here, and has to be written out in full.
     assert relative_targets(description) == []
+
+
+#: Counts as the licence summaries write them.
+_SMALL_NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
+
+
+def test_the_licence_summaries_name_every_non_commercial_guideline() -> None:
+    """Round 1 of #845: CARE 2013 shipped under CC BY-NC-ND as a second non-commercial
+    guideline, and ATTRIBUTION.md, docs/principles.md and the reporting-checklist skill still
+    said there was one, READUS-PV. Each summary names every guideline that ATTRIBUTION.md's
+    table gives a CC BY-NC licence, and any count it states is theirs."""
+    from manuscript_guard.paths import SHIPPED_RECIPES
+    from manuscript_guard.reporting import load_recipe
+
+    attribution = text_of(REPO / "ATTRIBUTION.md")
+    rows = re.findall(r"(?m)^\| ([^|]+?) \| \*\*CC BY-NC", attribution)
+    restricted = [
+        path.name.split(".recipe")[0]
+        for path in sorted(SHIPPED_RECIPES.glob("*.recipe.yaml"))
+        if "BY-NC" in load_recipe(path)[1]["licence"]
+    ]
+    assert restricted, "no shipped recipe is non-commercial; the test reads nothing"
+    for name in restricted:
+        assert any(name.startswith(row.replace(" ", "-")) for row in rows), name
+    summaries = [
+        REPO / "ATTRIBUTION.md",
+        REPO / "docs" / "principles.md",
+        REPO / "plugin" / "skills" / "reporting-checklist" / "SKILL.md",
+    ]
+    for path in summaries:
+        paragraphs = [
+            " ".join(paragraph.split())
+            for paragraph in re.split(r"\n\s*\n", text_of(path))
+            if "non-commercial" in paragraph and not paragraph.lstrip().startswith("|")
+        ]
+        assert paragraphs, f"{path.name}: no summary of the non-commercial licences"
+        for paragraph in paragraphs:
+            for row in rows:
+                assert row in paragraph, f"{path.name} does not name {row}: {paragraph}"
+            for word in re.findall(r"(?i)\b(one|two|three|four|five|six) of\b", paragraph):
+                assert _SMALL_NUMBERS[word.lower()] == len(rows), f"{path.name}: {word}"

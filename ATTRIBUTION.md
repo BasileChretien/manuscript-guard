@@ -8,8 +8,8 @@ profile locally. Neither the documents nor the transcribed item text is committe
 repository or included in the distributed package.
 
 That is a deliberate structure, not an oversight. Reporting guidelines are published under
-a patchwork of terms — one of those below is explicitly non-commercial, several state no
-reuse licence at all — and a repository that shipped their text would have to satisfy the
+a patchwork of terms — two of those below, READUS-PV and CARE 2013, are explicitly
+non-commercial, several state no reuse licence at all — and a repository that shipped their text would have to satisfy the
 strictest of them. Fetching on request avoids the question entirely: you obtain the document
 exactly as you would by clicking the link.
 

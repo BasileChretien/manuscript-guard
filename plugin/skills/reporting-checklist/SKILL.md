@@ -57,7 +57,8 @@ manuscript-guard fetch STROBE
 That downloads the guideline's own document into `profiles/reporting/sources/` in the
 project, prints the licence before it starts, and checks the file against the checksum the
 recipe records. It is a download, so tell the author which guideline and which site before
-you run it. READUS-PV is licensed for non-commercial use only, and the command says so.
+you run it. READUS-PV and CARE 2013 are licensed for non-commercial use only, CARE 2013 with
+no derivatives either, and the command says so.
 
 - TRIPOD+AI has no checklist file better than its statement paper, so its recipes read the
   paper's tables from the full text Europe PMC serves, and `fetch` downloads that XML. The

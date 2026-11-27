@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/results/1",
   "title": "manuscript-guard results fragment",
-  "description": "One analysis script's contribution to the project's results. Machine-written only. A project may contain many fragments; they are merged, and a key defined twice is an error rather than a last-one-wins.",
+  "description": "One analysis script's contribution to the project's results. Machine-written only. A project may contain many fragments; they are merged, and a key defined twice is an error rather than a last-one-wins, but for a software record (a key under software. with the role software) that two fragments write the same in every field, which is one record.",
   "type": "object",
   "required": ["schema", "provenance", "values"],
   "additionalProperties": false,

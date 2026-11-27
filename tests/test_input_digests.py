@@ -341,3 +341,178 @@ def test_the_r_emitter_agrees_byte_for_byte(tmp_path: Path) -> None:
     from_r = dict(line.split() for line in out.stdout.strip().splitlines() if line.strip())
     for name in CASES:
         assert from_r[name] == input_digest(tmp_path / name), f"{name} differs between R and Python"
+
+
+# --- each file read once in a run --------------------------------------------
+#
+# `check` read every declared input whole, twice for a binary one (its bytes, then its digest),
+# and again for each fragment that declared it. A study declaring seven gigabytes of a
+# pharmacovigilance extract, several files in two fragments, waited over two minutes and held
+# a whole file in memory for each. A run now takes each file's digests once, streamed where
+# its line endings are content, and the memo ends with the run.
+
+
+def _declared_by_two(project: Path, name: str, size: int) -> Path:
+    """An input of `size` bytes, declared by two fragments of two scripts."""
+    target = project / "data" / name
+    target.write_bytes(bytes(range(256)) * (size // 256))
+    for stem in ("09_first", "09_second"):
+        script = project / "analysis" / f"{stem}.py"
+        script.write_text("# reads the shared input\n", encoding="utf-8")
+        em = Emitter(script, inputs=[target], root=project)
+        em.value(f"{stem.replace('09_', 'shared_')}.n", 1)
+        em.write(project / "results" / f"{stem}.json")
+    return target
+
+
+def _opened(monkeypatch: pytest.MonkeyPatch, target: Path) -> list[str]:
+    """The modes `target` is opened in from now on, in order."""
+    import pathlib
+
+    opened: list[str] = []
+    real = pathlib.Path.open
+    wanted = target.resolve()
+
+    def counting(self, mode="r", *args, **kwargs):
+        if Path(self).resolve() == wanted:
+            opened.append(mode)
+        return real(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "open", counting)
+    return opened
+
+
+@pytest.mark.parametrize("name", ["shared.parquet", "shared.csv"])
+def test_a_check_reads_an_input_two_fragments_declare_once(
+    project: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, name, 64 * 1024)
+    opened = _opened(monkeypatch, target)
+    report, *_ = _gate_run(project)
+    assert "input-changed" not in codes(report)
+    assert len(opened) == 1, f"{name} was opened {len(opened)} times in one check: {opened}"
+
+
+def test_a_binary_input_is_streamed_never_read_whole(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Its bytes are its content, so nothing needs them all in memory at once: a reading of
+    the whole of a 1.4 GB file is 1.4 GB held while it is hashed."""
+    import pathlib
+
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, "shared.parquet", 64 * 1024)
+    recorded = input_digest(target)
+    real = pathlib.Path.read_bytes
+    wanted = target.resolve()
+
+    def refusing(self):
+        if Path(self).resolve() == wanted:
+            raise AssertionError(f"{self} was read whole")
+        return real(self)
+
+    monkeypatch.setattr(pathlib.Path, "read_bytes", refusing)
+    assert input_digest(target) == recorded == sha256_of(target)
+    assert input_digest_matches(target, recorded)
+    report, *_ = _gate_run(project)
+    assert "input-changed" not in codes(report)
+
+
+def _recorded_as(project: Path, stem: str, name: str, digest: str) -> None:
+    """Fragment `stem` records `digest` for the input `name`, its own sidecar kept true: what
+    a fragment written before the input changed, or by an older emitter, records."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = project / "results" / f"{stem}.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    for declared in document["provenance"]["inputs"]:
+        if declared["path"].endswith(name):
+            declared["sha256"] = digest
+    fragment.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    write_digest(fragment)
+
+
+def test_a_stale_record_of_a_binary_input_reads_it_no_more(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A binary input has one digest: once the run has it, a second fragment recording
+    another, written before the data were refreshed, is told from it without a read."""
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, "shared.parquet", 64 * 1024)
+    _recorded_as(project, "09_second", "shared.parquet", "0" * 64)
+    opened = _opened(monkeypatch, target)
+    report, *_ = _gate_run(project)
+    changed = [f for f in report.findings if f.code == "input-changed"]
+    assert [f.path.name for f in changed] == ["09_second.json"]
+    assert len(opened) == 1, f"opened {len(opened)} times in one check: {opened}"
+
+
+def test_a_text_input_recorded_in_two_spellings_is_read_once(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One fragment records a CSV's content with LF, as the emitter does, and another its
+    CRLF bytes, as an emitter before line endings were left out did: both match, from the
+    one reading of the file."""
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, "shared.csv", 64 * 1024)
+    target.write_bytes(b"id,value\r\n" + b"1,10\r\n" * 4096)
+    for stem in ("09_first", "09_second"):
+        _recorded_as(project, stem, "shared.csv", input_digest(target))
+    _recorded_as(project, "09_second", "shared.csv", sha256_of(target))
+    assert input_digest(target) != sha256_of(target)
+    opened = _opened(monkeypatch, target)
+    report, *_ = _gate_run(project)
+    assert "input-changed" not in codes(report)
+    assert len(opened) == 1, f"opened {len(opened)} times in one check: {opened}"
+
+
+def test_the_digests_a_run_takes_end_with_the_run(project: Path) -> None:
+    """A file rewritten between two checks, to the same size and the same modification time,
+    is read again by the second: nothing a run learnt is kept for the next one."""
+    import os
+
+    from manuscript_guard.cli import _gate_run
+
+    target = _declared_by_two(project, "shared.parquet", 64 * 1024)
+    first, *_ = _gate_run(project)
+    assert "input-changed" not in codes(first)
+    stamp = target.stat()
+    target.write_bytes(bytes(reversed(target.read_bytes())))
+    os.utime(target, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert target.stat().st_size == stamp.st_size
+    assert target.stat().st_mtime_ns == stamp.st_mtime_ns
+    second, *_ = _gate_run(project)
+    assert "input-changed" in codes(second)
+
+
+@pytest.mark.parametrize("data", [
+    b"id,value\n1,10\n", b"id,value\r\n1,10\r\n", b"id,value\r1,10\r",
+    b"id,value\n1,10\r\n2,20\r\n", b"\xff\xfe" + "a,b\r\n".encode("utf-16-le"), b"",
+], ids=["lf", "crlf", "cr", "mixed", "utf16", "empty"])
+def test_a_run_answers_as_a_single_call_does(tmp_path: Path, data: bytes) -> None:
+    """Inside a run and outside one, the same file matches the same digests and no other."""
+    from manuscript_guard.emit import digests_once
+
+    path = tmp_path / "input.csv"
+    path.write_bytes(data)
+    lf = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    spellings = {sha256_of(path)} | {
+        __import__("hashlib").sha256(text).hexdigest()
+        for text in (lf, lf.replace(b"\n", b"\r\n"), lf.replace(b"\n", b"\r"))
+    }
+    tried = spellings | {"0" * 64}
+    outside = {digest: input_digest_matches(path, digest) for digest in tried}
+    with digests_once(), digests_once():
+        inside = {digest: input_digest_matches(path, digest) for digest in tried}
+        assert input_digest(path) == input_digest(path)
+        normal = input_digest(path)
+    assert inside == outside
+    assert normal == input_digest(path)
+    assert not outside["0" * 64]

@@ -149,7 +149,7 @@ ROUTES: dict[str, Route] = {
            "value-not-in-quote", "quotation-", "statements-without-passage",
            "judgement-not-human", "attestation-", "source-unreadable", "unused-literature",
            "value-from-abstract", "no-reference-source", "zotero-unreadable",
-           "pinning-unchecked", "no-live-citations", "citation-"),
+           "pinning-unchecked", "no-live-citations", "citations-not-live", "citation-"),
     **_all("literature-verify", ("passages",), "passage-"),
     # A recorded copy kept out of git: the command takes again a copy it took; one the author
     # saved by hand comes from whoever saved it, as the finding's hint says.

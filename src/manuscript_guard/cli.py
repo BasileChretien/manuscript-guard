@@ -34,7 +34,7 @@ from manuscript_guard.build import (
     build_document,
 )
 from manuscript_guard.build.assemble import check_shapes
-from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.document import ZoteroNotReady, abbreviations
 from manuscript_guard.build.latex_check import check_latex
 from manuscript_guard.build.latex_values import check_values
 from manuscript_guard.build.tex_check import check_tex
@@ -46,6 +46,7 @@ from manuscript_guard.contracts import (
     load_project,
     read_text,
 )
+from manuscript_guard.emit import digests_once
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_ai_use,
@@ -189,124 +190,129 @@ def _gate_run(
     A manuscript file that cannot be read, one saved in a code page for instance, stops each
     gate that reads the manuscript, and only those. It is one finding for each such file,
     which names the gates that did not run; the others report as usual.
+
+    Each file whose digest a gate takes is read once in the run, however many records name
+    it (`digests_once`).
     """
-    project, contract_report = load_project(start)
-    namespace, results, literature, load_report = load_namespace(project)
+    with digests_once():
+        project, contract_report = load_project(start)
+        namespace, results, literature, load_report = load_namespace(project)
 
-    chosen = resolve_stage(project, stage, submission)
-    at_submission = chosen == SUBMISSION
+        chosen = resolve_stage(project, stage, submission)
+        at_submission = chosen == SUBMISSION
 
-    unreadable = _unreadable_sources(project)
-    stopped: list[str] = []
-    gate_reports: list[Report] = []
-    latex = manuscript_format(project.path("manuscript")) == LATEX
-    unread: list[str] = []
-    for name, gate in (
-        ("G11", lambda: check_review(project, submission=at_submission)),
-        ("G1", lambda: check_freshness(project, results)),
-        ("G2", lambda: check_numbers(project, namespace, results, literature)),
-        ("G2", lambda: check_bound_units(project, results)),
-        ("G2", lambda: check_bound_comparisons(project, results)),
-        ("G3", lambda: check_figures(project, results)),
-        ("G3", lambda: check_figure_alt(project, namespace, chosen)),
-        ("G3", lambda: check_figure_colours(project)),
-        ("G3", lambda: check_placed(project)),
-        ("G10", lambda: check_figure_reviews(project, content_digest)),
-        ("G7", lambda: check_citations(project, literature)),
-        ("G7", lambda: check_literature_chain(project, literature)),
-        ("G7", lambda: check_prose_quotations(project)),
-        ("G7", lambda: check_passages(project, chosen)),
-        ("G7", lambda: check_currency(project, chosen, literature)),
-        ("G7", lambda: check_weak_sources(project)),
-        ("G7", lambda: check_recycling(project, chosen)),
-        # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
-        ("G7", lambda: check_rrids(project)),
-        ("G4", lambda: check_journal(project)),
-        ("G4", lambda: check_boxes(project, namespace, chosen)),
-        # The pack's main document in a format the journal takes, as the last pack's manifest
-        # records it, or as `submit` will pack it.
-        ("G4", lambda: check_main_document(project, chosen)),
-        ("G4", lambda: check_shortlist(project)),
-        ("G4", lambda: check_package_doi(project, submission=at_submission)),
-        # It reads paper.yaml and the receipts, and none of the manuscript.
-        ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
-        ("G4", lambda: check_statement_sources(project)),
-        # Its own, since the note for a paper whose journal asks for no statement runs with
-        # no journal chosen.
-        ("G4", lambda: check_ai_use(project, chosen)),
-        # Its own too: the declarations are held to authors.yaml whether or not a journal is
-        # chosen, and a journal that asks for them has G4's required statements as well.
-        ("G4", lambda: check_disclosures(project, chosen)),
-        # The statements every paper makes where no profile lists the journal's, and no
-        # heading with nothing under it.
-        ("G4", lambda: check_statements(project, chosen)),
-        ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
-        ("G6", lambda: check_writing(project, results, submission=at_submission)),
-        ("G9", lambda: check_methods(project, namespace, results)),
-        ("G12", lambda: check_design(project, results, chosen).merge(
-            check_design_rounds(project, submission=at_submission))),
-        # A check of its own, since it reads the manuscript: one that cannot be read stops
-        # it and not the plan's.
-        ("G12", lambda: check_registration(project, results, chosen)),
-        # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
-        ("G12", lambda: check_controls(project, results, chosen)),
-        ("G12", lambda: check_held_out(project, results, chosen)),
-        ("G12", lambda: check_data_sources(project, chosen)),
-        ("G12", lambda: check_declared_datasets(project, results)),
-        ("G12", lambda: check_software(project, results, chosen)),
-        # Its own, since it reads the manuscript: one that cannot be read stops it and not
-        # the check of the plan against the scripts.
-        ("G12", lambda: check_software_cited(project, results)),
-        ("G7", lambda: check_method_passages(project)),
-        ("G12", lambda: check_methods_review(project)),
-        ("G8", lambda: check_consistency(results)),
-        ("G2", lambda: check_small_cells(project, results)),
-        ("G2", lambda: check_recoverable(project, results)),
-        ("G1", lambda: check_restricted_inputs(project, results)),
-        ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
-        ("G1", lambda: check_held_out_reads(project, results, chosen)),
-        ("G1", lambda: check_vault_results(project, results, chosen)),
-        ("G1", lambda: check_datasets(project, results)),
-        ("G1", lambda: check_values(project, namespace, results)),
-        ("G8", lambda: check_reported(project, results)),
-        ("G8", lambda: check_interpretation(project)),
-        # A trial's baseline table with P values, emitted or typed (CONSORT).
-        ("G8", lambda: check_baseline(project, results)),
-        ("G8", lambda: check_relations(results)),
-        ("G8", lambda: check_recomputed(project, namespace, results)),
-        ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
-        ("G13", lambda: check_revision(project, submission=at_submission)),
-        ("G14", lambda: check_language(project, chosen, results)),
-        ("G15", lambda: check_models(project, results)),
-        ("G15", lambda: check_summaries(project, results)),
-        ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
-        ("G16", lambda: check_quality_reported(
-            project, results, chosen, submission=at_submission)),
-        ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
-        ("BUILD", lambda: check_latex(project)),
-    ):
-        if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
-            # The Markdown build's own checks: a LaTeX manuscript's build is checked by
-            # `check_latex` and its compile (step 13).
-            continue
-        if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
-            # A check that reads only Markdown would read nothing here and pass: it is not
-            # run, and its gate says so once.
-            if name not in unread:
-                unread.append(name)
-            continue
-        report = _guarded(name, gate, unreadable)
-        if report is None:
-            # A gate run as several checks stopped once, and is named once.
-            if name not in stopped:
-                stopped.append(name)
-        else:
-            gate_reports.append(report)
+        unreadable = _unreadable_sources(project)
+        stopped: list[str] = []
+        gate_reports: list[Report] = []
+        latex = manuscript_format(project.path("manuscript")) == LATEX
+        unread: list[str] = []
+        for name, gate in (
+            ("G11", lambda: check_review(project, submission=at_submission)),
+            ("G1", lambda: check_freshness(project, results)),
+            ("G2", lambda: check_numbers(project, namespace, results, literature)),
+            ("G2", lambda: check_bound_units(project, results)),
+            ("G2", lambda: check_bound_comparisons(project, results)),
+            ("G3", lambda: check_figures(project, results)),
+            ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+            ("G3", lambda: check_figure_colours(project)),
+            ("G3", lambda: check_placed(project)),
+            ("G10", lambda: check_figure_reviews(project, content_digest)),
+            ("G7", lambda: check_citations(project, literature)),
+            ("G7", lambda: check_literature_chain(project, literature)),
+            ("G7", lambda: check_prose_quotations(project)),
+            ("G7", lambda: check_passages(project, chosen)),
+            ("G7", lambda: check_currency(project, chosen, literature)),
+            ("G7", lambda: check_weak_sources(project)),
+            ("G7", lambda: check_recycling(project, chosen)),
+            # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
+            ("G7", lambda: check_rrids(project)),
+            ("G4", lambda: check_journal(project)),
+            ("G4", lambda: check_boxes(project, namespace, chosen)),
+            # The pack's main document in a format the journal takes, as the last pack's manifest
+            # records it, or as `submit` will pack it.
+            ("G4", lambda: check_main_document(project, chosen)),
+            ("G4", lambda: check_shortlist(project)),
+            ("G4", lambda: check_package_doi(project, submission=at_submission)),
+            # It reads paper.yaml and the receipts, and none of the manuscript.
+            ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
+            ("G4", lambda: check_statement_sources(project)),
+            # Its own, since the note for a paper whose journal asks for no statement runs with
+            # no journal chosen.
+            ("G4", lambda: check_ai_use(project, chosen)),
+            # Its own too: the declarations are held to authors.yaml whether or not a journal is
+            # chosen, and a journal that asks for them has G4's required statements as well.
+            ("G4", lambda: check_disclosures(project, chosen)),
+            # The statements every paper makes where no profile lists the journal's, and no
+            # heading with nothing under it.
+            ("G4", lambda: check_statements(project, chosen)),
+            ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
+            ("G6", lambda: check_writing(project, results, submission=at_submission)),
+            ("G9", lambda: check_methods(project, namespace, results)),
+            ("G12", lambda: check_design(project, results, chosen).merge(
+                check_design_rounds(project, submission=at_submission))),
+            # A check of its own, since it reads the manuscript: one that cannot be read stops
+            # it and not the plan's.
+            ("G12", lambda: check_registration(project, results, chosen)),
+            # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
+            ("G12", lambda: check_controls(project, results, chosen)),
+            ("G12", lambda: check_held_out(project, results, chosen)),
+            ("G12", lambda: check_data_sources(project, chosen)),
+            ("G12", lambda: check_declared_datasets(project, results)),
+            ("G12", lambda: check_software(project, results, chosen)),
+            # Its own, since it reads the manuscript: one that cannot be read stops it and not
+            # the check of the plan against the scripts.
+            ("G12", lambda: check_software_cited(project, results)),
+            ("G7", lambda: check_method_passages(project)),
+            ("G12", lambda: check_methods_review(project)),
+            ("G8", lambda: check_consistency(results)),
+            ("G2", lambda: check_small_cells(project, results)),
+            ("G2", lambda: check_recoverable(project, results)),
+            ("G1", lambda: check_restricted_inputs(project, results)),
+            ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+            ("G1", lambda: check_held_out_reads(project, results, chosen)),
+            ("G1", lambda: check_vault_results(project, results, chosen)),
+            ("G1", lambda: check_datasets(project, results)),
+            ("G1", lambda: check_values(project, namespace, results)),
+            ("G8", lambda: check_reported(project, results)),
+            ("G8", lambda: check_interpretation(project)),
+            # A trial's baseline table with P values, emitted or typed (CONSORT).
+            ("G8", lambda: check_baseline(project, results)),
+            ("G8", lambda: check_relations(results)),
+            ("G8", lambda: check_recomputed(project, namespace, results)),
+            ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
+            ("G13", lambda: check_revision(project, submission=at_submission)),
+            ("G14", lambda: check_language(project, chosen, results)),
+            ("G15", lambda: check_models(project, results)),
+            ("G15", lambda: check_summaries(project, results)),
+            ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
+            ("G16", lambda: check_quality_reported(
+                project, results, chosen, submission=at_submission)),
+            ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
+            ("BUILD", lambda: check_latex(project)),
+        ):
+            if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
+                # The Markdown build's own checks: a LaTeX manuscript's build is checked by
+                # `check_latex` and its compile (step 13).
+                continue
+            if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
+                # A check that reads only Markdown would read nothing here and pass: it is not
+                # run, and its gate says so once.
+                if name not in unread:
+                    unread.append(name)
+                continue
+            report = _guarded(name, gate, unreadable)
+            if report is None:
+                # A gate run as several checks stopped once, and is named once.
+                if name not in stopped:
+                    stopped.append(name)
+            else:
+                gate_reports.append(report)
 
-    reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
-    reports += [check_format(project), Report(tuple(not_read_in_latex(name) for name in unread))]
-    report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
-    return report, project, chosen, deferred, namespace
+        reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
+        reports += [check_format(project),
+                    Report(tuple(not_read_in_latex(name) for name in unread))]
+        report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
+        return report, project, chosen, deferred, namespace
 
 
 #: The checks that read the manuscript only as Markdown, by the name each entry of
@@ -3175,6 +3181,16 @@ def cmd_journal(args: argparse.Namespace) -> int:
     return 0
 
 
+def _seconds(given: str) -> int:
+    """`--timeout`'s value: a whole number of seconds, from 1 to seven days."""
+    from manuscript_guard.verify import VerifyError, seconds
+
+    try:
+        return seconds(given, "--timeout")
+    except VerifyError as exc:
+        raise argparse.ArgumentTypeError(str(exc).removeprefix("--timeout is ")) from None
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Re-run the analysis and check it still produces the recorded results.
 
@@ -3188,9 +3204,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
     if args.receipt is not None:
-        return _receipt(project, args.receipt, args.only)
+        return _receipt(project, args.receipt, args.only, rscript=args.rscript,
+                        timeout=args.timeout)  # fmt: skip
     try:
-        result = verify(project, only=args.only)
+        result = verify(project, only=args.only, rscript=args.rscript, timeout=args.timeout)
     except VerifyError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -3209,7 +3226,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
-def _receipt(project, site: str, only: list[str] | None) -> int:
+def _receipt(project, site: str, only: list[str] | None, *, rscript: str | None = None,
+             timeout: int | None = None) -> int:  # fmt: skip
     """`verify --receipt SITE`, run where the data are: each harvest entry naming the site
     run in a copy, and the receipt written."""
     from manuscript_guard.harvest import HarvestError, make_receipt
@@ -3219,7 +3237,7 @@ def _receipt(project, site: str, only: list[str] | None) -> int:
               "--only", file=sys.stderr)  # fmt: skip
         return 2
     try:
-        path, written, warned = make_receipt(project, site)
+        path, written, warned = make_receipt(project, site, rscript=rscript, timeout=timeout)
     except HarvestError as exc:
         print(f"manuscript-guard: no receipt written: {exc}", file=sys.stderr)
         return 1
@@ -4825,13 +4843,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         try:
             return _build_annotated(project, namespace, results, assembled, args)
         except BuildError as exc:
-            print(f"manuscript-guard: {exc}", file=sys.stderr)
-            if not args.offline:
-                print(
-                    "  If Zotero is not running, `--offline` formats citations from "
-                    "references.bib instead.",
-                    file=sys.stderr,
-                )
+            _said_build_error(exc, args.offline)
             return 2
 
     mode = OFFLINE if args.offline else LIVE
@@ -4851,13 +4863,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 1
     except BuildError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        if not args.offline:
-            print(
-                "  If Zotero is not running, `--offline` formats citations from "
-                "references.bib instead.",
-                file=sys.stderr,
-            )
+        _said_build_error(exc, args.offline)
         return 2
 
     print(f"built {result.output} ({result.mode})")
@@ -4883,6 +4889,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
+    if mode == OFFLINE:
+        _said_offline_citations(project, result, supplement)
     # Built, and said, but not to be sent: the journal's review is blind and the document
     # names an author. The supplement's findings were printed as it was built.
     from manuscript_guard.build.blinding import CODE, check_blinded
@@ -4932,6 +4940,52 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("The document names an author, or could not be read for their names, and the "
               "journal's review is blind: do not send it.")  # fmt: skip
     return 1 if named or hidden else 0
+
+
+def _said_build_error(exc: BuildError, offline: bool) -> None:
+    """A build that could not run, said. A live build Zotero could not have made says its
+    own reason (`ZoteroNotReady`); any other names `--offline` in case Zotero was the cause."""
+    print(f"manuscript-guard: {exc}", file=sys.stderr)
+    if not offline and not isinstance(exc, ZoteroNotReady):
+        print(
+            "  If Zotero is not running, `--offline` formats citations from "
+            "references.bib instead.",
+            file=sys.stderr,
+        )
+
+
+def _said_offline_citations(project, result, supplement: Path | None) -> None:
+    """What an offline build's citations are, and whether a live build would work now.
+
+    The document built `--offline` holds its citations as text, and nothing said so: the
+    author found out in Word, where the Zotero plugin had nothing to refresh. Said only of a
+    document that cites something; Zotero is asked, read-only, what a live build would meet
+    (`zotero.readiness`)."""
+    from manuscript_guard.build.document import outside_code, zotero_not_ready
+    from manuscript_guard.zotero import BUSY, client, find_citations
+
+    keys = set(result.citations)
+    if supplement is not None:
+        source = project.path("build") / f"{supplement.stem}.md"
+        with contextlib.suppress(OSError):
+            text = outside_code(source.read_text(encoding="utf-8"))
+            keys |= {use.citekey for use in find_citations(text, source)}
+    if not keys:
+        return
+    print("  The citations are formatted text from literature/references.bib, not Zotero "
+          "fields: Word's Zotero plugin cannot refresh, restyle or add to them.")  # fmt: skip
+    found = client.readiness(tuple(sorted(keys)))
+    if found.ready:
+        print("  A live build would work now: Zotero and Better BibTeX answer and hold every "
+              "cited key. Build without --offline for Zotero fields.")  # fmt: skip
+        return
+    if found.state == BUSY:
+        print("  Whether a live build would work now is not known: Zotero is running and "
+              "Better BibTeX did not answer in time. Build without --offline to try.")  # fmt: skip
+        return
+    why, what = zotero_not_ready(found)
+    print(f"  A live build would not work now: {why}. For Zotero fields, {what}, then build "
+          "without --offline.")  # fmt: skip
 
 
 def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Path | None:
@@ -7364,6 +7418,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="at the site that holds the data: run each harvest entry naming SITE in a copy, "
         "and write receipts/SITE.receipt.json of what ran and what came out, by digest; "
         "refused where an output holds a count the custodian forbids",
+    )
+    verify.add_argument(
+        "--rscript",
+        metavar="PATH",
+        help="the Rscript to run R scripts with, for this run; MANUSCRIPT_GUARD_RSCRIPT names "
+        "it for the machine, and otherwise the first Rscript on PATH runs them. Each script is "
+        "said with the interpreter and version that ran it",
+    )
+    verify.add_argument(
+        "--timeout",
+        type=_seconds,
+        metavar="SECONDS",
+        help="how long one script may run before it is stopped, at most 604800 (7 days); "
+        "otherwise MANUSCRIPT_GUARD_VERIFY_TIMEOUT, then `verify: {timeout: SECONDS}` in "
+        "paper.yaml, then 1800",
     )
     verify.set_defaults(func=cmd_verify)
 

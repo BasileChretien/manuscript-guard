@@ -26,12 +26,12 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a heading of a plan may name its section exactly by the identifier its attribute block
-      gives, `## Part 3 {#sample-size}`, and G12 then finds the section whatever the heading's
-      words, which answers a false alarm of the words (DESIGN.md, Known gaps, "A design's
-      sections are found by the words of their headings"); the drawn plans hold such a heading
-      in every example, which main reads as no section. A missing section's hint now says the
-      identifier that names it
+      a diagnostic accuracy study is a design of `data/study_types.yaml`: a plan whose
+      paper.yaml names it is asked for its sampling, reference standard, thresholds,
+      blinding, indeterminate results, missing data and sample size, each from its STARD
+      2015 item, where main read `study_type: diagnostic-accuracy` as no design of its table
+      and refused it; and every plan's exposure and outcome are found under STARD's words,
+      "Index test" and "Target condition", which the drawn plans now hold
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,

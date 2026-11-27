@@ -31041,8 +31041,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An item's marker is read as pandoc 3.9's fancy_lists reads it, checked against `pandoc -f
     markdown -t json` (round 2 of #841): a bullet; a number, a letter or a roman numeral of one
     case with a stop or a bracket, or in brackets; a capital letter with a stop only before two
-    spaces or a tab, so "C. elegans" and "I. The cells" open no item. A word of small letters
-    that are all roman numerals' opens one, "mix. The cells", as it does in pandoc, and an
+    spaces or a tab, so "C. elegans" and "I. The cells" open no item. A word of roman
+    letters opens one only where it is a numeral as pandoc's `romanNumeral` reads one, its
+    thousands, hundreds, tens and units in order: "mix. The cells" opens one, as in pandoc,
+    and "civil.", "dim.", "lil.", "ic." and "xm." none (round 3 of #841). An
     `example_lists` marker, `(@)`, opens none. Pinned by
     `tests/test_language.py::test_an_item_opens_as_pandoc_s_fancy_lists_open_one`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in

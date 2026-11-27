@@ -2734,6 +2734,12 @@ def _any_capital_with_a_stop_opens_an_item(patch: pytest.MonkeyPatch) -> None:
         r"[ \t]*(?:[-*+]|\(?(?:\d{1,9}|[A-Za-z]|[ivxlcdmIVXLCDM]{1,6})[.)])[ \t]"))
 
 
+def _any_word_of_roman_letters_opens_an_item(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile(
+        r"[ \t]*(?:[-*+]|(?:\d{1,9}|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,})[.)]|[A-Z]\)|[A-Z]\.(?= {2}|\t)"
+        r"|\((?:\d{1,9}|[a-z]|[A-Z]|[ivxlcdm]+|[IVXLCDM]+)\))[ \t]+"))
+
+
 def _any_indent_reaches_an_item_s_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_indent", lambda line: 10**6)
 
@@ -30682,6 +30688,10 @@ BROKEN = {
     ),
     "any capital with a stop opens an item": (
         _any_capital_with_a_stop_opens_an_item,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "any word of roman letters opens an item": (
+        _any_word_of_roman_letters_opens_an_item,
         test_an_indented_code_block_is_no_prose,
     ),
     "any indent reaches an item's text": (

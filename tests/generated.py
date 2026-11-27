@@ -1902,8 +1902,13 @@ CODE_BLOCKS = ("    {s}<-as.vector(fit)\n    #{s}: Posterior Standard Deviation"
                "        {s}.mean <- mean(x)\n    # {s}: standard error",
                "C. elegans strains were used.\n\n    {s} <- 1\n    # {s}: standard error",
                "Mix. The cells were kept.\n\n    {s} <- 2\n    # {s}: standard error",
-               "xii. The cells were kept.\n\n    {s} <- 3\n    # {s}: standard error")  # fmt: skip
-CODE_FORMS = ("SE", "SD", "SEM", "SER", "SXA", "SXB", "SXC")
+               "xii. The cells were kept.\n\n    {s} <- 3\n    # {s}: standard error",
+               # Round 3 of #841: words of roman letters that are no numeral to pandoc,
+               # over code indented as far as such an item's text would start.
+               "civil. The cells grew.\n\n       {s} <- 4\n       # {s}: standard error",
+               "dim. The cells grew.\n\n     {s} <- 5\n     # {s}: standard error",
+               "ic. The cells grew.\n\n    {s} <- 6\n    # {s}: standard error")  # fmt: skip
+CODE_FORMS = ("SE", "SD", "SEM", "SER", "SXA", "SXB", "SXC", "SXD", "SXE", "SXF")
 NOT_CODE = (("- The {s} rose.\n\n    The quality standard error (QSE) was kept.", "QSE"),
             ("The {s} rose, and\n    the quick standard deviation (QSD) was kept.", "QSD"),
             # Round 1 of #841: an item's third paragraph; a lettered, a roman, a bracketed

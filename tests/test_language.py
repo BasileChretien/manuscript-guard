@@ -3245,13 +3245,20 @@ def test_an_indented_paragraph_of_an_item_a_note_or_a_table_is_read(
         # pandoc 3.9 reads them: the indented paragraph under them is code.
         ("C. elegans strains were used.\n\n    SE <- 1\n    # SE: standard error\n", True),
         ("Mix. The cells were kept.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        # Words of roman letters that are no numeral as pandoc's `romanNumeral` reads one
+        # open no item, so code indented as far as such an item's text would start is code
+        # (round 3 of #841).
+        ("civil. The cells grew.\n\n       SE <- 1\n       # SE: standard error\n", True),
+        ("dim. The cells grew.\n\n     SE <- 1\n     # SE: standard error\n", True),
+        ("ic. The cells grew.\n\n    SE <- 1\n    # SE: standard error\n", True),
         # An item whose text starts five in, which four spaces do not reach.
         ("xii. The cells were kept.\n\n    SE <- 1\n    # SE: standard error\n", True),
         # A capital and a stop before two spaces, and a roman numeral of capitals, open one.
         ("Q.  The SE was kept.\n\n    SE: standard error\n", False),
         ("IV. The SE was kept.\n\n    SE: standard error\n", False),
     ],
-    ids=["capital and one space", "mixed case", "item five in", "capital and two spaces",
+    ids=["capital and one space", "mixed case", "no numeral, civil", "no numeral, dim",
+         "no numeral, ic", "item five in", "capital and two spaces",
          "roman capitals"],
 )  # fmt: skip
 def test_an_item_opens_as_pandoc_s_fancy_lists_open_one(

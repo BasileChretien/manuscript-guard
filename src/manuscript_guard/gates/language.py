@@ -816,14 +816,22 @@ def _views(text: str) -> tuple[str, str]:
 
 #: What indents a line of an indented code block, as pandoc's Markdown reads one.
 _CODE_INDENT = re.compile(r"(?: {4}|\t)")
+#: A roman numeral as pandoc's `romanNumeral` (Text.Pandoc.Parsing) reads one, in small
+#: letters: thousands, then hundreds, tens and units each in their order, not empty, so "mix"
+#: is one and "civil", "dim", "lil", "ic" and "xm" are none (round 3 of #841).
+_PANDOC_ROMAN = r"(?=[ivxlcdm])m*(?:cm)?d?(?:cd)?c*(?:xc)?l?(?:xl)?x*(?:ix)?v?(?:iv)?i*"
+#: The same in capitals, two letters at the least, a single capital being a letter's marker.
+_PANDOC_ROMAN_CAPITALS = r"(?=[IVXLCDM]{2})" + _PANDOC_ROMAN[len("(?=[ivxlcdm])"):].upper()
 #: A list item's first line, under which an indented paragraph is the item's and no code, its
 #: marker as pandoc's fancy_lists reads one (round 2 of #841): a bullet; a number, a letter or
 #: a roman numeral of one case, with a stop or a bracket after it or brackets round it, "a.",
 #: "iv.", "MIX.", "A)", "(1)"; and a capital letter with a stop only before two spaces or a
-#: tab, so "C. elegans" and "I. The cells" open no item, and "Mix." none.
+#: tab, so "C. elegans" and "I. The cells" open no item, and "Mix." none. A word of roman
+#: letters is a numeral's only where pandoc reads one (`_PANDOC_ROMAN`), so "dim." opens none.
 _ITEM_LINE = re.compile(
-    r"[ \t]*(?:[-*+]|(?:\d{1,9}|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,})[.)]|[A-Z]\)|[A-Z]\.(?= {2}|\t)"
-    r"|\((?:\d{1,9}|[a-z]|[A-Z]|[ivxlcdm]+|[IVXLCDM]+)\))[ \t]+"
+    rf"[ \t]*(?:[-*+]|(?:\d{{1,9}}|[a-z]|{_PANDOC_ROMAN}|{_PANDOC_ROMAN_CAPITALS})[.)]|[A-Z]\)"
+    rf"|[A-Z]\.(?= {{2}}|\t)"
+    rf"|\((?:\d{{1,9}}|[a-z]|[A-Z]|{_PANDOC_ROMAN}|{_PANDOC_ROMAN.upper()})\))[ \t]+"
 )
 #: A footnote's definition, under which an indented paragraph is the note's.
 _FOOTNOTE_LINE = re.compile(r"[ ]{0,3}\[\^[^\]\s]+\]:")

@@ -134,8 +134,14 @@ def test_the_copy_is_the_skills_byte_for_byte_with_a_stamp(tmp_path: Path) -> No
     assert stamp["schema"] == skillcopy.SCHEMA
     assert stamp["version"] == __version__
     assert sorted(stamp["skills"]) == names
-    body = (folder / "project-setup" / "SKILL.md").read_bytes()
-    assert stamp["skills"]["project-setup"] == {"SKILL.md": hashlib.sha256(body).hexdigest()}
+    skill = folder / "project-setup"
+    files = {
+        path.relative_to(skill).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(skill.rglob("*"))
+        if path.is_file()
+    }
+    assert "SKILL.md" in files and "references/conversation.md" in files
+    assert stamp["skills"]["project-setup"] == files, "every file of the skill, its references too"
 
 
 def test_copying_twice_changes_nothing(tmp_path: Path) -> None:

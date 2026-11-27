@@ -110,10 +110,12 @@ For a gate that got something wrong, propose the smallest made-up text that show
 
 ## Where there is no project to check
 
-- `none` or `authors-only`: the first action is `start`, the author's choice of how to begin:
-  a new project, one brought in from a Word paper in the folder, a LaTeX one, or only an
-  audit of an existing paper. Put it as a choice. Once the author has chosen, the
-  project-setup skill takes them through what comes after `init`.
+- `none` or `authors-only`: the first action is `start`. Where the author wants a project,
+  do not put its choice: hand over to the project-setup skill, whose conversation asks how
+  the manuscript is written among the decisions a project needs at its start
+  (`manuscript-guard setup questions`), and writes the project from the answers. Put the
+  choice only where the author wants an audit of an existing paper and no project, which is
+  the paper-audit skill's.
 - `missing`: the path given is not there. Say so, and ask which folder they meant.
 - `unreadable`: `project.error` names the file and why. Say it as it is: nothing has been
   checked until that file is put right. Put it right with the author, then run `next` again.

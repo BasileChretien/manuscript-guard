@@ -5,7 +5,7 @@
 
 Everything manuscript-guard is meant to do, by the stage of a paper it belongs to:
 one entry for each thing it promises, what does it, and the tests that prove it.
-Of the 80 entries, 75 work, 3 work in part, and 2 are planned.
+Of the 81 entries, 76 work, 3 work in part, and 2 are planned.
 
 The source is [features.yaml](features.yaml), which an agent tool reads before it
 changes a feature. `python tools/feature_map.py` draws this page and its picture from
@@ -15,7 +15,7 @@ skill and hook is in an entry, and every test an entry names is there.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/features-dark.svg">
   <img src="img/features-light.svg" width="880"
-       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 75 work, 3 work in part and 2 are planned.">
+       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 76 work, 3 work in part and 2 are planned.">
 </picture>
 
 ## Start
@@ -25,6 +25,7 @@ Set up a paper project, and find out what to do next.
 | Feature | What it does | Status | Done by | Proved by |
 |---|---|---|---|---|
 | **[Start a project](getting-started.md)** | Writes a new paper project in Markdown or LaTeX, or brings in a paper already written in Word. | works | [`init`](commands.md#setup--guide), skill [`project-setup`](agent-tools.md) | [`test_scaffold.py`](../tests/test_scaffold.py)<br>[`test_from_word.py`](../tests/test_from_word.py) |
+| **[Start in conversation](setup.md)** | Puts to the authors, one question at a time, each decision a project needs at its start, then writes the project exactly as they answered, filling only what is blank. | works | [`setup`](commands.md#setup--guide), skill [`project-setup`](agent-tools.md) | [`test_setup.py`](../tests/test_setup.py) |
 | **[Say what to do now](next.md)** | Runs every check once and says what to do next, with the command to run and the skill that helps. | works | [`next`](commands.md#setup--guide), skill [`guide`](agent-tools.md) | [`test_guide.py`](../tests/test_guide.py) |
 | **[Change a setting](commands.md#setup--guide)** | Changes one setting of paper.yaml, such as the stage or the journal, and keeps every other line as it was. | works | [`set`](commands.md#setup--guide) | [`test_set.py`](../tests/test_set.py) |
 | **[Stages of a paper](stages.md)** | Says what each stage of a paper means, and from which stage each finding stops the paper. | works | [`stages`](commands.md#setup--guide) | [`test_policy.py`](../tests/test_policy.py) |

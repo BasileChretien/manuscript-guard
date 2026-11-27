@@ -17325,6 +17325,217 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     assert "tex-not-input" not in codes(report)
 
 
+
+# ------------------------------------------ inline maths in a text argument of display maths
+# amsmath sets `\tag`'s argument as text, so `\(1\)` in it is inline maths that LaTeX
+# balances: the reader refused the file there as unbalanced, read nothing past it, and G7
+# said each work cited further on was cited nowhere (Basile, 2026-11-27). A display of each
+# kind holds one, each text argument with each delimiter of inline maths in it.
+
+_TEXT_IN_DISPLAYS = {
+    "a tag of brackets": "![!label{value}!tag{!(1!)} V(x) = !max_a u(x, a)!]",
+    "a starred tag with dollars": "![!tag*{$1$} V(x) = 1!]",
+    "a tag in an equation": "!begin{equation}!tag{!(A!)} y = x!end{equation}",
+    "a tag in an align": "!begin{align}!tag{$2$} a &= 1 !end{align}",
+    "a short intertext": "!begin{align} a &= 1 !shortintertext{and !(b!)} b &= 2 !end{align}",
+    "an intertext": "!begin{align*} a &= 1 !intertext{where !(b > 0!)} b &= 2 !end{align*}",
+    "a text": "![V = 1 !text{if !(x > 0!)}!]",
+    "an mbox": "!begin{equation*} V = 1 !mbox{if $x > 0$}!end{equation*}",
+}
+
+
+def _latex_with_display(display: str) -> str:
+    """A LaTeX paper that cites one work before `display`, one after it, and ends in a
+    sentence of its own: `!` stands for a backslash."""
+    return (
+        "!documentclass{article}\n!usepackage{amsmath}\n!begin{document}\n"
+        "!section{Methods}\nAs before !cite{fictionalHepaticCohort2021}, the value is\n"
+        f"{display}\n"
+        "and it was used again !cite{fictionalClassSignal2019}.\nThe last line is read.\n"
+        "!end{document}\n"
+    ).replace("!", chr(92))
+
+
+@pytest.mark.parametrize("display", list(_TEXT_IN_DISPLAYS.values()), ids=list(_TEXT_IN_DISPLAYS))
+def test_inline_maths_in_a_text_argument_of_display_maths_is_read_to_the_end(
+    project: Path, display: str
+) -> None:
+    """The whole file is read, nothing is refused as unbalanced, and G7 sees the work cited
+    after the display as cited."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.latex.mask import read
+
+    text = _latex_with_display(display)
+    reading = read(text)
+    assert reading.refusals == (), reading.refusals
+    assert "The last line is read." in reading.masked
+    assert [c.key for c in reading.cited] == ["fictionalHepaticCohort2021",
+                                              "fictionalClassSignal2019"]  # fmt: skip
+    _as_latex(project).write_text(text, encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    refused = [f for f in report.findings if f.gate == "BUILD" and f.code.startswith("tex-")]
+    assert refused == [], report.render(project)
+    uncited = [f for f in _g7(project).findings if f.code == "reference-uncited"]
+    assert uncited == [], uncited
+
+
+@pytest.mark.parametrize("display", list(_TEXT_IN_DISPLAYS.values()), ids=list(_TEXT_IN_DISPLAYS))
+def test_an_audited_paper_with_inline_maths_in_a_display_text_argument_is_read(
+    tmp_path: Path, display: str
+) -> None:
+    """`audit` reads such a paper, and holds the entry cited after the display as cited."""
+    from manuscript_guard.audit import audit
+
+    text = _latex_with_display(display).replace(
+        "The last line is read.\n",
+        "The last line is read.\n!begin{thebibliography}{9}\n"
+        "!bibitem{fictionalHepaticCohort2021} Hepatic A. J Ex. 2021;1:1-2.\n"
+        "!bibitem{fictionalClassSignal2019} Signal B. J Ex. 2019;2:3-4.\n"
+        "!end{thebibliography}\n".replace("!", chr(92)),
+    )
+    paper = tmp_path / "paper.tex"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], None)
+    assert report.unreadable == [], report.unreadable
+    assert [p.code for c in report.references for p in c.problems] == []
+
+
+_UNBALANCED_IN_DISPLAYS = {
+    "a tag's inline maths left open": ("![!tag{!(1} V = 1!]", "closes nothing"),
+    "a tag's inline maths never opened": ("![!tag{1!)} V = 1!]", "closes no maths"),
+    "inline maths in the display itself": ("![V = !(x!) + 1!]", "closes no maths"),
+    "dollars in the display itself": ("![V = $x$ + 1!]", "maths is opened inside maths"),
+    "a text's inline maths left open": ("![V = 1 !text{if !(x}!]", "closes nothing"),
+}
+
+
+@pytest.mark.parametrize(("display", "said"), list(_UNBALANCED_IN_DISPLAYS.values()),
+                         ids=list(_UNBALANCED_IN_DISPLAYS))  # fmt: skip
+def test_inline_maths_left_unbalanced_in_display_maths_is_still_refused(
+    project: Path, display: str, said: str
+) -> None:
+    """A `\\(` a text argument does not close, a `\\)` that closes nothing, and inline maths
+    in the display's own maths, where LaTeX stops on it, fail BUILD at the display's line."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.latex.mask import read
+
+    text = _latex_with_display(display)
+    [refusal] = read(text).refusals
+    assert refusal.code == "tex-unbalanced" and said in refusal.message, refusal
+    _as_latex(project).write_text(text, encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    found = [(f.code, f.line) for f in report.failures if f.gate == "BUILD"]
+    assert ("tex-unbalanced", 6) in found, report.render(project)
+
+
+#: An author's own `\tag` or `\shortintertext`, defined in the preamble as a paper that does
+#: not load mathtools may define `\shortintertext`: each is then the author's command, read as
+#: an unknown command is, as the reader read both before it knew them (round 1 of #836). `!`
+#: stands for a backslash and `NAME` for the command.
+_OWN_DEFINITIONS = {
+    "newcommand": "!newcommand{!NAME}[1]{!intertext{#1}}",
+    "renewcommand": "!renewcommand{!NAME}[1]{!intertext{#1}}",
+    "let": "!let!NAME!relax",
+    "def": "!def!NAME#1{!intertext{#1}}",
+}
+_OWN_USES = {
+    "tag": "!begin{equation} y = x !tag{1} !end{equation}",
+    "shortintertext": "!begin{align} a &= 1 !shortintertext{and b} b &= 2 !end{align}",
+}
+
+
+def _with_own_definition(name: str, definer: str) -> tuple[str, str]:
+    """A preamble that defines `name` with `definer`, and a body that uses it in a display
+    between two citations: the preamble alone, and the body after it."""
+    preamble = ("!documentclass{article}\n!usepackage{amsmath}\n"
+                + _OWN_DEFINITIONS[definer].replace("NAME", name) + "\n")  # fmt: skip
+    body = ("!begin{document}\nAs before !cite{j}, the value is\n"
+            f"{_OWN_USES[name]}\nSee !cite{{k}}.\nThe last line is read.\n!end{{document}}\n")
+    return preamble.replace("!", chr(92)), body.replace("!", chr(92))
+
+
+@pytest.mark.parametrize("definer", list(_OWN_DEFINITIONS))
+@pytest.mark.parametrize("name", list(_OWN_USES))
+def test_an_authors_own_tag_or_short_intertext_is_read_as_an_unknown_command(
+    name: str, definer: str
+) -> None:
+    """The use is read, nothing is refused, and the citation after it is cited."""
+    from manuscript_guard.text.latex.mask import read
+
+    preamble, body = _with_own_definition(name, definer)
+    reading = read(preamble + body)
+    assert reading.refusals == (), reading.refusals
+    assert [c.key for c in reading.cited] == ["j", "k"]
+    assert "The last line is read." in reading.masked
+
+
+@pytest.mark.parametrize("definer", list(_OWN_DEFINITIONS))
+@pytest.mark.parametrize("name", list(_OWN_USES))
+def test_an_authors_own_tag_defined_in_an_input_file_is_theirs_in_the_entry_file(
+    tmp_path: Path, name: str, definer: str
+) -> None:
+    """Defined in a file the preamble inputs, the command is the author's in the file that
+    uses it too: the tree tells each file of it."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    preamble, body = _with_own_definition(name, definer)
+    head, definition = preamble.rsplit("\n", 2)[0], preamble.rsplit("\n", 2)[1]
+    (tmp_path / "macros.tex").write_text(definition + "\n", encoding="utf-8")
+    (tmp_path / "main.tex").write_text(f"{head}\n{chr(92)}input{{macros}}\n{body}",
+                                       encoding="utf-8")  # fmt: skip
+    document = read_document(tmp_path)
+    assert document.refusals == (), document.refusals
+    cited = [c.key for source in document.sources for c in source.reading.cited]
+    assert cited == ["j", "k"], cited
+
+
+def _tag_document(preamble: str, use: str, package: str = "mathtools") -> str:
+    return (f"!documentclass{{article}}\n!usepackage{{{package}}}\n" + preamble + "\n"
+            "!begin{document}\nAs before !cite{j}, the value is\n" + use
+            + "\nSee !cite{k}.\n!end{document}\n").replace("!", chr(92))  # fmt: skip
+
+
+def test_an_authors_own_tag_is_no_text_argument() -> None:
+    """Round 2 of #836: a `\\tag` the paper defines is the author's command, read as an
+    unknown one is, so inline maths in it is not the text argument's: it is refused, as it
+    was before the reader knew `\\tag`, and only what stands before it is read."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!renewcommand{!tag}[1]{!text{#1}}",
+                         "!begin{equation} y = x !tag{!(1!)} !end{equation}")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
+
+
+def test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too() -> None:
+    """Known gaps, round 2 of #836: LaTeX defines nothing by `\\providecommand` where
+    mathtools gives `\\shortintertext`, but the reader takes it for the author's, as any
+    definition of it, so inline maths in it is refused, as before #836."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!providecommand{!shortintertext}[1]{!intertext{#1}}",
+                         "!begin{align} a &= 1 !shortintertext{where $x > 0$} b &= 2 "
+                         "!end{align}")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
+
+
+def test_a_short_intertext_provided_without_mathtools_is_the_authors() -> None:
+    """Round 2 of #836: where no package gives `\\shortintertext`, `\\providecommand`
+    defines it, and it is the author's: inline maths in it is refused, as LaTeX stops on it
+    where the body sets maths."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!providecommand{!shortintertext}[1]{#1}",
+                         "!begin{align} a &= 1 !shortintertext{$x$} b &= 2 !end{align}",
+                         package="amsmath")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
+
+
 @pytest.mark.parametrize("stop", ["latin1", "csname"])
 def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
     project: Path, stop: str

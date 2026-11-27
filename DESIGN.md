@@ -1421,6 +1421,16 @@ order is `printed_order`.
   maths. So are optidef's problems, `mini`, `maxi`, `argmini` and `argmaxi`, each also with
   `*`, `!` and `e`, whose variables, objective and constraints optidef.sty sets in an
   `align` (decision 13, 2026-11-13: tex-qbio-pe-A2's `w_{min}` was read as prose).
+- Inside maths, a text argument is prose: `\text`, `\mbox`, `\intertext`, mathtools'
+  `\shortintertext` and amsmath's `\tag`, starred too. Inline maths in it, `\tag{\(1\)}` or
+  `\text{if $x > 0$}`, is a formula of its own and balances as it does in text. Inline maths
+  in the display's own maths is still refused, since LaTeX stops on it (Basile, 2026-11-27:
+  `\tag{\(1\)}` was refused as unbalanced, and nothing past it was read). A paper's own
+  definition of `\tag` or `\shortintertext`, by `\newcommand`, `\renewcommand`, `\def` or
+  `\let`, as one that does not load mathtools may make, makes it the author's command, read
+  as an unknown one is, whatever the paper loads, as the reader read both before it knew
+  them (`AUTHORS_IF_DEFINED`; round 1 of #836: known, each use of one so defined was refused
+  as defined again). So does a `\providecommand` of either (Known gaps).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
@@ -10048,6 +10058,76 @@ agent never reads the skill that says so. `rules_to_add` prints the same for a r
 whose own `AGENTS.md` lacks the rules, and `example/AGENTS.md` is the same file, byte for
 byte.
 
+## A paper started in conversation: `setup`
+
+An agent told to "use manuscript-guard" for a new paper had `init` and five `set` keys to
+work with, and the rest by hand: it asked what it remembered to ask, left out the
+registration or the data's folder, and wrote `authors.yaml` as it understood the names it was
+given. The author had to read commands to know what had been done. Starting a paper is now a
+conversation whose questions the package decides and whose answers the package writes
+(brief of 2026-11-27): the author makes every decision, in question boxes where the agent tool
+has them and as numbered questions where it does not, and never types or reads a command.
+
+**Basile's answers** (question boxes, 2026-11-27; each the recommendation but the fifth):
+
+| Question | Answer |
+|---|---|
+| 1. The deterministic part | a new command, `setup`: `questions` lists what is open for the folder, `apply` writes the project from the answers, blanks only |
+| 2. The skill that leads | project-setup, its guidance per question under `references/`; guide's `start` hands over to it |
+| 3. The answers | kept as `design/setup.yaml`, committed: a dated record nothing gates on, from which an interrupted conversation resumes |
+| 4. When they are written | all at once, after one read-back and one yes |
+| 5. The study's design, ten options for a box of four | the author describes the study, and the agent offers the three that fit best and "None of these" |
+| 6. The analysis language | recorded, and the machine checked for it; no starter script |
+| 7. Where the data are | each answer routed, and the data kept out of git where they may not be published |
+| 8. The journal | asked at setup, "later" allowed |
+| 9. The authors | names, affiliations and the corresponding author now; funding, interests, roles, statistician and ethics lead last, each skippable |
+| 10. Another language than English | allowed, with what holds said |
+| 11. A project under way | the same conversation, its blanks only |
+| 12. The repository | git, public or private, the workflow, each asked where it applies |
+
+**Questions.** `setup.ask(folder, answers)` is a pure function of what the folder holds
+(`setup.read_folder`: `paper.yaml`'s settings, whether `authors.yaml` is still the
+placeholder, the papers in the folder, the languages of `analysis/`, the repository, the
+profiles `set target_journal` takes) and of the answers so far. Each question is one decision,
+named by the place in `design/setup.yaml` its answer is written at (`language`, `data.where`),
+in a fixed order (`setup.questions.QUESTIONS`). It is open where neither settles it; it waits
+where it turns on another still open (the guidelines on the design, the roles on the authors,
+the data's folder on where the data are); it is known where the folder has decided it; and it
+is not asked where it does not apply. Its options are values that may be written there, each
+with what it changes, and an option is recommended only where the folder or a rule gives one:
+the one Word paper in the folder, the one guideline of a design, drafting for a paper written
+already. An answer is held to the schema (`setup.schema.json`) and then to what a schema
+cannot say (an ORCID iD's check digit, an author named for a role, a data folder inside the
+project and not one of the toolkit's own, a title `init` would refuse); one that fails keeps
+its question open with the reason.
+
+**Answers in a file.** The agent writes the answers with its file tools, so that no title, name
+or affiliation passes through a shell, whose quoting differs between PowerShell, `cmd.exe` and
+a POSIX shell; and the file is the record a later session resumes from.
+
+**Apply.** Nothing is written while a question is open. Then every edit of `paper.yaml` is run
+on the text it will be made from (the file as it is, or as `init` writes it,
+`scaffold.paper_text`) and read back, and `authors.yaml` is written as text and read back as the
+authors given and held to its schema, before anything touches the disk; one refused stops all
+of it with the files as they were, as do a Word paper with no pandoc to bring it in and a
+`paper.yaml` that `set` would refuse to replace (read-only, a link). Then, in order: `init`
+(or `init --from` a Word paper, whose authors' file is replaced by the answers', since it was
+made in the same run), so that a conversion refused writes nothing, then `git init`, the
+settings through `paper_edit` (`edit`, and `edit_child` and `edit_block`, which keep every
+comment as `set` does), the title in the manuscript's header where that is `init`'s own,
+`authors.yaml`, the journal's profile from the template, `.gitignore`,
+the workflow, and the date in the record. A setting held already is never replaced: it is kept
+and said, and a change is `set`'s, with its guard. `--dry-run` says the same list and writes
+nothing. Then the machine is asked for what the analysis language needs (`setup.tools`: R with
+`jsonlite`, `digest` and `manuscriptguard`, with a time limit), and the steps that follow are
+named with their skills (`setup.steps`), a step only a person may take (registering the vault)
+said to be theirs.
+
+**The skill.** project-setup runs the loop: `setup questions --json`, the questions put, the
+answers written, again until `ready`, the read-back from `apply --dry-run`, one yes, `apply`,
+then the steps handed on. guide hands a folder with no project to it rather than putting
+`next`'s `start` choice, whose options stay for an agent that has no skill.
+
 ## The commands are listed in six groups
 
 By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
@@ -10636,6 +10716,24 @@ other than the one run.
   - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.
+- **2026-11-27, the default model of `claude` on the machine (the report names none),
+  Claude Code 2.1.310, the plugin of #844 at 031cea1, its tree clean.** One case,
+  route-project-setup, once, with the plugin only (`--ablation none`): $0.32 at API prices,
+  run under a subscription (Basile's choice, once its description changed).
+  - Routing: the skill fired.
+  - The judged outcome failed, three votes of three. The case grants no shell and no way to
+    write a file, so the reply said it could not run `setup questions` or write the answers;
+    it listed every decision it would put, the study's design asked by a description and
+    three designs among them, chose none, and described the loop. The criterion asked for
+    the questions put, or the command named, and the reply named the tool's questions
+    without the command. The criterion now passes a reply that says it cannot run commands
+    and lists the decisions as the questions it will put, deciding none.
+  - Run again on the same day with that criterion, at ea8096e ($0.31): the skill fired and
+    the outcome passed, three votes of three. The reply said it could not run commands, put
+    the first four questions (the title, the study described in the author's words for three
+    designs to be offered, how the paper is written, the English), named
+    `manuscript-guard setup questions --json` for the author to run in the meantime, and chose
+    none of them.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
 finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of
@@ -10650,8 +10748,8 @@ refused. What the project is made of, its bindings and its emitter calls, still 
 toolkit in use to either arm, as any project made with it would, so the difference between
 the arms is what a skill adds to a model reading such a project. Four routing cases still
 start empty, and so do the near misses and the requests no skill is for:
-- project-setup starts a project, and may give the `init` command where it has no shell to
-  run it;
+- project-setup starts a project in conversation, and where it has no shell says so and
+  lists the questions it will put (since #844);
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt
   gives none;
 - analysis-plan is about the plan before any analysis code, and the example has both.
@@ -28780,6 +28878,47 @@ What papers converted from Word showed (see "What papers converted from Word sho
   every warning of that skill `who: author`, those an agent may put right among them.
   Pinned by `tests/test_guide.py::test_one_person_only_warning_makes_its_group_the_authors`.
 
+- **That the answers in `design/setup.yaml` are the authors' is the skill's guidance, not a
+  check.** `setup` decides which questions are open and writes only what the file holds; that
+  an agent asked each one, rather than wrote what it guessed of a name or a design, nothing
+  can see. The read-back and the one yes before `apply` are the skill's too. Accepted.
+- **The three designs offered are the agent's pick.** `study_type` carries `shortlist: 3`
+  (Basile, 2026-11-27): the agent chooses which three of the designs to show from the author's
+  description of the study, and a poor reading shows three that do not fit. "None of these"
+  lists the rest, so the author can still choose any of them.
+  Pinned by `tests/test_setup.py::test_the_study_design_is_offered_whole_for_a_shortlist_of_three`.
+- **A blank is read narrowly.** A setting is blank where `paper.yaml` does not hold it or holds
+  `init`'s own value (no title or `Untitled manuscript`, `stage: design`, no guideline), and
+  `authors.yaml` where it is missing or still `init`'s placeholder as YAML reads it. An
+  `authors.yaml` a person began, one placeholder field left in it, is not blank and is not
+  asked. A title is written into a project under way only where the manuscript's header is
+  `init`'s own or there is none: one typed by hand keeps the placeholder in `paper.yaml`. An
+  answer that differs from a setting held is kept and said, never written.
+  Pinned by `tests/test_setup.py::test_a_project_under_way_has_only_its_blanks_filled`,
+  `tests/test_setup.py::test_filled_authors_are_kept_and_not_asked`
+  and `tests/test_setup.py::test_a_manuscript_with_a_title_of_its_own_keeps_the_placeholder_in_paper_yaml`.
+- **A failure part-way through `apply` leaves what was written before it.** The settings and
+  the authors' file are worked out and read back first, so a setting refused writes nothing;
+  but `init` itself, `git init` or a disk that fills stop it where they happen, and it says
+  what was written before. Accepted.
+- **R is looked for as `verify` looks for it.** `MANUSCRIPT_GUARD_RSCRIPT`, then the first
+  `Rscript` on PATH; an R installed elsewhere, as on Windows where the installer puts none on
+  PATH, is said to be missing.
+  Pinned by `tests/test_setup.py::test_no_rscript_is_said`.
+- **Another language is declared by declaring no English.** `language: other` writes no
+  `english_variant`, which `check` reads as a paper in an English not declared: G14 holds it to
+  the English its spellings show, and G6 reads it as English. `apply` says so; nothing turns
+  the writing checks off for it.
+  Pinned by `tests/test_setup.py::test_another_language_declares_no_english_and_says_what_holds`.
+- **A journal's profile is named by the journal's name, folded.** "BMJ Open" is `bmj-open`; a
+  letter outside ASCII is folded to the nearest ASCII one (`Thérapie` is `therapie`), a name
+  with none is refused, and two journals whose names fold alike share a profile unless the
+  answer gives a `slug`.
+  Pinned by `tests/test_setup.py::test_a_journal_s_profile_is_named_by_its_name_folded`.
+- **`setup` asks nothing of the keywords, a short title, the review panel's models or the AI
+  use.** They are settings of `paper.yaml` and `authors.yaml` too, asked by the skills that need
+  them at the stage they are needed (journal-profile, review-panel, submission-pack). Accepted.
+
 - **That the guide asks before it runs is the skill's guidance, not a check.** The skill
   and `AGENTS.md` tell an agent to show a command, to put a choice to the author and to wait
   for a yes; nothing holds an agent to it but the hooks, which ask for `approve`, `sign`,
@@ -31323,6 +31462,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     denial wherever it stands and whatever its emphasis, so "*Ethical approval was not
     required.*" alone is an ethics statement.
     Pinned by `tests/test_statements.py::test_a_short_sentence_wholly_in_emphasis_reads_as_a_label`.
+
+- **A `\providecommand` of `\tag` or `\shortintertext` makes it the author's command.** LaTeX
+  defines nothing where amsmath or mathtools already gives the command, but the reader takes
+  it, as any definition of either, for the author's, read as an unknown one is, so inline
+  maths in it is refused where the package's text argument would hold it, as before #836
+  (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
+  Pinned by
+  `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -112,7 +112,9 @@ manuscript-guard next
 ```
 
 `init` writes the project, and `next` says what to do now, with the command to run, from the
-analysis plan on. [Install](#install) has what else a build needs, and
+analysis plan on. With Claude Code or Codex, say instead that you want to start a paper with
+manuscript-guard: the agent asks you each decision the project needs, in conversation, and
+writes the project from your answers ([Starting a paper in conversation](docs/setup.md)). [Install](#install) has what else a build needs, and
 [Quick start](#quick-start) the worked example.
 
 ## Who it is for
@@ -438,8 +440,9 @@ number in the file and the rule that classified it.
 `manuscript-guard --help` lists the commands in groups, and [Commands](docs/commands.md) has
 each with what it does. Each takes `--help`.
 
-- **[Setup & Guide](docs/commands.md#setup--guide):** start a project (`init`), say what to
-  do now (`next`), and write a setting of `paper.yaml` (`set`).
+- **[Setup & Guide](docs/commands.md#setup--guide):** start a project (`init`), or start it
+  from the authors' answers (`setup`), say what to do now (`next`), and write a setting of
+  `paper.yaml` (`set`).
 - **[Checking & Audit](docs/commands.md#checking--audit):** run every gate (`check`), audit a
   paper written some other way (`audit`), and set a revision beside the version before it
   (`compare`).
@@ -529,6 +532,7 @@ everywhere.
 | [The guidelines](docs/guidelines.md) | the reporting checklists, ICMJE, the journal's instructions, the registration, text recycling, methods standards and the custodian's rules: what each check holds, and what it leaves to a reader |
 | [Working with co-authors](docs/co-authors.md) | edits and comments in Word, suggested edits as tracked changes, approvals, the marked-up revision, and the checker for what no gate can check |
 | [Journal profiles](docs/journal-profiles.md) | the journal's rules quoted from its page: the boxes beside the abstract, a graphical abstract, what may be shared |
+| [Starting a paper in conversation](docs/setup.md) | `setup`: the decisions a project needs at its start, put to the authors and written as they answered, blanks only |
 | [What to do next](docs/next.md) | `next`: the order it decides in, and its JSON for an agent |
 | [Principles](docs/principles.md) | what the check guarantees, and why it is built this way |
 | [Features](docs/features.md) | everything it is meant to do, on one picture of a paper's stages, each feature with what does it and the tests that prove it |

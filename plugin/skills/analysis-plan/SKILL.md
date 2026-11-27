@@ -320,13 +320,14 @@ in the paper's Methods; the [methods-writer](../methods-writer/SKILL.md) skill c
 ## What the design needs
 
 Name the design in `paper.yaml` (`study_type`: cohort, case-control, cross-sectional,
-self-controlled, disproportionality, trial, systematic-review or prediction-model). G12 then
+diagnostic-accuracy, case-report, self-controlled, disproportionality, trial,
+systematic-review or prediction-model). G12 then
 asks the plan for the sections that design needs beyond the seven, each from the guideline
 item it comes from: the estimand of a trial, time zero and the confounders of a cohort, the
 sampling and the measurement of a cross-sectional study, the risk windows of a
 self-controlled design, the case definition and the comparator of a disproportionality
-analysis. A study that is none of these (a narrative review, a descriptive case series or a
-case report, a qualitative study) takes `other`: the plan is asked for the seven
+analysis. A study that is none of these (a narrative review, a descriptive case series, a
+qualitative study) takes `other`: the plan is asked for the seven
 sections, and G5 for no guideline of the design's. [references/study-designs.md](references/study-designs.md) has, for each design,
 what each section has to answer, where that comes from and how to name one exactly. Whether
 the design can support

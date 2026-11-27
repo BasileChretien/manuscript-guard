@@ -183,8 +183,8 @@ def test_an_undeclared_design_offers_each_design(tmp_path: Path) -> None:
 def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     tmp_path: Path,
 ) -> None:
-    """A narrative review, a survey or a case report is none of the designs the table holds,
-    and the choice was asked of it at every run, since nothing it could set answered it."""
+    """A narrative review or a qualitative study is none of the designs the table holds, and
+    the choice was asked of it at every run, since nothing it could set answered it."""
     (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
     other = action.choice.options[-1]
     assert other.id == "other" and other.label.startswith("None of these (")
@@ -193,6 +193,7 @@ def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
                                                    "narrative review"))
     # A cross-sectional study is a design of the table since its first new one.
     assert "cross-sectional" not in other.label
+    assert "case report" not in other.label
     assert "seven sections every plan has" in other.effect
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
 
@@ -217,7 +218,7 @@ def test_each_design_is_offered_with_what_makes_a_study_that_design(project: Pat
 
 
 def test_none_of_the_designs_is_offered_to_the_agent(tmp_path: Path) -> None:
-    """Known gaps (round 1 of #502): "None of these" is offered as the seven designs are, for
+    """Known gaps (round 1 of #502): "None of these" is offered as the table's designs are, for
     the agent to choose, though settling that a study fits none of them may be the author's
     to say."""
     from manuscript_guard.guide.model import AGENT

@@ -662,6 +662,7 @@ def test_better_bibtexs_not_found_is_told_apart_from_other_refusals(monkeypatch)
             return Reply(json.dumps({"result": [{"id": 1, "name": "My Library"}]}).encode())
         return Reply(json.dumps({"error": answers[method]}).encode())
 
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", urlopen)
     assert client.attachments("nobody2000") is None
 

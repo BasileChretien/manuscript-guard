@@ -92,6 +92,8 @@ domains, where it is published and the date it was read. By design:
 | cohort | `target-trial`, `robins-i`, `robins-e`, `immortal-time`, `encepp-guide`, `strobe`, `record-pe` |
 | case-control | `target-trial`, `robins-i`, `robins-e`, `immortal-time`, `encepp-guide`, `strobe`, `record-pe` |
 | cross-sectional | `encepp-guide`, `strobe`, `record-pe` |
+| diagnostic-accuracy | `quadas-3` |
+| case-report | `murad-2018` |
 | self-controlled | `sccs`, `robins-i`, `encepp-guide`, `record-pe` |
 | disproportionality | `readus-pv`, `encepp-guide` |
 | trial | `rob-2` |

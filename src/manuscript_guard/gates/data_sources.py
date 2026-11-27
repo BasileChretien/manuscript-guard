@@ -477,6 +477,7 @@ def _plan(project: Project, picked: list[dict[str, Any]]) -> Report:
     from manuscript_guard.gates.design import (
         _plan_sections,
         _read_plan,
+        _required,
         heading_identifiers,
         names_section,
         plan_path,
@@ -491,10 +492,14 @@ def _plan(project: Project, picked: list[dict[str, Any]]) -> Report:
     # A heading named `{#population}` is the Population whatever its words, as G12's check
     # of the plan's sections reads it (round 1 of #824).
     identifiers = heading_identifiers(text, sections)
+    # And by G12's own words for it, whatever they are: a case report's "Patients" was its
+    # population and read by this check as none (round 1 of #840).
+    population = dict((name, rule) for name, rule, _says in _required())["population"]
     said = [
         "\n".join(part.body for part in subsections(sections, index))
         for index, section in enumerate(sections)
-        if PLAN_DATA.search(section.title) or names_section("population", identifiers[index])
+        if PLAN_DATA.search(section.title) or re.search(population, section.title)
+        or names_section("population", identifiers[index])
     ]
     if not said:
         return Report()  # plan-section-missing says so

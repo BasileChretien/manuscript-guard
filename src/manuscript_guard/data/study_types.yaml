@@ -20,7 +20,9 @@ schema: manuscript-guard/study-types/1
 # Each design has its `label`, and `describes`: what makes a study that design, said beside
 # it where `next` asks which design the study is. `guidelines` are the paper's: G5 says where
 # paper.yaml declares none of them for the design it names. The protocol's own guideline,
-# where there is one, is under `protocol`.
+# where there is one, is under `protocol`. A design that has no use for a section of the
+# seven names it under `not_asked`, with why, and its plan is not asked for it: a case
+# report has no analysis to plan and no plan to depart from (Basile, 2026-11-27).
 #
 # paper.yaml takes one more value, `other` (gates/design.py, OTHER), for a study none of
 # these is: its plan is asked for the seven sections and its paper for no guideline. A
@@ -43,15 +45,16 @@ every_plan:
     explain: >-
       The design decides what the study can conclude. Many designs can show that two things go
       together; few can show that one causes the other.
+  # CARE's "Patient information", a case report's, as a whole heading: not "Patient consent".
   - id: population
-    heading: '(?i)\bpopulation|participants|data source\b'
+    heading: '(?i)\bpopulation|participants|data source\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?patients?(?:\s+information)?(?:\(s\))?(?:\s*\([^()]*\))?\W*$'
     says: who or what is included
     ask: >-
       Who or what will be studied, and where will the data come from?
     explain: >-
       A reader needs to know whom the results apply to, and who was left out and why.
   - id: exposure
-    heading: '(?i)\bexposure|intervention|predictor\b'
+    heading: '(?i)\bexposure|intervention|predictor\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?index tests?(?:\(s\))?(?:\s*\([^()]*\))?\W*$'
     says: what is being compared
     ask: >-
       What is being compared: which treatment, exposure or predictor, and against what?
@@ -59,7 +62,7 @@ every_plan:
       A comparison means something only when both of its sides are named: a treatment against
       no treatment, or against another one.
   - id: outcome
-    heading: '(?i)\boutcome|endpoint\b'
+    heading: '(?i)\boutcome|endpoint\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?target conditions?(?:\(s\))?(?:\s*\([^()]*\))?\W*$'
     says: what is being measured
     ask: >-
       What will be measured to answer the question, and which outcome is the main one?
@@ -400,6 +403,189 @@ types:
         source: STROBE, items 12b and 12e (cross-sectional)
         url: https://www.strobe-statement.org/download/strobe-checklist-cross-sectional-studies-pdf
         read_on: 2026-11-26
+
+  diagnostic-accuracy:
+    label: diagnostic accuracy study
+    describes: >-
+      a test is compared with a reference standard in the same people, to see how often the
+      test is right
+    guidelines: [STARD]
+    sections:
+      - id: sampling
+        heading: '(?i)\bsampling\b(?!\s+bias)|\brecruit|\bselection of participants|\bparticipant selection|\bconsecutive|\bconvenience (?:series|sample)'
+        says: >-
+          how and where potentially eligible participants are identified, and whether they
+          form a consecutive, random or convenience series
+        ask: >-
+          How will participants be found, and will they be every eligible person in turn (a
+          consecutive series), a random sample, or whoever was convenient?
+        explain: >-
+          A convenience sample can hold more clear-cut cases than practice does, and make the
+          test look more accurate than it is.
+        source: STARD 2015, items 7 to 9
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+      - id: reference standard
+        heading: '(?i)\breference standard|\bgold standard|\breference test'
+        says: >-
+          the reference standard, in enough detail to repeat it, and why it was chosen
+        ask: >-
+          Which reference standard will decide who has the condition, and why that one?
+        explain: >-
+          Accuracy is measured against the reference standard, so one that misclassifies
+          people makes the test's accuracy wrong in turn.
+        source: STARD 2015, items 10b and 11
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+      - id: thresholds
+        heading: '(?i)\bthresholds?\b|\bcut-?offs?\b|\bcut[- ]points?\b|\bpositivity\b'
+        says: >-
+          the positivity thresholds or result categories of the index test and of the
+          reference standard, and which were set in advance
+        ask: >-
+          At what value or category will each test count as positive, and will you fix that
+          before seeing the results?
+        explain: >-
+          A threshold chosen after the results, to give the best figures, makes the test look
+          more accurate than it will be in use.
+        source: STARD 2015, items 12a and 12b
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+      - id: blinding
+        heading: '(?i)\bblind|\bmask'
+        says: >-
+          whether those who perform or read each test know the other test's result or the
+          clinical information
+        ask: >-
+          Will the people reading each test know the other test's result, or the patient's
+          clinical details?
+        explain: >-
+          Knowing the other result can sway how a test is read, and make the two agree more
+          often than they would apart.
+        source: STARD 2015, items 13a and 13b
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+      - id: indeterminate results
+        heading: '(?i)\bindeterminate|\binconclusive|\bequivocal|\buninterpretable'
+        says: >-
+          how indeterminate or uninterpretable results of either test are handled
+        ask: >-
+          What will you do with results that cannot be read, or are neither positive nor
+          negative?
+        explain: >-
+          Leaving out the results that could not be read usually makes a test look more
+          accurate than it is in practice.
+        source: STARD 2015, item 15
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+      - id: missing data
+        heading: '(?i)\bmissing'
+        says: >-
+          how missing results of the index test and of the reference standard are handled
+        ask: >-
+          What will you do about people missing the result of either test?
+        explain: >-
+          People with no reference standard result are often unlike those with one, and
+          leaving them out can bias the accuracy.
+        source: STARD 2015, item 16
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+      - id: sample size
+        heading: '(?i)\bsample size|\bstudy size|\bpower\b'
+        says: >-
+          the intended sample size and how it was determined
+        ask: >-
+          How many participants, and how many with the condition, are needed to estimate
+          accuracy precisely enough, and how did you work that out?
+        explain: >-
+          Too few people with the condition gives a sensitivity too imprecise to be of use.
+        source: STARD 2015, item 18
+        url: https://doi.org/10.1136/bmj.h5527
+        read_on: 2026-11-26
+
+  case-report:
+    label: case report
+    describes: >-
+      one patient is described in detail, because something in their illness, its diagnosis
+      or its treatment is new or worth others knowing
+    guidelines: [CARE]
+    not_asked:
+      analysis: >-
+        a case report describes one patient and estimates nothing, so there is no method or
+        model to choose before the data
+      deviations: >-
+        a case report is written after care that followed no protocol, so there is no plan
+        agreed in advance to depart from
+    sections:
+      - id: de-identification
+        heading: '(?i)\bde-?identif|\banonymi[sz]|\bidentifiab|\bconfidentiality\b|\bprivacy\b'
+        says: >-
+          which details of the patient the report gives, and which it leaves out or blurs so
+          that the patient cannot be recognised
+        ask: >-
+          Which details about the patient will the report give, and which will you leave out
+          or blur so that no one can recognise them?
+        explain: >-
+          A rare condition, a date and a town can be enough to identify a patient without
+          their name. Deciding what to leave out before writing protects them.
+        source: CARE 2013 checklist, item 5
+        url: https://www.care-statement.org/checklist
+        read_on: 2026-11-27
+      - id: timeline
+        heading: '(?i)\btime[- ]?lines?\b|\bchronolog'
+        says: >-
+          the important dates and events of the case, in order, set out as a table or a figure
+        ask: >-
+          What were the important dates and events of the case, in order, and will you show
+          them as a table or a figure?
+        explain: >-
+          A timeline lets a reader see what came first, the symptom, the test, the treatment
+          or the change, and judge what may have led to what.
+        source: CARE 2013 checklist, item 7
+        url: https://www.care-statement.org/checklist
+        read_on: 2026-11-27
+      - id: diagnostic assessment
+        heading: '(?i)\bdiagnos'
+        says: >-
+          how the diagnosis was reached: the tests used, the difficulties met, the other
+          diagnoses considered and, where it applies, the prognosis
+        ask: >-
+          How was the diagnosis reached: which tests, which other diagnoses were considered
+          and ruled out, and what made it hard?
+        explain: >-
+          A reader can trust the diagnosis, and learn from the case, only if they can see how
+          it was reached and what else it might have been.
+        source: CARE 2013 checklist, item 8
+        url: https://www.care-statement.org/checklist
+        read_on: 2026-11-27
+      - id: patient perspective
+        heading: '(?i)\bpatient(?:''s|s''|s|’s)?\s+(?:perspectives?|views?|voice|experiences?|account)\b|\bperspective of the patient'
+        says: >-
+          whether the patient gives their own account of what they went through and of their
+          care, and how it is asked for
+        ask: >-
+          Will the patient describe, in their own words, what they went through and what they
+          thought of their care?
+        explain: >-
+          The patient sees what the clinicians do not: how the illness and its treatment felt,
+          and what mattered to them.
+        source: CARE 2013 checklist, item 12
+        url: https://www.care-statement.org/checklist
+        read_on: 2026-11-27
+      - id: informed consent
+        heading: '(?i)\bconsent'
+        says: >-
+          that the patient, or whoever may decide for them, agreed to the report's
+          publication, and how that is recorded
+        ask: >-
+          Has the patient, or the person who can decide for them, agreed in writing to the
+          case being published?
+        explain: >-
+          Most journals ask for this consent before they publish a case report, and whether
+          their story is told is the patient's to decide.
+        source: CARE 2013 checklist, item 13
+        url: https://www.care-statement.org/checklist
+        read_on: 2026-11-27
 
   self-controlled:
     label: self-controlled design (case series or case-crossover)

@@ -77,8 +77,9 @@ repository that already holds an analysis, with `paper.yaml` at its root. That a
 an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was. Where the
 `.gitignore` lacks `build/` or `literature/sources/*` (the stored copies of cited works,
 paywalled papers among them; not asked where `paper.yaml` says `sources_in_git: true`), or
-the `.gitattributes` lacks `* text=auto eol=lf`, `init` prints the lines to add: add them by
-hand, and the binary lines of the `.gitattributes` it writes for a new project with them. An
+the `.gitattributes` lacks `* text=auto eol=lf` or a line for `*.svg`, `init` prints the
+lines to add: add them by hand, and the binary lines of the `.gitattributes` it writes for a
+new project with them. An
 existing `AGENTS.md` is left too, and where it does not mention manuscript-guard `init`
 prints the rules to add to it. And `results/` belongs to
 manuscript-guard: every `.json` directly
@@ -99,12 +100,14 @@ literature/            ledger.yaml, attested.yaml, references.bib, sources.yaml,
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
                        (main.tex and mgvalues.sty under --latex, with \mg{results.x})
 figures/  review/  build/
-.gitattributes         * text=auto eol=lf
+.gitattributes         * text=auto eol=lf, and *.svg binary among the files kept as bytes
 AGENTS.md              the rules of the project, for any agent working in it
 ```
 
 **Keep the `.gitattributes`.** Every digest is byte-exact, and a checkout that turns line
-endings into CRLF makes clean results look hand-edited.
+endings into CRLF makes clean results look hand-edited. An SVG figure is kept as bytes: svglite
+on Windows writes CRLF, and normalised to LF the figure is no longer the one its render record
+and its review hold.
 
 **`literature/sources/` stays out of git.** The `.gitignore` leaves out the copies of the
 cited works, paywalled papers among them, which a public repository would publish;
@@ -192,7 +195,10 @@ sending. A stale `.docx` (`document-stale`) never stops the Word build that rewr
 `build` needs Zotero running for live fields; the first live build also downloads Better
 BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which
 `manuscript-guard sync-bib` writes from Zotero with just the cited keys. Commit it, so the
-offline build works anywhere.
+offline build works anywhere. An offline build's citations are text, which Word's Zotero
+plugin cannot refresh: the build says so and why a live one would not work now, and `check`
+notes it (`citations-not-live`). Tell the author before sending them a document built
+offline when they expect Zotero fields.
 
 ## 5. What to do next, and which skill
 

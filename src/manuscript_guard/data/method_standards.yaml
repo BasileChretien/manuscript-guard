@@ -22,7 +22,9 @@ schema: manuscript-guard/method-standards/1
 # riskofbias.info (revised 20 November 2025, read 2026-10-21) whose domains may change. A
 # project that judges against either describes it in its own record. ENCePP's Guide is a
 # living document: each chapter carries the date it was last revised, and a judgement
-# against it is of the chapter as it stood when read.
+# against it is of the chapter as it stood when read. QUADAS-2 (Whiting PF et al. Ann Intern
+# Med 2011;155:529-536) is not here: its authors recommend QUADAS-3, which extends it, and a
+# project that judges against QUADAS-2 describes it in its own record.
 
 standards:
   encepp-guide:
@@ -202,6 +204,33 @@ standards:
       - Predictors
       - Outcomes
       - Analyses
+
+  quadas-3:
+    name: QUADAS-3 (quality assessment of diagnostic test accuracy studies)
+    version: "1.2"
+    citation: Whiting PF et al. Ann Intern Med, published online 17 February 2026
+    doi: 10.7326/ANNALS-25-02104
+    url: https://www.bristol.ac.uk/population-health-sciences/projects/quadas/quadas-3/quadas-3-tool/
+    read_on: 2026-11-26
+    applies_to: [diagnostic-accuracy]
+    domains:
+      - Participants
+      - Index test
+      - Target condition
+      - Analysis
+
+  murad-2018:
+    name: Tool for evaluating the methodological quality of case reports and case series
+    citation: Murad MH et al. BMJ Evid Based Med 2018;23:60-63
+    doi: 10.1136/bmjebm-2017-110853
+    url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6234235/fullTextXML
+    read_on: 2026-11-27
+    applies_to: [case-report]
+    domains:
+      - Selection
+      - Ascertainment
+      - Causality
+      - Reporting
 
   robis:
     name: ROBIS (risk of bias in systematic reviews)

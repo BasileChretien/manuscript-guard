@@ -2796,3 +2796,224 @@ def test_r_refuses_the_steps_python_refuses(tmp_path: Path, call: str, refusal: 
     )
     out = _run_r(script, root)
     assert out.returncode != 0 and refusal in out.stderr, out.stderr
+
+
+# A value that is no number to print (item 10). Found writing a real paper (2026-11-26): with
+# `digits`, a NaN stopped R with its own "missing value where TRUE/FALSE needed", in the
+# session's language and naming no key; a logical NA in a table printed "FALSE". The words
+# are the Python emitter's (`contracts/values.py`, `missing_refusal`).
+NO_NUMBER_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+%(call)s
+"""
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        ('em$value("ror.point", NaN, digits = 2)', "ror.point: the value is NaN"),
+        ('em$value("ror.point", NA_real_, digits = 2)', "ror.point: the value is NA"),
+        ('em$value("ror.point", NA_real_, display = "not estimable")',
+         "ror.point: the value is NA"),
+        ('em$value("ror.point", Inf, digits = 2)', "ror.point: the value is infinite"),
+        ('em$value("ror.point", -Inf, digits = 2)', "ror.point: the value is infinite"),
+        ('em$value("cohort.n", NA_integer_)', "cohort.n: the value is NA"),
+        ('em$value("cohort.flag", NA)', "cohort.flag: the value is NA"),
+        ('em$value("cohort.site", NA_character_)', "cohort.site: the value is NA"),
+        ('em$parameter("alpha", NaN)', "param.alpha: the value is NaN"),
+        ('em$interval("ror", NaN, 1, 2, digits = 2)', "ror.point: the value is NaN"),
+        ('em$interval("ror", 1.5, NaN, 2, digits = 2)', "ror.ci_low: the value is NaN"),
+        ('em$interval("ror", 1.5, 1, Inf, digits = 2)', "ror.ci_high: the value is infinite"),
+        ('em$table("t", list("a"), list(list(NaN)), digits = 1)',
+         "table 't' row 0 column 0: the value is NaN"),
+        ('em$table("t", list("a"), list(list(NA)))', "table 't' row 0 column 0: the value is NA"),
+        ('em$table("t", list("a"), list(list(em$cell("{} (n)", list(NaN, 1)))))',
+         "table 't' row 0 column 0: the value is NaN"),
+    ],
+)
+def test_r_refuses_a_value_that_is_no_number_naming_its_key(
+    tmp_path: Path, call: str, says: str
+) -> None:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(
+        NO_NUMBER_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), "call": call},
+        encoding="utf-8",
+    )
+    out = _run_r(script, root)
+    assert out.returncode != 0, out.stdout
+    assert says in out.stderr and "there is no number to print" in out.stderr, out.stderr
+
+
+def test_r_still_prints_what_the_author_says_where_a_logical_na_has_a_display(
+    tmp_path: Path,
+) -> None:
+    """A logical NA with a display was taken before, as Python takes None with one."""
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "kept.R"
+    script.write_text(
+        NO_NUMBER_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                       "call": 'em$value("ror.adjusted", NA, display = "not estimable")\n'
+                               "em$write()"},
+        encoding="utf-8",
+    )  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "kept.json").read_text(encoding="utf-8"))["values"]
+    assert values["ror.adjusted"]["display"] == "not estimable"
+
+
+# Round 1 of #812, as in tests/test_emit.py.
+
+
+def _r_with(tmp_path: Path, call: str) -> tuple[subprocess.CompletedProcess, Path]:
+    root = _parameter_project(tmp_path)
+    script = root / "analysis" / "round.R"
+    script.write_text(
+        NO_NUMBER_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(), "call": call},
+        encoding="utf-8",
+    )
+    return _run_r(script, root), root
+
+
+def test_r_takes_an_infinity_with_a_display_its_check_accepts(tmp_path: Path) -> None:
+    out, root = _r_with(tmp_path, 'em$value("or.ci_high", Inf, display = ">100")\nem$write()')
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert values["or.ci_high"]["display"] == ">100"
+
+
+def test_r_tells_an_infinity_with_no_display_to_say_what_is_printed(tmp_path: Path) -> None:
+    out, _root = _r_with(tmp_path, 'em$value("or.ci_high", Inf, digits = 2)')
+    assert out.returncode != 0
+    assert "or.ci_high: the value is infinite" in out.stderr and ">100" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("display", ["NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None", "NONE"])
+@pytest.mark.parametrize("missing", ["NA", "NA_character_"])
+def test_r_refuses_a_display_that_spells_a_missing_value_naming_the_key(
+    tmp_path: Path, missing: str, display: str
+) -> None:
+    out, _root = _r_with(tmp_path, f'em$value("ror.adjusted", {missing}, display = "{display}")')
+    assert out.returncode != 0
+    said = f"ror.adjusted: the value is NA, and its display '{display}' spells a missing value"
+    assert said in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'em$interval("ror", 1.5, NaN, 2, digits = 2)',
+        'em$interval("ror", 1.5, 1, Inf, digits = 2)',
+        'em$interval("ror", 1.5, 1.6, 2, digits = 2)',
+        'em$interval("ror", 1.5, 0.001, 2, digits = 2)',
+        'em$control("control.headache", 1.5, NaN, 2, digits = 2)',
+    ],
+)
+def test_r_leaves_no_key_behind_a_refused_interval_or_control(tmp_path: Path, call: str) -> None:
+    out, root = _r_with(
+        tmp_path,
+        f'refused <- tryCatch({{{call}; FALSE}}, error = function(e) TRUE)\n'
+        'if (!refused) stop("not refused")\n'
+        'em$interval("ror", 1.5, 1, 2, digits = 2)\nem$write()',
+    )
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert set(values) == {"ror.point", "ror.ci_low", "ror.ci_high"}
+
+
+# Round 2 of #812, as in tests/test_emit.py.
+
+
+@pytest.mark.parametrize("display", ["NA", "na", "not applicable", "nan\\u00a0", " None"])
+def test_r_takes_a_display_that_is_not_exactly_a_spelling_as_the_author_s(
+    tmp_path: Path, display: str
+) -> None:
+    out, root = _r_with(
+        tmp_path, f'em$value("ror.adjusted", NA, display = "{display}")\nem$write()'
+    )
+    assert out.returncode == 0, out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert values["ror.adjusted"]["display"] == display.replace("\\u00a0", "\u00a0")
+
+
+@pytest.mark.parametrize(
+    ("value", "display", "taken"),
+    [
+        ("Inf", ">100", True), ("Inf", "\\u2265100", True), ("Inf", ">=100", True),
+        ("Inf", "7.02", False), ("Inf", "<100", False), ("Inf", "\\u2264100", False),
+        ("-Inf", "<-100", True), ("-Inf", "\\u2264-100", True), ("-Inf", "<=-100", True),
+        ("-Inf", "100", False), ("-Inf", "-100", False), ("-Inf", ">-100", False),
+        ("Inf", "100+", True), ("-Inf", "100+", False),
+    ],
+)  # fmt: skip
+def test_r_takes_only_a_comparator_on_an_infinity_s_own_side(
+    tmp_path: Path, value: str, display: str, taken: bool
+) -> None:
+    out, _root = _r_with(tmp_path, f'em$value("or.ci_high", {value}, display = "{display}")')
+    if taken:
+        assert out.returncode == 0, out.stderr
+    else:
+        assert out.returncode != 0 and "or.ci_high: " in out.stderr, out.stderr
+
+
+def test_r_tells_an_infinite_bound_of_an_interval_to_go_through_value(tmp_path: Path) -> None:
+    out, _root = _r_with(tmp_path, 'em$interval("ror", 1.5, 1, Inf, digits = 2)')
+    assert out.returncode != 0
+    assert "ror.ci_high: the value is infinite" in out.stderr
+    assert ('em$value("ror.ci_high", ..., display = ">100", bounds = "ror.point", '
+            'bound = "high")') in out.stderr, out.stderr
+    assert "A control cannot have an open end" in out.stderr
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        ('em$interval("ror", Inf, 1, 2, digits = 2)', "ror.point"),
+        ('em$interval("ror", 1.5, -Inf, 2, digits = 2)', "ror.ci_low"),
+        ('em$control("control.x", 1.5, 1, Inf, digits = 2)', "control.x.ci_high"),
+    ],
+)
+def test_r_tells_an_infinite_point_or_end_how_to_emit_an_open_end(
+    tmp_path: Path, call: str, says: str
+) -> None:
+    out, _root = _r_with(tmp_path, call)
+    assert out.returncode != 0
+    assert f"{says}: the value is infinite" in out.stderr, out.stderr
+    assert "interval() and control() take no display" in out.stderr
+    assert "A control cannot have an open end" in out.stderr
+
+
+def test_r_writes_an_infinity_as_python_writes_it(tmp_path: Path) -> None:
+    """jsonlite wrote the string "Inf", and Python writes Infinity, which json reads back as
+    the number (round 2 of #812)."""
+    out, root = _r_with(tmp_path, 'em$value("or.ci_high", Inf, display = ">100")\n'
+                                  'em$value("or.ci_low", -Inf, display = "<-100")\nem$write()')
+    assert out.returncode == 0, out.stderr
+    text = (root / "results" / "round.json").read_text(encoding="utf-8")
+    assert '"value": Infinity' in text and '"value": -Infinity' in text
+    values = json.loads(text)["values"]
+    assert values["or.ci_high"]["value"] == float("inf")
+    assert values["or.ci_low"]["value"] == float("-inf")
+    fragment = root / "results" / "round.json"
+    assert read_digest(fragment) == sha256_of(fragment)
+
+
+def test_r_refuses_an_interval_whose_key_is_already_emitted_before_writing_any(
+    tmp_path: Path,
+) -> None:
+    out, root = _r_with(
+        tmp_path,
+        'em$value("ror.ci_low", 1, digits = 2)\n'
+        'refused <- tryCatch({em$interval("ror", 1.5, 1, 2, digits = 2); FALSE}, '
+        "error = function(e) {message(conditionMessage(e)); TRUE})\n"
+        'if (!refused) stop("not refused")\nem$write()',
+    )
+    assert out.returncode == 0, out.stderr
+    assert "ror.ci_low emitted twice" in out.stderr
+    values = json.loads((root / "results" / "round.json").read_text(encoding="utf-8"))["values"]
+    assert set(values) == {"ror.ci_low"}

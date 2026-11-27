@@ -23,7 +23,7 @@
       "description": "Name of a profile under profiles/journals/. Absent means no journal chosen yet, which disables the journal gate rather than failing it."
     },
     "study_type": {
-      "enum": ["cohort", "case-control", "cross-sectional", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model", "other"],
+      "enum": ["cohort", "case-control", "cross-sectional", "diagnostic-accuracy", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model", "other"],
       "description": "The study's design. G12 asks the analysis plan for the sections this design needs beyond the seven every plan has, and G5 says where none of the reporting guidelines for it is declared. Each design's sections cite the guideline item they come from (src/manuscript_guard/data/study_types.yaml). `other` is for a study none of these is (a narrative review, a descriptive case series or a case report, a qualitative study): the plan is asked for the seven only, and no guideline is asked for by the design. Absent, the plan is asked for the seven only, and `next` asks for the design."
     },
     "registration": {
@@ -305,6 +305,19 @@
           "type": "boolean",
           "default": false,
           "description": "Whether the copies under literature/sources/ are committed. A new project's .gitignore leaves them out, since a public repository would publish them, paywalled papers among them; literature/sources.yaml, the record of what was stored, stays committed, and G7 notes rather than fails a recorded copy that is not on this computer, as in CI. Set true in a private repository that commits them, and take the line out of .gitignore: a recorded copy that is missing then fails again, so that CI holds every quote to its source."
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How `manuscript-guard verify` re-runs the analysis. Which R runs it is the machine's, not the project's, and is not written here: `--rscript PATH` names it for a run, MANUSCRIPT_GUARD_RSCRIPT for the machine.",
+      "properties": {
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "Seconds one analysis script may run before verify stops it, for a project whose slowest script takes longer than the default of 1800; at most 604800, seven days, well inside the 49 days Windows can wait for a program, past which a limit wrapped round or raised. --timeout and MANUSCRIPT_GUARD_VERIFY_TIMEOUT come first."
         }
       }
     },

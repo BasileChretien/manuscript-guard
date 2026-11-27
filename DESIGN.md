@@ -19652,13 +19652,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Eight designs are named, a cross-sectional study the last added; a design outside
+  not. Nine designs are named, a diagnostic accuracy study the last added; a design outside
   them (a narrative review, a descriptive case series or a case report, a qualitative study,
-  a diagnostic accuracy study, a target trial emulation as a design of its own) takes
+  a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case reports, case series, diagnostic accuracy and qualitative
+  from a draft" (above) plans case reports, case series and qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19667,7 +19667,10 @@ Added by the adversarial review, verified and **not** fixed:
   assessment, and missing survey wordings. So a heading of their own in other words, "Study
   sample", "Measures", "Covariate assessment" or "Probability weights", is refused and the
   plan told it lacks the section, a false alarm chosen over a false pass (Basile,
-  2026-11-26). The author answers such a false alarm, for any design and any section but
+  2026-11-26). By the same rule a diagnostic accuracy plan's exposure and outcome are
+  found under STARD's words only where the heading is "Index test" or "Target condition"
+  whole, plural, bracketed or numbered "3.", "3)", "A." or "III.": "10a. Index test" and
+  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19681,6 +19684,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
+  `tests/test_corruption.py::test_the_index_test_and_the_target_condition_are_their_heading_whole`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
   `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
@@ -20089,6 +20093,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
   `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
   and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
+- **An infinity in a results file.** A fragment holding an infinite value, an open end
+  printed as a comparator, carries a bare `Infinity`, as the Python emitter's always did and
+  the R emitter's now does: `check` reads it, and a strict JSON reader (R's
+  `jsonlite::fromJSON`, a browser's `JSON.parse`) refuses the file. Accepted.
+- **A plain display for an infinite value.** A fragment or a ledger entry whose value is
+  infinite and whose display is a plain number ("7.02"), taken at `main` before #812, is
+  G0 `no-display` at check time: an infinite value takes only a comparator on its side, or
+  "100+" above. Accepted.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",
@@ -20117,6 +20129,19 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
   `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
   and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
+- **Which interpreter verify runs.** An R script runs with `--rscript`, else the Rscript
+  MANUSCRIPT_GUARD_RSCRIPT names, else the first on PATH; a Python script always with the
+  Python manuscript-guard runs in, and a Quarto document with the first `quarto` on PATH. The
+  analysis inherits the environment, so MANUSCRIPT_GUARD_RSCRIPT or
+  MANUSCRIPT_GUARD_VERIFY_TIMEOUT set for one run of `verify` only is one more way for it to
+  tell that run from an ordinary one; the flags are not seen. An R's version is what
+  `Rscript --version` prints, and renv.lock's R is held to it by major and minor version
+  alone, renv's library being kept by them. Accepted.
+- **What says a re-run was another R's.** `check` says that `verify` re-ran the analysis with
+  another R or Python than the results were written with, or another R than renv.lock pins;
+  the deposit record (`deposit/verification.py`) and the companion page
+  (`deposit/companion_parts.py`) say only whether the run passed, and name no other R.
+  Accepted.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is

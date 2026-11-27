@@ -799,6 +799,19 @@ def _cited_as_typed() -> Reading:
     return cited
 
 
+@reading("every entry printed")
+def _every_entry_printed() -> Reading:
+    from manuscript_guard.gates.printed_entries import every_entry_printed
+
+    def printed(given: dict[str, Any]) -> bool:
+        """Whether a manuscript file asks for every entry of the bibliography, read as its
+        format is: what keeps G7's warnings for each entry nothing cites, where they are
+        otherwise one note."""
+        return every_entry_printed([given["text"]], latex=given["latex"])
+
+    return printed
+
+
 @reading("typed references")
 def _typed_references() -> Reading:
     from manuscript_guard.typed_references import read

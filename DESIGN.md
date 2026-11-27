@@ -31224,10 +31224,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An entry that holds its record's title word for word outside the title its reader took
     it to give is not said; within that title the record's title is never looked for, so
     that an invented title holding the real one and more is held to the record (round 1 of
-    #846). One whose title, up to one of its colons, folds as a title search folds it to the
-    record's title, alone or with its subtitle, and that form holds at least three searched
-    words with a letter (`TITLE_WORDS`), is passed over, whatever follows the colon: so is an
-    invented subtitle after the real title (rounds 2 to 7, `_with_subtitle`).
+    #846). One whose title, up to one of its colons (":", not a full-width one), folds as a
+    title search folds a title to what the record's title, alone or with its subtitle, folds
+    to, where that form holds at least three different searched words with a letter
+    (`TITLE_WORDS`), is passed over, whatever follows the colon: so is an invented subtitle
+    after the real title (rounds 2 to 8, `_with_subtitle`).
     One whose reader took the journal for its title and whose record
     is not in it word for word is said, and quotes the journal's name as the title given:
     an entry giving a work's Spanish title, whose record at OpenAlex is its English one, was

@@ -364,8 +364,9 @@ def _latex_header(text: str, title: str) -> tuple[str, str] | None | _Keep:
 def _header_with(folder: Folder, title: str) -> tuple[Path, str, str] | str | _Keep:
     """The manuscript of a project under way with `title` in its header where the header holds
     `init`'s placeholder, with what was done to it; where nothing is written into it, why the
-    title goes into paper.yaml alone; `_Keep`, with why, where it holds a title of its own or
-    cannot be read, which setup does not write over."""
+    title goes into paper.yaml alone; `_Keep`, with why, where it holds a title of its own,
+    holds only the authors' comments beside a placeholder that cannot take this title, or
+    cannot be read: none of which setup writes over."""
     paths = folder.setting("paths")
     named = paths.get("manuscript", "manuscript") if isinstance(paths, dict) else "manuscript"
     for path, edit in ((folder.root / named / "main.md", _markdown_header),

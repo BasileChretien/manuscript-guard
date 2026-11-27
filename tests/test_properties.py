@@ -5591,16 +5591,20 @@ def _any_heading_ending_in_references_holds_the_bibliography(
     patch.setattr(statements, "_bibliography", lambda title, last: held(title, True))
 
 
-def _an_emphasised_sentence_is_a_label(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.gates import statements
+def _a_label_alone_with_a_stop_is_no_label(patch: pytest.MonkeyPatch) -> None:
+    """A paragraph wholly in emphasis that ends in a stop read as a sentence, where G4's own
+    reading of the declarations takes it for a label alone (Basile, 2026-11-27: strict)."""
+    from manuscript_guard.gates import disclosures
 
-    patch.setattr(statements, "_emphasised_sentence", lambda paragraph: False)
+    label = disclosures._label
 
+    def unless_stopped(paragraph: str) -> tuple[str, str] | None:
+        text = paragraph.strip()
+        emphasised = text[:1] in "*_" and text.rstrip(".").endswith(("*", "_"))
+        stopped = text.rstrip("*_").endswith(".") or text.endswith(".")
+        return None if emphasised and stopped else label(paragraph)
 
-def _a_title_alone_with_a_stop_is_a_sentence(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.gates import statements
-
-    patch.setattr(statements, "_title_only", lambda words: False)
+    patch.setattr(disclosures, "_label", unless_stopped)
 
 
 def _a_label_s_own_paragraph_is_cut(patch: pytest.MonkeyPatch) -> None:
@@ -34227,12 +34231,8 @@ BROKEN = {
         _any_heading_ending_in_references_holds_the_bibliography,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
-    "an emphasised sentence is a label": (
-        _an_emphasised_sentence_is_a_label,
-        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
-    ),
-    "a label alone ending in a stop is a sentence": (
-        _a_title_alone_with_a_stop_is_a_sentence,
+    "a label as G4 reads it, alone and ending in a stop, is no label": (
+        _a_label_alone_with_a_stop_is_no_label,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
     "a label's own paragraph is cut": (

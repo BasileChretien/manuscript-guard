@@ -31033,6 +31033,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `declaration-missing`; a heading over one, with a model on record, is also
     `ai-use-model-unnamed` beside `section-empty`.
     Pinned by `tests/test_statements.py::test_a_label_over_a_placeholder_is_said_by_g4_s_other_checks_too`.
+  - A label is what G4's reading of the declarations takes for one, a short paragraph wholly
+    in emphasis among them, with or without a stop: Basile chose that strict reading over a
+    list of the words statements' titles are made of, which missed real titles (question box,
+    2026-11-27, round 4 of #819). So a short sentence wholly in emphasis standing alone, "*The
+    authors declare no competing interests.*", is a label of its kind with nothing after it,
+    and `declaration-missing` is said of a statement the paper makes; its hint says to write
+    the statement in plain text or after its label. A sentence of more than six words in
+    emphasis is read as a sentence.
+    Pinned by `tests/test_statements.py::test_a_short_sentence_wholly_in_emphasis_reads_as_a_label`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -9063,15 +9063,28 @@ DECLARED_TITLES = {
     "data": ("Data availability", "Data availability statement", "Data sharing",
              "Availability of data and materials", "Code and data availability",
              "Data, Materials, and Software Availability", "Data accessibility",
-             "Data and software availability"),
+             "Data and software availability", "Data and code availability statement"),
     "ethics": ("Ethics", "Ethics statement", "Ethical approval",
-               "Ethics approval and consent to participate"),
-    "funding": ("Funding", "Sources of funding", "Financial support"),
-    "interests": ("Competing interests", "Conflicts of interest", "Declaration of interests"),
-    "contributions": ("Author contributions", "Contributors", "CRediT author statement"),
+               "Ethics approval and consent to participate",
+               "Compliance with ethical standards"),
+    "funding": ("Funding", "Sources of funding", "Financial support", "Study funding"),
+    "interests": ("Competing interests", "Conflicts of interest", "Declaration of interests",
+                  "Declaration of competing interest"),
+    "contributions": ("Author contributions", "Contributors", "CRediT author statement",
+                      "Authors' contributions"),
     "ai_use": ("Use of AI", "Use of generative AI", "AI use statement",
-               "Declaration of generative AI use"),
+               "Declaration of generative AI use", "Statement on the use of AI"),
 }  # fmt: skip
+#: A short sentence of each kind, which wholly in emphasis and alone G4 reads as a label of
+#: that kind, with nothing after it (Basile, 2026-11-27: strict, round 4 of #819).
+DECLARED_SHORT = {
+    "data": "Data sharing is not allowed.",
+    "ethics": "Ethical approval was waived.",
+    "funding": "No funding was received.",
+    "interests": "No competing interests.",
+    "contributions": "Author contributions are below.",
+    "ai_use": "No generative AI was used.",
+}
 #: What each says, in words that name no other kind.
 DECLARED_BODIES = {
     "data": "The extract is held by the agency and can be requested from it.",
@@ -9089,7 +9102,8 @@ DECLARED_BODIES = {
 DECLARED_WORDS = {
     "data": "Data sharing is not allowed by the agreement with the agency.",
     "funding": "No funding was received for this work.",
-    "interests": "The authors declare no competing interests.",
+    # Seven words or more, so that in emphasis it is a sentence and no label alone.
+    "interests": "The authors declare that they have no competing interests.",
     "contributions": "The contributions of the authors were Conceptualization and Funding "
     "acquisition for AE, and Supervision for BS.",
     "ai_use": "No generative AI was used in writing the paper.",
@@ -9134,7 +9148,8 @@ def statement_papers(
     papers made from it: for each kind, the paper without its statement, a label of it left
     over a comment or a placeholder in its Declarations section, and again over a comment
     first of the labels, a Data availability or an AI-use label after it, and again as a
-    label alone that ends in a stop ("**Funding.**") over a comment, and the funding
+    label alone that ends in a stop ("**Funding.**") over a comment, and again as a short
+    sentence wholly in emphasis, which G4 reads as a label alone, and the funding
     statement taken out with the contributions, which name a CRediT role with funding in it,
     written as a sentence of the Declarations section; for each kind under a heading, the
     paper with nothing printed under that heading; and the papers that state the same in
@@ -9154,8 +9169,10 @@ def statement_papers(
     references", which is empty), with nothing under them; and "Availability of code", which
     is no data statement, in an order drawn (rounds 1 and 2 of #819). The ethics statement
     opens like a label of its own kind ("Ethics committee:"), and the papers made from this
-    one write it after a label too, and a Declarations section's sentences each wholly in
-    emphasis. Each is in every example, not one among several drawn, so that a rule broken
+    one write it after a label too, and a Declarations section's sentences of seven words or
+    more each wholly in emphasis, which are sentences still. Titles outside any list a reading
+    might keep are among those drawn ("Study funding", "Compliance with ethical standards").
+    Each is in every example, not one among several drawn, so that a rule broken
     for any of them fails under every seed."""
     case = {"as": str, "upper": str.upper, "lower": str.lower}
 
@@ -9242,6 +9259,8 @@ def statement_papers(
         # layout does before the statement is written: a label states nothing.
         left = ([f"**{named[left_out]}:** {over.format(DECLARED_BODIES[left_out])}"]
                 if left_out else [])  # fmt: skip
+        if left_out and left_in == "sentence":
+            left = [f"*{DECLARED_SHORT[left_out]}*"]
         if left_out and left_in == "stopped":
             left = [stopped.format(named[left_out]), hidden.format(DECLARED_BODIES[left_out])]
         if left_out and left_in == "further":
@@ -9266,11 +9285,11 @@ def statement_papers(
     shown = {kind: (number if forms[kind] == "numbered heading" else "") + titles[kind]
              for kind in headed}  # fmt: skip
     removed = [(kind, paper(left_out=kind, left_in=place)) for kind in forms
-               for place in ("declarations", "further", "stopped")]
+               for place in ("declarations", "further", "stopped", "sentence")]
     removed.append(("funding", paper(left_out="funding",
                                      shaped={"contributions": "declarations"})))
     restated = [paper(shaped={"ethics": form}) for form in (*ETHICS_FORMS, "label")]
-    restated.append(paper(shaped={"interests": "declarations"}, emphasised=True))
+    restated.append(paper(shaped={"funding": "declarations"}, emphasised=True))
     restated += [paper(shaped={"data": "heading"}, retitled={"data": title})
                  for title in DATA_TITLES_NEW]  # fmt: skip
     return (paper(), removed, [(kind, shown[kind], paper(emptied=kind)) for kind in headed],

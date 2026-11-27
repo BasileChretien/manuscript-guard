@@ -54,10 +54,13 @@ ones every paper makes: data availability, ethics, funding, competing interests,
 contributions, and AI use where the records show a model at work or `authors.yaml` declares
 a tool (`declaration-missing`), in the main text or the supplement. Each is a heading or a
 paragraph's label of its kind with words after it: a label over a comment or over "TO
-CONFIRM" states nothing. A heading with only a comment or a placeholder under it prints as a
+CONFIRM" states nothing, and a short paragraph wholly in emphasis is a label too ("*No
+competing interests.*"), so write a statement in plain text or after its label ("Competing
+interests: none."). A heading with only a comment or a placeholder under it prints as a
 heading alone, and is `section-empty`. Both are notes before drafting, warnings while
-drafting and failures from internal review. Draft each from `authors.yaml` and ask the authors, with your question
-tool, what no file records: the ethics committee and its reference, or why none was needed;
+drafting and failures from internal review. Draft each from `authors.yaml` and ask the
+authors, with your question tool, what no file records: the ethics committee and its
+reference, or why none was needed;
 where the data can be had. Never fill one in from a guess. Once a profile lists the journal's
 statements, `missing-required-statement` asks for those instead.
 

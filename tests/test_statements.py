@@ -122,14 +122,15 @@ def test_a_placeholder_g6_fails_is_g6_s_and_one_g6_passes_is_empty() -> None:
                    FIVE) == ["funding"]
 
 
-def test_an_emphasised_sentence_is_a_statement_and_only_words_before_a_colon_a_label() -> None:
-    """Round 2 of #819: "*The authors declare no competing interests.*" and "**No funding was
-    received.**" are sentences of a Declarations section, not labels; "**Funding:**" and
-    "Funding:" are labels, and so is "**Funding**" alone, with no stop."""
+def test_a_label_is_what_g4_takes_for_one_and_a_longer_sentence_is_a_statement() -> None:
+    """Round 4 of #819 (Basile, 2026-11-27: strict, as G4 reads it): a paragraph is a label
+    wherever G4's own `_LABEL` takes it for one, words before a colon or a short paragraph
+    wholly in emphasis, with or without a stop; its kind is read from its words as G4 reads
+    them. A sentence in emphasis too long to be a label alone is a sentence of the
+    Declarations section."""
     for interests, funding in (
-        ("*The authors declare no competing interests.*", "**Funding:** ANR-20-CE17-0001."),
-        ("**Competing interests:** None.", "**No funding was received.**"),
-        ("_The authors declare no competing interests_.", "__No funding was received.__"),
+        ("**Competing interests:** None.", "*No funding was received for this work.*"),
+        ("Competing interests: none declared.", "__The authors received no funding for it.__"),
     ):
         text = WHOLE.split("# Funding")[0] + f"# Declarations\n\n{interests}\n\n{funding}\n"
         assert missing(stated(text), FIVE) == [], (interests, funding)
@@ -139,20 +140,36 @@ def test_an_emphasised_sentence_is_a_statement_and_only_words_before_a_colon_a_l
 
 
 def test_a_label_alone_ending_in_a_stop_is_a_label() -> None:
-    """Round 3 of #819: a paragraph wholly in emphasis whose words, its stop taken off, are
-    only a kind's title ("**Funding.**", "*Competing interests.*", "**Funding**.", "*Data
-    availability.*") is a label, as G4 reads it, and over a comment or a placeholder it
-    states nothing; only a longer sentence in emphasis is a statement."""
+    """Rounds 3 and 4 of #819: a short paragraph wholly in emphasis is a label, as G4 reads
+    it, whatever its title ("**Funding.**", "*Study funding.*", "**Compliance with ethical
+    standards.**", "**Funding**.", "*Data availability.*"), and over a comment or a
+    placeholder it states nothing."""
     text = WHOLE.split("# Funding")[0].replace(
-        "# Data availability\n\nThe data are held by the agency.\n\n", "") + (
-        "# Declarations\n\n**Funding.**\n\n<!-- TO CONFIRM -->\n\n*Competing interests.*\n\n"
-        "To be completed.\n\n**Ethics approval and consent to participate**.\n\n<!-- -->\n\n"
+        "# Data availability\n\nThe data are held by the agency.\n\n", "").replace(
+        "# Ethics\n\nThe committee approved the study (CPP 2021-12).\n\n", "") + (
+        "# Declarations\n\n*Study funding.*\n\n<!-- TO CONFIRM -->\n\n*Competing interests.*\n\n"
+        "To be completed.\n\n**Compliance with ethical standards.**\n\n<!-- -->\n\n"
         "*Data availability.*\n\n<!-- -->\n")
-    assert missing(stated(text), FIVE) == ["data", "funding", "interests"]
+    assert missing(stated(text), FIVE) == ["data", "ethics", "funding", "interests"]
     text = WHOLE.split("# Funding")[0] + (
         "# Declarations\n\n**Funding.**\n\nThe work was paid for by the department.\n\n"
         "*Competing interests.* None declared.\n")
     assert missing(stated(text), FIVE) == []
+
+
+def test_a_short_sentence_wholly_in_emphasis_reads_as_a_label(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): Basile chose, 2026-11-27, to read a label strictly as G4
+    reads it. "*The authors declare no competing interests.*" standing alone is a label of
+    the competing interests statement with nothing after it, so the statement is missing,
+    and the finding says to write it in plain text or after its label."""
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n*The authors declare no competing interests.*\n\n"
+        "**Funding:** ANR-20-CE17-0001.\n")
+    assert missing(stated(text), FIVE) == ["interests"]
+    [finding] = check_statements(_project(tmp_path, text)).findings
+    assert (finding.code, finding.subject) == (MISSING, "interests")
+    assert "plain text" in finding.hint and "after its label" in finding.hint
 
 
 def test_a_label_s_own_paragraph_never_ends_it() -> None:

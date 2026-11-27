@@ -35,12 +35,13 @@ failure from internal review on (the author's rule, 2026-11-26):
   approval was needed (`no_approval`, as G4 reads a denial); and any of them a sentence of a
   Declarations section that holds the words of its kind's heading. A label's own words are no
   sentence of either, and a CRediT role ("Funding acquisition") or an item of the ICMJE form
-  states no funding. A label is the words a paragraph opens with before a colon ("**Funding:**",
-  "Funding:"), or a short paragraph wholly in emphasis with no stop ("**Funding**"), or one
-  whose words are only a statement's title, whatever stop ends it ("**Funding.**",
-  "*Competing interests.*"); one wholly in emphasis that ends in a stop and says more ("*The
-  authors declare no competing interests.*") is a sentence, a statement of what its words
-  name.
+  states no funding. A label is what G4's reading of the declarations takes for one
+  (`disclosures._label`), its kind read from its words as G4 reads them (Basile, 2026-11-27:
+  strict): the words a paragraph opens with before a colon ("**Funding:**", "Funding:"), or
+  a short paragraph wholly in emphasis, with or without a stop ("**Funding**", "**Funding.**",
+  "*Study funding.*"). So a short sentence wholly in emphasis standing alone ("*The authors
+  declare no competing interests.*") is a label with nothing after it, and the finding says to
+  write the statement in plain text or after its label; a longer one is a sentence.
 
 A kind whose only heading is empty is said once, by `section-empty`. Where the target
 journal's profile lists required statements, they are the journal's, read from its page, and
@@ -150,7 +151,10 @@ _REFERENCES_LAST = re.compile(
 _SUPPLEMENT_NUMBER = re.compile(r"^\s*S\d+(?:\.\d+)*\.?\s+")
 #: The kinds G4's reading of the declarations knows by their headings and labels.
 _DISCLOSED = (FUNDING, INTERESTS, ETHICS, CONTRIBUTIONS)
-STATED, HEADED_EMPTY = "stated", "empty"
+STATED, HEADED_EMPTY, LABELLED = "stated", "empty", "labelled"
+#: Which of two readings of a kind stands: a statement, then an empty heading, then a label
+#: with nothing after it.
+_RANK = {STATED: 0, HEADED_EMPTY: 1, LABELLED: 2}
 
 
 def _placeholder(text: str) -> bool:
@@ -327,67 +331,15 @@ def kinds_of(title: str, data_heading: str | None = None) -> list[str]:
     return found
 
 
-#: The marks of emphasis, the doubled before the single.
-_EMPHASIS = ("**", "__", "*", "_")
-
-
-def _emphasised_sentence(paragraph: str) -> bool:
-    """Whether a paragraph is a sentence wholly in emphasis, ending in a stop inside its marks
-    or after them: "*The authors declare no competing interests.*", "**No funding was
-    received.**". G4's reading of the declarations takes one of six words or fewer for a label
-    alone; it is a statement (round 2 of #819). "**Funding**", with no stop, is a label, and
-    so is a title alone with its stop, "**Funding.**", "*Competing interests.*" (round 3)."""
-    text = paragraph.strip()
-    for mark in _EMPHASIS:
-        if not text.startswith(mark):
-            continue
-        inner = text[len(mark):]
-        stop = inner[-1:] if inner[-1:] in (".", "!", "?") and inner[:-1].endswith(mark) else ""
-        inner = inner[: len(inner) - len(stop)]
-        if len(inner) <= len(mark) or not inner.endswith(mark):
-            return False
-        inner = inner[: -len(mark)]
-        return (mark not in inner and bool(stop or inner.rstrip().endswith((".", "!", "?")))
-                and not _title_only(inner))  # fmt: skip
-    return False
-
-
-#: The words a statement's title is made of ("Ethics approval and consent to participate",
-#: "Data, Materials, and Software Availability", "Use of generative AI"): a paragraph wholly
-#: in emphasis of these words alone is a label, whatever stop ends it.
-_TITLE_WORDS = frozenset((
-    "a", "accessibility", "acknowledgement", "acknowledgements", "acknowledgment",
-    "acknowledgments", "ai", "and", "approval", "artificial", "author", "author's", "authors",
-    "authors'", "authorship", "availability", "board", "code", "committee", "competing",
-    "conflict", "conflicting", "conflicts", "consent", "contribution", "contributions",
-    "contributor", "contributors", "contributorship", "credit", "data", "declaration",
-    "declarations", "disclosure", "disclosures", "duality", "ethical", "ethics", "financial",
-    "for", "funder", "funding", "generative", "grant", "grants", "information",
-    "institutional", "intelligence", "interest", "interests", "irb", "language", "llm", "llms",
-    "materials", "model", "models", "of", "on", "or", "participate", "publication", "review",
-    "role", "roles", "sharing", "software", "source", "sources", "statement", "statements",
-    "support", "the", "to", "tools", "use",
-))  # fmt: skip
-
-
-def _title_only(words: str) -> bool:
-    """Whether `words`, their marks and stops taken off, are only a statement's title, of a
-    kind this check reads: "Funding", "Competing interests", "Data availability" (round 3 of
-    #819). "The authors declare no competing interests" is a sentence."""
-    said = re.findall(r"[a-z']+", words.casefold().replace("\N{RIGHT SINGLE QUOTATION MARK}", "'"))
-    return (bool(said) and all(word in _TITLE_WORDS for word in said)
-            and bool(_label_of(" ".join(said), None)))  # fmt: skip
-
-
 def _said_words(text: str) -> str:
     """The words `text` prints as sentences: each paragraph without the label it opens with,
-    "**Funding:**" or "Data availability:", whose words name a kind and state nothing. A
-    sentence wholly in emphasis is kept whole: it is no label."""
+    as G4's reading of the declarations takes one ("**Funding:**", "Data availability:",
+    "**Funding.**"), whose words name a kind and state nothing."""
     from manuscript_guard.gates.disclosures import _label, paragraphs
 
     kept = []
     for paragraph in paragraphs(text):
-        labelled = None if _emphasised_sentence(paragraph) else _label(paragraph)
+        labelled = _label(paragraph)
         kept.append(labelled[1] if labelled is not None else paragraph)
     return "\n\n".join(piece for piece in kept if _says(piece))
 
@@ -445,7 +397,7 @@ def stated(text: str, *, abstract: str | None = None,
     said: dict[str, str] = {}
 
     def found(kind: str, how: str) -> None:
-        if said.get(kind) != STATED:
+        if kind not in said or _RANK[how] < _RANK[said[kind]]:
             said[kind] = how
 
     for section in sections:
@@ -474,16 +426,9 @@ def stated(text: str, *, abstract: str | None = None,
     # `_labelled` gives one label for each paragraph that opens with one, in order.
     labelled = [piece for piece in paragraphs(printed) if _label(piece) is not None]
     for paragraph, (label, rest) in zip(labelled, _labelled(printed), strict=False):
-        if _emphasised_sentence(paragraph):
-            # A sentence, not a label: it states what its words name (round 2 of #819).
-            for kind in KINDS:
-                if _words_of(kind, paragraph):
-                    found(kind, STATED)
-            continue
         held = _held(_label(paragraph)[1], rest, data_heading)
         for kind in _label_of(label, data_heading):
-            if _says(held):
-                found(kind, STATED)
+            found(kind, STATED if _says(held) else LABELLED)
     return said
 
 
@@ -523,11 +468,12 @@ def _cut(rest: str, data_heading: str | None) -> str:
 
 
 def merged(*readings: dict[str, str]) -> dict[str, str]:
-    """What several texts hold together: a kind stated in one is stated."""
+    """What several texts hold together: a kind stated in one is stated, and one under an
+    empty heading in one is that before a label with nothing after it in another."""
     out: dict[str, str] = {}
     for said in readings:
         for kind, how in said.items():
-            if out.get(kind) != STATED:
+            if kind not in out or _RANK[how] < _RANK[out[kind]]:
                 out[kind] = how
     return out
 
@@ -606,13 +552,18 @@ def _empty_finding(heading: EmptyHeading, path: Path | None, line: int, severity
     )  # fmt: skip
 
 
-def _missing_finding(kind: str, path: Path | None, severity: str, recorded: str) -> Finding:
+def _missing_finding(kind: str, path: Path | None, severity: str, recorded: str,
+                     labelled: bool = False) -> Finding:  # fmt: skip
+    """`labelled`: the manuscript has a label of the kind with nothing after it."""
+    alone = (f"; a label of it stands with nothing after it: write the statement in plain "
+             f"text, or after its label (\"{USUAL[kind]}: ...\"), since a short paragraph "
+             "wholly in emphasis reads as a label" if labelled else "")  # fmt: skip
     return Finding(
         gate=GATE, code=MISSING, severity=severity, path=path,
         message=f"the manuscript has no {NAMES[kind]}",
         hint=f"{WRITE[kind]}, under a heading such as \"{USUAL[kind]}\" or in a paragraph "
-        f"labelled \"{USUAL[kind]}:\"{recorded}; the submission-pack skill drafts the "
-        "declarations from authors.yaml",
+        f"labelled \"{USUAL[kind]}:\"{recorded}{alone}; the submission-pack skill drafts "
+        "the declarations from authors.yaml",
         subject=kind,
     )  # fmt: skip
 
@@ -703,7 +654,8 @@ def check_statements(project: Project, stage: str | None = None) -> Report:
                          if kind in named and reading.said.get(kind) == HEADED_EMPTY]
                 findings.append(_empty_finding(heading, path, line, severity, heads))
     where = _main_file(folder)
-    findings += [_missing_finding(kind, where, severity, _recorded(project, kind))
+    findings += [_missing_finding(kind, where, severity, _recorded(project, kind),
+                                  reading.said.get(kind) == LABELLED)
                  for kind in reading.lacking]  # fmt: skip
     return Report(tuple(findings))
 

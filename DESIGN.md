@@ -1421,6 +1421,16 @@ order is `printed_order`.
   maths. So are optidef's problems, `mini`, `maxi`, `argmini` and `argmaxi`, each also with
   `*`, `!` and `e`, whose variables, objective and constraints optidef.sty sets in an
   `align` (decision 13, 2026-11-13: tex-qbio-pe-A2's `w_{min}` was read as prose).
+- Inside maths, a text argument is prose: `\text`, `\mbox`, `\intertext`, mathtools'
+  `\shortintertext` and amsmath's `\tag`, starred too. Inline maths in it, `\tag{\(1\)}` or
+  `\text{if $x > 0$}`, is a formula of its own and balances as it does in text. Inline maths
+  in the display's own maths is still refused, since LaTeX stops on it (Basile, 2026-11-27:
+  `\tag{\(1\)}` was refused as unbalanced, and nothing past it was read). A paper's own
+  definition of `\tag` or `\shortintertext`, by `\newcommand`, `\renewcommand`, `\def` or
+  `\let`, as one that does not load mathtools may make, makes it the author's command, read
+  as an unknown one is, whatever the paper loads, as the reader read both before it knew
+  them (`AUTHORS_IF_DEFINED`; round 1 of #836: known, each use of one so defined was refused
+  as defined again). So does a `\providecommand` of either (Known gaps).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
@@ -31276,6 +31286,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     denial wherever it stands and whatever its emphasis, so "*Ethical approval was not
     required.*" alone is an ethics statement.
     Pinned by `tests/test_statements.py::test_a_short_sentence_wholly_in_emphasis_reads_as_a_label`.
+
+- **A `\providecommand` of `\tag` or `\shortintertext` makes it the author's command.** LaTeX
+  defines nothing where amsmath or mathtools already gives the command, but the reader takes
+  it, as any definition of either, for the author's, read as an unknown one is, so inline
+  maths in it is refused where the package's text argument would hold it, as before #836
+  (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
+  Pinned by
+  `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -3466,6 +3466,9 @@ def test_a_list_s_title_in_a_block_quote_opens_it_under_a_line_of_marks_alone() 
     assert text.index(entry) < listed[1] and listed[0] <= text.index("> **11.")
     text = f"# Discussion\n\n> It held, as\n> **11. REFERENCES**:\n>\n{entry}\n"
     assert unmarked_reference_lists(text) == []
+    # A line of a carriage return alone, as a file written on Windows has it, is blank too.
+    text = "# Discussion\r\n\r\nIt held.\r\n\r\n**References**\r\n\r\n1. Doe A. Trials. 2020.\r\n"
+    assert len(unmarked_reference_lists(text)) == 1
 
 
 @pytest.mark.parametrize(

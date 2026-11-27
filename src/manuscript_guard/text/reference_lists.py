@@ -259,7 +259,7 @@ def _opens_a_paragraph(lines: list[str], number: int, under: set[int]) -> bool:
     quoted paragraphs of a Word document, or ends a heading (`under`). So "> **11.
     REFERENCES**:" under a line of `>` opens a list as it does under a blank one (Basile,
     2026-11-27; docx-med-A3)."""
-    return not number or not lines[number - 1].strip(" \t>") or number - 1 in under
+    return not number or not lines[number - 1].replace(">", "").strip() or number - 1 in under
 
 
 #: A list item's marker: "3." or "3)" of an ordered list, "-", "*" or "+" of another.

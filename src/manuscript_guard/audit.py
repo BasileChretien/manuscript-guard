@@ -55,6 +55,7 @@ from manuscript_guard.stats.margins import said as said_recovered
 from manuscript_guard.stats.reported import described, judge, reported_tests
 from manuscript_guard.stats.shares import described as described_share
 from manuscript_guard.stats.shares import off, table_shares
+from manuscript_guard.text import reference_lists as _reference_lists
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text, typed_heading_levels
@@ -64,7 +65,6 @@ from manuscript_guard.text.reference_lists import (
     ends_a_list_alone,
     is_bibliography_heading,
     is_no_entry,
-    literature_over_prose,
 )
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
@@ -740,8 +740,8 @@ def bibliography_spans(
     for start, line in enumerate(lines):
         if start in cells or not is_bibliography_heading(
             line, marked=start in headings, markdown=markdown
-        ) or literature_over_prose(line, lines, start, marked=start in headings,
-                                   markdown=markdown):  # fmt: skip
+        ) or _reference_lists.literature_over_prose(
+            line, lines, start, marked=start in headings, markdown=markdown):  # fmt: skip
             continue
         if spans and start < spans[-1][1]:
             continue

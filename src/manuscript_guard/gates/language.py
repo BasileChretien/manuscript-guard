@@ -79,9 +79,16 @@ from manuscript_guard.keys import NONE, Keyed
 from manuscript_guard.keys import placed as placed_in
 from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.policy import DRAFTING
+from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
-from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
+from manuscript_guard.text.masking import (
+    NUL,
+    front_matter_end,
+    front_matter_title,
+    kept_breaks,
+    mask,
+)
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
@@ -809,14 +816,19 @@ def _views(text: str) -> tuple[str, str]:
 
 #: What indents a line of an indented code block, as pandoc's Markdown reads one.
 _CODE_INDENT = re.compile(r"(?: {4}|\t)")
-#: A list item's first line, under which an indented paragraph is the item's and no code: a
-#: bullet's, a number's, and a letter's or a roman numeral's, with a stop or a bracket after
-#: it or brackets round it, as pandoc writes Word's lists, "a.  ", "iv.  ", "A)  ", "(1)  ".
+#: A list item's first line, under which an indented paragraph is the item's and no code, its
+#: marker as pandoc's fancy_lists reads one (round 2 of #841): a bullet; a number, a letter or
+#: a roman numeral of one case, with a stop or a bracket after it or brackets round it, "a.",
+#: "iv.", "MIX.", "A)", "(1)"; and a capital letter with a stop only before two spaces or a
+#: tab, so "C. elegans" and "I. The cells" open no item, and "Mix." none.
 _ITEM_LINE = re.compile(
-    r"[ \t]*(?:[-*+]|\(?(?:\d{1,9}|[A-Za-z]|[ivxlcdmIVXLCDM]{1,6})[.)])[ \t]"
+    r"[ \t]*(?:[-*+]|(?:\d{1,9}|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,})[.)]|[A-Z]\)|[A-Z]\.(?= {2}|\t)"
+    r"|\((?:\d{1,9}|[a-z]|[A-Z]|[ivxlcdm]+|[IVXLCDM]+)\))[ \t]+"
 )
 #: A footnote's definition, under which an indented paragraph is the note's.
 _FOOTNOTE_LINE = re.compile(r"[ ]{0,3}\[\^[^\]\s]+\]:")
+#: Where a footnote's paragraphs after its first start, as pandoc reads them: four spaces in.
+_FOOTNOTE_COLUMN = 4
 
 
 def _keeps_the_item(line: str) -> bool:
@@ -824,6 +836,26 @@ def _keeps_the_item(line: str) -> bool:
     the item open for the paragraphs after it, as pandoc writes an item of three paragraphs
     or more, `-   x` over `····y` and `····z`: always."""
     return bool(line)
+
+
+def _column(typed: str) -> int:
+    """How far in `typed` ends, a tab taken to the next stop of four, as pandoc counts."""
+    return len(typed.expandtabs(4))
+
+
+def _content_column(line: str) -> int | None:
+    """Where an item's or a footnote's text starts on its first `line`, which a later
+    paragraph is to be indented to at the least to be its: "-   x" is 4 in, "xii. x" 5, as
+    pandoc reads them (round 2 of #841); None where the line opens neither."""
+    item = _ITEM_LINE.match(line)
+    if item is not None:
+        return _column(line[: item.end()])
+    return _FOOTNOTE_COLUMN if _FOOTNOTE_LINE.match(line) else None
+
+
+def _indent(line: str) -> int:
+    """How far in `line`'s text starts (`_column`)."""
+    return _column(line[: len(line) - len(line.lstrip(" \t"))])
 
 
 def _indented_code(text: str) -> list[tuple[int, int]]:
@@ -842,7 +874,9 @@ def _indented_code(text: str) -> list[tuple[int, int]]:
         at += len(line) + 1
     tabled = table_lines(kept_breaks(text, mask(text)))
     spans: list[tuple[int, int]] = []
-    index, inside = 0, False
+    # Where the open item's or footnote's text starts, which its paragraphs are indented to;
+    # None where none is open.
+    index, inside = 0, None
     while index < len(lines):
         line = lines[index]
         blank_above = index == 0 or not lines[index - 1].strip()
@@ -850,10 +884,11 @@ def _indented_code(text: str) -> list[tuple[int, int]]:
             index += 1
             continue
         if _CODE_INDENT.match(line):
-            if inside:
-                inside = _keeps_the_item(line)
+            if inside is not None and _indent(line) >= inside:
+                inside = inside if _keeps_the_item(line) else None
             elif index not in tabled and not line.lstrip().startswith(("|", "+", ">")):
-                stop = index
+                # Code under an item ends the item, as pandoc ends the list there.
+                inside, stop = None, index
                 while stop < len(lines) and (not lines[stop].strip()
                                              or _CODE_INDENT.match(lines[stop])):  # fmt: skip
                     stop += 1
@@ -863,7 +898,7 @@ def _indented_code(text: str) -> list[tuple[int, int]]:
                 index = stop
                 continue
         else:
-            inside = bool(_ITEM_LINE.match(line) or _FOOTNOTE_LINE.match(line))
+            inside = _content_column(line)
         index += 1
     return spans
 
@@ -980,19 +1015,24 @@ def _plain_paragraph(paragraph: str) -> str:
     return " ".join(_NOT_WORDS.sub(" ", paragraph).split()).strip(" .:").casefold()
 
 
-#: A line that gives a title as a heading or in front matter: `# Title`, `title: "Title"`.
-_TITLE_LINE = re.compile(r"[ \t]*(?:#{1,6}[ \t]+|title:[ \t]*)(?P<title>\S.*?)[ \t#]*\Z")
+#: A line that gives a title as an ATX heading: `# Title`, `# Title {.unnumbered}`.
+_TITLE_LINE = re.compile(r"[ \t]*#{1,6}[ \t]+(?P<title>\S.*?)[ \t#]*\Z")
 
 
 def _titles_before(typed: str) -> set[str]:
     """What may be the paper's title in `typed`, the text before its Abstract, as plain words:
-    each paragraph of four words or more, and each line that gives one as a heading or in
-    front matter, `# Title` or `title: "Title"` (round 1 of #841)."""
+    each paragraph of four words or more; each line that gives one as a heading, `# Title`,
+    read without its attributes as pandoc reads it, `{.unnumbered}`; and the front matter's
+    title as YAML reads it (`front_matter_title`), a block's, `title: >-` over its text, among
+    them (rounds 1 and 2 of #841)."""
     found = {_plain_paragraph(each) for each in _BLANK_LINE.split(typed)}
     for line in typed.split("\n"):
         titled = _TITLE_LINE.fullmatch(line)
         if titled is not None:
-            found.add(_plain_paragraph(titled["title"].strip("'\"")))
+            found.add(_plain_paragraph(strip_attributes(titled["title"]).rstrip(" \t#")))
+    header = front_matter_title(typed)
+    if header is not None:
+        found.add(_plain_paragraph(header[1]))
     return {each for each in found if len(each.split()) >= _TITLE_WORDS}
 
 

@@ -1828,8 +1828,11 @@ APA_AGAIN = ("**{}**", "**{}.**", "__{}:__", "**{upper}**")
 APA_NOT_AGAIN = ("**Purpose**", "**{} in two years**")
 
 
-#: How the title stands before the Abstract: a paragraph, a heading, front matter.
-APA_TITLED = ("{}", "# {}", '---\ntitle: "{}"\n---')
+#: How the title stands before the Abstract: a paragraph, a heading, front matter; and a
+#: heading with its attributes, and front matter whose title is a YAML block (round 2 of
+#: #841).
+APA_TITLED = ("{}", "# {}", '---\ntitle: "{}"\n---', "# {} {{.unnumbered}}",
+              "---\ntitle: >-\n  {}\n---")  # fmt: skip
 
 
 @st.composite
@@ -1890,11 +1893,17 @@ def highlights_sections(draw: st.DrawFn) -> tuple[str, list[str]]:
 #: An indented code block in each way pandoc reads one, each holding a short form used and,
 #: after it, a pair that would define it (docx-psych-2's R, decision of 2026-11-27); and an
 #: indented paragraph that is no code: a list item's, and a line a paragraph wraps onto.
+#: Round 2 of #841, as pandoc 3.9 reads each: under a paragraph opening on a capital and a
+#: stop before one space, "C. elegans", or on a word of mixed case, "Mix.", which open no
+#: item; and under an item whose text starts five in, "xii. ", which four spaces do not reach.
 CODE_BLOCKS = ("    {s}<-as.vector(fit)\n    #{s}: Posterior Standard Deviation",
                "\t{s} <- sd(x)\n\t# {s}: standard error",
                "    {s} <- 1\n\n    # {s}: standard error of it",
-               "        {s}.mean <- mean(x)\n    # {s}: standard error")  # fmt: skip
-CODE_FORMS = ("SE", "SD", "SEM", "SER")
+               "        {s}.mean <- mean(x)\n    # {s}: standard error",
+               "C. elegans strains were used.\n\n    {s} <- 1\n    # {s}: standard error",
+               "Mix. The cells were kept.\n\n    {s} <- 2\n    # {s}: standard error",
+               "xii. The cells were kept.\n\n    {s} <- 3\n    # {s}: standard error")  # fmt: skip
+CODE_FORMS = ("SE", "SD", "SEM", "SER", "SXA", "SXB", "SXC")
 NOT_CODE = (("- The {s} rose.\n\n    The quality standard error (QSE) was kept.", "QSE"),
             ("The {s} rose, and\n    the quick standard deviation (QSD) was kept.", "QSD"),
             # Round 1 of #841: an item's third paragraph; a lettered, a roman, a bracketed
@@ -1907,6 +1916,10 @@ NOT_CODE = (("- The {s} rose.\n\n    The quality standard error (QSE) was kept."
             ("iv. The {s} rose.\n\n    The quick sample value (QSV) was kept.", "QSV"),
             ("B)  The {s} rose.\n\n    The quick sample band (QSB) was kept.", "QSB"),
             ("(2) The {s} rose.\n\n    The quick sample mark (QSM) was kept.", "QSM"),
+            # Round 2 of #841: a capital and a stop before two spaces, and a roman numeral in
+            # small letters whose item's text starts five in, its paragraph indented as far.
+            ("Q.  The {s} rose.\n\n    The quick sample quota (QSQ) was kept.", "QSQ"),
+            ("mix. The {s} rose.\n\n     The quick sample yield (QSY) was kept.", "QSY"),
             ("It held.[^9]\n\n[^9]: The {s} rose.\n\n    The quick sample note (QSN) was "
              "kept.", "QSN"),
             ("The {s} rose.\n\n-------------------------------------\n  Group       Note\n"
@@ -16196,6 +16209,42 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
         passed.append(piece.replace("References", "Remarks").replace("references", "remarks")
                       .replace("Literature", "Remarks"))
     return "".join(listed) + "\n", "".join(passed) + "\n"
+
+
+#: "Literature" titling a section, as a heading and in bold, and what stands under it: entries
+#: of each shape the rule knows, an entry straight under an ATX heading, a quoted list under a
+#: line of the quote's marks alone, and prose (Basile, 2026-11-28, "Only over entry-shaped
+#: lines"; round 2 of #841). Each kind, `{n}` its number and `{said}` a sentence, and whether
+#: a reference list opens at its first line.
+LITERATURE_KINDS = {
+    "a heading over prose": ("## {n}. Literature\n\n{said}", False),
+    "a heading over an author-year entry": (
+        "## {n}. Literature\n\nAlmeida, F., & Smith, G. (2019). Word embeddings. arXiv.", True),
+    "a heading over a numbered entry": (
+        "## {n}. Literature\n\n1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.", True),
+    "a heading with an entry straight under it": (
+        "## Literature\n[1] Doe HA, Roe MB. Trials of drugs.", True),
+    "a bold line over prose": ("**{n}. Literature**\n\n{said}", False),
+    "a quoted bold line over a quoted entry": (
+        "> **Literature**\n>\n> 1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.", True),
+}
+
+
+@st.composite
+def literature_sections(draw: st.DrawFn) -> tuple[str, list[int]]:
+    """A manuscript holding each of `LITERATURE_KINDS` in an order drawn, each closed by a
+    section's heading, and the 0-based lines where a reference list opens: those of the kinds
+    over an entry, and none over prose."""
+    filler = st.lists(st.sampled_from(FILLER), min_size=3, max_size=8)
+    pieces, opened = ["# Introduction", " ".join(draw(filler)).capitalize() + "."], []
+    for number, kind in enumerate(draw(st.permutations(list(LITERATURE_KINDS))), start=1):
+        shape, listed = LITERATURE_KINDS[kind]
+        said = " ".join(draw(filler)).capitalize() + "."
+        if listed:
+            opened.append(sum(piece.count("\n") + 2 for piece in pieces))
+        pieces += [shape.replace("{n}", str(number)).replace("{said}", said),
+                   f"# Section {number}", said]  # fmt: skip
+    return "\n\n".join(pieces) + "\n", opened
 
 
 # ------------------------------------------------- the audit's entries, intervals and markers

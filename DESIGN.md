@@ -5477,14 +5477,15 @@ Abstract. An APA manuscript repeats
 its title in bold to open its Introduction, with no heading: G14 ends the Abstract at a
 paragraph wholly in bold, in it and after some of its text, that repeats a paragraph of four
 words or more standing before it, the title as typed, inside the comment `init --from` sets
-the title page aside in or not, or a title typed as a heading or held in front matter
-(decision D6; round 1 of #841), so the Introduction's definitions are the main text's; the
+the title page aside in or not, or a title typed as a heading, its attributes aside, or held
+in front matter as YAML reads it (decision D6; rounds 1 and 2 of #841), so the Introduction's definitions are the main text's; the
 title in bold as the Abstract's first paragraph opens it and ends nothing. A paper's
 Highlights, under "Highlights", "Research highlights", "Key points" or "Key messages", owe
 no definition, as a keywords section does, a journal printing them beside the Abstract
 (decision D4: the Abstract's definitions still do not serve the main text). And an indented
 code block, lines indented four spaces or a tab after a blank line, not inside a list item,
-whatever its marker or the paragraph's place in it, nor inside a footnote or a table, is
+its marker and how far its paragraphs are indented read as pandoc's fancy_lists reads them,
+nor inside a footnote or a table, is
 hidden as a fenced one is (`language._views`, which G15 and the code names
 share), so R pasted into a Word paper's appendix is no prose.
 
@@ -31008,19 +31009,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
     number then an author's surname and initials (Basile, 2026-11-28, "Only over
     entry-shaped lines"): a list whose first entry has another shape, an organisation's web
     page with no year, is read as prose, and a section of prose whose first paragraph opens
-    like an entry, "Smith, J. (2019). A study.", is passed over as a list. Pinned by
-    `tests/test_audit.py::test_literature_alone_opens_a_reference_list` and
-    `tests/test_audit.py::test_literature_opens_a_list_only_over_an_entry`.
+    like an entry, "Smith, J. (2019). A study.", is passed over as a list. The paragraph
+    under it is the one pandoc reads there: after a blank line or a line of a quote's marks
+    alone, and under an ATX heading the next line (round 2 of #841). Pinned by
+    `tests/test_audit.py::test_literature_alone_opens_a_reference_list`,
+    `tests/test_audit.py::test_literature_opens_a_list_only_over_an_entry` and
+    `tests/test_audit.py::test_literature_reads_the_paragraph_pandoc_puts_after_it`.
   - The title again ends the Abstract only in bold as a whole and repeating a paragraph of
-    four words or more before the Abstract, or a heading's or front matter's title, word for
-    word, case, emphasis and a closing stop or colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
+    four words or more before the Abstract, or a heading's title less its attributes, or
+    the front matter's as YAML reads it, word for word, case, emphasis and a closing stop or
+    colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
     nothing, and the Abstract runs to the next heading as before. Pinned by
     `tests/test_g14_places.py::test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract`.
   - An indented paragraph is a code block unless it stands inside a list item, from its
-    marker's line to the next paragraph that is not indented, inside a footnote so read, or
-    in a table; a block quote's own indented code, `>     SE <- 1`, is read as text, and so is
-    a code block indented inside a list item, which pandoc reads as the item's code. Pinned by
+    marker's line to the next paragraph that is not indented, indented as far as the item's
+    text starts at the least, inside a footnote so read, or in a table; a block quote's own
+    indented code, `>     SE <- 1`, is read as text, and so is a code block indented inside a
+    list item, which pandoc reads as the item's code. Pinned by
     `tests/test_language.py::test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read`.
+  - An item's marker is read as pandoc 3.9's fancy_lists reads it, checked against `pandoc -f
+    markdown -t json` (round 2 of #841): a bullet; a number, a letter or a roman numeral of one
+    case with a stop or a bracket, or in brackets; a capital letter with a stop only before two
+    spaces or a tab, so "C. elegans" and "I. The cells" open no item. A word of small letters
+    that are all roman numerals' opens one, "mix. The cells", as it does in pandoc, and an
+    `example_lists` marker, `(@)`, opens none. Pinned by
+    `tests/test_language.py::test_an_item_opens_as_pandoc_s_fancy_lists_open_one`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in
   scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
   "·") and a power, and a power alone, a number with a caret and a braced exponent or a

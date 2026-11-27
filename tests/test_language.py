@@ -3236,3 +3236,30 @@ def test_an_indented_paragraph_of_an_item_a_note_or_a_table_is_read(
     row: the definition in it is read, so the use above it is used before it."""
     report = written(project, f"# Methods\n\n{written_as}")
     assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    ("written_as", "code"),
+    [
+        # A capital and a stop before one space, and a word of mixed case, open no item, as
+        # pandoc 3.9 reads them: the indented paragraph under them is code.
+        ("C. elegans strains were used.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        ("Mix. The cells were kept.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        # An item whose text starts five in, which four spaces do not reach.
+        ("xii. The cells were kept.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        # A capital and a stop before two spaces, and a roman numeral of capitals, open one.
+        ("Q.  The SE was kept.\n\n    SE: standard error\n", False),
+        ("IV. The SE was kept.\n\n    SE: standard error\n", False),
+    ],
+    ids=["capital and one space", "mixed case", "item five in", "capital and two spaces",
+         "roman capitals"],
+)  # fmt: skip
+def test_an_item_opens_as_pandoc_s_fancy_lists_open_one(
+    project: Path, written_as: str, code: bool
+) -> None:
+    """Round 2 of #841: an item's marker, and how far its paragraphs are indented, are read as
+    pandoc's fancy_lists reads them, so an indented paragraph is code where pandoc makes it a
+    `CodeBlock` and the item's where pandoc keeps it in the item."""
+    report = written(project, f"# Methods\n\n{written_as}")
+    expected = set() if code else {"abbreviation-used-before-defined"}
+    assert codes(report) == expected, found(report)

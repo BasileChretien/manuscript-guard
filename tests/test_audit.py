@@ -3510,3 +3510,25 @@ def test_literature_opens_a_list_only_over_an_entry(titled: str, under: str, lis
     text = f"# Discussion\n\nIt held.\n\n{titled}\n\n{under}\n\n# Methods\n\nThe LLMs ran.\n"
     assert bool(reference_lists(text)) == listed
     assert bool(bibliography_spans(text)) == listed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A quoted title over a line of the quote's marks alone, a blank line to pandoc.
+        "> **Literature**\n>\n> 1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.\n\n"
+        "Large language models (LLMs) were studied.\n",
+        # An ATX heading, one line, with its first entry straight under it.
+        "## Literature\n1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.\n"
+        "2. Roe MB. Drugs. BMJ. 2021;2:3.\n\nLarge language models (LLMs) were studied.\n",
+    ],
+    ids=["quoted", "heading"],
+)
+def test_literature_reads_the_paragraph_pandoc_puts_after_it(text: str) -> None:
+    """The paragraph after "Literature" is the one pandoc reads after it (round 2 of #841): a
+    line of `>` alone is a blank line in a block quote, as `_opens_a_paragraph` has it, and an
+    ATX heading's line is the whole heading, so an entry straight under it is that paragraph."""
+    from manuscript_guard.text.reference_lists import literature_over_prose
+
+    lines = text.split("\n")
+    assert not literature_over_prose(lines[0], lines, 0, marked=lines[0].startswith("#"))

@@ -490,12 +490,18 @@ def test_the_title_in_bold_opening_the_abstract_ends_nothing(tmp_path: Path) -> 
         "CAP is used once in the abstract as G14 reads it, and not defined there")]
 
 
-@pytest.mark.parametrize("given", [f"# {APA_TITLE}", f'---\ntitle: "{APA_TITLE}"\n---'])
+@pytest.mark.parametrize("given", [
+    f"# {APA_TITLE}", f'---\ntitle: "{APA_TITLE}"\n---',
+    # Round 2 of #841: a heading's attributes, which pandoc does not print, and a title in
+    # a YAML block, its text on the lines under its key.
+    f"# {APA_TITLE} {{.unnumbered}}", f"---\ntitle: >-\n  {APA_TITLE}\n---",
+])  # fmt: skip
 def test_a_title_given_as_a_heading_or_in_front_matter_is_the_title_again(
     tmp_path: Path, given: str
 ) -> None:
     """Round 1 of #841: a title typed as a heading, or held in front matter, is matched by
-    the bold paragraph that repeats it as well as a title in a paragraph."""
+    the bold paragraph that repeats it as well as a title in a paragraph; read as pandoc
+    reads each, without a heading's attributes and as YAML reads the header (round 2)."""
     text = (f"{given}\n\n# Abstract\n\nWe read 40 records of the CAP.\n\n**{APA_TITLE}**\n\n"
             "The content acquisition podcasts (CAP) were played.\n\n# Methods\n\nThe CAP "
             "ran.\n")

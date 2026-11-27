@@ -140,7 +140,9 @@ def literature_over_prose(
     "Literature" alone where the paragraph after it is not shaped like an entry
     (`_shaped_as_an_entry`): a section of prose titled so, under a heading or a paragraph in
     bold, opens no list (Basile, 2026-11-28, "Only over entry-shaped lines"). In Markdown the
-    paragraph after is the first after a blank line; in a .docx's text, the next line."""
+    paragraph after is the first after a blank line, a line of a block quote's marks alone
+    being one, as `_opens_a_paragraph` has it; under an ATX heading, which is one line, it is
+    the next line that holds text; in a .docx's text, the next line (round 2 of #841)."""
     if markdown:
         line = _LINK.sub(r"\g<words>", _QUOTED.sub("", without_spans(line), count=1))
     text = strip_attributes(line.lstrip().rstrip(" \t")) if marked else line.strip()
@@ -148,11 +150,17 @@ def literature_over_prose(
     if found is None or found.group("word").casefold() != "literature":
         return False
     at = number + 1
-    if markdown:
-        while at < len(lines) and lines[at].strip():
+    if markdown and not (marked and lines[number].lstrip().startswith("#")):
+        while at < len(lines) and not _blank(lines[at]):
             at += 1
-    following = next((each for each in lines[at:] if each.strip()), "")
+    following = next((each for each in lines[at:] if not _blank(each)), "")
     return not _shaped_as_an_entry(following)
+
+
+def _blank(line: str) -> bool:
+    """Whether a Markdown line is blank to a paragraph: nothing, or a block quote's marks
+    alone, `>` (`_opens_a_paragraph`)."""
+    return not line.replace(">", "").strip()
 
 
 def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:

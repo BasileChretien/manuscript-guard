@@ -2560,6 +2560,14 @@ def _the_title_again_ends_the_abstract_at_its_first_paragraph(
                   lambda paragraph, titles, read: kept(paragraph, titles, True))
 
 
+def _a_heading_s_title_is_read_with_its_attributes(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "strip_attributes", lambda text: text)
+
+
+def _a_front_matter_s_title_is_not_read_as_yaml_reads_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "front_matter_title", lambda text: None)
+
+
 def _a_title_is_read_from_paragraphs_alone(patch: pytest.MonkeyPatch) -> None:
     def paragraphs(typed: str) -> set[str]:
         found = {language_gate._plain_paragraph(each)
@@ -2623,6 +2631,15 @@ def _an_item_s_third_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
 
 def _only_a_bullet_or_a_number_opens_an_item(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_ITEM_LINE", re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]"))
+
+
+def _any_capital_with_a_stop_opens_an_item(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile(
+        r"[ \t]*(?:[-*+]|\(?(?:\d{1,9}|[A-Za-z]|[ivxlcdmIVXLCDM]{1,6})[.)])[ \t]"))
+
+
+def _any_indent_reaches_an_item_s_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_indent", lambda line: 10**6)
 
 
 def _a_footnote_s_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
@@ -13676,7 +13693,7 @@ def _a_models_not_a_claim_stands(patch: pytest.MonkeyPatch) -> None:
 # ------------------------------------------ a reference list under a line that is no heading
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
-from generated import RECYCLED, addressed, reference_lists  # noqa: E402
+from generated import RECYCLED, addressed, literature_sections, reference_lists  # noqa: E402
 
 from manuscript_guard.text import reference_lists as reference_lists_module  # noqa: E402
 from manuscript_guard.text import sections as sections_module  # noqa: E402
@@ -13751,6 +13768,37 @@ def _a_quote_s_line_of_marks_is_no_blank_line(patch: pytest.MonkeyPatch) -> None
 
 def _literature_over_prose_titles_a_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "literature_over_prose", lambda *args, **kwargs: False)
+
+
+@holds(60, literature_sections())
+def test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader(
+    drawn: tuple[str, list[int]],
+) -> None:
+    """"Literature" titling a section, under a heading or in bold, opens a reference list only
+    where the paragraph pandoc reads after it is shaped like an entry, for the lists G2 and
+    `init --from` read under a heading or a line (`reference_lists`) and for the audit's cut
+    (`audit.bibliography_spans`) alike: over prose it opens none (Basile, 2026-11-28, "Only
+    over entry-shaped lines"; round 2 of #841)."""
+    text, opened = drawn
+    listed = reference_lists_module.reference_lists(text)
+    starts = {text[:start].count("\n") for start, _end in listed}
+    assert sorted(starts) == opened, text
+    assert sorted(start for start, _end in audit_module.bibliography_spans(text)) == opened, text
+
+
+def _an_atx_heading_s_entry_is_read_past(patch: pytest.MonkeyPatch) -> None:
+    real = reference_lists_module.literature_over_prose
+
+    def walked(line: str, lines: list[str], number: int, **kwargs: bool) -> bool:
+        if kwargs.get("marked") and line.lstrip().startswith("#"):
+            kwargs = {**kwargs, "marked": False}
+        return real(line, lines, number, **kwargs)
+
+    patch.setattr(reference_lists_module, "literature_over_prose", walked)
+
+
+def _a_quote_s_line_of_marks_is_text_to_literature(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_blank", lambda line: not line.strip())
 
 
 def _a_carriage_return_is_no_blank_line(patch: pytest.MonkeyPatch) -> None:
@@ -30524,6 +30572,14 @@ BROKEN = {
         _an_item_s_third_paragraph_is_code,
         test_an_indented_code_block_is_no_prose,
     ),
+    "any capital with a stop opens an item": (
+        _any_capital_with_a_stop_opens_an_item,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "any indent reaches an item's text": (
+        _any_indent_reaches_an_item_s_text,
+        test_an_indented_code_block_is_no_prose,
+    ),
     "only a bullet or a number opens an item": (
         _only_a_bullet_or_a_number_opens_an_item,
         test_an_indented_code_block_is_no_prose,
@@ -30544,9 +30600,29 @@ BROKEN = {
         _the_title_again_ends_the_abstract_at_its_first_paragraph,
         test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
     ),
+    "a heading's title is read with its attributes": (
+        _a_heading_s_title_is_read_with_its_attributes,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "a front matter's title is not read as YAML reads it": (
+        _a_front_matter_s_title_is_not_read_as_yaml_reads_it,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
     "a title is read from paragraphs alone": (
         _a_title_is_read_from_paragraphs_alone,
         test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "literature over prose titles a list, in every reader": (
+        _literature_over_prose_titles_a_list,
+        test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader,
+    ),
+    "an ATX heading's entry is read past": (
+        _an_atx_heading_s_entry_is_read_past,
+        test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader,
+    ),
+    "a quote's line of marks is text to literature": (
+        _a_quote_s_line_of_marks_is_text_to_literature,
+        test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader,
     ),
     "literature over prose titles a list": (
         _literature_over_prose_titles_a_list,

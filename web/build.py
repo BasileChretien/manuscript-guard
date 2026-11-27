@@ -44,7 +44,8 @@ import zipfile
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent
-PAGE = ("index.html", "style.css", "app.js", "worker.js", "probe.js", "example-paper.md")
+PAGE = ("index.html", "style.css", "app.js", "rules.js", "worker.js", "probe.js",
+        "example-paper.md")  # fmt: skip
 PYODIDE_CORE = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip",
                 "pyodide-lock.json")  # fmt: skip
 #: Pyodide's files the worker imports as modules rather than fetches: the bar that counts

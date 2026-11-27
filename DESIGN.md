@@ -17555,8 +17555,8 @@ already written.
 Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic accuracy studies
 (STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
 guideline's own page on the day of its pull request, as the file requires, and
-`choose-study-type` offers the design. STROBE and STARD 2015 have recipes already; CARE, SRQR
-and COREQ need one each, with their licences read. A case series here is a descriptive series
+`choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
+have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
 (labelled "self-controlled design (case series or case-crossover)"); its label says so, and
 which guideline it answers to is read before its entry is written.
@@ -23748,15 +23748,29 @@ Open, recorded as each change landed:
   none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it. Accepted.
-- **TARGET and CARE have no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
+- **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
-  recipe would be one to download and use, not to share. CARE (2013) writes its sub-items
-  as "a)", each on a row of its own with bullet rows under some, which no recipe option
-  reads, and no copy of it carries a clean CC BY: BMJ Case Reports' and Global Advances'
-  copies are
-  non-commercial and non-derivative, the copy in the Journal of Medical Case Reports names a
-  licence by an address that is not one, and the CARE site's badge is CC BY-NC. Accepted.
+  recipe would be one to download and use, not to share. Accepted.
+- **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
+  checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
+  under some, which no recipe option reads. Table 1 of the statement paper (Global
+  Advances in Health and Medicine 2013, PMC3833570) gives the thirteen items one to a row,
+  and `CARE-2013` reads that. The site's checklist numbers the same thirteen items with
+  other words and lettered sub-items: its item 5 asks for de-identified information and
+  the article's item 5 does not, so the case-report design's de-identification section
+  cites an item the profile does not hold. No copy carries a clean CC BY: BMJ Case
+  Reports' and Global Advances' copies are non-commercial and non-derivative, the copy in
+  the Journal of Medical Case Reports names a licence by an address that is not one, and
+  the CARE site's badge is CC BY-NC beside a copyright page that reserves all rights. The
+  recipe is one to download and use, not to share. Accepted.
+- **The points of an item set as a list in one cell run together.** CARE's article sets
+  several items as a list of points in the item's cell, and the profile holds each item as
+  one text, its points in order with a space between each, as the article's text has
+  them: points "Age and occupation" and "Main complaints" are held as "Age and
+  occupation Main complaints". The words are all there and verified, but where one point
+  ends is not marked.
+  Pinned by `tests/test_jats.py::test_a_table_with_no_number_is_named_by_its_id_and_a_listed_item_read_whole`.
 - **A paper's table is read only from Europe PMC's JATS.** A statement paper without an open
   full text there (TARGET's, for one) cannot be read this way, and a checklist set as two
   tables ("Table 2 (continued)") is two tables: the recipe names one. A cell that spans rows
@@ -30058,9 +30072,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The page's own host is the host's server*, which `connect-src 'self'` lets the page send
     to. It sends nothing once loaded, and the network test covers it, as on GitHub Pages.
     Accepted.
-  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. The page
-    reads nothing else of its address and writes nothing to it. Pinned by
-    `tests/test_web_host.py::test_the_page_reads_one_thing_of_its_address_and_writes_nothing_to_it`.
+  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. Of its
+    address the page reads that and a link's rules after `#rules=`, which no browser sends to
+    a server, and writes nothing to it. Pinned by
+    `tests/test_web_host.py::test_the_page_reads_two_things_of_its_address_and_writes_nothing_to_it`.
   - *Every journal's profile is fetched before the page says Ready*, so that the page works
     with the network off; a host with hundreds of journals makes the start that many requests
     longer. Accepted.
@@ -31251,6 +31266,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (`auditing.editor.SHOWN_FROM`): the report shows it as too few to rate, and puts the kind
     under "Ask the authors", not "Look at before you decide" (Basile, 2026-11-27). Pinned by
     `tests/test_audit_doi_title.py::test_the_editor_s_report_asks_it_of_the_authors_with_its_record`.
+- **A link with a journal's rules is as long as its rules, and anyone who holds it reads
+  them.** The audit page's *Copy a link with these rules* (item 4 of the editor's list;
+  Basile, 2026-11-26) packs the journal form's values into the link after `#rules=`,
+  deflated and in base64url: a few hundred characters for a journal's usual rules. A mail
+  client that cuts a long link, or breaks it across lines, leaves a link the page refuses,
+  and the form is left empty with the reason said. Pinned by
+  `tests/test_web.py::test_a_link_this_page_did_not_make_is_refused_with_why`.
+  - The rules are not hidden from whoever has the link, nor from a browser extension: they
+    are a journal's published instructions, and the authors' names are never in it. A
+    browser does not send the part after `#` to the page's host. Accepted.
 - **The statements every paper makes are found by their headings and labels.** G4's check of
   empty headings and of the statements every paper makes (`gates/statements.py`, built
   2026-11-26 after a draft built its declarations as headings over comments) has these

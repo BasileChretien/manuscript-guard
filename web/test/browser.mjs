@@ -297,6 +297,7 @@ try {
   }
   if (Object.keys(probe.tried).length < 8) fail("Test the rules tried fewer than eight requests");
 
+  if (status.startsWith("Ready")) await rulesLinkHeld(page);
   if (hosted && status.startsWith("Ready")) await hostHeld(page, manifest);
 } finally {
   await browser.close();
@@ -304,6 +305,96 @@ try {
 }
 console.log(failures.length ? `${failures.length} failure(s) in ${browserName}` : `${browserName}: all held`);
 process.exit(failures.length ? 1 : 0);
+
+// A link with the journal's rules (web/rules.js): the form filled and its link made, shown to
+// copy where the browser does not let the page copy it; a page opened at the link holds the
+// same rules in its form and says where they came from, its address not written to; and a
+// link that is not one the page made fills nothing and says so.
+async function rulesLinkHeld(page) {
+  const ready = "window.mgRulesRead || /could not start/.test(document.getElementById('status').textContent)";
+  await page.goto(origin + PAGE_AT);
+  await page.waitForFunction("window.mgReady || /could not start/.test(document.getElementById('status').textContent)");
+  const typed = { jname: "Journal of Links", jurl: "https://example.org/authors", jabstract: "250",
+    jtables: "4", jsections: "Introduction\nMéthodes", jblinding: "open" };
+  const { link, unmade, long } = await page.evaluate(async (typed) => {
+    const note = document.getElementById("rulesnote");
+    document.getElementById("journalbox").open = true;
+    const said = async () => {
+      note.textContent = "";
+      document.getElementById("copyrules").click();
+      while (!note.textContent) await new Promise((wait) => setTimeout(wait, 50));
+      return { note: note.textContent, shown: !document.getElementById("ruleslink").hidden };
+    };
+    for (const [id, value] of Object.entries({ ...typed, jabstract: "4.5" })) {
+      const box = document.getElementById(id);
+      box.value = value;
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    document.getElementById("jst-funding").checked = true;
+    // A limit the checker refuses makes no link, and the checker names its box, before the
+    // form's shape is asked (rounds 1 and 3 of #847).
+    const unmade = await said();
+    // Rules that pack short and unpack to more than a page opened at the link takes.
+    document.getElementById("jabstract").value = typed.jabstract;
+    document.getElementById("jsections").value = Array(100).fill("a".repeat(2000)).join("\n");
+    const long = await said();
+    document.getElementById("jsections").value = typed.jsections;
+    note.textContent = "";
+    document.getElementById("copyrules").click();
+    while (document.getElementById("ruleslink").hidden) await new Promise((wait) => setTimeout(wait, 50));
+    return { link: document.getElementById("ruleslink").value, unmade, long };
+  }, typed);
+  if (unmade.shown || !unmade.note.startsWith("No link was made: the limit on the words in the abstract")) {
+    fail(`a link of rules the checker refuses: ${JSON.stringify(unmade)}`);
+  }
+  if (long.shown || long.note !== "No link was made: the rules are too long for a link.") {
+    fail(`a link of rules that unpack to too much: ${JSON.stringify(long)}`);
+  }
+  if (!link.startsWith(`${origin}${PAGE_AT}#rules=`)) fail(`the link with the rules is "${link.slice(0, 80)}"`);
+  const opened = await browser.newPage();
+  opened.setDefaultTimeout(600000);
+  await opened.goto(link);
+  await opened.waitForFunction(ready);
+  const filled = await opened.evaluate((ids) => ({
+    values: Object.fromEntries(ids.map((id) => [id, document.getElementById(id).value])),
+    funding: document.getElementById("jst-funding").checked,
+    ethics: document.getElementById("jst-ethics").checked,
+    note: document.getElementById("rulesnote").textContent,
+    address: location.href,
+  }), Object.keys(typed));
+  if (JSON.stringify(filled.values) !== JSON.stringify(typed) || !filled.funding || filled.ethics) {
+    fail(`a link's rules filled the form with ${JSON.stringify(filled)}`);
+  }
+  if (!filled.note.startsWith("These rules came with the link")) fail(`a link's rules said "${filled.note}"`);
+  if (filled.address !== link) fail("the page opened at a link with rules wrote to its address");
+  await opened.close();
+  // A link of base64 that is no deflate: refused, and the form left empty.
+  const typedOver = await browser.newPage();
+  typedOver.setDefaultTimeout(600000);
+  await typedOver.goto(`${origin}${PAGE_AT}#rules=eyJuYW1lIjoiYSJ9`);
+  await typedOver.waitForFunction(ready);
+  // Said above the form, where it is seen with the form closed (round 1 of #847).
+  const refused = await typedOver.evaluate(() => ({
+    name: document.getElementById("jname").value,
+    note: document.getElementById("journalnote").textContent,
+    seen: document.getElementById("journalnote").getClientRects().length > 0,
+  }));
+  if (refused.name || !refused.seen
+    || refused.note !== "The link's rules were not put in the form: it is not a link this page made.") {
+    fail(`a link the page did not make: ${JSON.stringify(refused)}`);
+  }
+  // A link pasted into the page already open is read, though the browser does not load it
+  // anew (round 1 of #847).
+  await typedOver.evaluate((hash) => {
+    window.mgRulesRead = false;
+    location.hash = hash;
+  }, new URL(link).hash);
+  await typedOver.waitForFunction(ready);
+  const pasted = await typedOver.evaluate(() => document.getElementById("jname").value);
+  if (pasted !== typed.jname) fail(`a link pasted into an open page filled the name with "${pasted}"`);
+  await typedOver.close();
+  console.log(`a link with the rules: ${link.length} characters, the form filled from it; one typed over: "${refused.note}"`);
+}
 
 // What a hosted page must show of its host, and keep of the page; each journal's rules shown
 // as it serves them; and the journal a link names chosen, or said not offered, the address

@@ -167,8 +167,11 @@ def programs_for(page: Path, folder: Path) -> dict[str, str]:
 
 def script_for(page: Path, name: str) -> str:
     """The shell script that runs the page's program `name` in Node. The command line runs it
-    from each case's own folder, so the page's folder is named whole, not as `--site` gave it."""
-    command = [NODE, str(TEST / "program.mjs"), str(page.resolve()), name]
+    from each case's own folder, so the page's folder is named whole, not as `--site` gave it,
+    and so is Node where PATH found it in a folder named from here; a bare name is looked up
+    on PATH."""
+    node = os.path.abspath(NODE) if os.path.dirname(NODE) else NODE
+    command = [node, str(TEST / "program.mjs"), str(page.resolve()), name]
     return f"#!/bin/sh\nexec {shlex.join(command)} \"$@\"\n"
 
 

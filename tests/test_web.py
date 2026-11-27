@@ -1101,6 +1101,8 @@ def test_another_program_goes_to_subprocess_run_and_one_found_elsewhere_too(
         return "handed"
 
     def program(name, args, cwd):
+        # Text, as a program's arguments are, which the page hands over to JavaScript.
+        assert all(type(arg) is str for arg in args), args
         return 0, name.encode(), b""
 
     run = web.program_runner(program, fallback, folder=str(tmp_path))
@@ -1113,7 +1115,7 @@ def test_another_program_goes_to_subprocess_run_and_one_found_elsewhere_too(
                        {"capture_output": True})]  # fmt: skip
     assert run([str(tmp_path / "pdfinfo"), "x.pdf"], capture_output=True).stdout == b"pdfinfo"
     # The command as it was given, as `subprocess.run` keeps it; the program is given text.
-    given = [Path("pdftotext"), "-v"]
+    given = [Path("pdftotext"), Path("paper.pdf"), "-"]
     assert run(given, capture_output=True).args is given
 
 

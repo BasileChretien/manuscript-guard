@@ -1,5 +1,7 @@
 // The page: start the checker, hand it the files the reader chooses, show what it says.
 // Nothing here sends anything anywhere; the checker runs in worker.js, in this browser.
+import { RULES, packed, shaped, unpacked } from "./rules.js";
+
 const $ = (id) => document.getElementById(id);
 const say = (text) => { $("status").textContent = text; };
 // What the browser refused under the page's policy, as it reported it.
@@ -129,8 +131,8 @@ manifestRead.then((manifest) => {
 // never as markup. Each journal's profile is fetched before the page says Ready, so that a
 // reader who turns the network off, as the page invites, still has it.
 const journals = new Map();
-// The journal a link names, ?journal=<slug>: nothing else of the address is read, and the
-// page never writes to it.
+// The journal a link names, ?journal=<slug>: of the address, this and a link's rules after
+// "#rules=" are all that is read, and the page never writes to it.
 const wanted = new URLSearchParams(location.search).get("journal") || "";
 const hostLoaded = manifestRead.then(async (manifest) => {
   const host = manifest.host;
@@ -209,6 +211,7 @@ const booted = Promise.all([ask("boot"), hostLoaded]).then(([boot]) => {
     box.disabled = false;
   }
   window.mgReady = true;
+  if (linkedRules !== null) rulesOpened(linkedRules);
 }).catch((error) => {
   loaded();
   say(`The checker could not start: ${error.message}`);
@@ -494,7 +497,8 @@ function clearReport() {
 }
 
 // The journal's form, as `web.journal_files` takes it: null where nothing in it is set. The
-// date its instructions were read on is today's, in this computer's own time.
+// date its instructions were read on is today's, in this computer's own time, or the one a
+// link with its rules gave, until a box of the rules is changed.
 const lines = (id) => $(id).value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 const LIMIT_BOXES = { abstract_words: "jabstract", main_text_words: "jmain", figures: "jfigures",
   tables: "jtables", references: "jreferences", keywords: "jkeywords" };
@@ -504,7 +508,7 @@ function journalForm() {
   const form = {
     name: $("jname").value.trim(),
     url: $("jurl").value.trim(),
-    date: `${today.getFullYear()}-${two(today.getMonth() + 1)}-${two(today.getDate())}`,
+    date: linked.date || `${today.getFullYear()}-${two(today.getMonth() + 1)}-${two(today.getDate())}`,
     limits: Object.fromEntries(Object.entries(LIMIT_BOXES).map(([key, id]) => [key, $(id).value.trim()])),
     sections: lines("jsections"),
     abstract_headings: lines("jheadings"),
@@ -565,6 +569,80 @@ function journalPicked() {
   blindShown();
 }
 $("journal").addEventListener("change", journalPicked);
+
+// A link with the journal's rules (web/rules.js; Basile, 2026-11-26): the form's values
+// after "#rules=", the authors' names never among them. The page reads its own address and
+// never writes it, and keeps nothing: the link is the reader's to keep and send.
+const linkedRules = location.hash.startsWith(RULES) ? location.hash.slice(RULES.length) : null;
+// The date the instructions were read on, as the link gave it.
+const linked = { date: "" };
+const rulesSaid = (text) => {
+  $("rulesnote").textContent = text;
+  $("rulesnote").hidden = !text;
+};
+// What the form offers, which a link's rules are held to.
+const offeredBoxes = () => ({
+  limits: Object.keys(LIMIT_BOXES),
+  statements: [...document.querySelectorAll('input[name="jstatement"]')].map((box) => box.value),
+  blindings: [...$("jblinding").options].map((option) => option.value).filter(Boolean),
+});
+// A box of the rules changed: they are the reader's now, read today. The authors' boxes, in
+// the same part of the page, are none of them.
+$("journalbox").addEventListener("input", (event) => {
+  if (!$("blindbox").contains(event.target)) linked.date = "";
+});
+$("copyrules").addEventListener("click", async () => {
+  const form = journalForm();
+  if (!form) {
+    rulesSaid("Type the journal's rules first: the link carries them.");
+    return;
+  }
+  const link = `${location.origin}${location.pathname}${RULES}${await packed(form)}`;
+  $("ruleslink").value = link;
+  $("ruleslink").hidden = false;
+  try {
+    await navigator.clipboard.writeText(link);
+    rulesSaid("Copied. Whoever opens the link has these rules in this form: not the authors' "
+      + "names, nor anything of the paper.");
+  } catch {
+    $("ruleslink").select();
+    rulesSaid("This browser did not let the page copy the link: copy it from the box above.");
+  }
+});
+// The rules a link gave, once the checker is ready: held to the form's shape, then by the
+// checker to the profile's schema (`web.journal_files`), as a profile the reader chooses is,
+// and only then put in the form, or nothing put in it and why said.
+async function rulesOpened(text) {
+  try {
+    const form = await unpacked(text);
+    const wrong = shaped(form, offeredBoxes());
+    if (wrong) throw new Error(wrong);
+    await ask("rules", form);
+    if (journals.size) {
+      $("journal").value = "other";
+      journalPicked();
+    }
+    $("jname").value = form.name || "";
+    $("jurl").value = form.url || "";
+    for (const [key, id] of Object.entries(LIMIT_BOXES)) $(id).value = (form.limits || {})[key] || "";
+    $("jsections").value = (form.sections || []).join("\n");
+    $("jheadings").value = (form.abstract_headings || []).join("\n");
+    for (const box of document.querySelectorAll('input[name="jstatement"]')) {
+      box.checked = (form.statements || []).includes(box.value);
+      const heading = (form.headings || {})[box.value];
+      if (heading) $(`jsh-${box.value}`).value = heading;
+    }
+    $("jblinding").value = form.blinding || "";
+    blindShown();
+    linked.date = form.date;
+    $("journalbox").open = true;
+    rulesSaid(`These rules came with the link, read from the journal's instructions on `
+      + `${form.date}. Check them against the instructions before relying on them.`);
+  } catch (error) {
+    rulesSaid(`The link's rules were not put in the form: ${error.message.replace(/^the journal's form: /, "")}.`);
+  }
+  window.mgRulesRead = true;  // what web/test/browser.mjs waits for
+}
 // A row of boxes for one more author.
 $("addauthor").addEventListener("click", () => {
   const number = $("authorrows").children.length + 1;

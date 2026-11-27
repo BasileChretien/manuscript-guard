@@ -30016,9 +30016,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - *The page's own host is the host's server*, which `connect-src 'self'` lets the page send
     to. It sends nothing once loaded, and the network test covers it, as on GitHub Pages.
     Accepted.
-  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. The page
-    reads nothing else of its address and writes nothing to it. Pinned by
-    `tests/test_web_host.py::test_the_page_reads_one_thing_of_its_address_and_writes_nothing_to_it`.
+  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. Of its
+    address the page reads that and a link's rules after `#rules=`, which no browser sends to
+    a server, and writes nothing to it. Pinned by
+    `tests/test_web_host.py::test_the_page_reads_two_things_of_its_address_and_writes_nothing_to_it`.
   - *Every journal's profile is fetched before the page says Ready*, so that the page works
     with the network off; a host with hundreds of journals makes the start that many requests
     longer. Accepted.
@@ -31120,6 +31121,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whether it happened or was planned, and a registration after a start that was only
     planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
     by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
+- **A link with a journal's rules is as long as its rules, and anyone who holds it reads
+  them.** The audit page's *Copy a link with these rules* (item 4 of the editor's list;
+  Basile, 2026-11-26) packs the journal form's values into the link after `#rules=`,
+  deflated and in base64url: a few hundred characters for a journal's usual rules. A mail
+  client that cuts a long link, or breaks it across lines, leaves a link the page refuses,
+  and the form is left empty with the reason said. Pinned by
+  `tests/test_web.py::test_a_link_this_page_did_not_make_is_refused_with_why`.
+  - The rules are not hidden from whoever has the link, nor from a browser extension: they
+    are a journal's published instructions, and the authors' names are never in it. A
+    browser does not send the part after `#` to the page's host. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

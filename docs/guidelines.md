@@ -28,6 +28,7 @@ licence:
 | TRIPOD+AI, TRIPOD+AI-abstracts (2024) | studies developing or evaluating a clinical prediction model |
 | TRIPOD-development, TRIPOD-validation, TRIPOD-development-validation (2015) | the same, replaced by TRIPOD+AI |
 | STARD-2015 | studies of diagnostic accuracy |
+| CARE-2013 | case reports |
 | CHEERS-2022 | health economic evaluations |
 | ARRIVE-2.0 | in vivo animal experiments |
 | MDAR | papers in the life sciences: their materials, design, analysis and reporting |
@@ -86,7 +87,7 @@ no design asks for them: a project that follows one names it in `reporting_guide
 its design's guideline. It warns too when the manuscript says it
 followed a guideline that `paper.yaml` does not name, and when a recipe records that the
 guideline's authors replaced it, as TRIPOD 2015's recipes do for TRIPOD+AI.
-TARGET and CARE have no recipe yet.
+TARGET has no recipe yet.
 
 A new edition of a guideline is a new recipe, and the items are made again from the new
 document by `transcribe`; a generated checklist is never edited by hand, so it stays what

@@ -950,3 +950,136 @@ def test_the_description_pypi_shows_has_no_link_that_leads_nowhere(tmp_path: Pat
     # The build rewrites two forms and sees no other, so a target written any other way
     # arrives as it was: one that is relative fails here, and has to be written out in full.
     assert relative_targets(description) == []
+
+
+#: The documents that sum up which guidelines bar commercial use.
+LICENCE_SUMMARIES = [
+    REPO / "ATTRIBUTION.md",
+    REPO / "docs" / "principles.md",
+    REPO / "plugin" / "skills" / "reporting-checklist" / "SKILL.md",
+]
+#: Counts in words, as a licence summary may give them.
+COUNT_WORDS = {"one": 1, "two": 2, "both": 2, "three": 3, "four": 4, "five": 5, "six": 6}
+#: How a licence that bars commercial use begins, in a recipe or in a cell of ATTRIBUTION.md's
+#: table, bold or not. What follows may mention other copies under other licences.
+NON_COMMERCIAL = re.compile(
+    r"(?i)[*\s]*(?:CC BY-NC|Creative Commons Attribution[- ]Non[- ]?Commercial)"
+)
+
+
+def is_non_commercial(licence: str) -> bool:
+    """Whether a recipe's licence, or a licence cell of ATTRIBUTION.md's table, bars
+    commercial use, read from its leading term."""
+    return bool(NON_COMMERCIAL.match(licence))
+
+
+def non_commercial_rows(attribution: str) -> list[str]:
+    """The guidelines that the table under ATTRIBUTION.md's "Licence findings" gives a
+    non-commercial licence."""
+    section = attribution.split("## Licence findings", 1)[1].split("\n## ", 1)[0]
+    return [
+        name
+        for name, cell in re.findall(r"(?m)^\| ([^|]+?) \| ([^|]*)", section)
+        if is_non_commercial(cell)
+    ]
+
+
+def is_covered(recipe: str, rows: list[str]) -> bool:
+    """Whether a recipe is the guideline of one of the rows, or a variant named after it
+    (READUS-PV-abstracts after READUS-PV)."""
+    names = [row.replace(" ", "-") for row in rows]
+    return any(recipe == name or recipe.startswith(name + "-") for name in names)
+
+
+def summary_problems(text: str, rows: list[str]) -> list[str]:
+    """What a document's summary of the non-commercial licences gets wrong. Each sentence
+    outside a table that speaks of non-commercial use, in any spelling, names every guideline
+    of the rows, and a count in words that it gives is theirs."""
+    sentences = [
+        sentence
+        for paragraph in re.split(r"\n\s*\n", text)
+        if not paragraph.lstrip().startswith("|")
+        for sentence in re.split(r"(?<=[.!?])\s+(?=[A-Z])", " ".join(paragraph.split()))
+        if re.search(r"(?i)\bnon[- ]?commercial", sentence)
+    ]
+    if not sentences:
+        return ["no summary of the non-commercial licences"]
+    problems = []
+    for sentence in sentences:
+        problems += [f"does not name {row}: {sentence}" for row in rows if row not in sentence]
+        problems += [
+            f"says {word}, not {len(rows)}: {sentence}"
+            for word in re.findall(r"(?i)\b(" + "|".join(COUNT_WORDS) + r")\b", sentence)
+            if COUNT_WORDS[word.lower()] != len(rows)
+        ]
+    return problems
+
+
+TWO = ["READUS-PV", "CARE 2013"]
+THREE = ["READUS-PV", "CARE 2013", "MDAR"]
+
+
+@pytest.mark.parametrize(
+    ("text", "rows", "wrong"),
+    [
+        ("Two of them, READUS-PV and CARE 2013, are non-commercial.", TWO, False),
+        ("Both, READUS-PV and CARE 2013, are non-commercial.", TWO, False),
+        ("NON-COMMERCIAL: READUS-PV and CARE 2013. See the table.", TWO, False),
+        # Round 2 of #845: a summary in another spelling was not read, nor a count written
+        # other than as "two of", and a count elsewhere in the paragraph was.
+        ("READUS-PV and CARE 2013 are non-commercial.\n\nNoncommercial: READUS-PV.", TWO, True),
+        ("Non-commercial: READUS-PV.\n\nREADUS-PV and CARE 2013 are non-commercial.", TWO, True),
+        ("The two below, READUS-PV, CARE 2013 and MDAR, are non-commercial.", THREE, True),
+        ("Three guidelines, READUS-PV and CARE 2013, are non-commercial.", TWO, True),
+        ("One of the sites was down. READUS-PV and CARE 2013 are non-commercial.", TWO, False),
+        ("| READUS-PV | **CC BY-NC** - non-commercial |\n\nREADUS-PV and CARE 2013 are "
+         "non-commercial.", TWO, False),
+    ],
+)  # fmt: skip
+def test_a_licence_summary_is_read_in_every_spelling_and_count(
+    text: str, rows: list[str], wrong: bool
+) -> None:
+    assert bool(summary_problems(text, rows)) is wrong, summary_problems(text, rows)
+
+
+@pytest.mark.parametrize(
+    ("licence", "restricted"),
+    [
+        ("CC BY-NC-ND 3.0, non-commercial and no derivatives", True),
+        ("CC BY-NC, see the READUS-PV recipe", True),
+        ("Creative Commons Attribution-NonCommercial 4.0 International", True),
+        # Round 2 of #845: a CC BY licence that mentions a CC BY-NC copy is CC BY.
+        ("CC BY 4.0, via The BMJ's copy. One copy is CC BY-NC.", False),
+        ("NOT STATED for this PDF", False),
+    ],
+)
+def test_a_licence_is_non_commercial_by_its_leading_term(licence: str, restricted: bool) -> None:
+    assert is_non_commercial(licence) is restricted
+
+
+def test_a_row_covers_its_guideline_and_its_variants_only() -> None:
+    """Round 2 of #845: a row named "TRIPOD" covered "TRIPOD+AI"."""
+    assert is_covered("CARE-2013", ["CARE 2013"])
+    assert is_covered("READUS-PV-abstracts", ["READUS-PV"])
+    assert not is_covered("TRIPOD+AI", ["TRIPOD"])
+    assert not is_covered("READUS-PVX", ["READUS-PV"])
+
+
+def test_the_licence_summaries_name_every_non_commercial_guideline() -> None:
+    """Round 1 of #845: CARE 2013 shipped under CC BY-NC-ND as a second non-commercial
+    guideline, and ATTRIBUTION.md, docs/principles.md and the reporting-checklist skill still
+    said there was one, READUS-PV. Every shipped recipe with a non-commercial licence has its
+    row in ATTRIBUTION.md's table, and each summary names every such row."""
+    from manuscript_guard.paths import SHIPPED_RECIPES
+    from manuscript_guard.reporting import load_recipe
+
+    rows = non_commercial_rows(text_of(REPO / "ATTRIBUTION.md"))
+    restricted = [
+        path.name.split(".recipe")[0]
+        for path in sorted(SHIPPED_RECIPES.glob("*.recipe.yaml"))
+        if is_non_commercial(load_recipe(path)[1]["licence"])
+    ]
+    assert restricted, "no shipped recipe is non-commercial; the test reads nothing"
+    assert [name for name in restricted if not is_covered(name, rows)] == []
+    for path in LICENCE_SUMMARIES:
+        assert summary_problems(text_of(path), rows) == [], path.name

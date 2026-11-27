@@ -120,6 +120,11 @@ def _membership(report) -> str:
         return "not run: no outputs were given to compare the numbers with (--against)"
     said = (f"{_n(len(report.matched), 'number')} found in the outputs, "
             f"{len(report.unmatched)} not found")  # fmt: skip
+    if report.rounded:
+        # A rounding is a match, and a weaker one: said apart, as the Abstract's is.
+        said = (f"{_n(len(report.matched), 'number')} found in the outputs, "
+                f"{len(report.rounded)} only as a rounding, "
+                f"{len(report.unmatched)} not found")  # fmt: skip
     return said + (" (counted by --strict)" if report.unmatched else "")
 
 

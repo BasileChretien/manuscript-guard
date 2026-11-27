@@ -213,6 +213,12 @@ def items(report) -> list[Item]:
         for c in report.unmatched
     ]  # fmt: skip
     found += [
+        of_number(Item(MEMBERSHIP, "audit", "found-only-as-a-rounding", f"{c.text} is in the "
+                       "outputs only as a rounding of a number there", INFO, False,
+                       c.source, c.line, c.context), c)
+        for c in report.rounded
+    ]  # fmt: skip
+    found += [
         of_number(Item(MEMBERSHIP, "audit", "not-found-on-a-reference-line", f"{c.text} is in "
                        "no output given, on a line read as a reference entry", WARN, False,
                        c.source, c.line, c.context), c)
@@ -652,6 +658,8 @@ def as_json(report, discrimination) -> str:
         "numbers": report.examined,
         "classified": report.classified,
         "matched": len(report.matched),
+        # Found only as a rounding of a number in the outputs: a match, not counted.
+        "found_only_as_a_rounding": len(report.rounded),
         "not_found": len(report.unmatched),
         "not_found_on_reference_lines": len(report.reference_like),
         "not_compared": report.uncompared,
@@ -1096,9 +1104,12 @@ def _header(report) -> list[str]:
             if report.reference_like
             else ""
         )
+        rounded = (
+            f", {len(report.rounded)} of them only as a rounding" if report.rounded else ""
+        )
         second = (f"{report.examined} numbers read: {report.classified} set aside as "
                   f"conventions and references {SET_ASIDE}, {len(report.matched)} found in the "
-                  f"outputs, {len(report.unmatched)} not found{apart}.")  # fmt: skip
+                  f"outputs{rounded}, {len(report.unmatched)} not found{apart}.")  # fmt: skip
         return [first, second]
     return [
         f"Audited {len(report.papers)} file(s). {NO_OUTPUTS}.",
@@ -1116,6 +1127,22 @@ def _membership(report, discrimination, show) -> list[str]:
         lines.append("NOT FOUND IN ANY OUTPUT — check each of these:")
         by_source: dict[Path, list] = {}
         for candidate in report.unmatched:
+            by_source.setdefault(candidate.source, []).append(candidate)
+        for source, listed in by_source.items():
+            lines.append(f"  {show(source)}")
+            for candidate in listed[:LISTED]:
+                lines.append(f"    {show.at(source, candidate.line)}: {candidate.text}")
+                lines.append(f"      {candidate.context}")
+            if len(listed) > LISTED:
+                lines.append(f"    (+{len(listed) - LISTED} more)")
+    if report.rounded:
+        lines += [""] if lines else []
+        lines.append(
+            "FOUND ONLY AS A ROUNDING — the outputs hold it at more places than the paper "
+            "prints it, which is what printing does (not counted by --strict):"
+        )
+        by_source: dict[Path, list] = {}
+        for candidate in report.rounded:
             by_source.setdefault(candidate.source, []).append(candidate)
         for source, listed in by_source.items():
             lines.append(f"  {show(source)}")

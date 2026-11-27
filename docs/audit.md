@@ -118,7 +118,7 @@ section in full and every finding with its place, its context and its hint, as o
 
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
-| Numbers in the outputs | each number against the outputs, and what a match is worth there | a number in no output |
+| Numbers in the outputs | each number against the outputs, and what a match is worth there; a number the outputs hold only at more places than the paper prints it is listed apart as a rounding | a number in no output |
 | Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n, a mean and its SD in a row named never negative | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
 | Abstract against Results | each number of the Abstract looked for where the paper reports, and each of its intervals and tests held to its one counterpart there, ending with what a match is worth | an interval or a test that differs from its counterpart |
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
@@ -440,6 +440,13 @@ stores a row with no separator, so a naive read turns `39 | 20 | 26 | 16` into t
 number 39,202,616 and silently skips every table), drops the bibliography, classifies
 conventions and cross-references, and reports every remaining number that appears nowhere
 in your outputs.
+
+A paper prints fewer places than the analysis stored — "3.4" for 3.38, "52%" for 51.6 — so a
+number the outputs hold at more places than the paper prints is found, and listed apart
+under "FOUND ONLY AS A ROUNDING", with where it stands in the paper. It is a match, and a
+weaker one than a number printed exactly: `--strict` does not count it, as it does not count
+the Abstract's roundings. The relation is one way and exact at its own places — 3.84 rounds
+to 3.8 and not to 3.9, 51.6 to 52 and not to 53 — so a stale number is still reported.
 
 The bibliography is found by its title in English, Spanish, Portuguese, French, German,
 Italian, Turkish and Indonesian ("References", "Literature cited", "Reference list",

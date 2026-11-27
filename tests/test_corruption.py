@@ -44874,3 +44874,79 @@ def test_an_audit_says_a_trial_registered_after_it_started(
     said = json.loads(capsys.readouterr().out)["findings"]
     late = [f["message"] for f in said if f["code"] == "registration-late"]
     assert len(late) == 1 and late[0].startswith("NCT04446611"), late
+
+
+# ------------------------------------------------- a number printed at fewer places than stored
+#
+# A paper prints fewer digits than the analysis stored — "3.4" for 3.38, "52%" for 51.6 — and
+# that is what printing is, not a defect. `audit --against` held every number to the outputs as
+# an exact string, so every rounded number was reported as in no output and `--strict` failed on
+# it, while the same run's Abstract against Results called the same difference a rounding and a
+# match. The relation is `auditing.abstract.coarser`, which the Abstract's check already used
+# (issue #839).
+
+_ROUNDED_PAPER = (
+    "The gain was 3.4 points, an odds ratio of 1.2, and 52% of cases, with R-squared -4.1.\n"
+)
+
+
+def test_a_number_printed_at_fewer_places_is_found_as_a_rounding(tmp_path: Path) -> None:
+    """Corrupted: nothing. The paper prints each value at fewer places than the outputs hold,
+    which is what a paper does. The four numbers are found, listed apart as roundings, and
+    `--strict` does not fail on them (issue #839)."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"gain": 3.38, "or": 1.22, "share": 51.6, "r2": -4.08}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(_ROUNDED_PAPER, encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.matched == [], report.matched
+    assert sorted(c.normalised for c in report.rounded) == ["-4.1", "1.2", "3.4", "52"]
+    assert _strictly(paper, outputs) == 0
+
+
+def test_a_rounding_is_said_apart_from_a_match(tmp_path: Path) -> None:
+    """The report has to say which of the two happened: a reader who is told only "4 found in
+    the outputs" cannot tell a number the paper prints exactly from one it rounded."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"gain": 3.38, "share": 51.6}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("The gain was 3.4 points in 51.6% of cases.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [c.normalised for c in report.matched] == ["51.6"], report.matched
+    assert [c.normalised for c in report.rounded] == ["3.4"], report.rounded
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "1 found in the outputs, 1 of them only as a rounding, 0 not found." in shown, shown
+    assert "FOUND ONLY AS A ROUNDING" in shown, shown
+
+
+def test_a_number_between_two_stored_values_is_still_not_found(tmp_path: Path) -> None:
+    """A rounding is a rounding, not a tolerance: 3.84 rounds to 3.8 and not to 3.9, 1.22 to
+    1.2 and not to 1.3, 51.6 to 52 and not to 53. A check that accepted any number near one in
+    the outputs would wave through the stale numbers this command exists to catch."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"gain": 3.84, "or": 1.22, "share": 51.6}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("The gain was 3.9 points, an odds ratio of 1.3, and 53% of cases.\n",
+                     encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert sorted(c.normalised for c in report.unmatched) == ["1.3", "3.9", "53"], \
+        report.unmatched
+    assert report.rounded == [], report.rounded
+    assert _strictly(paper, outputs) == 1
+
+
+def test_a_number_printed_more_precisely_than_stored_is_still_not_found(tmp_path: Path) -> None:
+    """The relation runs one way: the paper rounds the stored value, it does not invent places
+    the outputs never had. "1.204" for a stored 1.2 is a discrepancy, and is reported."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"or": 1.2}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("The odds ratio was 1.204.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["1.204"], report.unmatched
+    assert report.rounded == [], report.rounded

@@ -17423,8 +17423,8 @@ def test_an_authors_own_tag_defined_in_an_input_file_is_theirs_in_the_entry_file
     assert cited == ["j", "k"], cited
 
 
-def _tag_document(preamble: str, use: str) -> str:
-    return ("!documentclass{article}\n!usepackage{mathtools}\n" + preamble + "\n"
+def _tag_document(preamble: str, use: str, package: str = "mathtools") -> str:
+    return (f"!documentclass{{article}}\n!usepackage{{{package}}}\n" + preamble + "\n"
             "!begin{document}\nAs before !cite{j}, the value is\n" + use
             + "\nSee !cite{k}.\n!end{document}\n").replace("!", chr(92))  # fmt: skip
 
@@ -17454,6 +17454,20 @@ def test_a_provided_short_intertext_stays_a_text_argument() -> None:
     reading = read(text)
     assert reading.refusals == (), reading.refusals
     assert [c.key for c in reading.cited] == ["j", "k"]
+
+
+def test_a_short_intertext_provided_without_mathtools_is_the_authors() -> None:
+    """Round 2 of #836: where no package gives `\\shortintertext`, `\\providecommand`
+    defines it, and it is the author's: inline maths in it is refused, as LaTeX stops on it
+    where the body sets maths."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!providecommand{!shortintertext}[1]{#1}",
+                         "!begin{align} a &= 1 !shortintertext{$x$} b &= 2 !end{align}",
+                         package="amsmath")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
 
 
 @pytest.mark.parametrize("stop", ["latin1", "csname"])

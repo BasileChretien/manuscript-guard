@@ -40,6 +40,7 @@ from manuscript_guard.text.latex.commands import (
     FLOATS,
     FRONT_MATTER,
     FRONT_MATTER_COMMANDS,
+    GIVEN_BY,
     IMPORTS,
     LISTINGS,
     MATHS,
@@ -1946,9 +1947,11 @@ class _Reader:
         if not self._provides_nothing(name):
             self._takes_back(name)
         unloaded = name in PACKAGE_COMMANDS and not self._loaded(PACKAGE_COMMANDS[name])
-        # A `\providecommand` of `\tag` or `\shortintertext` defines nothing: the text
-        # argument stays (round 2 of #836).
-        authors = name in AUTHORS_IF_DEFINED and not self._provides_nothing(name)
+        # A `\providecommand` of `\tag` or `\shortintertext` defines nothing where a package
+        # that gives it is loaded, and the text argument stays; elsewhere LaTeX defines it
+        # (round 2 of #836).
+        provided = self.command in PROVIDERS and self._loaded(GIVEN_BY.get(name, ()))
+        authors = name in AUTHORS_IF_DEFINED and not provided
         if name in FRONT_MATTER_COMMANDS or authors or unloaded:
             # Told of it by the tree or not, the file that defines it says so (round 2). A
             # package's command where no package gives it is the author's too (2026-10-23).

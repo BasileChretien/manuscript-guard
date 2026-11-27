@@ -3597,8 +3597,9 @@ def latex_text_in_displays(draw: st.DrawFn) -> dict[str, Any]:
 
     And, under `refused`, the same document with a display whose own maths holds inline
     maths put in at a place drawn, once for each delimiter of `LATEX_INLINE_MATHS`: LaTeX
-    stops there, so the reader refuses it as unbalanced at the sign it stops on (`offset`),
-    and reads only the keys cited before it (`keys`)."""
+    stops there, so the reader refuses it as unbalanced (`offset`, at the `\\)` that closes
+    no maths or the `$` that opens maths in maths), and reads only the keys cited before it
+    (`keys`)."""
     kinds = [(argument, displays, inline) for argument, displays in LATEX_TEXT_IN_DISPLAYS
              for inline in LATEX_INLINE_MATHS]  # fmt: skip
     order = draw(st.permutations(range(len(kinds))))

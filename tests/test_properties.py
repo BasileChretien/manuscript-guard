@@ -2007,7 +2007,8 @@ def test_inline_maths_in_display_maths_itself_is_refused_where_latex_stops(
     drawn: dict[str, Any],
 ) -> None:
     """Inline maths in a display's own maths, `\\[ V = \\(y\\) \\]` or `\\[ V = $y$ \\]`, is
-    still refused as unbalanced, once, at the sign LaTeX stops on, whichever delimiter and
+    still refused as unbalanced, once, at the `\\)` that closes no maths or the `$` that
+    opens maths in maths (LaTeX stops on the `\\(`, on the same line), whichever delimiter and
     display, wherever it stands among displays whose text arguments hold inline maths; and
     only what stands before it is read (Basile, 2026-11-27; round 1 of #836)."""
     for refused in drawn["refused"]:

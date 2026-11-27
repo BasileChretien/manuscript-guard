@@ -17423,6 +17423,39 @@ def test_an_authors_own_tag_defined_in_an_input_file_is_theirs_in_the_entry_file
     assert cited == ["j", "k"], cited
 
 
+def _tag_document(preamble: str, use: str) -> str:
+    return ("!documentclass{article}\n!usepackage{mathtools}\n" + preamble + "\n"
+            "!begin{document}\nAs before !cite{j}, the value is\n" + use
+            + "\nSee !cite{k}.\n!end{document}\n").replace("!", chr(92))  # fmt: skip
+
+
+def test_an_authors_own_tag_is_no_text_argument() -> None:
+    """Round 2 of #836: a `\\tag` the paper defines is the author's command, read as an
+    unknown one is, so inline maths in it is not the text argument's: it is refused, as it
+    was before the reader knew `\\tag`, and only what stands before it is read."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!renewcommand{!tag}[1]{!text{#1}}",
+                         "!begin{equation} y = x !tag{!(1!)} !end{equation}")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
+
+
+def test_a_provided_short_intertext_stays_a_text_argument() -> None:
+    """Round 2 of #836: `\\providecommand` of a command that is defined defines nothing, so
+    mathtools' `\\shortintertext` stays a text argument, inline maths in it balancing as in
+    text."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!providecommand{!shortintertext}[1]{!intertext{#1}}",
+                         "!begin{align} a &= 1 !shortintertext{where $x > 0$} b &= 2 "
+                         "!end{align}")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == (), reading.refusals
+    assert [c.key for c in reading.cited] == ["j", "k"]
+
+
 @pytest.mark.parametrize("stop", ["latin1", "csname"])
 def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
     project: Path, stop: str

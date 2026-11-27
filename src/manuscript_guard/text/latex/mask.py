@@ -1946,7 +1946,10 @@ class _Reader:
         if not self._provides_nothing(name):
             self._takes_back(name)
         unloaded = name in PACKAGE_COMMANDS and not self._loaded(PACKAGE_COMMANDS[name])
-        if name in FRONT_MATTER_COMMANDS or name in AUTHORS_IF_DEFINED or unloaded:
+        # A `\providecommand` of `\tag` or `\shortintertext` defines nothing: the text
+        # argument stays (round 2 of #836).
+        authors = name in AUTHORS_IF_DEFINED and not self._provides_nothing(name)
+        if name in FRONT_MATTER_COMMANDS or authors or unloaded:
             # Told of it by the tree or not, the file that defines it says so (round 2). A
             # package's command where no package gives it is the author's too (2026-10-23).
             self.own.add(name)

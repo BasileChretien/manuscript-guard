@@ -1408,6 +1408,24 @@ def _registration_identifiers() -> Reading:
     return NAMED_IN_TEXT.findall
 
 
+@reading("audit registration numbers")
+def _audit_registration_numbers() -> Reading:
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.registration import Named
+
+    def read(text: str) -> list[list[Any]]:
+        """Each registration number a Markdown paper names as `audit` takes it to ask its
+        registry under `--lookup`, with its line: outside the reference list, comments out
+        (`auditing.registration.named_in`)."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "paper.md"
+            path.write_bytes(text.encode("utf-8"))
+            named: list[Named] = audit([path], None).registered
+            return [[one.identifier, one.line] for one in named]
+
+    return read
+
+
 @reading("rrids typed")
 def _rrids_typed() -> Reading:
     from types import SimpleNamespace

@@ -63,7 +63,7 @@ Of the 120 patients, 30 (25.0%) had the outcome.
 
 ## Methods
 
-We followed 120 patients for a year.
+We followed 120 patients for a year. The study was registered (NCT04446611).
 
 ## Results
 
@@ -76,9 +76,10 @@ Of the 120 patients, 30 (25.0%) had the outcome (Smith 2020; Jones 2019).
    2019;4:10-20.
 """
 
-#: The hosts the lookups may ask, which the audit page's policy names too (tests/test_web.py).
+#: The hosts the lookups may ask, which the audit page's policy names too (tests/test_web.py):
+#: the reference list's registries, and the trial's (`auditing.registration`).
 REGISTRIES = {"api.crossref.org", "api.openalex.org", "api.datacite.org", "doi.org",
-              "eutils.ncbi.nlm.nih.gov"}  # fmt: skip
+              "eutils.ncbi.nlm.nih.gov", "clinicaltrials.gov", "www.isrctn.com"}  # fmt: skip
 
 
 def _audit(tmp_path: Path, *args: str) -> dict:
@@ -121,9 +122,10 @@ def test_the_lookups_send_identifiers_and_the_title_of_an_entry_with_none(
     tmp_path: Path,
 ) -> None:
     """What docs/editorial-office.md, docs/refereeing.md and the audit page say `--lookup`
-    sends: each DOI and PubMed ID, and for an article with neither, the words of its title,
-    its first author's family name and its year, to Crossref. Never a sentence of the
-    paper's own. (Round 1 of #822: the pages said that no title or name was ever sent.)"""
+    sends: each DOI and PubMed ID; for an article with neither, the words of its title, its
+    first author's family name and its year, to Crossref; and the trial's registration
+    number, alone, to its registry. Never a sentence of the paper's own. (Round 1 of #822:
+    the pages said that no title or name was ever sent.)"""
     seen = _audit(tmp_path, "--lookup")
     asked = [unquote_plus(url) for url in seen["urls"]]
     assert asked, "the lookups asked nothing"
@@ -134,5 +136,8 @@ def test_the_lookups_send_identifiers_and_the_title_of_an_entry_with_none(
     for url in searched:
         assert "Weekly outcome counts in a regional cohort of adults" in url, url
         assert "Jones" in url and "2019" in url, url
-    own = ("had the outcome", "followed 120 patients", "A cohort of 120 patients")
+    registry = [url for url in asked if urlsplit(url).hostname == "clinicaltrials.gov"]
+    assert registry and all("NCT04446611" in url for url in registry), asked
+    own = ("had the outcome", "followed 120 patients", "A cohort of 120 patients",
+           "was registered")
     assert [url for url in asked for words in own if words in url] == []

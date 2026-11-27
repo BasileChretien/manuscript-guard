@@ -40571,6 +40571,123 @@ def test_the_deviations_are_found_by_their_words_and_never_named(project: Path) 
     assert "{#" not in hints["the plan says nothing about deviations"]
 
 
+def test_a_diagnostic_accuracy_plan_is_asked_for_its_reference_standard_and_thresholds(
+    project: Path,
+) -> None:
+    """A diagnostic accuracy study took `other` until it became a design of the table, and
+    its plan was asked for the seven sections alone, so a plan that never said what decides
+    who has the condition, where a test turns positive or who reads each test blind passed.
+    Each section is asked for with its STARD 2015 item in the hint; and STARD's own words
+    for the exposure and the outcome, the index test and the target condition, are read so."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="diagnostic-accuracy")
+    asked = _plan_asked(project)
+    assert {"reference standard", "thresholds", "blinding", "indeterminate results",
+            "sampling"} <= set(asked), asked  # fmt: skip
+    assert "sample size" not in asked  # the example's own section
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(STARD 2015, items 10b and 11)" in hints[
+        "the plan says nothing about reference standard"]
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Exposure\n" in text and "## Outcome\n" in text
+    plan.write_text(text.replace("## Exposure\n", "## Index test\n")
+                    .replace("## Outcome\n", "## Target condition\n"), encoding="utf-8")
+    asked = _plan_asked(project)
+    assert "exposure" not in asked and "outcome" not in asked, asked
+    # Only a heading that is the index test or the target condition: one that names it in
+    # passing heads another section (round 1 of #830).
+    plan.write_text(text.replace("## Exposure\n", "## Blinding of index test readers\n")
+                    .replace("## Outcome\n", "## Reference standard for the target condition\n"),
+                    encoding="utf-8")  # fmt: skip
+    asked = _plan_asked(project)
+    assert "exposure" in asked and "outcome" in asked, asked
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Index test", "exposure", True),
+        ("## Index tests", "exposure", True),
+        ("## Index test(s)", "exposure", True),
+        ("## Index test (CT angiography)", "exposure", True),
+        ("## 3. Index test", "exposure", True),
+        ("## 3.1. Index test", "exposure", True),
+        ("## 3 Index test", "exposure", True),
+        ("## 3) Index test", "exposure", True),
+        ("## A. Index test", "exposure", True),
+        ("## III. Index test", "exposure", True),
+        ("## The index test", "exposure", True),
+        ("## Index test:", "exposure", True),
+        ("## **Index test**", "exposure", True),
+        ("## Exposure", "exposure", True),
+        ("## Blinding of index test readers", "exposure", False),
+        ("## Indeterminate index test results", "exposure", False),
+        ("## Positivity cut-off of the index test", "exposure", False),
+        ("## Index test and comparator", "exposure", False),
+        ("## A index test", "exposure", False),
+        ("## Target condition", "outcome", True),
+        ("## Target condition(s)", "outcome", True),
+        ("## III. Target condition", "outcome", True),
+        ("## Target conditions", "outcome", True),
+        ("## Target condition (coronary disease)", "outcome", True),
+        ("## Outcome", "outcome", True),
+        ("## Reference standard for the target condition", "outcome", False),
+    ],
+)  # fmt: skip
+def test_the_index_test_and_the_target_condition_are_their_heading_whole(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """STARD heads every plan's exposure "Index test" and its outcome "Target condition",
+    and G12 reads such a heading so; but only one that is the index test or the target
+    condition, numbered, plural or with a qualifier in brackets, since a heading that names
+    one in passing heads another section, the blinding or the reference standard (rounds 1
+    and 2 of #830)."""
+    _paper_has(project, study_type="diagnostic-accuracy")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    own = {"exposure": "## Exposure", "outcome": "## Outcome"}[section]
+    assert f"{own}\n" in text
+    plan.write_text(text.replace(f"{own}\n", f"{heading}\n"), encoding="utf-8")
+    assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Reference standard", "reference standard", True),
+        ("## Gold standard", "reference standard", True),
+        ("## Index test", "reference standard", False),
+        ("## Cut-off values", "thresholds", True),
+        ("## Positivity threshold", "thresholds", True),
+        ("## Cut-points", "thresholds", True),
+        ("## Masking of readers", "blinding", True),
+        ("## Blinding", "blinding", True),
+        ("## Inconclusive results", "indeterminate results", True),
+        ("## Uninterpretable images", "indeterminate results", True),
+        ("## Consecutive recruitment", "sampling", True),
+        ("## Selection of participants", "sampling", True),
+        ("## Sample size", "sampling", False),
+        ("## Sampling bias", "sampling", False),
+    ],
+)  # fmt: skip
+def test_a_diagnostic_accuracy_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """The diagnostic accuracy design's sections are found by words those sections alone use,
+    as the cross-sectional design's are since #801 (DESIGN.md, Known gaps, "A design's
+    sections are found by the words of their headings"): its own headings count, and a
+    heading of another section, the index test or a sample's size, does not."""
+    _paper_has(project, study_type="diagnostic-accuracy")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
 def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
     project: Path,
 ) -> None:
@@ -40799,8 +40916,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
     from manuscript_guard.gates.design import REQUIRED, required_for, study_types
 
     assert sorted(study_types()) == sorted([
-        "trial", "cohort", "case-control", "cross-sectional", "self-controlled",
-        "disproportionality", "systematic-review", "prediction-model"])  # fmt: skip
+        "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
+        "self-controlled", "disproportionality", "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)
@@ -44826,3 +44943,30 @@ def test_two_findings_that_share_a_key_with_no_ordinal_are_caught(project: Path)
                  for one in said]  # fmt: skip
     (caught,) = keys.shared(corrupted)
     assert caught.split("|")[2] == "7.77"
+
+
+def test_an_audit_says_a_trial_registered_after_it_started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Corrupted: the registry's own dates show the trial registered a month after it began
+    (2020-08-02, for a study started in 2020-07). `audit --lookup` must say so, under the
+    paper's own registration number (`auditing.registration`), and not for the number its
+    reference list cites."""
+    from test_audit_registration import PAPER, Registries, _study
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.lookup import http
+    from manuscript_guard.lookup import run as lookup
+
+    table = Registries()
+    table.studies["NCT04446611"] = _study("NCT04446611", "2020-08-02", "2020-07")
+    table.studies["NCT01111111"] = _study("NCT01111111", "2019-09-01", "2019-01")
+    monkeypatch.setattr(http, "default_transport", table)
+    paced = lookup.Pacer
+    monkeypatch.setattr(lookup, "Pacer", lambda: paced(sleep=lambda seconds: None))
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    main(["audit", str(paper), "--lookup", "--json"])
+    said = json.loads(capsys.readouterr().out)["findings"]
+    late = [f["message"] for f in said if f["code"] == "registration-late"]
+    assert len(late) == 1 and late[0].startswith("NCT04446611"), late

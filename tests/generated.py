@@ -7683,8 +7683,8 @@ PLAN_HEADINGS = {
     "question": ("Research question", "Objectives", "Aims"),
     "design": ("Study design", "Questionnaire design"),
     "population": ("Participants", "Population and data source", "Data sources"),
-    "exposure": ("Intervention", "Predictor", "Exposures"),
-    "outcome": ("Endpoint", "Primary outcomes", "Outcome measures"),
+    "exposure": ("Intervention", "Predictor", "Exposures", "Index test"),
+    "outcome": ("Endpoint", "Primary outcomes", "Outcome measures", "Target condition"),
     "analysis": ("Statistical methods", "Statistical analysis", "Analyses"),
     "deviations": ("Deviations from the plan", "Changes to the plan", "Amendments",
                    "Standard deviation of the dose"),
@@ -7696,6 +7696,12 @@ PLAN_HEADINGS = {
     "interim analyses": ("Stopping rules", "Data monitoring", "Monitoring"),
     "time zero and follow-up": ("Index date", "Follow up", "At-risk window", "Censoring"),
     "confounding": ("Confounders", "Adjustment set"),
+    "reference standard": ("Gold standard", "Reference test", "Index test",
+                           "Reference standard for the target condition"),
+    "thresholds": ("Cut-off values", "Positivity threshold", "Cut-points"),
+    "blinding": ("Masking of readers", "Blinding of assessors",
+                 "Blinding of index test readers"),
+    "indeterminate results": ("Inconclusive results", "Uninterpretable images"),
     "sampling": ("Recruitment", "Study sample", "Survey weighting", "Sample size",
                  "Response rate"),
     "measurement": ("Questionnaire", "Measures", "Exposure assessment", "Outcome measures"),
@@ -7967,6 +7973,46 @@ def registration_texts(
         text = _among(draw, [*order[:at], written, *order[at:]])
         given.append((written, kept, found, text))
     return plain, given
+
+
+#: Each way of writing a registration number that `NAMED_IN_TEXT` finds, with the number as
+#: kept: those `audit --lookup` takes from a paper (`auditing.registration`).
+_AUDITED_NUMBERS = tuple(dict.fromkeys((w, kept) for w, kept, found in REGISTERED if found))
+
+
+@st.composite
+def registration_papers(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
+    """A Markdown paper naming three registration numbers, each another study's: one in its
+    text, which the audit takes; one in an HTML comment, which it does not; and one in its
+    reference list, which cites another study and is not taken either. A comment of several
+    lines, of a length drawn, stands just above the text's number, whose line a count in the
+    masked text put too early (round 1 of #827). Every paper holds one of each kind, in a
+    section and a form drawn, under a reference heading of each style (`REFERENCE_HEADINGS`)
+    and either line end, so that a rule broken for one kind is seen whatever the seed. With
+    the numbers the audit should take and their lines: the text's alone."""
+    kept = sorted({number for _written, number in _AUDITED_NUMBERS})
+    in_text, in_comment, in_list = draw(st.permutations(kept))[:3]
+
+    def form(number: str) -> str:
+        return draw(st.sampled_from([w for w, k in _AUDITED_NUMBERS if k == number]))
+
+    sections = ("Abstract", "Methods", "Results", "Discussion")
+    text_at, comment_at = draw(st.sampled_from(sections)), draw(st.sampled_from(sections))
+    note = [f"a note, line {n}" for n in range(1, draw(st.integers(1, 4)) + 1)]
+    lines = ["# A trial", ""]
+    at = 0
+    for name in sections:
+        lines += [f"## {name}", "", "Of the 120 patients, 30 had the outcome."]
+        if name == text_at:
+            lines += ["", "<!--", *note, "-->", f"The trial was registered: {form(in_text)}."]
+            at = len(lines)
+        if name == comment_at:
+            lines += ["", f"<!-- registered as {form(in_comment)} -->"]
+        lines.append("")
+    lines += [*draw(st.sampled_from(REFERENCE_HEADINGS)), "",
+              f"1. Smith A. Another trial. Lancet. 2019;393:1-2. {form(in_list)}"]  # fmt: skip
+    end = draw(st.sampled_from(("\n", "\r\n")))
+    return end.join(lines) + end, {(in_text, at)}
 
 
 #: How a manuscript says a registration was late, and what reads like it and does not.
@@ -20348,6 +20394,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "registration identifiers": texts(
         tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED
+    ),
+    "audit registration numbers": st.one_of(
+        registration_papers().map(lambda drawn: drawn[0]),
+        texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
     ),
     "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
     "rrids typed": st.one_of(

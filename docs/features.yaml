@@ -353,10 +353,15 @@ features:
     title: Word documents
     says: >-
       Builds the manuscript and its supplement as Word documents, with live Zotero
-      citations, and on request every number coloured by what backs it.
+      citations, says why when a citation could not be one, and on request every number
+      coloured by what backs it.
     status: works
     commands: [build]
-    tests: [tests/test_build.py, tests/test_annotate.py, tests/test_zotero_word.py]
+    tests:
+      - tests/test_build.py
+      - tests/test_annotate.py
+      - tests/test_zotero_word.py
+      - tests/test_cli.py::test_an_offline_build_says_its_citations_are_text_and_check_notes_it
 
   - id: readable
     stage: write

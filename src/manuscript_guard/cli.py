@@ -6983,18 +6983,91 @@ _GIT_LINES = {
     ".gitignore": "it does not leave out what the build writes (`build/`) or the stored copies "
                   "of cited works, paywalled papers among them, which a public repository "
                   "would publish (`literature/sources/*`)",
-    ".gitattributes": "it does not check text out with LF line endings everywhere, and "
-                      "manuscript-guard's digests, taken over the bytes, then differ between "
-                      "machines and read as edits nobody made",
+}  # fmt: skip
+#: Why each line of `.gitattributes` belongs there: one reason a line, said for those missing.
+_ATTRIBUTE_LINES = {
+    "* text=auto eol=lf": "it does not check text out with LF line endings everywhere, and "
+                          "manuscript-guard's digests, taken over the bytes, then differ "
+                          "between machines and read as edits nobody made",
+    "*.svg binary": "it does not keep SVG figures byte for byte: svglite on Windows writes "
+                    "them with CRLF, and normalised to LF a figure is no longer the file its "
+                    "render record and its review hold, so both read as changed in another "
+                    "checkout",
 }  # fmt: skip
 
 
-def _say_git_lines(wanted: dict[str, list[str]]) -> None:
+def _say_git_lines(wanted: dict[str, list[str]], root: Path) -> None:
     """What `init` says of an existing .gitignore or .gitattributes that lacks a line the
-    project needs: it never writes over them, so it prints the lines, as for AGENTS.md."""
+    project needs: it never writes over them, so it prints the lines, as for AGENTS.md.
+    Git reads a later line of `.gitattributes` over an earlier one, attribute by attribute,
+    so it says where they go: the eol line above the lines for patterns of their own, which
+    a `*` line after them would undo (round 1 of #815), and, where a `*` line of the file's
+    sets `text` or `eol` already, that line changed rather than another added, which it would
+    override (round 2). What it says is `scaffold.attributes_advice`, the advice
+    `scaffold.rewrite_attributes` applies, each line named by its number and quoted as the
+    file writes it (rounds 3 and 4). Each reason is true of the file as it is: one that keeps
+    its SVGs as bytes is told that only the change it is asked for would undo that (round 4)."""
+    from manuscript_guard.scaffold import EOL_LINE, SVG_BINARY, attributes_advice, read_lines
+
     for name, lines in wanted.items():
-        print(f"\n{name} was already there and was left as it was, and {_GIT_LINES[name]}. "
-              "Add these lines to it:\n\n" + "\n".join(lines))
+        advice = None
+        if name == ".gitattributes":
+            attributes = read_lines(Path(root) / name) or []
+            advice = attributes_advice(attributes)
+        why = _GIT_LINES.get(name) or ", and ".join(
+            _SVG_KEPT_UNTIL_CHANGED if line == SVG_BINARY and advice and advice.svg_kept
+            else _ATTRIBUTE_LINES.get(line) or _BINARY_UNDONE.format(line=line)
+            for line in lines)  # fmt: skip
+        where = "Add these lines to it"
+        if advice is not None:
+            if advice.svg_undone and SVG_BINARY in lines:
+                why += ("; its own `*.svg` line stands above, and a `*` line below it that "
+                        "sets `text` undoes it")
+            if advice.change is not None:
+                print(f"\n{name} was already there and was left as it was, and {why}. "
+                      + _changed_attributes(advice, attributes, EOL_LINE))
+                continue
+            if advice.own and advice.add_on_top:
+                where = (f"Add `{EOL_LINE}` at the top of the file, above its lines for "
+                         "patterns of their own, which a `*` line below them undoes"
+                         + (", and the others at its end" if len(lines) > 1 else ""))
+        print(f"\n{name} was already there and was left as it was, and {why}. "
+              f"{where}:\n\n" + "\n".join(lines))
+
+
+#: Why a line keeping a pattern's files as bytes is asked again: a `*` line below undoes it.
+_BINARY_UNDONE = ("a `*` line below its `{line}` sets `text` and undoes it, so git "
+                  "normalises the files it keeps as bytes")  # fmt: skip
+#: Why `*.svg binary` is asked of a file that keeps its SVGs as bytes now, through a `*` line
+#: the change asked of it rewrites (round 4 of #815).
+_SVG_KEPT_UNTIL_CHANGED = ("its SVG figures are kept as bytes now only by a `*` line that the "
+                           "change below rewrites: `*.svg binary` keeps them byte for byte "
+                           "once the line above is changed")  # fmt: skip
+
+
+def _changed_attributes(advice, attributes: list[str], eol_line: str) -> str:
+    """What `init` asks of a `.gitattributes` whose `*` lines set `text` or `eol` otherwise:
+    the first changed to the eol line with its other attributes, moved to the top where a
+    line for a pattern of its own stands above it, `text` and `eol` taken off the others,
+    which would override it, and the lines still wanted on the file that leaves added at its
+    end (rounds 2 to 4 of #815). Each line is named by its number and quoted as the file
+    writes it, so two lines alike are not mistaken for each other."""
+    first = attributes[advice.change]
+    changed_to = advice.changed_to or eol_line
+    said = []
+    if first != changed_to or advice.move_to_top:
+        change = f"Change its line {advice.change + 1} (`{first}`) to `{changed_to}`"
+        if advice.move_to_top:
+            change += (", and move it to the top of the file, above its lines for patterns of "
+                       "their own, which a `*` line below them undoes")
+        said.append(change)
+    if advice.take_off:
+        named = ", ".join(f"line {at + 1} (`{attributes[at]}`)" for at in advice.take_off)
+        said.append(f"{'take' if said else 'Take'} `text` and `eol` off {named}, which "
+                    f"would override it")  # fmt: skip
+    rest = list(advice.add_at_end)
+    tail = " Add these lines at its end:\n\n" + "\n".join(rest) if rest else ""
+    return "; ".join(said) + "." + tail
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -7049,7 +7122,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
-    _say_git_lines(git_lines_to_add(args.path))
+    _say_git_lines(git_lines_to_add(args.path), Path(args.path))
     if under_way:
         made = [path for path in missing if path.exists()]
         for path in made:

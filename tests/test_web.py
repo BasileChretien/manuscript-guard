@@ -1231,9 +1231,10 @@ def test_check_names_node_whole_as_path_finds_it_from_the_folder_it_is_run_in(
 ) -> None:
     """A PATH entry relative to the folder check.py is run in, an empty one (that folder) or
     one through `..` gives `shutil.which` a relative path, which the scripts, run from each
-    case's own folder, would not find (rounds 5 and 6 of #850). Node is named whole, that
-    path joined as it is to the folder check.py is run in: `..` kept, as the system reads it,
-    and a symbolic link not followed."""
+    case's own folder, would not find (rounds 5 to 7 of #850). Node is named whole, as the
+    system reads that path from the folder check.py is run in: on Windows by its text, as
+    `abspath` reads it; elsewhere joined as it is, so that `..` is read past a symbolic link.
+    A path PATH gives whole is kept, without asking which folder this is run in."""
     check = check_script()
     folder = tmp_path / "node-bin" if entry else tmp_path
     folder.mkdir(exist_ok=True)
@@ -1247,11 +1248,26 @@ def test_check_names_node_whole_as_path_finds_it_from_the_folder_it_is_run_in(
     assert found is not None and not os.path.isabs(found), found
     named = check.node_found()
     assert os.path.isabs(named) and os.path.samefile(named, program)
-    assert named == os.path.join(os.getcwd(), found)
-    # Where PATH has no node, the name, as it was.
+    if os.name == "nt":
+        assert named == os.path.abspath(found) and ".." not in named
+    else:
+        assert named == os.path.join(os.getcwd(), found)
+        assert (".." in named) == (".." in entry)
+    # A whole entry, from a folder no longer there: what PATH gave, the folder not asked.
     empty = tmp_path / "empty"
     empty.mkdir()
     monkeypatch.chdir(empty)
+    monkeypatch.setenv("PATH", str(folder))
+    whole = shutil.which("node")
+    assert whole is not None and os.path.isabs(whole), whole
+
+    def gone() -> str:
+        raise FileNotFoundError("the folder this is run in is no longer there")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "getcwd", gone)
+        assert check.node_found() == whole
+    # Where PATH has no node, the name, as it was.
     monkeypatch.setenv("PATH", str(empty))
     assert check.node_found() == "node"
 

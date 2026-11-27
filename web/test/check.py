@@ -68,11 +68,18 @@ AUDIT = "audit"
 
 
 def node_found() -> str:
-    """Node as PATH finds it, named from the folder this is run in, so that the scripts the
-    command line runs from each case's own folder find it too: a relative entry of PATH, an
-    empty one or one through `..`, joined as it is to this folder; "node" where PATH has none."""
+    """Node as PATH finds it, named whole, so that the scripts the command line runs from each
+    case's own folder find it too; "node" where PATH has none. A path PATH gives relative (an
+    entry relative to the folder this is run in, an empty one, one through `..`) is read as
+    the system reads it from here: on Windows, `..` taken off by its text and a drive's own
+    folder put in, as `abspath` does; elsewhere joined as it is, `..` read past a symbolic
+    link."""
     found = shutil.which("node")
-    return os.path.join(os.getcwd(), found) if found else "node"
+    if not found:
+        return "node"
+    if os.path.isabs(found):
+        return found
+    return os.path.abspath(found) if os.name == "nt" else os.path.join(os.getcwd(), found)
 
 
 NODE = node_found()

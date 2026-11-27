@@ -17689,13 +17689,17 @@ guideline's own page on the day of its pull request, as the file requires, and
 `choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
 have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
-(labelled "self-controlled design (case series or case-crossover)"); its label says so, and
-which guideline it answers to is read before its entry is written.
+(labelled "self-controlled design (case series or case-crossover)"); its label,
+"descriptive case series", says so. No guideline is written for case series in every
+field, so G5 takes PROCESS 2023, written for surgical case series, or Kempen 2011, for
+uncontrolled case series, and its sections cite PROCESS 2023 (Basile, 2026-11-27).
 
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
 #801, and case reports since 2026-11-27, their plans not asked for an analysis or
-deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27), and
+descriptive case series since 2026-11-28, whose plans are asked for all seven (Basile,
+2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17732,8 +17736,11 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of SRQR and COREQ, and which guideline a case series
-  answers to. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
+- The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
+  PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
+  2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
+  whose full text Europe PMC's service does not return, so its checklist was not read for
+  this design; no guideline written for case series in any field was found. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
   site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
   2013 article that publishes it CC BY-NC-ND 3.0 at Europe PMC (PMC3833570). STROBE's checklist for cross-sectional studies was read on its own page on
   2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
@@ -19812,13 +19819,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Ten designs are named, a case report the last added; a design outside
-  them (a narrative review, a descriptive case series, a qualitative study,
+  not. Eleven designs are named, a descriptive case series the last added; a design
+  outside them (a narrative review, a qualitative study,
   a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case series and qualitative
+  from a draft" (above) plans qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19840,7 +19847,14 @@ Added by the adversarial review, verified and **not** fixed:
   plan is not asked for its analysis or its deviations (`not_asked`), since it describes
   one patient's care, which followed no protocol (Basile, 2026-11-27); a plan of one changed
   after its first results is still told to say so under Deviations, which it may then
-  hold (round 1 of #840). The author answers such a false alarm, for any design and any section but
+  hold (round 1 of #840). A descriptive case series' sections are found by words they
+  alone use: case selection, identification or finding, consecutive, recruitment;
+  follow-up; a comparator, a comparison with, to or against something, a comparison
+  group, historical or external controls, a benchmark, or "Comparison" as the whole
+  heading; consent, ethics. So the comparisons an analysis makes, "Statistical
+  comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
+  not its comparison, and a "Patient selection" or "Length of observation" heading names
+  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19858,6 +19872,8 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_the_patient_is_the_population_where_the_heading_is_the_patient_whole`,
   `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
+  `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
@@ -23883,6 +23899,16 @@ Open, recorded as each change landed:
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
   recipe would be one to download and use, not to share. Accepted.
+- **A descriptive case series is held to a surgical guideline or to one with no recipe.**
+  No guideline is written for case series in every field, so the design names PROCESS
+  2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
+  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
+  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
+  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
+  open licence. So a paper that declares either is told its checklist is not retrieved.
+  The design's four sections cite PROCESS 2023, whose items on preparing the patient for
+  the intervention (6g), the operator (6j) and the variation between operators (6k) a
+  series outside surgery answers as not applying. Accepted.
 - **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
   checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
   under some, which no recipe option reads. Table 1 of the statement paper (Global

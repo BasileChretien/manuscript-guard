@@ -55,8 +55,8 @@ stage: design
 # target_journal: journal-of-examples
 
 # The study's design: the plan is asked for its sections, each from its guideline item.
-# One of cohort, case-control, cross-sectional, diagnostic-accuracy, case-report,
-# self-controlled, disproportionality, trial, systematic-review, prediction-model or other.
+# cohort, case-control, cross-sectional, diagnostic-accuracy, case-report, case-series,
+# self-controlled, disproportionality, trial, systematic-review, prediction-model, other.
 # study_type: cohort
 
 reporting_guideline: []

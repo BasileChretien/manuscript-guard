@@ -81,8 +81,8 @@ _EMPTY = re.compile(r"^\s*(?:tbd|todo|n/?a|-+|\.+|see below)?\s*$", re.IGNORECAS
 
 
 DESIGNS = Path(__file__).parent.parent / "data" / "study_types.yaml"
-#: The `study_type` of a study none of the table's designs is: a narrative review, a
-#: descriptive case series, a qualitative study. It settles the
+#: The `study_type` of a study none of the table's designs is: a narrative review or a
+#: qualitative study. It settles the
 #: choice of design and asks for nothing of its own: the plan is asked for the seven
 #: sections, and G5 for no guideline, as of a paper that names no design.
 OTHER = "other"

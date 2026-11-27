@@ -258,7 +258,7 @@ def test_a_file_set_cannot_edit_safely_is_left_byte_for_byte(
         ("stage", ["design", "analysis"], "takes one value"),
         ("stage", [], "takes one value"),
         ("english_variant", ["en-AU"], "en-GB, en-US"),
-        ("study_type", ["case-series"], "cohort"),
+        ("study_type", ["narrative-review"], "cohort"),
         ("target_journal", ["journal-three"], "journal --template journal-three"),
         ("reporting_guideline", ["STROBE", "STROBE"], "given twice"),
         ("reporting_guideline", [" STROBE"], "not a name"),
@@ -277,7 +277,7 @@ def test_a_value_the_key_does_not_take_is_refused_and_nothing_written(
 
 def test_the_schema_is_asked_of_the_value_and_of_the_file() -> None:
     with pytest.raises(Refused, match="cannot be"):
-        edit("schema: manuscript-guard/paper/1\ntitle: A\n", "study_type", "case-series")
+        edit("schema: manuscript-guard/paper/1\ntitle: A\n", "study_type", "narrative-review")
     with pytest.raises(Refused, match="cannot be"):
         edit("schema: manuscript-guard/paper/1\ntitle: A\n", "reporting_guideline", [""])
     # What the schema found before is not the edit's doing, and does not stop it.

@@ -15277,6 +15277,18 @@ def test_a_cross_sectional_study_registered_as_interventional_differs(project: P
     assert _registration(project) == {"registration-design-differs": "warn"}
 
 
+def test_a_case_series_is_registered_as_either_kind_of_study(project: Path) -> None:
+    """Round 1 of #849: a case series was held to an observational registration, but a
+    prospective series of an intervention given by protocol is registered as an
+    interventional study (ClinicalTrials.gov's single group), so a correct paper was told
+    to correct its design. Like a diagnostic accuracy study, it is held to neither."""
+    _paper_field(project, "study_type", "case-series")
+    _register(project)
+    assert _registration(project) == {}
+    _register(project, record=_ctgov_record(study_type="interventional"))
+    assert _registration(project) == {}
+
+
 def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates))
@@ -41018,6 +41030,84 @@ def test_a_case_report_section_is_found_by_its_own_words(
     assert (section not in _plan_asked(project)) is found
 
 
+def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared(
+    project: Path,
+) -> None:
+    """A descriptive case series took `other`, and its plan was asked for the seven sections
+    alone: never how its cases were found, how long they were followed, what its results are
+    set against, or whether an ethics committee and the patients agreed. Its plan is asked
+    for those four, each with its PROCESS 2023 item in the hint, and still for the analysis
+    and the deviations every plan has (Basile, 2026-11-27)."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="case-series")
+    series = ["case selection", "comparison", "consent and ethics", "follow-up"]
+    assert _plan_asked(project) == series
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(PROCESS 2023 checklist, items 6b and 11)" in hints[
+        "the plan says nothing about consent and ethics"]
+    assert "(PROCESS 2023 checklist, items 6c and 6f)" in hints[
+        "the plan says nothing about case selection"]
+    report = check_design(load_project(project)[0])
+    assert report.counts["design_expected"] == 11, report.counts
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Analysis\n" in text and "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Analysis\n", "## Notes\n")
+                    .replace("## Deviations from the plan\n", "## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == sorted([*series, "analysis", "deviations"])
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Consecutive patients", "case selection", True),
+        ("## Recruitment", "case selection", True),
+        ("## Case identification", "case selection", True),
+        ("## Selection of cases", "case selection", True),
+        # Round 1 of #849: a hyphen after "case", and "consecutively", were not read.
+        ("## Case-finding", "case selection", True),
+        ("## Case-identification", "case selection", True),
+        ("## Consecutively treated patients", "case selection", True),
+        ("## Patient selection", "case selection", False),
+        ("## Follow up", "follow-up", True),
+        ("## Loss to follow-up", "follow-up", True),
+        ("## Length of observation", "follow-up", False),
+        ("## Comparison with published series", "comparison", True),
+        ("## Historical controls", "comparison", True),
+        ("## External controls", "comparison", True),
+        ("## Comparator", "comparison", True),
+        ("## 3. Comparison", "comparison", True),
+        ("## Comparisons with the literature", "comparison", True),
+        ("## Statistical comparisons", "comparison", False),
+        # Round 1 of #849: an analysis's comparisons were taken for the external one.
+        ("## Correction for multiple comparisons", "comparison", False),
+        ("## Subgroup comparisons", "comparison", False),
+        ("## Comparison of outcomes between groups", "comparison", False),
+        ("## Historical background", "comparison", False),
+        ("## Ethical approval", "consent and ethics", True),
+        ("## Informed consent", "consent and ethics", True),
+        ("## Ethics committee", "consent and ethics", True),
+        ("## Data protection", "consent and ethics", False),
+    ],
+)  # fmt: skip
+def test_a_case_series_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """A case series' sections are found by words those sections alone use, as the other
+    designs' are (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): "Statistical comparisons" is the analysis and no comparison, and a
+    "Patient selection" or "Historical background" names none of them."""
+    _paper_has(project, study_type="case-series")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
 @pytest.mark.parametrize(
     ("heading", "found"),
     [
@@ -41390,8 +41480,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
 
     assert sorted(study_types()) == sorted([
         "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
-        "case-report", "self-controlled", "disproportionality", "systematic-review",
-        "prediction-model"])
+        "case-report", "case-series", "self-controlled", "disproportionality",
+        "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)
@@ -41452,6 +41542,10 @@ def _guideline_said(root: Path) -> list[str]:
         ("cohort", ["CONSORT"], True),
         ("prediction-model", ["TRIPOD+AI"], False),
         ("disproportionality", ["READUS-PV"], False),
+        # A case series follows PROCESS, written for surgery, or Kempen: either counts.
+        ("case-series", ["PROCESS-2023"], False),
+        ("case-series", ["Kempen-2011"], False),
+        ("case-series", ["STROBE"], True),
         (None, [], False),
         # A design none of the table's has no guideline to be held to.
         ("other", [], False),

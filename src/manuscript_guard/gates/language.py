@@ -1765,16 +1765,27 @@ def _paired_past_commas(
     """The long form of a pair whose long form holds a comma, "DASS: Depression, Anxiety and
     Stress Scale;" (docx-sport-A3): where the long form cut at the first comma spells nothing,
     the words to the next semicolon, stop or line's end are read as it, by the same rules: its
-    words whole, ended on its line, and no bracket's long form. None otherwise, so "AIM: to
-    test, in mice, the dose" defines nothing."""
+    words whole, ended on its line, and no bracket's long form; and never into the next pair's
+    short form (`_before_the_next_pair`). None otherwise, so "AIM: to test, in mice, the dose"
+    and "CM: Cameroon, AZ: Azerbaijan" (pdf-med-A1) define nothing."""
     wider = _PAIR_PAST_COMMAS.match(prose, pair.start("long"))
-    if wider is None or "," not in wider.group(0) or _bracket_wins(prose, wider.end(), after_long):
+    if wider is None or _bracket_wins(prose, wider.end(), after_long):
         return None
     ends = lines.find("\n", wider.end())
     if (_RUNS_ON.match(prose, wider.end()) and not _NEW_BLOCK.match(lines, ends + 1)
             and not lines[:ends].rstrip().endswith("\\\\")):  # fmt: skip
         return None
-    return _spelt_after(short, wider.group(0).split())
+    long = _before_the_next_pair(prose, wider)
+    return _spelt_after(short, long.split()) if "," in long else None
+
+
+def _before_the_next_pair(prose: str, wider: re.Match[str]) -> str:
+    """The words of `wider` before the next pair of a list a comma divides, where a sign ends
+    them: "Cameroon, AZ" before ": Azerbaijan" is "Cameroon", and "follow-up, IBQ" before "=
+    infant ..." is "follow-up" (pdf-med-A1, pdf-nutr-C1)."""
+    if prose[wider.end() : wider.end() + 1] in ("=", ":"):
+        return wider.group(0)[: wider.group(0).rfind(",")]
+    return wider.group(0)
 
 
 def _bracket_wins(prose: str, end: int, after_long: frozenset[int]) -> bool:

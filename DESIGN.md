@@ -30851,8 +30851,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     form's last letter stays in it. Pinned by
     `tests/test_definition_shapes.py::test_a_pointer_s_long_form_ends_at_the_last_word_holding_a_letter`.
   - A colon pair is read past its commas only where it has one short form and the reading
-    cut at the first comma spells nothing; a long form with a stop in it, "Depression Inv.
-    Scale", ends at the stop. Accepted.
+    cut at the first comma spells nothing, and never into the next pair of a list a comma
+    divides, so "CM: Cameroon, AZ: Azerbaijan" defines nothing; a long form with a stop in
+    it, "Depression Inv. Scale", ends at the stop. Accepted.
   - A list's spaced line is an entry only under a glossary's heading or opening, its long
     form cut before its first bracket, so a long form that holds a bracket of its own loses
     what follows it, and one whose words do not spell the short form, "HANDS Handbook

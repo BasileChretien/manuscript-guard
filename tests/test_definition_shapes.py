@@ -98,6 +98,9 @@ NOT_DEFINING = (
     ("a heading", "## Grip strength (EGX)", "EGX"),
     # A bracket of a statistic's values a semicolon divides, each the short form and a value.
     ("a bracket of pairs", "The estimates were close (XRR, 1.2; XRR, 0.8; XRR, 1.1).", "XRR"),
+    # A colon pair before the next pair of a list a comma divides, its long form one word.
+    ("a colon pair with a comma", "Countries: XC: Cameroon, Ghana: Accra.",
+     "XC"),
     # A short form and its word before a semicolon after which no display is pointed to.
     ("a pointer after it", "Each held a rank (QR arm; the low one).", "QR"),
     # One word in the bracket that does not open with the short form's first letter, is not

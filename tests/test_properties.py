@@ -3523,6 +3523,10 @@ def _a_colon_pair_s_long_form_ends_at_its_first_comma(patch: pytest.MonkeyPatch)
                   lambda prose, lines, pair, short, after_long: None)  # fmt: skip
 
 
+def _a_colon_pair_runs_into_the_next_pair(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_before_the_next_pair", lambda prose, wider: wider.group(0))
+
+
 def _a_long_form_of_one_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_one_word", lambda short, words: False)
 
@@ -29970,6 +29974,10 @@ BROKEN = {
     ),
     "a colon pair's long form ends at its first comma": (
         _a_colon_pair_s_long_form_ends_at_its_first_comma,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon pair runs into the next pair": (
+        _a_colon_pair_runs_into_the_next_pair,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a long form of one word defines nothing": (

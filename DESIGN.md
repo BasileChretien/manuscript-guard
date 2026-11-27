@@ -2315,7 +2315,12 @@ The result is compiled and packed by the code above, and checked three times:
   Word copies, and `submit` says so in a note (step 10).
 - A LaTeX manuscript's `\title` is not compared with paper.yaml's title, where a Markdown
   file's header title is (`two-titles`), and the PDF prints the `\title` (round 1 of step
-  13).
+  13). So G5 holds a checklist answer's quote under `where: Title` to the one `\title{}` of the
+  main text TeX reads, as the reader prints the body, its `\thanks` and `\footnote` left out,
+  and to paper.yaml's title only where no file of the main text sets one (round 1 of #813).
+  Where TeX reads several, in two files or in a conditional's two branches, it names where
+  each stands and holds the quote to none, since which prints cannot be told from the source
+  (round 2). A class's `\subtitle` or `\shorttitle` is not read as part of it.
 - G7's text recycling places a passage that runs on past an `\input` at its first file only,
   ending on its first line there (step 13).
 - G7's text recycling does not compare a caption `\subfloat[...]` takes in its option, nor a
@@ -17591,7 +17596,8 @@ which guideline it answers to is read before its entry is written.
 
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
-#801. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+#801, and case reports since 2026-11-27, their plans not asked for an analysis or
+deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17628,8 +17634,10 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of CARE, SRQR and COREQ, and which guideline a case series
-  answers to. STROBE's checklist for cross-sectional studies was read on its own page on
+- The pages, items and licences of SRQR and COREQ, and which guideline a case series
+  answers to. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
+  site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
+  2013 article that publishes it CC BY-NC-ND 3.0 at Europe PMC (PMC3833570). STROBE's checklist for cross-sectional studies was read on its own page on
   2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
 - A published classification of study designs to take a series of questions from, should the
   sentences beside the options not be enough (answer 5).
@@ -18080,6 +18088,27 @@ to fix is pinned until the fix lands, and the fix changes its test.
   change.
   Pinned by `tests/test_checking.py::test_a_cross_reference_renumbered_stales_the_methods_answers_that_cite_it`
   and `tests/test_checking.py::test_a_claim_keeps_its_identifier_when_a_bound_value_changes`.
+- **The page carries no stored copy of a cited work.** A cited sentence and a value quoted from
+  the literature are shown with the quotes and passages the author recorded, and never with the
+  PDF or a page of it, so a co-author asked whether the work says what the sentence says reads
+  only what the author copied out. Where the computer that builds the page holds no full copy of
+  a work (none, its abstract alone, or one kept out of git), each item citing it says so, and
+  `checker build` lists those works by group and key; a copy counts under the work's filed name
+  in `literature/sources/`, as a ledger entry's `source_file`, or as a file the record lists,
+  and a file every ledger entry naming it reads at `depth: abstract-only` is the abstract.
+  What is said is outside the digest, so storing the copy later keeps the answers given. A copy
+  stored is not shown either. Whether the page is to carry the PDF, or the cited pages as images
+  with the passage marked, awaits the author's decision.
+  Pinned by `tests/test_checking.py::test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so`,
+  `tests/test_checking.py::test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held`,
+  `tests/test_checking.py::test_a_file_the_ledger_reads_as_an_abstract_is_only_the_abstract`
+  and `tests/test_checking.py::test_storing_a_copy_later_keeps_the_answers_given_without_it`.
+- **On the checker page, a file's depth is the ledger's.** A stored file is a cited work's
+  abstract where every ledger entry naming it reads it at `depth: abstract-only`, and nothing
+  reads the file to see which it is: a full text saved later over that file is still said to
+  be only its abstract, on each item citing the work and in `checker build`'s list, until the
+  entry's depth is changed. Accepted.
+  Pinned by `tests/test_checking.py::test_the_depth_is_the_ledgers_and_not_the_files`.
 - **A methods item's code is read from disk, and only what the step's digest holds.** The
   lines shown are the script as it is when the page is built, and a script whose digest is not
   the one its run recorded is said to be so on the page and by `build`; a fragment that records
@@ -19685,13 +19714,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Nine designs are named, a diagnostic accuracy study the last added; a design outside
-  them (a narrative review, a descriptive case series or a case report, a qualitative study,
+  not. Ten designs are named, a case report the last added; a design outside
+  them (a narrative review, a descriptive case series, a qualitative study,
   a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case reports, case series and qualitative
+  from a draft" (above) plans case series and qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19703,7 +19732,17 @@ Added by the adversarial review, verified and **not** fixed:
   2026-11-26). By the same rule a diagnostic accuracy plan's exposure and outcome are
   found under STARD's words only where the heading is "Index test" or "Target condition"
   whole, plural, bracketed or numbered "3.", "3)", "A." or "III.": "10a. Index test" and
-  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
+  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). So too a
+  case report's population under CARE's words: a heading that is "Patient information", "The
+  patient" or "Patient" whole, in a plan of any design, so that a trial plan's "Patient
+  information", on what its participants are told, is taken for a population, by G12, by
+  the check that the Population names the chosen data source and by the brief, which takes
+  it where it comes before the trial's own population heading; and a case report's "Case
+  presentation" or "Patient history" is no population until named so. A case report's
+  plan is not asked for its analysis or its deviations (`not_asked`), since it describes
+  one patient's care, which followed no protocol (Basile, 2026-11-27); a plan of one changed
+  after its first results is still told to say so under Deviations, which it may then
+  hold (round 1 of #840). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19718,6 +19757,11 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
   `tests/test_corruption.py::test_the_index_test_and_the_target_condition_are_their_heading_whole`,
+  `tests/test_corruption.py::test_the_patient_is_the_population_where_the_heading_is_the_patient_whole`,
+  `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
+  `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
+  `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
   `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
@@ -20269,6 +20313,14 @@ Open, recorded as each change landed:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other. Accepted.
+- **A page `journal --store` keeps holds what its hidden elements say** (`gates/journal_quotes.py`,
+  `_Shown`). A saved page keeps the words of an element hidden by `hidden` or `display: none`,
+  so that a section folded in an accordion, opened to copy a quote from, is on the stored page.
+  So a cookie notice or a modal hidden on the page is stored with it, and a bot check's page
+  whose words sit only in hidden elements holds text and is stored as the journal's page; only
+  one whose words are in its title, a `<noscript>`, a script or a `<template>` is refused. The
+  skill says to read the stored text before filling the profile from it. Accepted. Pinned by
+  `tests/test_journal_saved_page.py::test_what_a_page_hides_is_stored_with_it`.
 - **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
   page for rules that are neither a field nor under `manual:`: which sentences of a page are
   rules is the reader's judgement, and a heuristic that guessed it would warn of every
@@ -28774,9 +28826,24 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `!literature/sources/*.pdf`, or a later `!build/`, counts as present though git then
   commits those files, a false pass (round 1 of #546, finding 3). A UTF-8 BOM before the
   first line leaves that line unread, and a leading space makes ` build/` count, where git
-  does the opposite (finding 4). In `.gitattributes` only a `*` line with both
-  `text=auto` and `eol=lf` counts, so `* text eol=lf`, or the two on separate lines, both of
-  which check out LF, are asked for again (finding 5). The folders are `build/` and
+  does the opposite (finding 4). In `.gitattributes`, `text` and `eol` are read by the last
+  value each takes over the lines, attribute by attribute, as git reads them (rounds 1 and 2
+  of #815), but only for `*`, `*.svg` and each binary line's own pattern, as written, and a
+  macro attribute is not read (`[attr]keep -text -diff` with `*.svg keep` is answered with
+  `*.svg binary`, a false alarm). The file needs `text=auto` and `eol=lf` from its `*`
+  lines, so `* text eol=lf`, which sets `text` on every file, binary ones too, is asked to
+  become `* text=auto eol=lf` (finding 5), while the two set on separate lines count. Every
+  line asked for after the eol line is decided on the file as the advice leaves it (round
+  3): an SVG is taken as kept where it ends with `text` unset or where the last line to set
+  its `text` or `eol` is the file's own `*.svg` line, so a file's own `*.svg text eol=lf`,
+  `*.svg text=auto` or `*.svg eol=crlf`, and an own `*.svg` line setting `text` or `eol`
+  after `*.svg binary` and a `*` line (`*.svg binary`, `* text=auto eol=lf`,
+  `*.svg eol=crlf`), is taken as the author's choice though git then normalises those SVGs;
+  and a line that keeps a pattern's files as bytes (`*.docx binary`) and that a `*` line
+  below it undoes is asked for again, at the end. So `figures/*.svg binary` or
+  `*.SVG binary` is answered with `*.svg binary` again, a false alarm, and a later line for
+  another pattern that holds SVGs (`figures/* text`) undoes the `*.svg` line unread, a false
+  pass. The folders are `build/` and
   `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
   reason printed for `.gitignore` is one sentence that names both lines whichever is
   missing, so it can say the file does not leave out `build/` when `/build` does, or warn
@@ -28784,8 +28851,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Closed by asking `git check-ignore`, as `literature/away.py`'s `ignored_by_git` does, by
   `project.path` for the folders, and by a reason for each missing line.
   Pinned by `tests/test_scaffold.py::test_init_s_git_advice_reads_spellings_and_not_git_s_rules`,
-  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`
-  and `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`.
+  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`,
+  `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`
+  and `tests/test_scaffold.py::test_init_asks_for_svgs_byte_for_byte_where_the_file_has_no_rule_for_them`.
 - **The status line's "Next:" is the first action's title and no more.** Its options, its
   command and who runs it are in `next`; a status line that has to say a choice is due says
   only its title, "Name the study design", and an agent that acts on the line alone has not
@@ -29909,6 +29977,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
     public repository only; it shows the last finished run on the default branch; and it is
     check's alone, so a run that fails for its build or its verify can show "passes".
     Accepted.
+- **An audited paper's tables and figures (`auditing.displays`, docs/audit.md): what its
+  legends cannot tell.** A paper written outside manuscript-guard has no bindings, so a kind is
+  counted by its legends alone, and only where they number it 1 to n once each (the author,
+  2026-11-27). Accepted.
+  - *A kind numbered otherwise is not checked*: "Table 1", "Table 3", a "Table 1
+    (continued)", or no legend at all, as for figures sent to the journal as files of their
+    own. One note says so. Pinned by
+    `tests/test_audit_displays.py::test_legends_that_do_not_number_a_kind_1_to_n_leave_it_uncounted`
+    and
+    `tests/test_audit_displays.py::test_a_kind_pointed_at_with_no_legend_is_said_not_counted_and_one_with_neither_is_silent`.
+  - *A pointer past the legends, in a file that holds more tables or more pictures than
+    they number*, is not checked, and a note says so: the file may hold one whose legend the
+    check does not read, in a layout table, inside a picture or as pandoc's own caption under
+    a table (`: Table 1. X`) (the corpus run of ea3fc52). Which of the tables and pictures
+    are the supplement's, or panels of one figure, the check does not tell: three rules that
+    guessed at it each failed on a layout a review found (rounds 1 and 2 of #837 and the
+    fix-only round on f0bd603), so a pointer past the legends is not checked either where
+    the supplement's displays, a figure in several pictures, a logo or a graphical abstract
+    make the file hold more than the legends number. The kind is held to the rest, its order
+    and its citations, and the note is G2's `pointers-unchecked`, among what the check read
+    (the fix-only round on df69672). Pinned by
+    `tests/test_audit_displays.py::test_a_file_holding_more_of_a_kind_than_its_legends_leaves_pointers_past_them_unchecked`,
+    `tests/test_audit_displays.py::test_the_supplement_s_legends_listed_alone_do_not_hide_a_legend_unread`
+    and
+    `tests/test_audit_displays.py::test_a_legend_below_its_picture_with_the_supplement_in_the_file_counts_the_figures`.
+  - *A legend in a form the check does not read* is read as a citation, or not at all where
+    G2's pointer does not see it: bold set with underscores, which pandoc never writes, and a
+    legend set as a heading (`## Figure 2. B`), which round 1 of #837 found. Where it is the
+    last of its kind, and the file holds no more tables or pictures than the legends number,
+    the legends number one fewer, and the citation of it is said to point at nothing.
+    Pinned by
+    `tests/test_audit_displays.py::test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing`.
+  - *Two forms are read the wrong way* (the fix-only round on f0bd603 of #837): a range from
+    a panel with spaces around its dash ("Figures 1A - C show") opening a paragraph is read
+    as Figure 1's legend, and a legend whose title opens with a link or a bracket after a
+    dash ("Table 2 - [placeholder]") as a citation. Accepted.
+  - *A PDF whose lines were not rebuilt into paragraphs* is not checked: a legend cannot be
+    told from a line of prose there. Pinned by
+    `tests/test_audit_displays.py::test_a_pdf_whose_lines_were_not_rebuilt_is_said_not_checked`.
+  - *A pointer to the supplement* is checked only where the supplement's legends are given,
+    in its own file or in the main text's. Pinned by
+    `tests/test_audit_displays.py::test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_wherever_given`.
 - **The audit page (`web/`, docs/audit-page.md): what its rules and its checks do not hold.**
   Accepted.
   - *Leaving the page.* A Content-Security-Policy has no rule for navigation: a script that
@@ -31070,6 +31180,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
   - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
+- **The heading the build puts over the reference list is known by its bookmark only.**
+  `build/references_heading.lua` gives it the bookmark `mg-references`, and a document read
+  back passes that paragraph over (`docxtext.BUILT_HEADING`), so that `import` reads a document
+  built before the heading as it did, and a co-author's rewording of it changes nothing.
+  Where Word drops the bookmark, as it drops a paragraph's identifier when the paragraph is cut
+  and pasted, the heading comes back as one without an identifier that the build compared with
+  does not hold, and `import` lists it among the paragraphs that came back different and were
+  not compared, though it is in no paragraph of the source. Accepted.
+- **No heading is added over a reference list placed inside another block.** A `::: {#refs}`
+  div within another div is the author's arrangement, and the build adds no heading over it,
+  nor makes a place for the list elsewhere. Pinned by
+  `tests/test_references_heading.py::test_a_list_inside_another_block_gets_no_heading`.
+- **The place and the heading are given before citeproc formats the list.** The filter runs
+  before citeproc, so that the list it places under an author's empty heading of it is filled
+  there. It adds none where the style the offline build formats with has no `<bibliography>`,
+  its own or its parent's (`document.prints_a_list`), or where the metadata sets
+  `suppress-bibliography` on that build; it cannot see whether citeproc will print an entry otherwise, and a
+  document whose every citation names a key the bibliography lacks, which `check` fails, built
+  with `--skip-checks`, has the heading over an empty list. A live build's style is Zotero's,
+  read by nothing here, and its bibliography field gets the heading whatever the style.
+  Accepted.
+- **An author's empty heading of the list takes it only where the next printed block is a
+  heading of its level or above.** Where the manuscript has no `refs` div, the list goes under
+  the last heading of a reference list with nothing printed under it before such a heading,
+  comments and the build's empty div between files aside. Where the next file opens with a
+  paragraph, a table, a lower heading or a page break, the heading is not empty to the build:
+  the list goes at the end with a heading of its own, and the document prints that file's
+  opening under the author's "References", as pandoc reads it. Accepted.
+- **"Literature" alone is no reference list's name, and German's "Literatur" is one.** An
+  author's empty "# Literature" ending main.md, before a file that opens with a heading, does
+  not take the list, which goes at the end with a heading of its own; an empty numbered
+  "2.1 Literatur" before "2.2 Methoden" in an outline does take it. Pinned by
+  `tests/test_references_heading.py::test_literature_alone_names_no_list_in_english_and_literatur_names_one_in_german`.
+- **The note `import` gives of the heading compares it with a fresh build.** The returned
+  heading is held to the one the source builds now, not to the one the document was sent
+  with: a heading the journal profile renamed after the document was sent is said as words a
+  co-author typed. Pinned by
+  `tests/test_references_heading.py::test_a_profile_heading_changed_since_sending_is_said_as_typed`.
+- **The marked-up copy writes the build's heading where its walk reaches it.** A paragraph
+  deleted at the end of the text, in a document received before the heading, is shown deleted
+  below the heading rather than above it. Pinned by
+  `tests/test_references_heading.py::test_the_marked_up_copy_puts_a_deletion_at_the_end_below_the_heading`.
 - **The audit asks about every registration number the text names, whoever's it is.** Under
   `--lookup`, a trial the Introduction or the Discussion cites by its NCT or ISRCTN number is
   looked up and shown, and a late registration of it said, as though it were the paper's own;

@@ -296,6 +296,10 @@ NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        # What `audit` passed over for its list of journals' style guides
                        # (`auditing.undefined`): a note in its own report, never `check`'s.
                        "abbreviations-passed-over",
+                       # A kind of an audited paper's tables or figures its legends do not
+                       # number (`auditing.displays`): a note in the audit's own report, which
+                       # a project's bindings never give.
+                       "displays-not-counted",
                        # What `compare` says of two versions of someone else's paper, to its
                        # editor or referee: facts in its own report, which `check` and `next`
                        # never see and the author has nothing to do about.

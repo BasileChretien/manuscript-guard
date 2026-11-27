@@ -112,6 +112,10 @@ kinds:
   baseline-p: >-
     A table of baseline characteristics gives P values, which CONSORT advises against in a
     randomised trial. Please consider taking them out.
+  display-order: >-
+    A table or a figure is cited nowhere, numbered out of the order of its first citation,
+    or pointed at with no legend of its own. Please number the tables and figures in the
+    order the text first cites them, and cite each.
   package-incomplete: >-
     The reproducibility package lists less than it holds, or cannot tie a result to its
     record. Please complete the package.

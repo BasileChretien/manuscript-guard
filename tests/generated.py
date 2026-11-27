@@ -200,6 +200,99 @@ _NUM_WORDS = {
 }
 
 
+#: The ways a paper written outside manuscript-guard sets a legend, by the kind each is for:
+#: G2's caption, set off by a stop, a colon or bold; BMC's and Springer's, by a space and a
+#: capital; and a figure's, as a picture pandoc writes from Word, and as "Fig.".
+LEGEND_FORMS = {
+    "table": ("**{word} {n}.** {title}", "{word} {n}. {title}", "{word} {n}: {title}",
+              "{word} {n} {Title}"),
+    "figure": ("**{word} {n}.** {title}", "{word} {n}. {title}", "{word} {n}: {title}",
+               "{word} {n} {Title}", "![{word} {n}. {title}](media/image{n}.png)",
+               "Fig. {n}. {title}"),
+}  # fmt: skip
+
+
+@st.composite
+def legend_displays(draw: st.DrawFn, unread: bool = False) -> tuple[str, set[tuple[str, int]]]:
+    """A paper written outside manuscript-guard, as `audit` reads its text, whose tables and
+    figures are told by their legends alone (`auditing.displays`). Each kind has every form of
+    legend it may take, in a drawn order, each a paragraph of its own somewhere in the text,
+    and each kind's displays are cited in a sentence each, one in every example out of order:
+    two of its first citations swapped. The last of each kind is cited nowhere, and a pointer
+    past the last legend is planted, so that every example holds one of each finding of each
+    kind. Citations again, after the first, come anywhere, three of each kind opening their
+    paragraphs as a legend does.
+
+    With `unread`, the file also holds one table and one picture more than its legends
+    number, after its text, as where a legend stands in a layout table or inside a picture
+    (the fix-only round on f0bd603 of #837): a pointer past the legends cannot be told from a
+    pointer to one of them, so it is no finding.
+
+    Returns the text and the findings it must give, by code and line."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    paragraphs: list[tuple[str, str]] = []  # what each paragraph is, and its text
+    planted: set[tuple[str, int]] = set()
+    counts: dict[str, int] = {}
+    expected: list[tuple[str, str, int]] = []  # code, the paragraph's id it is in
+    for kind, word in (("table", "Table"), ("figure", "Figure")):
+        forms = list(draw(st.permutations(LEGEND_FORMS[kind])))
+        count = len(forms) + draw(st.integers(0, 1))
+        counts[kind] = count
+        forms += [draw(st.sampled_from(LEGEND_FORMS[kind])) for _ in range(count - len(forms))]
+        # The first citations, of every display but the last: in order, but for two swapped.
+        cited = list(range(1, count))
+        first, second = sorted(draw(st.lists(st.integers(0, count - 2), min_size=2,
+                                              max_size=2, unique=True)))  # fmt: skip
+        cited[first], cited[second] = cited[second], cited[first]
+        for number in cited:
+            pointer = word if kind == "table" else draw(st.sampled_from(("Figure", "Fig.")))
+            paragraphs.append((f"cite {kind} {number}",
+                               f"{words().capitalize()} {pointer} {number} {words()}."))
+        expected.append(("cited-out-of-order", f"cite {kind} {cited[first]}"))
+        expected.append(("display-not-cited", f"legend {kind} {count}"))
+        paragraphs.append((f"past {kind}", f"{words().capitalize()} {word} {count + 1} "
+                                           f"{words()}."))
+        expected.append(("pointer-to-nothing", f"past {kind}"))
+        again = draw(st.lists(st.integers(1, count - 1), max_size=3))
+        paragraphs += [(f"again {kind} {at}", f"{words().capitalize()} {word} {number} "
+                                              f"{words()}.")
+                       for at, number in enumerate(again)]  # fmt: skip
+        # A citation that opens its paragraph, in each form one takes, is no legend: a
+        # sentence, a Word cross-reference's link and a range (round 1 of #837), a range
+        # from a panel and one of two links (round 2).
+        cites, low = draw(st.integers(1, count - 1)), draw(st.integers(1, count - 2))
+        dash = draw(st.sampled_from(("\N{EN DASH}", "-")))
+        paragraphs += [
+            (f"opens {kind}", f"{word} {cites} shows {words()}."),
+            (f"link {kind}", f"[{word} {cites}](#_Ref{cites}) shows {words()}."),
+            (f"range {kind}", f"{word}s {low}{dash}{low + 1} show {words()}."),
+            (f"panels {kind}", f"{word}s {low}A{dash}C show {words()}."),
+            (f"links {kind}", f"[{word} {low}](#_Ref{low}){dash}[{word} {low + 1}]"
+                              f"(#_Ref{low + 1}) show {words()}."),
+        ]
+        for number, form in enumerate(forms, 1):
+            title = words()
+            legend = form.format(word=word, n=number, title=title, Title=title.capitalize())
+            # A legend comes anywhere after the first citation of its kind's first display.
+            paragraphs.insert(draw(st.integers(1, len(paragraphs))),
+                              (f"legend {kind} {number}", legend))
+    # The first citations keep their order: a legend or a citation again may come between
+    # them, never one of them before another.
+    order = [name for name, _text in paragraphs]
+    for code, name in expected:
+        if not (unread and code == "pointer-to-nothing"):
+            planted.add((code, 2 * order.index(name) + 1))
+    text = "\n\n".join(text for _name, text in paragraphs) + "\n"
+    if unread:
+        held = (["| a |\n|---|\n| 1 |"] * (counts["table"] + 1)
+                + ["![](media/unread.png)"] * (counts["figure"] + 1))
+        text += "\n" + "\n\n".join(draw(st.permutations(held))) + "\n"
+    return text, planted
+
+
 @st.composite
 def numbered_displays(
     draw: st.DrawFn,
@@ -6459,9 +6552,12 @@ CHECKLIST_QUOTES = {
     "binding as printed": "found",
     "in a table's caption": "found",
     "in a figure's legend": "found",
+    "in the title": "found",
     "under another heading": "elsewhere",
     "the parent's own text": "elsewhere",
     "another display's caption": "elsewhere",
+    "the title's words under a heading": "elsewhere",
+    "a heading's words in the title": "elsewhere",
     "in a comment": "nowhere",
     "word changed": "nowhere",
     "inside a word": "nowhere",
@@ -6473,6 +6569,12 @@ CHECKLIST_QUOTES = {
 #: Where a paragraph of `checklist_quotes` holds a word marked up and one set otherwise, and
 #: where the subsection's holds its two bindings.
 _QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
+#: How an answer says it is addressed in the paper's title, which is `paper.yaml`'s.
+_TITLE_WHERE = ("Title", "title", "The title", "the Title", "Title.", " TITLE ")
+#: How G5 names the title, where a quote stands in it.
+_TITLE_SHOWN = "the title in paper.yaml"
+#: Where the title holds a word with a dash after it, and the dashes it may be.
+_TITLE_DASHED, _DASHED_AS = 5, ("{}\N{EN DASH}x", "{}\N{EM DASH}y")
 
 
 @st.composite
@@ -6484,7 +6586,9 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
     their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
     one set by the typographer, drawn white space between words, two value bindings in A1's
     paragraph, a comment and a figure's legend typed under B, and two emitted tables'
-    captions; and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
+    captions; the paper's title, `paper.yaml`'s, of words of its own with drawn white space,
+    a word in emphasis or code, one set by the typographer and one with a dash after it;
+    and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
     time, each with what G5 finds of it: None for no quote, else whether it stands under what
     its `where` names and the parts it stands under instead.
 
@@ -6520,6 +6624,12 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         shown[para_a1[at]] = values[ref]
     comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
     captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
+    # The title holds one of each kind a paragraph does, a word marked up and one set by the
+    # typographer, and a dash; paper.yaml's title holds no binding, which the build leaves
+    # as typed.
+    in_title = paragraph()[:10]
+    in_title[0] = in_title[0].capitalize()
+    in_title[_TITLE_DASHED] = draw(st.sampled_from(_DASHED_AS)).format(in_title[_TITLE_DASHED])
     files = {
         # First by path, and printed after `main.md`, as the main text's other files are.
         "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
@@ -6554,10 +6664,17 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
         "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),
         "in a figure's legend": ("Figure 1", " ".join(run(legend, 4, 6)), found),
+        # As typed from the page: its markup, typography and dash each folded.
+        "in the title": (draw(st.sampled_from(_TITLE_WHERE)),
+                         " ".join(_as_typed(w) for w in in_title[:6]), found),
         "under another heading": (b, " ".join(para_a[5:10]), under_a),
         "the parent's own text": (a1, " ".join(para_a[5:10]), under_a),
         "another display's caption": ("Table 2", " ".join(run(captions[0], 4, 6)),
                                       [False, ["the caption of Table 1"]]),
+        "the title's words under a heading": (a, " ".join(run(in_title)),
+                                              [False, [_TITLE_SHOWN]]),
+        "a heading's words in the title": (draw(st.sampled_from(_TITLE_WHERE)),
+                                           " ".join(para_a[5:10]), under_a),
         "in a comment": (b, " ".join(run(comment, 4, 6)), [False, []]),
         "word changed": (a, " ".join([*para_a[4:6], word(), *para_a[7:9]]), [False, []]),
         # Its first letter left off: the rest stands inside the word, and is no word anywhere.
@@ -6574,9 +6691,99 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "values": values,
         "captions": [["table", False, n, " ".join(words) + "."]
                      for n, words in enumerate(captions, 1)],
+        "title": joined(in_title),
         "items": [{"where": ways[kind][0], "quote": ways[kind][1]} for kind in order],
     }  # fmt: skip
     return given, [(kind, ways[kind][2]) for kind in order]
+
+
+#: Each way a LaTeX manuscript's main text sets its title (`latex.printed.printed_titles`,
+#: round 2 of #813): one `\title`, in the entry file or in a file its preamble inputs, beside
+#: one TeX does not read, in a comment or in `\iffalse`, after a definition of `\title`,
+#: which sets no title (round 3), with its notes or a CAS option, and two that TeX reads,
+#: which G5 does not choose between.
+LATEX_TITLES = (
+    "in the entry file", "in a file it inputs", "beside a commented one", "beside one in iffalse",
+    "after a definition of it", "with its notes", "with an option", "two of them",
+)  # fmt: skip
+#: How a preamble defines `\title` rather than setting one (round 3 of #813), `{}` its body.
+_TITLE_DEFINERS = (
+    "\\renewcommand\\title[1]{}", "\\renewcommand*\\title[1]{}", "\\providecommand\\title{}",
+    "\\newcommand\\title{}", "\\def\\title{}",
+)  # fmt: skip
+
+
+@st.composite
+def latex_titles(draw: st.DrawFn) -> list[tuple[str, dict[str, str], list[list[Any]]]]:
+    """A small main text for each way of `LATEX_TITLES`, in an order drawn each time, each its
+    files by path and the titles TeX reads in it, each `[text, file, line]`, its text as the
+    body prints it. Every title holds a word in `\\emph`, which prints as the word, and a
+    `--`, which prints as an en dash, between words of their own (`alpha1`, `bravo2`, ...),
+    with drawn white space; a note holds a group of braces. Every way in each example."""
+    counted = iter(range(1, 100_000))
+    BS = "\\"
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def gap(one_line: bool) -> str:
+        return draw(st.sampled_from((" ", "  ") if one_line else (" ", "  ", "\n", " \n  ")))
+
+    def title(one_line: bool = False) -> tuple[str, str]:
+        """A title as LaTeX writes it, on one line where it is to be a comment's, and as it
+        prints."""
+        one, two, three, four = word(), word(), word(), word()
+        written = (f"{one}{gap(one_line)}{BS}emph{{{two}}}{gap(one_line)}{three}"
+                   f"{gap(one_line)}--{gap(one_line)}{four}")  # fmt: skip
+        return written, f"{one} {two} {three} \N{EN DASH} {four}"
+
+    def note() -> str:
+        return f"{word()} {{{word()} {{{word()}}}}} {word()}"
+
+    head, body = f"{BS}documentclass{{article}}\n", (
+        f"{BS}begin{{document}}\n{BS}maketitle\n{word()} {word()}.\n{BS}end{{document}}\n")
+    cases: dict[str, tuple[dict[str, str], list[list[Any]]]] = {}
+    written, printed = title()
+    cases["in the entry file"] = ({"main.tex": f"{head}{BS}title{{{written}}}\n{body}"},
+                                  [[printed, "main.tex", 2]])  # fmt: skip
+    written, printed = title()
+    cases["in a file it inputs"] = (
+        {"main.tex": f"{head}{BS}input{{front}}\n{body}", "front.tex": f"{BS}title{{{written}}}\n"},
+        [[printed, "front.tex", 1]])  # fmt: skip
+    written, printed = title()
+    other, _ = title(one_line=True)
+    cases["beside a commented one"] = (
+        {"main.tex": f"{head}% {BS}title{{{other}}}\n{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 3]])  # fmt: skip
+    written, printed = title()
+    other, _ = title()
+    hidden = f"{BS}iffalse\n{BS}title{{{other}}}\n{BS}fi\n"
+    cases["beside one in iffalse"] = (
+        {"main.tex": f"{head}{hidden}{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 2 + hidden.count(chr(10))]])  # fmt: skip
+    written, printed = title()
+    other, _ = title(one_line=True)
+    defined = draw(st.sampled_from(_TITLE_DEFINERS)).replace("{}", f"{{{other}}}")
+    cases["after a definition of it"] = (
+        {"main.tex": f"{head}{defined}\n{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 3]])  # fmt: skip
+    written, printed = title()
+    notes = f"{BS}thanks{{{note()}}}{BS}footnote{{{note()}}}"
+    cases["with its notes"] = ({"main.tex": f"{head}{BS}title{{{written}{notes}}}\n{body}"},
+                               [[printed, "main.tex", 2]])  # fmt: skip
+    written, printed = title()
+    cases["with an option"] = (
+        {"main.tex": f"{head}{BS}title[mode = title]{{{written}}}\n{body}"},
+        [[printed, "main.tex", 2]])  # fmt: skip
+    written, printed = title()
+    second, printed_second = title()
+    cases["two of them"] = (
+        {"main.tex": f"{head}{BS}title{{{written}}}\n{BS}input{{front}}\n{body}",
+         "front.tex": f"{BS}title{{{second}}}\n"},
+        [[printed, "main.tex", 2], [printed_second, "front.tex", 1]])  # fmt: skip
+    order = draw(st.permutations(LATEX_TITLES))
+    return [(kind, *cases[kind]) for kind in order]
 
 
 # ------------------------------------------------------------ passages of cited works
@@ -7600,7 +7807,8 @@ _NAMING = ("{{#{0}}}", "{{.unnumbered #{0}}}", "{{#{1}}}")
 PLAN_HEADINGS = {
     "question": ("Research question", "Objectives", "Aims"),
     "design": ("Study design", "Questionnaire design"),
-    "population": ("Participants", "Population and data source", "Data sources"),
+    "population": ("Participants", "Population and data source", "Data sources",
+                   "Patient information", "Patient consent"),
     "exposure": ("Intervention", "Predictor", "Exposures", "Index test"),
     "outcome": ("Endpoint", "Primary outcomes", "Outcome measures", "Target condition"),
     "analysis": ("Statistical methods", "Statistical analysis", "Analyses"),
@@ -7646,30 +7854,50 @@ PLAN_HEADINGS = {
     "model development": ("Tuning", "Internal validation"),
     "performance": ("Calibration", "Discrimination", "External validation"),
     "fairness": ("Equity",),
+    "de-identification": ("Anonymisation", "Confidentiality", "Identification of the patient"),
+    "timeline": ("Time line", "Chronology of events", "Follow-up time"),
+    "diagnostic assessment": ("Diagnosis", "Differential diagnosis", "Work-up"),
+    "patient perspective": ("The patient's perspective", "Patient’s view",
+                            "Clinical perspective"),
+    "informed consent": ("Consent for publication", "Patient consent", "Ethics approval"),
 }  # fmt: skip
 #: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
 _SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
 #: Headings of no section, between the plan's own.
-_PLAN_OTHER = ("Background", "Timeline", "Ethics", "References")
+#: Not "Timeline", which heads a case report's timeline.
+_PLAN_OTHER = ("Background", "Glossary", "Ethics", "References")
 #: How a plan is laid out: its title, then the level of its sections' headings.
 _PLAN_LAYOUTS = (("# Analysis plan\n\n", 2), ("", 2), ("", 1))
 
 
 @st.composite
-def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, str]]]:
+def sectioned_plans(
+    draw: st.DrawFn, setting_aside: bool = False
+) -> tuple[dict[str, str], list[tuple[str, str]]]:
     """A plan and the `paper.yaml` naming its design, as the reading "plan sections asked" takes
     them, and each section of the design with how it stands in the plan.
 
-    The design is drawn from the table, `other` or none. Every section of every plan and of
+    The design is drawn from the table, `other` or none; with `setting_aside`, from the
+    designs that set aside a section of the seven (`not_asked`), which is drawn all the same.
+    Every section of every plan and of
     the design is given a kind of `PLAN_KINDS` by its place in a drawn order, so each kind
     stands in every example; then the sections are written in another drawn order, with a
     heading of no section among them. A section is said in a sentence, in a list, or under a
     subsection; one with nothing to say holds one of `_SAYS_NOTHING`, or empty subsections."""
     from manuscript_guard.gates.design import REQUIRED, UNNAMED, study_types
 
-    design = draw(st.sampled_from((None, "other", *sorted(study_types()))))
-    ids = [name for name, _pattern, _says in REQUIRED] + [
-        section["id"] for section in study_types().get(design or "", {}).get("sections", ())]
+    designs = (sorted(name for name, entry in study_types().items() if entry.get("not_asked"))
+               if setting_aside else (None, "other", *sorted(study_types())))  # fmt: skip
+    every = [name for name, _pattern, _says in REQUIRED]
+    own = {name: [section["id"] for section in entry["sections"]]
+           for name, entry in study_types().items()}  # fmt: skip
+    # The order of every section of every design is drawn first, and the design after it:
+    # drawn first, the design was what Hypothesis varied least, and under some seeds three of
+    # the twelve were never drawn in 120 plans, the case report among them.
+    drawn_order = draw(st.permutations(
+        every + sorted({name for ids in own.values() for name in ids} - set(every))))
+    design = draw(st.sampled_from(designs))
+    ids = every + own.get(design or "", [])
     title, level = draw(st.sampled_from(_PLAN_LAYOUTS))
     mark, under = "#" * level, "#" * (level + 1)
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=8).map(
@@ -7684,8 +7912,15 @@ def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, st
         return draw(st.sampled_from((*PLAN_HEADINGS[name], f"3. {named}", named.upper(),
                                      f"{named}:")))  # fmt: skip
 
-    order = draw(st.permutations(range(len(ids))))
+    # A section the design sets aside (`not_asked`) takes a kind of its own, outside the
+    # order, so that each kind stands among the sections the plan is asked for (round 1 of
+    # #840: "missing" could fall on a case report's analysis and deviations alone).
+    aside = sorted(study_types().get(design or "", {}).get("not_asked", ()))
+    order = [ids.index(name) for name in drawn_order if name in ids and name not in aside]
     kinds = {ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    for name in aside:
+        kinds[name] = draw(st.sampled_from(
+            [kind for kind in PLAN_KINDS if kind != "named exactly" or name not in UNNAMED]))
     # A section no heading may name (the Deviations, `UNNAMED`) trades its kind with another's,
     # so the plan still names one exactly and holds every kind.
     for unnamed in UNNAMED & set(kinds):
@@ -8469,6 +8704,75 @@ def hidden_pages(draw: st.DrawFn) -> dict[str, Any]:
     return {"elements": elements, "planted": {
         "hidden": list(hidden), "comment": list(comment), "printed": [printed[0], pieces],
         "at": at}}  # fmt: skip
+
+
+# ------------------------------------------------------------------- saved journal pages
+
+#: How a saved page sets a paragraph: the blocks a browser lays out on a line of their own,
+#: hidden ones among them, and text ended by `<br>` or `</br>`.
+SAVED_BLOCKS = (
+    "<p>{}</p>", "<div>{}</div>", "<ul><li>{}</li></ul>", "<h2>{}</h2>", "<pre>{}</pre>",
+    "<table><tr><td>{}</td></tr></table>", "<dl><dd>{}</dd></dl>", "<center>{}</center>",
+    "<blockquote>{}</blockquote>", "<section><p>{}</p></section>", "<span>{}</span><br>",
+    "{}</br>", '<div hidden>{}</div>', '<div style="display:none">{}</div>',
+)  # fmt: skip
+#: The inline elements a saved page wraps words in: they join what is around them.
+SAVED_INLINE = (
+    "<a href='x'>{}</a>", "<b>{}</b>", "<em>{}</em>", "<span class='c'>{}</span>",
+    "<strong>{}</strong>", "<i>{}</i>", "<abbr title='t'>{}</abbr>", "<sup>{}</sup>",
+)  # fmt: skip
+#: What a browser does not show as the page: each holds words that must not be stored.
+SAVED_UNSHOWN = (
+    "<script>var t = '<p>{}</p>';</script>", "<style>/* {} */</style>", "<!-- {} -->",
+    "<noscript>{}</noscript>", "<template><p>{}</p></template>", "<title>{}</title>",
+)  # fmt: skip
+
+
+@st.composite
+def saved_pages(draw: st.DrawFn) -> dict[str, Any]:
+    """A journal's page as a browser saves it, for `readings.saved_journal_page`: paragraphs
+    of words of their own (`alpha3`), each set in a block of `SAVED_BLOCKS`, some of its words
+    in elements of `SAVED_INLINE`, and in every page one word split by an inline element
+    (`<b>al</b>pha3`), a navigation bar of two links set side by side, and two elements of
+    `SAVED_UNSHOWN`, each where it is drawn. `lines` is what the page shows, one line to a
+    paragraph; `unshown` the words it must not."""
+    made = [0]
+
+    def word() -> str:
+        made[0] += 1
+        return f"{TAGS[made[0] % len(TAGS)]}{made[0]}"
+
+    paragraphs = [[word() for _ in range(draw(st.integers(1, 5)))]
+                  for _ in range(draw(st.integers(1, 4)))]  # fmt: skip
+    split_in = draw(st.integers(0, len(paragraphs) - 1))
+    split_at = draw(st.integers(0, len(paragraphs[split_in]) - 1))
+    pieces = []
+    for n, words in enumerate(paragraphs):
+        marked = []
+        for m, one in enumerate(words):
+            if (n, m) == (split_in, split_at):
+                cut = draw(st.integers(1, len(one) - 1))
+                one = draw(st.sampled_from(SAVED_INLINE)).format(one[:cut]) + one[cut:]
+            elif draw(st.booleans()):
+                one = draw(st.sampled_from(SAVED_INLINE)).format(one)
+            marked.append(one)
+        pieces.append([draw(st.sampled_from(SAVED_BLOCKS)).format(" ".join(marked)),
+                       " ".join(words)])
+    links = [word(), word()]
+    at = draw(st.integers(0, len(pieces)))
+    pieces.insert(at, ["<nav>" + "".join(f"<a href='/{n}'>{one}</a>"
+                                          for n, one in enumerate(links)) + "</nav>",
+                       " ".join(links)])  # fmt: skip
+    unshown = []
+    for _ in range(2):
+        hidden = word()
+        unshown.append(hidden)
+        pieces.insert(draw(st.integers(0, len(pieces))),
+                      [draw(st.sampled_from(SAVED_UNSHOWN)).format(hidden), None])
+    body = "".join(html for html, _line in pieces)
+    return {"html": f"<!DOCTYPE html><html><body>{body}</body></html>",
+            "lines": [line for _html, line in pieces if line is not None],
+            "unshown": unshown}  # fmt: skip
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -20276,6 +20580,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
     "checklist quotes": checklist_quotes().map(lambda drawn: drawn[0]),
+    "latex titles": latex_titles().flatmap(
+        lambda cases: st.sampled_from([files for _kind, files, _titles in cases])),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(
@@ -20385,6 +20691,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "audit registration numbers": st.one_of(
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
+    ),
+    "audit displays": st.one_of(
+        legend_displays().map(lambda drawn: drawn[0]),
+        legend_displays(unread=True).map(lambda drawn: drawn[0]),
     ),
     "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
     "rrids typed": st.one_of(
@@ -20606,6 +20916,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "blind names": texts(NAMED),
     "hidden content": hidden_documents(),
     "hidden page": hidden_pages(),
+    "saved journal page": saved_pages(),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

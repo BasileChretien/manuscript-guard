@@ -17,6 +17,10 @@ tracing records. A project contributes those by writing `checks/items.json`, and
 with these — its groups first, because a project that went to the trouble knows what it wants
 asked first.
 
+A cited sentence and a value quoted from the literature say, in `unstored`, each work they cite
+that this computer holds no full copy of, and whether any of its words are on the page; `checker
+build` lists those works (`unstored_lines`) so that the author can store them before sending.
+
 Nothing here renders a picture. A page image needs a PDF renderer, which this toolkit does not
 depend on and will not start depending on for this; what a checker reads is the quote, and the
 quote is text the ledger already holds. A project that can render a page of a PDF puts those
@@ -25,6 +29,7 @@ items in its own file.
 
 from __future__ import annotations
 
+import os
 import re
 from bisect import bisect_right
 from collections.abc import Callable
@@ -68,6 +73,16 @@ GROUPS = (
 
 #: Group ids that are the toolkit's alone: a project's own items file may not declare one.
 RESERVED_GROUPS = frozenset({METHODS_GROUP["id"]})
+
+#: What the computer that builds the page holds of a cited work, where it is not the full text:
+#: an item's `unstored` entries, and what `checker build` lists them by.
+NOTHING_STORED = "nothing stored"
+ONLY_ABSTRACT = "only its abstract"
+KEPT_AWAY = "kept out of git, not on this computer"
+#: What G7 reads and is no work: a table and a citation file, the kinds `copies.NOT_THE_WORK`
+#: is written for. That set also holds every text kind `sync-sources` does not take from
+#: Zotero, .md and .xml among them, which G7 reads as a work and holds a quote to.
+_NOT_A_WORK = frozenset({".csv", ".bib", ".nbib", ".ris"})
 
 #: A binding, as the manuscript writes it. The toolkit's own pattern, from
 #: `text/placeholders.py`: it accepts `{{ lit.x }}` with spaces, which the renderer resolves and
@@ -435,7 +450,185 @@ def _bib_records(project) -> dict[str, dict[str, str]]:
     return _records_read_here(path)
 
 
+Holdings = Callable[[str], "tuple[str, str] | None"]
+
+
+def holdings(project, literature=None) -> Holdings:
+    """What this computer holds of each cited work, by its citation key: None where its full
+    text is stored, and otherwise its state and what is to be said of it.
+
+    A copy is a file of a kind G7 reads as the work (`_a_work_kind`, so never a table or a
+    citation file): one of `literature/sources/` under the work's filed name (`stored_files`),
+    one a ledger entry citing the work names as its `source_file`, or one
+    `literature/sources.yaml` records as the work's, each of the last two read as G7 reads a
+    ledger's (`_named_copies`). One the record lists and git keeps out of the
+    repository is on another computer, as in CI. An abstract alone is a part of the work, not
+    the work, whether it is here or away: a file named `<key>.abstract.<suffix>`, or one every
+    ledger entry naming it reads at `depth: abstract-only`, whatever its name (round 2 of
+    #810)."""
+    from manuscript_guard.literature.away import away
+    from manuscript_guard.literature.sources import is_abstract, stored_files
+
+    folder = project.path("literature") / "sources"
+    kept = away(project)
+    named, read_as_abstract = _named_copies(project, literature)
+
+    def an_abstract(path: Path) -> bool:
+        return is_abstract(path) or _same(path) in read_as_abstract
+
+    def held(key: str) -> tuple[str, str] | None:
+        filed = stored_files(folder, key) if folder.is_dir() else []
+        files = [path for path in filed if _a_work_kind(path)] + named.get(key, [])
+        if any(not an_abstract(path) for path in files):
+            return None
+        elsewhere = [name for name in kept.of(key) if _a_work_kind(name)]
+        whole = [name for name in elsewhere if not an_abstract(folder / name)]
+        if whole:
+            return KEPT_AWAY, (f"A copy of @{key} ({', '.join(whole)}) is recorded in "
+                               "literature/sources.yaml, kept out of git, and is not on the "
+                               "computer that built this page")  # fmt: skip
+        if files:
+            return ONLY_ABSTRACT, f"Only the abstract of @{key} is stored ({files[0].name})"
+        if elsewhere:
+            return ONLY_ABSTRACT, (f"Only the abstract of @{key} ({', '.join(elsewhere)}) is "
+                                   "recorded in literature/sources.yaml, kept out of git, and it "
+                                   "is not on the computer that built this page")  # fmt: skip
+        return NOTHING_STORED, f"No copy of @{key} is stored in literature/sources/"
+
+    return held
+
+
+def _a_work_kind(name: str | Path) -> bool:
+    """Whether a file so named is of a kind G7 reads as the work: one `read_source` reads (text
+    of any kind, a file with no suffix, HTML, a PDF), and not a table or a citation file
+    (round 3 of #810). A Word document G7 does not read at all."""
+    from manuscript_guard.literature.sources import HTML_SUFFIXES, PDF_SUFFIXES, TEXT_SUFFIXES
+
+    suffix = Path(name).suffix.lower()
+    read = TEXT_SUFFIXES | HTML_SUFFIXES | PDF_SUFFIXES | {""}
+    return suffix in read and suffix not in _NOT_A_WORK
+
+
+def _same(path: Path) -> str:
+    """A path as two spellings of one file compare: a ledger's `sources/x.txt` from
+    `literature/` and the filed name found in `literature/sources/`."""
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _named_copies(project, literature) -> tuple[dict[str, list[Path]], frozenset[str]]:
+    """The files on this computer named as a cited work's copy, by its key, and the files the
+    ledger reads only as an abstract (`_same`).
+
+    A ledger entry's `source_file` is read as G7 reads it (gates/literature.py,
+    gates/citations.py): its spaces taken off, from `literature/`. Each file the record lists
+    is read from `literature/sources/`. Either is a copy only of a kind G7 reads as the work
+    (`_a_work_kind`): never a table or a citation file, nor a Word document, which G7 cannot
+    read (rounds 2 and 3 of #810). A file is read as an abstract where each entry naming it
+    says `depth: abstract-only`: the ledger says what the file is, and nothing reads the
+    file to see (Known gaps)."""
+    from manuscript_guard.contracts._schema import ContractError
+    from manuscript_guard.contracts.literature import ABSTRACT_ONLY
+    from manuscript_guard.literature.copies import read_record
+
+    root = project.path("literature")
+
+    def the_work(path: Path) -> bool:
+        return _a_work_kind(path) and path.is_file()
+
+    named: dict[str, list[Path]] = {}
+    depths: dict[str, set[str]] = {}
+    for value in (literature.values.values() if literature is not None else ()):
+        detail = value.detail or {}
+        source = str(detail.get("source_file") or "").strip()
+        if not source:
+            continue
+        path = root / source
+        depths.setdefault(_same(path), set()).add(str(detail.get("depth") or ""))
+        key = str(detail.get("citekey") or "")
+        if key and the_work(path):
+            named.setdefault(key, []).append(path)
+    try:
+        recorded = read_record(project)
+    except (ContractError, OSError):
+        recorded = {}  # a record that cannot be read vouches for no copy, as for G7
+    for name, entry in recorded.items():
+        path = root / "sources" / name
+        if isinstance(entry, dict) and entry.get("key") and the_work(path):
+            named.setdefault(str(entry["key"]), []).append(path)
+    read_as_abstract = frozenset(where for where, said in depths.items()
+                                 if said == {ABSTRACT_ONLY})  # fmt: skip
+    return named, read_as_abstract
+
+
+def _unstored(held: Holdings, keys, shown: set[str]) -> list[dict]:
+    """What an item says of each work it cites that this computer holds no full copy of.
+
+    `shown` holds the works some of whose words the item quotes (a ledger quote, a passage
+    recorded): those words are the author's copy, and nothing on the page holds them to the
+    work. A work none of whose words are shown leaves the co-author the reference alone.
+    Outside the item's digest (`items.digest_of`), as how to read an item is: a copy stored
+    afterwards changes nothing a person was asked."""
+    from manuscript_guard.literature.sources import filed_name
+
+    said = []
+    for key in dict.fromkeys(keys):
+        found = held(key)
+        if found is None:
+            continue
+        state, words = found
+        then = (", so the words quoted above are as the author copied them, and nothing here "
+                "holds them to the work." if key in shown else
+                ", and this page shows none of its words: to answer, read the work itself, or "
+                'answer "not sure".')  # fmt: skip
+        how = (" The author can build the page on the computer that holds it, or store it again "
+               "with `manuscript-guard sync-sources`." if state == KEPT_AWAY else
+               " The author adds a copy with `manuscript-guard sync-sources`, or by saving its "
+               f"PDF as literature/sources/{filed_name(key, '.pdf')}.")  # fmt: skip
+        said.append({"key": key, "state": state, "says": words + then + how})
+    return said
+
+
+def unstored_lines(items) -> list[str]:
+    """What `checker build` prints of the items that cite a work with no copy on this computer:
+    how many items, then one line per group, each work by its key with how many items cite it,
+    what is held of it and the name its PDF is to be saved under, and what to do. Empty where
+    every cited work's copy is here."""
+    from manuscript_guard.literature.sources import filed_name
+
+    titles = {str(group.get("id")): str(group.get("title") or group.get("id"))
+              for group in items.groups}  # fmt: skip
+    found: dict[str, dict[str, list]] = {}
+    total = 0
+    for item in items.items:
+        entries = item.get("unstored") or ()
+        # Items, not works: a sentence citing two missing works is one item (round 1 of #810).
+        total += 1 if entries else 0
+        for entry in entries:
+            counted = found.setdefault(str(item.get("group")), {}).setdefault(
+                str(entry["key"]), [0, entry["state"]])
+            counted[0] += 1
+    if not found:
+        return []
+    lines = [f"{total} item(s) on the page cite a work with no copy stored on this computer, and "
+             "say so to the co-author:"]  # fmt: skip
+
+    def said(key: str, count: int, state: str) -> str:
+        # The name `stored_files` finds it by: a key's characters a file name cannot hold
+        # written `_` (round 1 of #810).
+        where = ("" if state == KEPT_AWAY else
+                 f"; save its PDF as literature/sources/{filed_name(key, '.pdf')}")  # fmt: skip
+        return f"@{key}, {count} item{'' if count == 1 else 's'} ({state}{where})"
+
+    for group, works in found.items():
+        listed = ", ".join(said(key, count, state) for key, (count, state) in works.items())
+        lines.append(f"  {titles.get(group, group)}: {listed}")
+    lines.append("Store them with `manuscript-guard sync-sources`, or save each PDF under the name "
+                 "given, and build the pages again.")  # fmt: skip
+    return lines
+
+
 def _literature_items(project, literature, documents) -> list[dict]:
+    held = holdings(project, literature)
     items = []
     for key, value in sorted(literature.values.items()):
         detail = value.detail or {}
@@ -487,16 +680,21 @@ def _literature_items(project, literature, documents) -> list[dict]:
                     "note": _plain(detail["statement"]),
                 }
             )
-        items.append(
-            {
-                "id": _identifier("lit", key),
-                "group": "literature",
-                "title": f"{shown} — lit.{key}",
-                "facts": facts,
-                "sentences": _uses_of(f"lit.{key}", documents),
-                "evidence": evidence or [{"kind": "none"}],
-            }
-        )
+        item = {
+            "id": _identifier("lit", key),
+            "group": "literature",
+            "title": f"{shown} — lit.{key}",
+            "facts": facts,
+            "sentences": _uses_of(f"lit.{key}", documents),
+            "evidence": evidence or [{"kind": "none"}],
+        }
+        # An attested value has no stored copy by definition, and its attestation says so.
+        cited = str(detail.get("citekey") or "")
+        unstored = (_unstored(held, [cited], {cited} if quote else set())
+                    if cited and not detail.get("statement") else [])  # fmt: skip
+        if unstored:
+            item["unstored"] = unstored
+        items.append(item)
     return items
 
 
@@ -514,6 +712,7 @@ def _claim_items(project, literature, documents, passages=()) -> list[dict]:
             )
 
     records = _bib_records(project)
+    held = holdings(project, literature)
     items = []
     seen: set[str] = set()
     for cited in cited_sentences(documents):
@@ -530,23 +729,27 @@ def _claim_items(project, literature, documents, passages=()) -> list[dict]:
         seen.add(identifier)
         facts = [["Cites", ", ".join("@" + k for k in keys)]]
         evidence: list[dict] = []
+        shown: set[str] = set()
         for key in keys:
             record = records.get(key, {})
             rows = _rows_for(record, CITED_FIELDS)
             if rows:
                 evidence.append({"kind": "facts", "caption": f"@{key}", "rows": rows})
-            evidence += [_passage_evidence(key, held) for held in belonging.of(cited, key)]
-            for held in quoted.get(key, [])[:4]:
+            passages = [_passage_evidence(key, one) for one in belonging.of(cited, key)]
+            evidence += passages
+            if passages or quoted.get(key):
+                shown.add(key)
+            for one in quoted.get(key, [])[:4]:
                 evidence.append(
                     {
                         "kind": "quote",
                         "caption": f"@{key}, quoted in the ledger"
-                        + (f": {held['locator']}" if held["locator"] else ""),
-                        "text": held["quote"],
-                        "note": f"for the value {held['value']}",
+                        + (f": {one['locator']}" if one["locator"] else ""),
+                        "text": one["quote"],
+                        "note": f"for the value {one['value']}",
                     }
                 )
-        items.append(
+        item = (
             {
                 # Keyed on the file and the sentence as written, and on nothing else.
                 # The line was in it, so adding one paragraph to the Introduction threw away
@@ -568,6 +771,10 @@ def _claim_items(project, literature, documents, passages=()) -> list[dict]:
                 "evidence": evidence or [{"kind": "none"}],
             }
         )
+        unstored = _unstored(held, keys, shown)
+        if unstored:
+            item["unstored"] = unstored
+        items.append(item)
     return items
 
 

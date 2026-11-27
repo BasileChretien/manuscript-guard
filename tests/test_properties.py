@@ -158,6 +158,7 @@ from generated import (
     latex_trees,
     latex_words,
     latex_writing,
+    legend_displays,
     lines,
     linked_lines,
     margin_tables,
@@ -190,6 +191,7 @@ from generated import (
     response_letters,
     results_named_papers,
     revisions,
+    saved_pages,
     sectioned_plans,
     set_hazards,
     share_tables,
@@ -3875,6 +3877,68 @@ def test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset(drawn: dict[str, 
     assert not [f for f in writing if f.code == "vague-attribution"], writing
 
 
+def _a_legend_without(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    from manuscript_guard.auditing import displays
+
+    assert old in displays._LEGEND.pattern
+    patch.setattr(displays, "_LEGEND", re.compile(displays._LEGEND.pattern.replace(old, new)))
+
+
+def _a_bmc_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|[^\S\n]+(?=[A-Z])", "")
+
+
+def _a_picture_s_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:!?\[)?", "")
+
+
+def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|figs?\.?)", ")")
+
+
+def _a_sentence_opening_with_a_pointer_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?=[A-Z])", "")
+
+
+def _a_link_opening_a_sentence_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #837: a link's end, whatever follows it, read as a legend's.
+    _a_legend_without(patch, r"(?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?", r".*)?")
+
+
+def _a_range_s_dash_sets_off_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", "")
+
+
+def _a_range_of_links_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837: only a number after the dash read as a range's.
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", r"(?![^\S\n]*\d)")
+
+
+def _a_file_s_displays_are_not_held_against_its_legends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import displays
+
+    patch.setattr(displays, "_held", lambda text: {"table": 0, "figure": 0})
+
+
+def _a_kind_holding_more_is_left_uncounted(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837's guard: a kind its file holds more of than its legends number is not
+    # held to anything.
+    from manuscript_guard.auditing import displays
+
+    counted = displays._counted
+
+    def broken(kind, legends, cited, path, held=0):
+        found, notes, checked = counted(kind, legends, cited, path, held)
+        return ([], notes, False) if checked and held > len(legends) else (found, notes, checked)
+
+    patch.setattr(displays, "_counted", broken)
+
+
+def _a_range_from_a_panel_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?",
+                      "[A-Za-z]?")
+
+
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -6423,6 +6487,35 @@ def test_a_plan_section_named_on_its_heading_is_found_whatever_its_words(
     assert named, kinds
     for name in named:
         assert f"the plan says nothing about {name}" not in missing, given["plan"]
+
+
+@holds(30, sectioned_plans(setting_aside=True))
+def test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds(
+    drawn: tuple[dict[str, str], list[tuple[str, str]]],
+) -> None:
+    """A case report has no analysis to plan and no plan to depart from (Basile,
+    2026-11-27): a section of the seven that the design sets aside (`not_asked` in
+    `data/study_types.yaml`) is never said to be missing or empty, whether the plan holds
+    it, words it otherwise, leaves it empty or leaves it out, and G12 expects the other
+    sections alone."""
+    from manuscript_guard.gates.design import study_types
+
+    given, kinds = drawn
+    design = re.search(r"(?m)^study_type: (\S+)$", given["paper"]).group(1)
+    aside = set(study_types()[design]["not_asked"])
+    said = READINGS["plan sections asked"]()(given)
+    told = {f["message"] for f in said["findings"]
+            if f["code"] in ("plan-section-missing", "plan-section-empty")}  # fmt: skip
+    for name in aside:
+        assert f"the plan says nothing about {name}" not in told, given["plan"]
+        assert f"the plan's {name} section is a heading with nothing under it" not in told
+    assert said["counts"]["design_expected"] == len(kinds) - len(aside), said["counts"]
+
+
+def _a_design_s_set_aside_sections_are_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "not_asked", lambda study_type: frozenset())
 
 
 def _a_section_s_name_on_its_heading_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -11763,11 +11856,13 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
     """G5 (Basile, 2026-11-12): an answer's quote stands under the heading its `where` names,
     subsections included, in the main text or the supplement, the section carried on into
     the next file the build prints (round 1 of #651), or in the caption of the table
-    or figure it names, an emitted caption or a typed legend; found as a finding's quote is,
+    or figure it names, an emitted caption or a typed legend, or in paper.yaml's title where
+    `where` says "Title" (2026-11-26); found as a finding's quote is,
     folded as G7 folds a quote, markup out, whole words, pieces in order where words are left
     out, its bindings as written or each value's display, not half of each. A quote under
-    another heading, under the parent's own text where `where` names a subsection, or in
-    another display's caption is said to stand there; a quote in a comment, with a word
+    another heading, under the parent's own text where `where` names a subsection, in
+    another display's caption or in the title is said to stand there, and so is a heading's
+    quote where `where` names the title; a quote in a comment, with a word
     changed, inside a word or with its pieces out of order stands nowhere; three words, or
     none, are no quote."""
     given, ways = drawn
@@ -11775,6 +11870,24 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
     assert {kind for kind, _expected in ways} == set(CHECKLIST_QUOTES)
     for (kind, expected), got, item in zip(ways, found, given["items"], strict=True):
         assert got == expected, (kind, item, got)
+
+
+from generated import LATEX_TITLES, latex_titles  # noqa: E402
+
+
+@holds(20, latex_titles())
+def test_a_latex_title_is_each_one_tex_reads_where_it_stands(
+    drawn: list[tuple[str, dict[str, str], list[list[Any]]]],
+) -> None:
+    """G5, round 2 of #813: the titles a LaTeX manuscript's main text sets that TeX reads, in
+    the entry file or in a file its preamble inputs, past a CAS option, each as the body
+    prints it, its `\\emph` its word and its `--` an en dash, its notes left out, braces and
+    all; not one in a comment or in `\\iffalse`; and both of two, each at its file and line,
+    for G5 not to choose between."""
+    read = READINGS["latex titles"]()
+    assert {kind for kind, _files, _titles in drawn} == set(LATEX_TITLES)
+    for kind, files, titles in drawn:
+        assert read(files) == titles, (kind, files)
 
 
 from generated import finding_places  # noqa: E402
@@ -11993,6 +12106,38 @@ def test_a_ref_prints_the_number_its_display_has_or_is_said(
     findings = said["report"]["findings"]
     found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
     assert found == planted, (files, findings)
+
+
+@holds(100, legend_displays())
+def test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper written outside manuscript-guard, its tables and figures told by their legends
+    in every form a paper sets one, is held as G2 holds a project (`auditing.displays`): the
+    first citation out of order, the display cited nowhere and the pointer past the last
+    legend are said, at their lines, for each kind, and nothing else. Each kind is counted, and
+    no note says otherwise."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert said["notes"] == [] and said["counted"] == 2, (text, said)
+
+
+@holds(100, legend_displays(unread=True))
+def test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper whose file holds a table and a picture its legends do not number may hold a
+    legend the check does not read, and a pointer past its legends may be to one of them: it
+    is said not checked, in one note for each kind, and the kind is held to the rest, the
+    order of its first citations and each one cited, as before (the fix-only round on
+    f0bd603 of #837)."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert [("past its table legends" in note, "past its figure legends" in note)
+            for note in said["notes"]] == [(True, False), (False, True)], (text, said)
+    assert said["counted"] == 2, (text, said)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -23918,6 +24063,54 @@ def _any_table_s_caption_is_the_one_where_names(patch: pytest.MonkeyPatch) -> No
                   else (named(where)[0], False, 1))  # fmt: skip
 
 
+def _title_names_no_part_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "names_title", lambda where: False)
+
+
+def _the_paper_s_title_is_not_read_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    read = checklist_quotes.read
+    patch.setattr(checklist_quotes, "read", lambda texts, namespace, captions=(), title=None:
+                  read(texts, namespace, captions))  # fmt: skip
+
+
+def _the_paper_s_title_is_folded_as_raw_lowered_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    part = checklist_quotes._title_part
+
+    def raw(title: str, namespace, named: str = checklist_quotes.TITLE_SHOWN):
+        lowered = title.lower()
+        return dataclasses.replace(part(title, namespace, named), own=(lowered, lowered),
+                                   enclosed=(lowered, lowered))  # fmt: skip
+
+    patch.setattr(checklist_quotes, "_title_part", raw)
+
+
+def _only_the_first_latex_title_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    titles = printed.printed_titles
+    patch.setattr(printed, "printed_titles", lambda folder: titles(folder)[:1])
+
+
+def _a_latex_title_tex_does_not_read_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    passed = printed._passed_over
+    patch.setattr(printed, "_passed_over", lambda reading: (lambda at: True,
+                                                            passed(reading)[1]))  # fmt: skip
+
+
+def _a_definition_of_latex_title_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    patch.setattr(printed, "_DEFINED", re.compile(r"(?!)"))
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -26492,6 +26685,36 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+
+
+@holds(40, saved_pages())
+def test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown(
+    described: dict[str, Any],
+) -> None:
+    """A journal's page as a browser saved it is stored as the page shows it: each paragraph's
+    words on a line of their own, in order, a word an inline element splits whole, the links
+    of a navigation bar apart, and none of the words of what a browser does not show."""
+    lines = READINGS["saved journal page"]()(described)
+    assert lines == described["lines"], described
+    assert not {word for line in lines for word in line.split()} & set(described["unshown"])
+
+
+def _a_tag_in_a_saved_page_is_a_space(patch: pytest.MonkeyPatch) -> None:
+    shown = journal_quotes_gate._Shown
+    started, ended = shown.handle_starttag, shown.handle_endtag
+
+    def start(self, tag, attrs):
+        started(self, tag, attrs)
+        self.parts.append(" ")
+
+    def end(self, tag):
+        ended(self, tag)
+        self.parts.append(" ")
+
+    patch.setattr(shown, "handle_starttag", start)
+    patch.setattr(shown, "handle_endtag", end)
+
+
 from generated import registration_papers  # noqa: E402
 
 
@@ -26580,6 +26803,46 @@ BROKEN = {
     "a nocite in a metadata block of the body is not read": (
         _a_body_metadata_block_is_not_read,
         test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "an audited paper's legend set as BMC sets it is read as a citation": (
+        _a_bmc_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's picture's legend is read as a citation": (
+        _a_picture_s_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's legend opened by Fig. is read as a citation": (
+        _a_fig_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's sentence opening with a pointer is read as a legend": (
+        _a_sentence_opening_with_a_pointer_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's cross-reference link opening a sentence is read as a legend": (
+        _a_link_opening_a_sentence_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range opening a sentence is read as a legend": (
+        _a_range_s_dash_sets_off_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range of two links opening a sentence is read as a legend": (
+        _a_range_of_links_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range from a panel opening a sentence is read as a legend": (
+        _a_range_from_a_panel_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's tables and pictures are not held against its legends": (
+        _a_file_s_displays_are_not_held_against_its_legends,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
+    "an audited paper's kind its file holds more of than its legends is left uncounted": (
+        _a_kind_holding_more_is_left_uncounted,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
     ),
     "registration numbers are read in the reference list too": (
         _registration_numbers_read_in_the_reference_list,
@@ -27316,6 +27579,30 @@ BROKEN = {
     "any table's caption is the one a checklist's answer names": (
         _any_table_s_caption_is_the_one_where_names,
         test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's `where: Title` names no part": (
+        _title_names_no_part_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the paper's title is not read for a checklist answer's quote": (
+        _the_paper_s_title_is_not_read_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the paper's title is folded as raw lowered text for a checklist answer's quote": (
+        _the_paper_s_title_is_folded_as_raw_lowered_text,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "only the first of a LaTeX manuscript's titles is kept": (
+        _only_the_first_latex_title_is_kept,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
+    ),
+    "a LaTeX title in a comment or in iffalse is read": (
+        _a_latex_title_tex_does_not_read_is_read,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
+    ),
+    "a definition of LaTeX's title is read as a title": (
+        _a_definition_of_latex_title_is_a_title,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
     ),
     "a finding's quote is found as characters, not as words": (
         _a_quote_is_found_as_characters,
@@ -28901,6 +29188,10 @@ BROKEN = {
     "a section's name on its heading is not read": (
         _a_section_s_name_on_its_heading_is_not_read,
         test_a_plan_section_named_on_its_heading_is_found_whatever_its_words,
+    ),
+    "a design's set-aside sections are asked": (
+        _a_design_s_set_aside_sections_are_asked,
+        test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds,
     ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
@@ -34155,6 +34446,10 @@ BROKEN = {
     "an ordinal counts across the paper": (
         _an_ordinal_counts_across_the_paper,
         test_the_ordinal_of_a_key_counts_in_its_sentence_only,
+    ),
+    "a tag in a saved page is a space": (
+        _a_tag_in_a_saved_page_is_a_space,
+        test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown,
     ),
 }
 

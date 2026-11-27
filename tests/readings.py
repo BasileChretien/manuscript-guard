@@ -209,6 +209,26 @@ def _latex_documents() -> Reading:
     return documents
 
 
+@reading("latex titles")
+def _latex_titles() -> Reading:
+    # `printed_titles` came with a checklist's `where: Title` (round 2 of #813), so that a
+    # base without it has no such reading.
+    from manuscript_guard.text.latex.printed import printed_titles
+
+    def titles(files: dict[str, str]) -> list[list[Any]]:
+        """Each `\\title` of the main text TeX reads, as `[text, file, line]`, its text as the
+        body prints it: the folder written out as the files give it."""
+        with tempfile.TemporaryDirectory() as folder:
+            manuscript = Path(folder) / "manuscript"
+            for name, text in files.items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(text.encode("utf-8"))
+            return [[one.text, one.path, one.line] for one in printed_titles(manuscript)]
+
+    return titles
+
+
 @reading("latex escaped")
 def _latex_escaped() -> Reading:
     from manuscript_guard.build.latex_values import NotPrintable, escaped
@@ -306,6 +326,25 @@ def _latex_pointers() -> Reading:
     from manuscript_guard.text.latex.mask import read
 
     return lambda text: [list(span) for span in read(text).pointers]
+
+
+@reading("audit displays")
+def _audit_displays() -> Reading:
+    """What `audit` says of a paper's tables and figures told by their legends, as G2 holds
+    a project's to the order ICMJE asks for (wave B, 2026-11-27)."""
+    from manuscript_guard.auditing.displays import of_files  # noqa: F401 - absent at base
+
+    def said(given: str | dict[str, str]) -> dict[str, Any]:
+        """`given` is `main.md`'s text, or the files' texts by name."""
+        files = given if isinstance(given, dict) else {"main.md": given}
+        read = of_files(files, Path("m"))
+        return {"findings": [[f.code, f.line, f.message] for f in read.findings],
+                "notes": [f.message for f in read.notes], "counted": read.counted,
+                "supplement": {kind: list(numbers) for kind, numbers in read.supplement.items()},
+                "to_supplement": [[kind, number, finding.line]
+                                  for kind, number, finding in read.to_supplement]}  # fmt: skip
+
+    return said
 
 
 @reading("latex displays cited")
@@ -2668,10 +2707,10 @@ def _checklist_quotes() -> Reading:
     """What G5 finds of each answer of a reporting checklist that quotes the manuscript
     (`checklist_quotes.read`, `Manuscript.judged`): `given` holds the Markdown files by name,
     each value binding's display, the emitted tables' captions as `[kind, supplementary,
-    number, text]`, and the items, each a `where` and maybe a `quote`. The files are joined
-    into the main text and the supplement as the build prints them (`documents`). The answer
-    is, item by item, None for no quote, else whether it stands under what `where` names and
-    the parts it stands under instead."""
+    number, text]`, the paper's title, `paper.yaml`'s, and the items, each a `where` and maybe
+    a `quote`. The files are joined into the main text and the supplement as the build prints
+    them (`documents`). The answer is, item by item, None for no quote, else whether it
+    stands under what `where` names and the parts it stands under instead."""
     from manuscript_guard.contracts.values import Value
     from manuscript_guard.gates.checklist_quotes import Caption, documents, read, typed_legends
 
@@ -2680,7 +2719,7 @@ def _checklist_quotes() -> Reading:
         namespace = {ref: Value(key=ref, value=None, display=shown, origin="results")
                      for ref, shown in given["values"].items()}  # fmt: skip
         captions = [Caption(*caption) for caption in given["captions"]] + typed_legends(texts)
-        manuscript = read(texts, namespace, captions)
+        manuscript = read(texts, namespace, captions, given["title"])
         placed = (manuscript.judged(item["quote"], item["where"]) for item in given["items"])
         return [None if one is None else [one.under, list(one.elsewhere)] for one in placed]
 
@@ -3054,6 +3093,21 @@ def _hidden_page() -> Reading:
     def found(described: dict[str, Any]) -> list[list[Any]]:
         return [[item.kind, item.text, item.printed, item.model]
                 for item in read_page(hidden_page(described), "page.html")]  # fmt: skip
+
+    return found
+
+
+@reading("saved journal page")
+def _saved_journal_page() -> Reading:
+    """The lines `journal --store` keeps of a page a browser saved (`page_text`), from a
+    generated page's `html`."""
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    def found(described: dict[str, Any]) -> list[str]:
+        with tempfile.TemporaryDirectory() as folder:
+            saved = Path(folder) / "page.html"
+            saved.write_bytes(described["html"].encode("utf-8"))
+            return page_text(saved).splitlines()
 
     return found
 

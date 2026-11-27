@@ -1359,6 +1359,58 @@ def test_software_that_is_not_installed_is_refused(scratch: Path) -> None:
         emitter(scratch).software("no-such-distribution-anywhere")
 
 
+def _software_from_two_scripts(scratch: Path, monkeypatch: pytest.MonkeyPatch,
+                               second_version: str | None = None) -> tuple:  # fmt: skip
+    """`software.python` recorded by `run.py` and then by `other.py`, the second under
+    `second_version` where one is given, and the results as `check` reads them."""
+    import platform
+
+    from manuscript_guard.contracts.results import load_results
+
+    (scratch / "analysis" / "other.py").write_text("# other\n", encoding="utf-8")
+    first = emitter(scratch)
+    first.software("python")
+    first.write()
+    if second_version is not None:
+        monkeypatch.setattr(platform, "python_version", lambda: second_version)
+    second = Emitter(scratch / "analysis" / "other.py", root=scratch)
+    second.software("python")
+    second.write()
+    return load_results(scratch / "results")
+
+
+def test_one_version_two_scripts_record_is_one_record(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every script that ran R may say which R it ran: on the bisphosphonates paper two
+    scripts recording `software.r`, the same version, was reported as a key defined twice.
+    One version is one record, kept by the first fragment."""
+    import platform
+
+    results, report = _software_from_two_scripts(scratch, monkeypatch)
+    assert "duplicate-key" not in {f.code for f in report.findings}, report.findings
+    software = results.values["software.python"]
+    assert software.display == platform.python_version()
+    assert software.source.name == "other.json", "the first fragment, as `check` reads them"
+    # The other fragments that declare it, for a package that holds one and not the first.
+    assert [path.name for path in results.shared["software.python"]] == ["run.json"]
+
+
+def test_two_versions_two_scripts_record_are_a_key_defined_twice(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two scripts run under two versions of one piece of software: the Methods can name only
+    one, so it is still `duplicate-key`, and the message says which version each recorded."""
+    import platform
+
+    _results, report = _software_from_two_scripts(scratch, monkeypatch, "2.7.0")
+    found = [f for f in report.findings if f.code == "duplicate-key"]
+    assert len(found) == 1, report.findings
+    said = f"{found[0].message} {found[0].context}"
+    assert platform.python_version() in said and "2.7.0" in said
+    assert "other.json" in said and "run.json" in said
+
+
 def test_an_interval_records_the_level_the_script_states_once(scratch: Path) -> None:
     """Item 33: `level` names a second interval's keys, so the first one's level is said on
     the emitter, and recorded on its bounds without renaming them."""

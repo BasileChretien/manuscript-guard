@@ -9173,7 +9173,9 @@ def statement_papers(
     more each wholly in emphasis, which are sentences still. Titles outside any list a reading
     might keep are among those drawn ("Study funding", "Compliance with ethical standards").
     Each is in every example, not one among several drawn, so that a rule broken
-    for any of them fails under every seed."""
+    for any of them fails under every seed. A heading emptied leaves a label of its kind
+    over a comment beside it, and a Declarations section's paragraphs stand two blank lines
+    apart (round 5)."""
     case = {"as": str, "upper": str.upper, "lower": str.lower}
 
     def titled(kind: str) -> str:
@@ -9272,7 +9274,13 @@ def statement_papers(
         # A sentence of a Declarations section wholly in emphasis is a sentence still.
         said = ([DECLARED_OPENING, *(f"*{sentence}*" for sentence in declared)] if emphasised
                 else [" ".join([DECLARED_OPENING, *declared])])  # fmt: skip
-        blocks["declarations"] = "# Declarations\n\n" + "\n\n".join([*said, *left]) + "\n"
+        # A heading emptied leaves a label of its kind over a comment too, and the heading
+        # is the gap that is said; the paragraphs stand two blank lines apart, after which
+        # G4's own reading finds no label (round 5 of #819).
+        if emptied:
+            left = [*left, f"**{named[emptied]}:** {hidden.format(DECLARED_BODIES[emptied])}"]
+        blocks["declarations"] = ("# Declarations\n\n"
+                                  + "\n\n\n".join([*said, *left]) + "\n")  # fmt: skip
         middle = "\n".join(blocks[name] for name in order if name in blocks)
         return f"# Introduction\n\n{introduction}\n\n{middle}\n{last}"
 

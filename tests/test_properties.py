@@ -5591,6 +5591,21 @@ def _any_heading_ending_in_references_holds_the_bibliography(
     patch.setattr(statements, "_bibliography", lambda title, last: held(title, True))
 
 
+def _a_label_with_nothing_after_it_outranks_an_empty_heading(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_RANK", {statements.STATED: 0, statements.LABELLED: 1,
+                                        statements.EMPHASISED: 1, statements.HEADED_EMPTY: 2})
+
+
+def _a_label_after_two_blank_lines_is_none(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_one_blank_line", lambda text: text)
+
+
 def _a_label_alone_with_a_stop_is_no_label(patch: pytest.MonkeyPatch) -> None:
     """A paragraph wholly in emphasis that ends in a stop read as a sentence, where G4's own
     reading of the declarations takes it for a label alone (Basile, 2026-11-27: strict)."""
@@ -34233,6 +34248,14 @@ BROKEN = {
     ),
     "a label as G4 reads it, alone and ending in a stop, is no label": (
         _a_label_alone_with_a_stop_is_no_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label with nothing after it outranks an empty heading": (
+        _a_label_with_nothing_after_it_outranks_an_empty_heading,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label after two blank lines is none": (
+        _a_label_after_two_blank_lines_is_none,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
     "a label's own paragraph is cut": (

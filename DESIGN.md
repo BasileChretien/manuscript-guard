@@ -31040,7 +31040,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
     authors declare no competing interests.*", is a label of its kind with nothing after it,
     and `declaration-missing` is said of a statement the paper makes; its hint says to write
     the statement in plain text or after its label. A sentence of more than six words in
-    emphasis is read as a sentence.
+    emphasis is read as a sentence. An ethics denial is the exception: `no_approval` reads a
+    denial wherever it stands and whatever its emphasis, so "*Ethical approval was not
+    required.*" alone is an ethics statement.
     Pinned by `tests/test_statements.py::test_a_short_sentence_wholly_in_emphasis_reads_as_a_label`.
 
 Closed since, and why each mattered (an open gap goes above this line):

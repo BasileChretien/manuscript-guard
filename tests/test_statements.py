@@ -170,6 +170,60 @@ def test_a_short_sentence_wholly_in_emphasis_reads_as_a_label(tmp_path: Path) ->
     [finding] = check_statements(_project(tmp_path, text)).findings
     assert (finding.code, finding.subject) == (MISSING, "interests")
     assert "plain text" in finding.hint and "after its label" in finding.hint
+    # An ethics denial is read wherever it stands, whatever its emphasis (round 5 of #819).
+    text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                         "# Declarations\n\n*Ethical approval was not required.*\n")
+    assert missing(stated(text), FIVE) == []
+
+
+def test_a_label_over_a_comment_or_a_placeholder_is_told_what_to_write_after_it(
+    tmp_path: Path,
+) -> None:
+    """Round 5 of #819: the hint says a short paragraph wholly in emphasis reads as a label only
+    where the label is one; a label over a comment or a placeholder is told to have its
+    statement written after it."""
+    for written in ("Funding: <!-- TO CONFIRM -->", "**Funding:** TO CONFIRM"):
+        text = WHOLE.split("# Funding")[0] + (
+            f"# Declarations\n\n{written}\n\n**Competing interests:** None.\n")
+        root = tmp_path / str(len(written))
+        [finding] = check_statements(_project(root, text)).findings
+        assert (finding.code, finding.subject) == (MISSING, "funding"), written
+        assert "emphasis" not in finding.hint and "after its label" in finding.hint, written
+
+
+def test_an_empty_heading_outranks_a_label_with_nothing_after_it(tmp_path: Path) -> None:
+    """Round 5 of #819: an empty Funding heading of the supplement and a Funding label over a
+    comment in the main text are one gap, one finding: the heading's."""
+    project = _project(tmp_path, WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n**Funding:** <!-- -->\n\n**Competing interests:** None.\n"),
+        supplement="# Funding\n\n<!-- -->\n")
+    [finding] = check_statements(project).findings
+    assert finding.code == EMPTY and finding.message.endswith("has no funding statement")
+
+
+def test_a_latex_label_over_a_comment_keeps_its_explanation(tmp_path: Path) -> None:
+    """Round 5 of #819: in LaTeX, whose headings are not said to be empty, a kind under an
+    empty heading and after a label over a comment is missing with the label's hint; and the
+    label's own word, read after the printed view's blank lines, states nothing."""
+    (tmp_path / "manuscript").mkdir()
+    (tmp_path / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\nWords.\n"
+        "\\section{Funding}\n% to write\n\\section{Declarations}\n"
+        "\\textbf{Funding:} % to confirm\n\n\\textbf{Competing interests:} None declared.\n"
+        "\\end{document}\n", encoding="utf-8")
+    project = Project(tmp_path, {"schema": "manuscript-guard/paper/1"}, None)
+    findings = {f.subject: f for f in check_statements(project).findings}
+    assert set(findings) == {"data", "ethics", "funding", "contributions"}
+    assert "after its label" in findings["funding"].hint
+
+
+def test_a_label_after_more_than_one_blank_line_is_a_label() -> None:
+    """Round 5 of #819: G4's reading of a label does not see one after two blank lines, and its
+    word was read as the statement."""
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n\n**Funding:** <!-- -->\n\n\n\nCompeting interests:\n\n\n"
+        "<!-- -->\n")
+    assert missing(stated(text), FIVE) == ["funding", "interests"]
 
 
 def test_a_label_s_own_paragraph_never_ends_it() -> None:

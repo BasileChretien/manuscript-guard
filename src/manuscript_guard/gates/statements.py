@@ -151,10 +151,13 @@ _REFERENCES_LAST = re.compile(
 _SUPPLEMENT_NUMBER = re.compile(r"^\s*S\d+(?:\.\d+)*\.?\s+")
 #: The kinds G4's reading of the declarations knows by their headings and labels.
 _DISCLOSED = (FUNDING, INTERESTS, ETHICS, CONTRIBUTIONS)
-STATED, HEADED_EMPTY, LABELLED = "stated", "empty", "labelled"
+STATED, HEADED_EMPTY, LABELLED, EMPHASISED = "stated", "empty", "labelled", "emphasised"
 #: Which of two readings of a kind stands: a statement, then an empty heading, then a label
-#: with nothing after it.
-_RANK = {STATED: 0, HEADED_EMPTY: 1, LABELLED: 2}
+#: with nothing after it, over a comment or a placeholder (`LABELLED`) or as a short
+#: paragraph wholly in emphasis standing alone (`EMPHASISED`).
+_RANK = {STATED: 0, HEADED_EMPTY: 1, LABELLED: 2, EMPHASISED: 2}
+#: A run of more than one blank line.
+_BLANK_LINES = re.compile(r"\n[ \t]*\n(?:[ \t]*\n)+")
 
 
 def _placeholder(text: str) -> bool:
@@ -331,6 +334,13 @@ def kinds_of(title: str, data_heading: str | None = None) -> list[str]:
     return found
 
 
+def _one_blank_line(text: str) -> str:
+    """`text` with each run of blank lines one blank line: G4's reading of a label does not
+    find one in a paragraph that opens on a line break, as one after two blank lines does
+    (round 5 of #819)."""
+    return _BLANK_LINES.sub("\n\n", text)
+
+
 def _said_words(text: str) -> str:
     """The words `text` prints as sentences: each paragraph without the label it opens with,
     as G4's reading of the declarations takes one ("**Funding:**", "Data availability:",
@@ -338,7 +348,7 @@ def _said_words(text: str) -> str:
     from manuscript_guard.gates.disclosures import _label, paragraphs
 
     kept = []
-    for paragraph in paragraphs(text):
+    for paragraph in paragraphs(_one_blank_line(text)):
         labelled = _label(paragraph)
         kept.append(labelled[1] if labelled is not None else paragraph)
     return "\n\n".join(piece for piece in kept if _says(piece))
@@ -373,8 +383,8 @@ def _words_of(kind: str, text: str) -> bool:
     return bool(_pattern(_data()["headings"][kind]).search(folded))
 
 
-def stated(text: str, *, abstract: str | None = None,
-           data_heading: str | None = None) -> dict[str, str]:  # fmt: skip
+def stated(text: str, *, abstract: str | None = None, data_heading: str | None = None,
+           headings_said: bool = True) -> dict[str, str]:  # fmt: skip
     """Each standard kind `text` holds: `stated` where words are printed after a heading or a
     label of it, `empty` where its only heading has nothing printed under it; a kind the text
     does not hold is left out. Headings' and labels' own words are no statement: the Methods
@@ -393,7 +403,8 @@ def stated(text: str, *, abstract: str | None = None,
 
     printed = _unprinted(scannable(text))
     sections = split_sections(printed)
-    empty = {heading.line for heading in empty_headings(text)}
+    # Where no heading is said to be empty, a LaTeX manuscript's, none outranks a label.
+    empty = {heading.line for heading in empty_headings(text)} if headings_said else set()
     said: dict[str, str] = {}
 
     def found(kind: str, how: str) -> None:
@@ -424,11 +435,16 @@ def stated(text: str, *, abstract: str | None = None,
     if _first(_data()["no_approval"], printed):
         found(ETHICS, STATED)
     # `_labelled` gives one label for each paragraph that opens with one, in order.
-    labelled = [piece for piece in paragraphs(printed) if _label(piece) is not None]
-    for paragraph, (label, rest) in zip(labelled, _labelled(printed), strict=False):
-        held = _held(_label(paragraph)[1], rest, data_heading)
+    labels = _one_blank_line(printed)
+    labelled = [piece for piece in paragraphs(labels) if _label(piece) is not None]
+    for paragraph, (label, rest) in zip(labelled, _labelled(labels), strict=False):
+        own = _label(paragraph)[1]
+        held = _held(own, rest, data_heading)
+        # A short paragraph wholly in emphasis standing alone, no colon in it, is the label
+        # whose hint says it reads as one.
+        alone = paragraph.strip()[:1] in ("*", "_") and ":" not in paragraph
         for kind in _label_of(label, data_heading):
-            found(kind, STATED if _says(held) else LABELLED)
+            found(kind, STATED if _says(held) else EMPHASISED if alone else LABELLED)
     return said
 
 
@@ -553,11 +569,17 @@ def _empty_finding(heading: EmptyHeading, path: Path | None, line: int, severity
 
 
 def _missing_finding(kind: str, path: Path | None, severity: str, recorded: str,
-                     labelled: bool = False) -> Finding:  # fmt: skip
-    """`labelled`: the manuscript has a label of the kind with nothing after it."""
-    alone = (f"; a label of it stands with nothing after it: write the statement in plain "
-             f"text, or after its label (\"{USUAL[kind]}: ...\"), since a short paragraph "
-             "wholly in emphasis reads as a label" if labelled else "")  # fmt: skip
+                     how: str | None = None) -> Finding:  # fmt: skip
+    """`how`: what the manuscript has of the kind, a label with nothing after it, over a
+    comment or a placeholder (`LABELLED`) or a short paragraph wholly in emphasis
+    (`EMPHASISED`)."""
+    alone = {
+        LABELLED: f"; a label of it has only a comment or a placeholder after it: write the "
+                  f"statement after its label (\"{USUAL[kind]}: ...\")",
+        EMPHASISED: f"; a short paragraph wholly in emphasis reads as a label with nothing "
+                    f"after it: write the statement in plain text, or after its label "
+                    f"(\"{USUAL[kind]}: ...\")",
+    }.get(how or "", "")  # fmt: skip
     return Finding(
         gate=GATE, code=MISSING, severity=severity, path=path,
         message=f"the manuscript has no {NAMES[kind]}",
@@ -618,13 +640,16 @@ def _read(project: Project) -> _Reading:
     folder = project.path("manuscript")
     data_heading = _profile_heading(project)
     abstract = abstract_title(project)
-    said = merged(stated(main_text(project), abstract=abstract, data_heading=data_heading),
-                  stated(supplement_text(project), data_heading=data_heading))  # fmt: skip
+    markdown = manuscript_format(folder) != LATEX
+    said = merged(stated(main_text(project), abstract=abstract, data_heading=data_heading,
+                         headings_said=markdown),
+                  stated(supplement_text(project), data_heading=data_heading,
+                         headings_said=markdown))  # fmt: skip
     profile = _profile(project) or {}
     # The journal's list, where its profile has one, is `missing-required-statement`'s.
     asked = [] if profile.get("required_statements") else [
         kind for kind in KINDS if kind != AI_USE or wanted(project)]  # fmt: skip
-    return _Reading(said, asked, manuscript_format(folder) != LATEX, data_heading)
+    return _Reading(said, asked, markdown, data_heading)
 
 
 def asked_for(project: Project) -> set[str]:
@@ -655,7 +680,7 @@ def check_statements(project: Project, stage: str | None = None) -> Report:
                 findings.append(_empty_finding(heading, path, line, severity, heads))
     where = _main_file(folder)
     findings += [_missing_finding(kind, where, severity, _recorded(project, kind),
-                                  reading.said.get(kind) == LABELLED)
+                                  reading.said.get(kind))
                  for kind in reading.lacking]  # fmt: skip
     return Report(tuple(findings))
 

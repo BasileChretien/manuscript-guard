@@ -1632,3 +1632,222 @@ def test_an_authors_yaml_that_cannot_be_read_is_blamed_on_paper_yaml(
     em = emitter(scratch)
     em.value("n", 1)
     assert em.write().is_file()
+
+
+# ---------------------------------------------- a value that is no number to print (item 10)
+#
+# Found writing a real paper (2026-11-26): in R, `em$value(key, NaN, digits = 2)` stopped with
+# R's own "missing value where TRUE/FALSE needed", in the session's language and naming no key;
+# here, the same call printed "nan" into the fragment. Both now refuse, naming the key and what
+# the value is.
+
+NAN, INF = float("nan"), float("inf")
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        (lambda em: em.value("ror.point", NAN, digits=2), "ror.point: the value is NaN"),
+        (lambda em: em.value("ror.point", NAN, display="NaN"), "ror.point: the value is NaN"),
+        (lambda em: em.value("ror.point", INF, digits=2), "ror.point: the value is infinite"),
+        (lambda em: em.value("ror.point", -INF, digits=2), "ror.point: the value is infinite"),
+        (lambda em: em.parameter("alpha", NAN), "param.alpha: the value is NaN"),
+        (lambda em: em.interval("ror", NAN, 1.0, 2.0, digits=2), "ror.point: the value is NaN"),
+        (lambda em: em.interval("ror", 1.5, NAN, 2.0, digits=2), "ror.ci_low: the value is NaN"),
+        (lambda em: em.interval("ror", 1.5, 1.0, INF, digits=2),
+         "ror.ci_high: the value is infinite"),
+        (lambda em: em.table("t", ["a"], [[NAN]], digits=1),
+         "table 't' row 0 column 0: the value is NaN"),
+        (lambda em: em.table("t", ["a"], [[em.cell("{} (n)", (NAN, 1))]]),
+         "table 't' row 0 column 0: the value is NaN"),
+    ],
+)
+def test_a_value_that_is_no_number_is_refused_naming_its_key(scratch: Path, call, says) -> None:
+    with pytest.raises(DisplayError) as refused:
+        call(emitter(scratch))
+    message = str(refused.value)
+    assert message.startswith(says), message
+    assert "there is no number to print" in message
+    # The hint that `digits=` is missing is not what is wrong with it.
+    assert "Pass `digits=`" not in message
+
+
+def test_a_missing_value_with_a_display_is_still_what_the_paper_prints(scratch: Path) -> None:
+    """None with a display was taken before, and is: the author says what the paper prints
+    where there is no number. A NaN has no display, since none renders it."""
+    em = emitter(scratch)
+    em.value("ror.adjusted", None, display="not estimable")
+    assert em.document()["values"]["ror.adjusted"]["display"] == "not estimable"
+    with pytest.raises(DisplayError, match="ror.point: the value is NaN"):
+        em.value("ror.point", NAN, display="not estimable")
+
+
+def test_a_numpy_nan_is_refused_as_a_float_nan_is(scratch: Path) -> None:
+    numpy = pytest.importorskip("numpy")
+    with pytest.raises(DisplayError, match="ror.point: the value is NaN"):
+        emitter(scratch).value("ror.point", numpy.float32("nan"), digits=2)
+
+
+def test_pandas_na_is_refused_as_r_s_na_is(scratch: Path) -> None:
+    pandas = pytest.importorskip("pandas")
+    with pytest.raises(DisplayError, match="cohort.n: the value is NA"):
+        emitter(scratch).value("cohort.n", pandas.NA)
+
+
+# Round 1 of #812.
+
+
+def test_an_infinity_with_a_display_its_check_accepts_is_taken_as_before(scratch: Path) -> None:
+    """An unbounded upper limit from an exact test is printed as a comparator."""
+    from manuscript_guard.contracts.values import derive_display
+
+    em = emitter(scratch)
+    em.value("or.ci_high", INF, display=">100")
+    assert em.document()["values"]["or.ci_high"]["display"] == ">100"
+    # And as `check` reads the fragment back.
+    assert derive_display("or.ci_high", INF, ">100", None) == ">100"
+
+
+def test_an_infinity_with_no_display_is_told_to_say_what_is_printed(scratch: Path) -> None:
+    with pytest.raises(DisplayError) as refused:
+        emitter(scratch).value("or.ci_high", INF, digits=2)
+    assert "the value is infinite" in str(refused.value)
+    assert "`display`" in str(refused.value) and ">100" in str(refused.value)
+
+
+@pytest.mark.parametrize("kind", ["NA", "NaT", "numpy NaT"])
+def test_a_missing_value_of_pandas_or_numpy_is_refused_whatever_its_display(
+    scratch: Path, kind: str
+) -> None:
+    """It never reaches json.dumps, which raised on pandas' NA (round 1 of #812)."""
+    pandas = pytest.importorskip("pandas")
+    numpy = pytest.importorskip("numpy")
+    value = {"NA": pandas.NA, "NaT": pandas.NaT, "numpy NaT": numpy.datetime64("NaT")}[kind]
+    with pytest.raises(DisplayError, match="cohort.n: the value is NA"):
+        emitter(scratch).value("cohort.n", value, display="not available")
+
+
+@pytest.mark.parametrize("display", ["NaN", "nan", "Inf", "-Inf", "inf", "NULL", "None", "NONE"])
+def test_a_display_that_spells_a_missing_value_is_refused_naming_the_key(
+    scratch: Path, display: str
+) -> None:
+    from manuscript_guard.contracts.values import derive_display
+
+    with pytest.raises(DisplayError) as refused:
+        emitter(scratch).value("ror.adjusted", None, display=display)
+    message = str(refused.value)
+    assert message.startswith(f"ror.adjusted: the value is None, and its display {display!r} "
+                              "spells a missing value"), message  # fmt: skip
+    # Not as `check` reads a fragment or the ledger written before: round 2 of #812 keeps the
+    # rule to the emitters.
+    assert derive_display("ror.adjusted", None, display, None) == display
+
+
+@pytest.mark.parametrize("display", ["NA", "na", "not applicable", "nan\u00a0", " None"])
+def test_a_display_that_is_not_exactly_a_spelling_is_the_author_s(
+    scratch: Path, display: str
+) -> None:
+    """ "NA", not applicable, is something papers print (round 2 of #812); a spelling with
+    white space around it is not one, as R compares it, untrimmed."""
+    em = emitter(scratch)
+    em.value("ror.adjusted", None, display=display)
+    assert em.document()["values"]["ror.adjusted"]["display"] == display
+
+
+@pytest.mark.parametrize(
+    ("value", "display", "taken"),
+    [
+        (INF, ">100", True), (INF, "\u2265100", True), (INF, ">=100", True),
+        (INF, "7.02", False), (INF, "<100", False), (INF, "\u2264100", False),
+        (-INF, "<-100", True), (-INF, "\u2264-100", True), (-INF, "<=-100", True),
+        (-INF, "100", False), (-INF, "-100", False), (-INF, ">-100", False),
+        (INF, "100+", True), (-INF, "100+", False),
+    ],
+)  # fmt: skip
+def test_an_infinity_takes_only_a_comparator_on_its_own_side(
+    scratch: Path, value: float, display: str, taken: bool
+) -> None:
+    """Round 2 of #812: a number's tolerance is infinite for an infinite value, so "7.02"
+    was taken for an unbounded limit, at emit time and as `check` reads a fragment."""
+    from manuscript_guard.contracts.values import derive_display
+
+    if taken:
+        emitter(scratch).value("or.ci_high", value, display=display)
+        assert derive_display("or.ci_high", value, display, None) == display
+        return
+    with pytest.raises(DisplayError, match="or.ci_high: "):
+        emitter(scratch).value("or.ci_high", value, display=display)
+    with pytest.raises(DisplayError, match="or.ci_high: "):
+        derive_display("or.ci_high", value, display, None)
+
+
+def test_an_infinite_bound_of_an_interval_is_told_to_go_through_value(scratch: Path) -> None:
+    with pytest.raises(DisplayError) as refused:
+        emitter(scratch).interval("ror", 1.5, 1.0, INF, digits=2)
+    message = str(refused.value)
+    assert message.startswith("ror.ci_high: the value is infinite")
+    assert 'value("ror.ci_high", ..., display=">100", bounds="ror.point", bound="high")' \
+        in message, message
+    assert 'value("ror.point", ...)' in message and "A control cannot have an open end" in message
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        (lambda em: em.interval("ror", INF, 1.0, 2.0, digits=2), "ror.point"),
+        (lambda em: em.interval("ror", 1.5, -INF, 2.0, digits=2), "ror.ci_low"),
+        (lambda em: em.control("control.x", 1.5, 1.0, INF, digits=2), "control.x.ci_high"),
+    ],
+)
+def test_an_infinite_point_or_end_is_told_how_to_emit_an_open_end(
+    scratch: Path, call, says: str
+) -> None:
+    """Round 3 of #812: the advice named a `display` neither call takes, and an infinite
+    point was told to give one."""
+    with pytest.raises(DisplayError) as refused:
+        call(emitter(scratch))
+    message = str(refused.value)
+    assert message.startswith(f"{says}: the value is infinite"), message
+    assert "interval() and control() take no display" in message
+    assert "A control cannot have an open end" in message
+    if says == "ror.ci_low":
+        assert 'value("ror.ci_low", ..., display="<-100", bounds="ror.point", bound="low")' \
+            in message, message
+
+
+def test_an_infinity_is_written_as_json_reads_it_back(scratch: Path) -> None:
+    """As the R emitter writes it (round 2 of #812): Infinity, read back as the number."""
+    em = emitter(scratch)
+    em.value("or.ci_high", INF, display=">100")
+    path = em.write()
+    assert '"value": Infinity' in path.read_text(encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8"))["values"]["or.ci_high"]["value"] == INF
+
+
+def test_an_interval_refuses_a_key_already_emitted_before_writing_any(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.value("ror.ci_low", 1.0, digits=2)
+    with pytest.raises(ValueError, match="'ror.ci_low' emitted twice"):
+        em.interval("ror", 1.5, 1.0, 2.0, digits=2)
+    assert set(em.document()["values"]) == {"ror.ci_low"}
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda em: em.interval("ror", 1.5, NAN, 2.0, digits=2),
+        lambda em: em.interval("ror", 1.5, 1.0, INF, digits=2),
+        lambda em: em.interval("ror", 1.5, 1.6, 2.0, digits=2),  # does not bracket
+        lambda em: em.interval("ror", 1.5, 0.001, 2.0, digits=2),  # rounds to 0.00
+        lambda em: em.control("control.headache", 1.5, NAN, 2.0, digits=2),
+    ],
+)
+def test_a_refused_interval_or_control_leaves_no_key_behind(scratch: Path, call) -> None:
+    """The estimate was recorded before its bounds were read, so a script that caught the
+    refusal and called again failed "'ror.point' emitted twice" (round 1 of #812)."""
+    em = emitter(scratch)
+    with pytest.raises(DisplayError):
+        call(em)
+    assert em.document()["values"] == {}
+    em.interval("ror", 1.5, 1.0, 2.0, digits=2)
+    assert set(em.document()["values"]) == {"ror.point", "ror.ci_low", "ror.ci_high"}

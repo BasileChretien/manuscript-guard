@@ -84,6 +84,20 @@ mg_check_display <- function(key, value, display) {
 
   shown <- as.numeric(text)
 
+  if (!nzchar(parts[2]) && is.infinite(value)) {
+    # A number's tolerance is infinite for an infinite value, so "7.02" was taken for an
+    # unbounded limit (round 2 of #812). A comparator on its side is what it prints, and
+    # "100+" above, whose "+" reads as a unit (round 3), as in Python.
+    if (value > 0 && identical(parts[7], "+")) {
+      return(invisible(NULL))
+    }
+    stop(
+      key, ": display '", display, "' is a number, and the value is infinite: an unbounded ",
+      "limit is printed as a comparator on its side, \">100\" or \"100+\" above, \"<-100\" ",
+      "below",
+      call. = FALSE
+    )
+  }
   if (nzchar(parts[2])) {
     # "<0.001" is true of any value below 0.001 and false of 0.4. Checking the direction
     # rather than the distance is the whole content of a comparator display.
@@ -118,14 +132,91 @@ mg_check_display <- function(key, value, display) {
   invisible(NULL)
 }
 
+#' Displays that spell a missing value rather than say what the paper prints in its place,
+#' compared without case and untrimmed, as Python compares them. Not "NA": not applicable
+#' is something papers print (round 2 of #812).
+#' @noRd
+mg_missing_spellings <- c("nan", "inf", "-inf", "null", "none")
+
+#' What makes a value no number to print, as a refusal says it
+#'
+#' NULL for a value that is one. Python's `missing_problem` is the same rule:
+#' - "is NaN", or "is NA" for a numeric NA, whatever the display, since none renders it;
+#' - "is infinite" with no display; with one, the display's own check decides, and an
+#'   unbounded limit printed as a comparator (">100") was taken before, and is;
+#' - "is NA" for a logical or a character NA with no display; with a display that spells a
+#'   missing value ("nan", "NULL", "None"), that display is refused too, and with another it is
+#'   the author saying what is printed in its place ("not estimable"), taken before, as
+#'   Python takes None with one.
+#'
+#' Found writing a real paper (2026-11-26): with `digits`, a NaN stopped R with its own
+#' "missing value where TRUE/FALSE needed", in the session's language and naming no key, and
+#' a logical NA printed "FALSE".
+#' @noRd
+mg_missing_problem <- function(value, display = NULL) {
+  if (length(value) != 1) {
+    return(NULL)
+  }
+  if (is.numeric(value)) {
+    if (is.nan(value)) return("is NaN")
+    if (is.na(value)) return("is NA")
+    if (is.infinite(value) && is.null(display)) return("is infinite")
+    return(NULL)
+  }
+  if (!(is.logical(value) || is.character(value)) || !is.na(value)) {
+    return(NULL)
+  }
+  if (is.null(display)) {
+    return("is NA")
+  }
+  if (tolower(as.character(display)) %in% mg_missing_spellings) {
+    return(paste0("is NA, and its display '", display, "' spells a missing value"))
+  }
+  NULL
+}
+
+#' Refuse a value that is no number to print, naming its key, in Python's words, ending in
+#' what to do for that problem
+#' @noRd
+mg_missing_refusal <- function(key, problem, point = NULL) {
+  then <- if (identical(problem, "is infinite") && !is.null(point)) {
+    # interval() and control() take no display: an open end is emitted with value(), and a
+    # control cannot have one (round 3 of #812), as Python says.
+    end <- if (endsWith(key, "_low")) "low" else "high"
+    shown <- if (identical(end, "low")) "<-100" else ">100"
+    bound <- if (identical(key, point)) paste0(sub("\\.point$", "", point), ".ci_high") else key
+    paste0("so there is no number to print. interval() and control() take no display: emit ",
+           "the estimate as em$value(\"", point, "\", ...) and each end as em$value(\"", bound,
+           "\", ..., display = \"", shown, "\", bounds = \"", point, "\", bound = \"", end,
+           "\"), an open end with a comparator on its side. A control cannot have an open end")
+  } else if (identical(problem, "is infinite")) {
+    paste0("so there is no number to print. Say with `display` what the paper prints in its ",
+           "place, a comparator such as \">100\" for an unbounded limit, or emit the key ",
+           "only where there is a value")
+  } else if (endsWith(problem, "spells a missing value")) {
+    paste0("which is no number to print. Say with `display` what the paper prints in its ",
+           "place (\"not estimable\"), or emit the key only where there is a value")
+  } else {
+    paste0("so there is no number to print. Find out why the analysis computed none (a ",
+           "model that did not converge, a share whose denominator is 0) and emit the key ",
+           "only where there is a value")
+  }
+  stop(key, ": the value ", problem, ", ", then, call. = FALSE)
+}
+
 #' Display string for a value
 #'
 #' Mirrors the Python emitter exactly, with one concession to R: a double holding a whole
 #' number is treated as a count, because R has no integer literal that survives ordinary
 #' arithmetic. A quantity that really is 3.0 and should read "3.00" therefore needs an
-#' explicit `digits`.
+#' explicit `digits`. A value that is no number to print is refused first, before any
+#' arithmetic reads it (`mg_missing_problem`).
 #' @noRd
 mg_display <- function(key, value, display, digits) {
+  problem <- mg_missing_problem(value, display)
+  if (!is.null(problem)) {
+    mg_missing_refusal(key, problem)
+  }
   if (!is.null(display)) {
     display <- as.character(display)
     mg_check_display(key, value, display)
@@ -1718,9 +1809,28 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
           call. = FALSE
         )
       }
+      given <- FALSE
       point <- state$values[[point_key]]$value
     } else {
-      value(point_key, point, digits = digits, unit = unit, quoted = quoted)
+      given <- TRUE
+    }
+    # Every part is read before any key is written, so that a refusal leaves nothing
+    # behind: the estimate was written first, and a script that caught a refused bound and
+    # called again was told it emitted the estimate twice (round 1 of #812), as in Python.
+    stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
+    parts <- list(list(paste0(key, ".", stem, "_low"), low),
+                  list(paste0(key, ".", stem, "_high"), high))
+    if (given) parts <- c(list(list(point_key, point)), parts)
+    for (part in parts) {
+      # Before the bracket: a NaN brackets nothing, and the comparison stopped R in its own
+      # words, naming no key.
+      problem <- mg_missing_problem(part[[2]])
+      if (!is.null(problem)) {
+        mg_missing_refusal(part[[1]], problem, point = point_key)
+      }
+      if (!is.null(state$values[[part[[1]]]])) {
+        stop(part[[1]], " emitted twice by ", script_path, call. = FALSE)
+      }
     }
     if (!(low <= point && point <= high)) {
       stop(
@@ -1729,7 +1839,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
         call. = FALSE
       )
     }
-    stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
+    for (part in parts) mg_display(part[[1]], part[[2]], NULL, digits)
+    if (given) value(point_key, point, digits = digits, unit = unit, quoted = quoted)
     recorded <- if (is.null(level)) ci_level else level
     value(
       paste0(key, ".", stem, "_low"), low, digits = digits, unit = unit, quoted = quoted,
@@ -1838,6 +1949,11 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       if (!identical(row, HEADER)) entry$row <- as.integer(row)
       state$composed[[key]] <- c(state$composed[[key]], list(entry))
       return(cell$text)
+    }
+    # A logical NA printed "FALSE", and a NaN stopped R naming no cell.
+    problem <- mg_missing_problem(cell)
+    if (!is.null(problem)) {
+      mg_missing_refusal(where, problem)
     }
     if (is.logical(cell)) {
       return(if (isTRUE(cell)) "TRUE" else "FALSE")
@@ -2294,8 +2410,22 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (length(state$corrections) > 0) document$corrections <- state$corrections
     if (length(state$datasets) > 0) document$datasets <- state$datasets
     if (length(state$controls) > 0) document$controls <- state$controls
+    # jsonlite writes an infinite number as the string "Inf", and Python writes Infinity,
+    # which json reads back as the number: each is marked, then written as Python writes it,
+    # so that one call writes one fragment in either language (round 2 of #812).
+    marks <- c(Infinity = "mg-infinity-5f3c2a9e", `-Infinity` = "mg-minus-infinity-5f3c2a9e")
+    for (key in names(document$values)) {
+      shown <- document$values[[key]]$value
+      if (is.numeric(shown) && length(shown) == 1 && is.infinite(shown)) {
+        document$values[[key]]$value <- marks[[if (shown > 0) "Infinity" else "-Infinity"]]
+      }
+    }
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
-    mg_write_lf(as.character(json), path)
+    json <- as.character(json)
+    for (written in names(marks)) {
+      json <- gsub(paste0("\"", marks[[written]], "\""), written, json, fixed = TRUE)
+    }
+    mg_write_lf(json, path)
 
     # The sidecar digest, byte-identical in intent to the Python emitter's: hash the file
     # you just wrote, so a later hand-edit cannot pass unnoticed.

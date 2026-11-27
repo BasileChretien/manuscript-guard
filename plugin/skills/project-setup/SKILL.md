@@ -102,13 +102,15 @@ literature/            ledger.yaml, attested.yaml, references.bib, sources.yaml,
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
                        (main.tex and mgvalues.sty under --latex, with \mg{results.x})
 figures/  review/  build/
-.gitattributes         * text=auto eol=lf
+.gitattributes         * text=auto eol=lf, and *.svg binary among the files kept as bytes
 AGENTS.md              the rules of the project, for any agent working in it
 ```
 
 **Keep the `.gitattributes`.** Every digest is byte-exact, and a checkout that turns line
-endings into CRLF makes clean results look hand-edited. **`literature/sources/` stays out of
-git** unless the authors chose to commit it in a private repository. **`results/` belongs to
+endings into CRLF makes clean results look hand-edited. An SVG figure is kept as bytes: svglite
+on Windows writes CRLF, and normalised to LF the figure is no longer the one its render record
+and its review hold. **`literature/sources/` stays out of git** unless the authors chose to
+commit it in a private repository. **`results/` belongs to
 manuscript-guard**: every `.json` directly in it is read as a results fragment.
 
 ## 3. Stages
@@ -156,7 +158,10 @@ sending. A stale `.docx` (`document-stale`) never stops the Word build that rewr
 `build` needs Zotero running for live fields; the first live build also downloads Better
 BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which
 `manuscript-guard sync-bib` writes from Zotero with just the cited keys. Commit it, so the
-offline build works anywhere.
+offline build works anywhere. An offline build's citations are text, which Word's Zotero
+plugin cannot refresh: the build says so and why a live one would not work now, and `check`
+notes it (`citations-not-live`). Tell the author before sending them a document built
+offline when they expect Zotero fields.
 
 ## 5. What to do next, and which skill
 

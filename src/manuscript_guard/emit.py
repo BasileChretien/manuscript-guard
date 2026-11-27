@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import contextvars
 import copy
 import hashlib
 import importlib.metadata
@@ -28,7 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,6 +72,7 @@ __all__ = [
     "Composed",
     "DisplayError",
     "Emitter",
+    "digests_once",
     "input_digest",
     "input_digest_matches",
     "read_digest",
@@ -295,22 +297,95 @@ def _as_lf(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
-def _normalises(path: Path, suffixes: frozenset[str], data: bytes) -> bool:
-    return path.suffix.lower() in suffixes and not _is_utf16(data)
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _spellings(path: Path, suffixes: frozenset[str]) -> Iterator[str]:
+    """The digests this file's current content may have been recorded as, the first being
+    the one `_digest_of` gives: its bytes' own where its line endings are content, read in
+    blocks and never whole; otherwise its content with LF, then its bytes, then its content
+    with CRLF and with CR. A generator, so that `_matches` stops at the first that matches.
+
+    A file whose suffix says its line endings are formatting is read whole, once, since its
+    endings are rewritten in memory; a UTF-16 one is hashed as its bytes (`_is_utf16`).
+    """
+    if path.suffix.lower() not in suffixes:
+        yield sha256_of(path)
+        return
+    data = path.read_bytes()
+    if _is_utf16(data):
+        yield _sha256(data)
+        return
+    as_lf = _as_lf(data)
+    yield _sha256(as_lf)
+    yield _sha256(data)
+    del data
+    yield _sha256(as_lf.replace(b"\n", b"\r\n"))
+    yield _sha256(as_lf.replace(b"\n", b"\r"))
+
+
+#: The digests one run has taken (`digests_once`), by file: every spelling of each, in
+#: `_spellings`' order; None outside a run.
+_RUN_DIGESTS: contextvars.ContextVar[dict[tuple, tuple[str, ...]] | None] = (
+    contextvars.ContextVar("manuscript_guard_run_digests", default=None))  # fmt: skip
+
+
+@contextlib.contextmanager
+def digests_once() -> Iterator[None]:
+    """Take each file's digests at most once until the block ends: one run of the gates.
+
+    `check` asked each declared input for its digest once for each fragment that declared
+    it, and read a binary one twice each time, its bytes and then its digest: a study
+    declaring seven gigabytes of a pharmacovigilance extract, several files in two
+    fragments, waited over two minutes. Inside the block a file is read once, and every
+    spelling of its digest is taken from that reading (`_taken`). What it learnt
+    ends with the block, so that the next run reads every file again: a file can be
+    rewritten within one tick of the clock that stamps it, and a run must not answer from a
+    run before it. A block inside another adds nothing to the outer one's.
+
+    A file is known again by its path, its size and the time it was last written, so that one
+    rewritten during the run is read again.
+    """
+    if _RUN_DIGESTS.get() is not None:
+        yield
+        return
+    token = _RUN_DIGESTS.set({})
+    try:
+        yield
+    finally:
+        _RUN_DIGESTS.reset(token)
+
+
+def _taken(path: Path, suffixes: frozenset[str]) -> tuple[str, ...] | None:
+    """Every spelling of this file's digest, from one reading of it in this run; None outside
+    a run. A file whose line endings are content has one, its bytes' own, and so has a text
+    file in UTF-16 with a byte-order mark; any other text file has four, all taken from the
+    bytes read once (`_spellings`). Taken whole, they answer every record compared with the
+    file later in the run, a stale one or one in another spelling, without reading it again:
+    the three a text file's first record does not need cost two more full-size copies of its
+    bytes, with CRLF and with CR, and three more hashes, and no reading."""
+    memo = _RUN_DIGESTS.get()
+    if memo is None:
+        return None
+    stat = path.stat()
+    key = (os.path.normcase(os.path.abspath(path)), path.suffix.lower() in suffixes,
+           stat.st_size, stat.st_mtime_ns)  # fmt: skip
+    if key not in memo:
+        memo[key] = tuple(_spellings(path, suffixes))
+    return memo[key]
 
 
 def _digest_of(path: Path, suffixes: frozenset[str]) -> str:
-    data = path.read_bytes()
-    if not _normalises(path, suffixes, data):
-        return sha256_of(path)
-    return hashlib.sha256(_as_lf(data)).hexdigest()
+    taken = _taken(path, suffixes)
+    return taken[0] if taken is not None else next(_spellings(path, suffixes))
 
 
 def _matches(path: Path, recorded: str, suffixes: frozenset[str]) -> bool:
     """Whether `recorded` is a digest of this file's current content, however spelt.
 
-    The file's ACTUAL bytes are tried first, then each canonical spelling — LF, CRLF, CR.
-    Trying only the canonical three was a regression: a file with mixed endings, which is what
+    The file's ACTUAL bytes are tried, then each canonical spelling — LF, CRLF, CR. Trying
+    only the canonical three was a regression: a file with mixed endings, which is what
     you get from appending CRLF rows to an LF header or from a partially normalised
     repository, matches none of them, so an untouched input that had been passing began to
     fail. The commit that introduced this claimed to be non-breaking and was not, for exactly
@@ -318,14 +393,13 @@ def _matches(path: Path, recorded: str, suffixes: frozenset[str]) -> bool:
     passed before can fail now.
 
     A file whose CONTENT changed matches none of the candidates, so this admits several ways
-    of writing one file rather than a second file.
+    of writing one file rather than a second file. Inside `digests_once` the file is read
+    once however many records are compared with it.
     """
-    data = path.read_bytes()
-    if not _normalises(path, suffixes, data):
-        return recorded == sha256_of(path)
-    as_lf = _as_lf(data)
-    candidates = (data, as_lf, as_lf.replace(b"\n", b"\r\n"), as_lf.replace(b"\n", b"\r"))
-    return any(recorded == hashlib.sha256(text).hexdigest() for text in candidates)
+    taken = _taken(path, suffixes)
+    if taken is not None:
+        return recorded in taken
+    return any(recorded == digest for digest in _spellings(path, suffixes))
 
 
 def _belongs(key: str, of: str | None, over: str | None, family: str | None) -> dict:

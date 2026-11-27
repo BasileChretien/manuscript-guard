@@ -424,3 +424,9 @@ expected:
       where the base ends the list there and reads the entries after it as text (window C of
       the real-paper corpus); a section's title after the list, "5. Discussion" after "4.",
       ends it on both
+  - reading: checklist quotes
+    why: >-
+      an answer whose `where` is "Title" or "the title" is held to the paper's title,
+      paper.yaml's, which the reading now hands `read` (READUS-PV 1a and 1b on the
+      bisphosphonates paper), where the base names no part for it; a quote of the title's
+      words under a heading stands in "the title in paper.yaml"

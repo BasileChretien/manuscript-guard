@@ -90,6 +90,11 @@ class BuildError(Exception):
     """The document could not be produced."""
 
 
+class ZoteroNotReady(BuildError):
+    """A live build would not get a Zotero field for every citation, said before pandoc runs:
+    Zotero not running, Better BibTeX not answering in it, or a cited key not in the library."""
+
+
 class MisreadError(BuildError):
     """Pandoc reads the document otherwise than the gates read its sources, so it is not
     made: see `reading.misreading`."""
@@ -100,6 +105,106 @@ class BuildResult:
     output: Path
     mode: str
     report: Report
+    #: The keys the document cites, outside comments and code: what a live build asks
+    #: Zotero for, and what `build --offline` says a live build would need.
+    citations: tuple[str, ...] = ()
+
+
+#: Where a live build's citations come from, said in what it tells the author to do.
+_PLUGIN = "https://retorque.re/zotero-better-bibtex/"
+
+
+def zotero_not_ready(found) -> tuple[str, str]:
+    """Why a live build would not get a field for every citation, and what to do about it,
+    from `zotero.readiness`: two phrases, the second one an instruction."""
+    from manuscript_guard.zotero import BUSY, KEYS_MISSING, NO_BETTER_BIBTEX, NOT_RUNNING
+
+    if found.state == NOT_RUNNING:
+        return ("Zotero is not running, or does not answer at 127.0.0.1:23119",
+                "open Zotero, with the Better BibTeX plugin installed")  # fmt: skip
+    if found.state == NO_BETTER_BIBTEX:
+        return ("Zotero is running and Better BibTeX does not answer in it",
+                f"install Better BibTeX for Zotero ({_PLUGIN}) and restart Zotero")  # fmt: skip
+    if found.state == BUSY:
+        return ("Zotero is running and Better BibTeX did not answer in time (indexing, "
+                "syncing or a very large library)", "wait for Zotero to finish")  # fmt: skip
+    if found.state == KEYS_MISSING:
+        parts, steps = [], []
+        if found.missing:
+            parts.append(f"the Zotero library holds no item for {_keys(found.missing)}")
+            steps.append("add each work to Zotero under that citation key, or correct the key "
+                         "in the manuscript")  # fmt: skip
+        if found.ambiguous:
+            parts.append(f"several items in it carry {_keys(found.ambiguous)}")
+            steps.append("give each of those keys to one item only")
+        return ("; ".join(parts), ", and ".join(steps))
+    return ("Zotero holds every cited key", "")
+
+
+def _keys(keys: tuple[str, ...], shown: int = 5) -> str:
+    """Keys named in a sentence: the first few, and how many more."""
+    named = ", ".join(f"@{key}" for key in keys[:shown])
+    more = len(keys) - shown
+    cited = f"{len(keys)} cited key{'' if len(keys) == 1 else 's'}"
+    return f"{cited} ({named}{f' and {more} more' if more > 0 else ''})"
+
+
+def _require_zotero(keys: tuple[str, ...]) -> Report:
+    """Refuse a live build that would leave a citation as text, saying why (`readiness`).
+
+    A Better BibTeX that did not answer in time is not known to fail: just after Zotero
+    starts, or while it indexes, it answers slowly, and the build that worked before was
+    refused (round 1 of #811). The build then runs, says so, and counts the fields it got."""
+    from manuscript_guard.zotero import BUSY, client
+
+    found = client.readiness(keys)
+    if found.ready:
+        return Report()
+    if found.state == BUSY:
+        return Report(
+            (
+                Finding(
+                    gate=GATE,
+                    code="zotero-unreadable",
+                    severity=WARN,
+                    message="Better BibTeX did not answer in time before the build, so whether "
+                    "Zotero holds every cited key is not known; the build ran Zotero's filter "
+                    "anyway, and counted its fields",
+                    hint="if a citation came out as text, wait for Zotero to finish indexing "
+                    "or syncing and build again",
+                ),
+            )
+        )
+    why, what = zotero_not_ready(found)
+    raise ZoteroNotReady(
+        f"a live build makes each citation a Zotero field, and {why}. To build live, {what}, "
+        "and build again; `--offline` formats the citations as text from "
+        "literature/references.bib instead."
+    )
+
+
+def outside_code(text: str) -> str:
+    """`text` with what pandoc prints no citation in blanked, offsets kept: comments,
+    listings and inline code."""
+    from manuscript_guard.text.blocks import scannable
+    from manuscript_guard.text.inline import code_spans
+
+    scan = scannable(text)
+    pieces, at = [], 0
+    for start, end in code_spans(scan):
+        pieces += [scan[at:start], " " * (end - start)]
+        at = end
+    return "".join([*pieces, scan[at:]])
+
+
+def citation_groups(text: str) -> int:
+    """How many citations pandoc reads in `text`, each a field of a live build: a group in
+    brackets, whatever it holds, and each narrative citation outside one."""
+    from manuscript_guard.zotero import find_citations
+    from manuscript_guard.zotero.citations import bracketed
+
+    narrative = sum(use.narrative for use in find_citations(text, Path("text.md")))
+    return sum(1 for _ in bracketed(text)) + narrative
 
 
 def pandoc() -> str:
@@ -576,6 +681,11 @@ def build_document(
     from manuscript_guard.zotero import find_citations
 
     cites = bool(find_citations(body, source))
+    printed = outside_code(body)
+    keys = tuple(sorted({use.citekey for use in find_citations(printed, source)}))
+    # Asked before pandoc runs: a live build of a document Zotero cannot make every field of
+    # ran, and said only "If Zotero is not running", whatever the reason was.
+    unknown = _require_zotero(keys) if mode == LIVE and keys else Report()
 
     # Pandoc runs from the project root and is given paths relative to it wherever it may
     # write them into the document. The document goes to co-authors, and it used to carry
@@ -622,7 +732,7 @@ def build_document(
             f"--reference-doc={reference.resolve()}",
             f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
         ]
-        report = does_nothing(inert, read, built, output)
+        report = does_nothing(inert, read, built, output).merge(unknown)
 
         if mode == LIVE:
             command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
@@ -673,7 +783,7 @@ def build_document(
     # A document that cites nothing has no fields to find, and warning that its citations
     # will be plain text only taught the author to ignore the warning.
     if mode == LIVE and cites:
-        report = report.merge(_verify_live_fields(output))
+        report = report.merge(_verify_live_fields(output, citation_groups(printed)))
     # Not the annotated copy: the stamp is what `check` reads to decide whether the
     # document a co-author opens is current, and there must be exactly one such document.
     if stamp:
@@ -734,7 +844,7 @@ def build_document(
             report = report.merge(check_blinded(project, output))
             # Nor text its reader does not see, which a model reading it reads.
             report = report.merge(check_hidden_text(output))
-    return BuildResult(output=output, mode=mode, report=report)
+    return BuildResult(output=output, mode=mode, report=report, citations=keys)
 
 
 def _cited(mode: str, csl: Path | None, cites: bool) -> str:
@@ -817,12 +927,28 @@ def _stamp_source(project, output: Path) -> None:
         os.replace(pending, stamp)
 
 
-def _verify_live_fields(docx: Path) -> Report:
-    """Confirm the citations really are Zotero fields, not text that looks like them.
+def _fields_in_notes(docx: Path) -> int:
+    """The Zotero fields of a document's footnotes and endnotes, which pandoc writes into
+    parts of their own: a citation in a note was counted as text (round 1 of #811)."""
+    import zipfile
+
+    found = 0
+    with contextlib.suppress(OSError, zipfile.BadZipFile), zipfile.ZipFile(docx) as archive:
+        names = set(archive.namelist())
+        for part in ("word/footnotes.xml", "word/endnotes.xml"):
+            if part in names:
+                found += archive.read(part).decode("utf-8", "replace").count("ZOTERO_ITEM")
+    return found
+
+
+def _verify_live_fields(docx: Path, citations: int = 1) -> Report:
+    """Confirm the citations really are Zotero fields, not text that looks like them: as many
+    fields as the source has `citations` (`citation_groups`).
 
     Worth checking rather than assuming: the filter fails quietly when Zotero is closed,
     and the resulting document looks fine until someone clicks Refresh in Word and every
-    citation disappears.
+    citation disappears. Counting only whether there were any passed a document in which
+    some citations were fields and the rest text.
     """
     import zipfile
 
@@ -840,9 +966,26 @@ def _verify_live_fields(docx: Path) -> Report:
             )
         )
 
-    fields = xml.count("ZOTERO_ITEM")
-    if fields:
+    fields = xml.count("ZOTERO_ITEM") + _fields_in_notes(docx)
+    if fields >= citations:
         return Report(counts={"zotero_fields": fields})
+    if fields:
+        text = citations - fields
+        return Report(
+            (
+                Finding(
+                    gate=GATE,
+                    code="no-live-citations",
+                    severity=WARN,
+                    message=f"{text} of the {citations} citations {'is' if text == 1 else 'are'} "
+                    "plain text, not Zotero fields: Word's Zotero plugin will not refresh them",
+                    path=docx,
+                    hint="`check` names each cited key Zotero does not hold; open Zotero and "
+                    "rebuild, or build with --offline deliberately",
+                ),
+            ),
+            counts={"zotero_fields": fields},
+        )
     return Report(
         (
             Finding(

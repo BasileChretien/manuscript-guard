@@ -273,6 +273,11 @@ class AuditReport:
     places: dict = field(default_factory=dict)
     #: The package `--package` names, held to its own manifest (`auditing.package.PackageRead`).
     package: object = None
+    #: Each registration number the papers name outside their reference lists
+    #: (`auditing.registration.Named`), and, with `--lookup`, what their registries hold
+    #: (`auditing.registration.RegistrationRun`); None where nothing was asked.
+    registered: list = field(default_factory=list)
+    registration: object = None
     #: How much of each kind the audit read, for the report draft's checks that found
     #: nothing: "tables", "headings", "tests", "intervals" and "shares".
     read: dict = field(default_factory=dict)
@@ -1727,6 +1732,11 @@ def audit(
 
     report.papers = tuple(source.path for source in sources)
     adjusted = _adjusted(report, sources[:read])
+    from manuscript_guard.auditing.registration import named_in
+
+    # The papers' own registration numbers, asked of their registries only under --lookup.
+    for source in sources[:read]:
+        report.registered += named_in(source.path, source.hidden, source.text)
     pieces = []
     for source in sources:
         report.read["tables"] = report.read.get("tables", 0) + len(source.tables)

@@ -158,6 +158,16 @@ KINDS: tuple[Kind, ...] = (
     Kind("package-differs", LOOK,
          "The authors' package does not match its own manifest, or a result was not written by "
          "the script packaged beside it.", _codes("audit", *_PACKAGE_DIFFERS)),
+    # The paper's own registration, under --lookup (Basile, 2026-11-26): what the registry
+    # holds is for the editor to set beside the paper; only its own dates are judged.
+    Kind("registration-record", LOOK,
+         "What the trial's registry holds: its primary outcome and its dates, to set beside "
+         "the paper's.", _codes("G12", "registration-record")),
+    Kind("registration-late", LOOK,
+         "A trial registered after it started, by the registry's own dates.",
+         _codes("G12", "registration-late")),
+    Kind("registration-unknown", LOOK, "A registration number its registry does not know.",
+         _codes("G12", "registration-unknown")),
     # ---------------------------------------------------------- ask the authors
     Kind("skewed", ASK,
          "A mean smaller than twice its SD for a measure that cannot be negative: the data are "
@@ -294,6 +304,10 @@ KINDS: tuple[Kind, ...] = (
     Kind("undecided", READ, "Numbers the check could not decide.",
          _codes("audit", "over-header-n", "mean-not-assessable", "whole-numbers-unfound",
                 "binary-unfound", "flow-note", "non-negative-unread", "non-negative-unfound")),
+    Kind("registration-read", READ,
+         "How the paper's registration numbers were looked up, or why one was not.",
+         _codes("G12", "registration-would-ask", "registration-unanswered",
+                "registration-by-hand")),
     Kind("references-read", READ, "How the references were read and looked up.",
          _codes("G7", "entries-not-told-apart", "identifier-not-sent", "would-ask", "looked-up",
                 "lookup-unanswered", "reference-not-sorted", "title-not-searchable",

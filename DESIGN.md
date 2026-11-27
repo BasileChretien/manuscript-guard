@@ -11185,8 +11185,9 @@ and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each 
 the package has two places for a page and no more: `from_word.runner`, which runs pandoc
 another way where it is set, and `lookup.http.default_transport`, which sends one
 XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
-page's own origin, so that its Content-Security-Policy names no host but its own and the five
-registries `--lookup` asks, and a test holds that list to `lookup.run.Services`.
+page's own origin, so that its Content-Security-Policy names no host but its own and the seven
+registries `--lookup` asks, and a test holds that list to `lookup.run.Services` and
+`auditing.registration.asked_at`.
 
 The page is held to the command line, not trusted to match it: CI builds it as the Pages
 workflow does and requires each report on the worked example to be the command line's word for
@@ -29891,8 +29892,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
-    no case ticks the box. That the five registries answer a page (CORS) was tested by hand
-    on 2026-11-05; one that stops would be refused by the browser, and every lookup to it
+    no case ticks the box. That the seven registries answer a page (CORS) was tested by hand,
+    the reference list's five on 2026-11-05 and ClinicalTrials.gov and ISRCTN on 2026-11-26; one that stops would be refused by the browser, and every lookup to it
     said to have had no connection, with nothing in CI to notice. Accepted.
   - *pandoc.wasm's exit status is not read.* A failure is judged by nothing printed with
     something on stderr, where the command line reads pandoc's exit code. A failure that says
@@ -30997,6 +30998,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
   - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
+- **The audit asks about every registration number the text names, whoever's it is.** Under
+  `--lookup`, a trial the Introduction or the Discussion cites by its NCT or ISRCTN number is
+  looked up and shown, and a late registration of it said, as though it were the paper's own;
+  only a number in the reference list is passed over. Each finding gives the place the number
+  stands, which tells the reader whose it is. On 100 openly licensed papers (2026-11-26), 8
+  named a number, each only one, and none another trial's. Accepted.
+  - A reference list the audit does not find, under a heading it does not know and read as
+    text, is not passed over: its NCT and ISRCTN numbers are asked about as the text's are
+    (round 1 of #827). Accepted.
+  - EU PAS and PROSPERO are not asked: their note gives the page to read the record on, as a
+    project's `lookup --registrations` reads PROSPERO by hand. Accepted.
+  - Only the registry's dates are judged, never the paper's: a paper whose primary outcome
+    is not the one registered is shown beside the record and said nowhere, and a start
+    ClinicalTrials.gov gives as expected, not actual, never makes a registration late. Pinned
+    by `tests/test_audit_registration.py::test_a_registration_not_shown_late_by_the_registry_s_own_dates_is_not_flagged`.
+  - ISRCTN's dates are shown and never judged: it gives a recruitment start without saying
+    whether it happened or was planned, and a registration after a start that was only
+    planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
+    by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
 - **The statements every paper makes are found by their headings and labels.** G4's check of
   empty headings and of the statements every paper makes (`gates/statements.py`, built
   2026-11-26 after a draft built its declarations as headings over comments) has these

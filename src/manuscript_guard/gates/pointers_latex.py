@@ -101,8 +101,25 @@ class _Numbered:
     number: int
 
 
+@dataclass(frozen=True)
+class Read:
+    """What G2 reads of a LaTeX manuscript's tables and figures: its report, each pointer,
+    and by document and kind (`AS_FILES`'s keys), how many it counts and which it could not
+    count. `audit` says from these what it checked of a LaTeX paper (`auditing.displays`)."""
+
+    report: Report
+    pointers: tuple[Pointer, ...]
+    total: dict[tuple[bool, str], int]
+    uncounted: frozenset[tuple[bool, str]]
+
+
 def check_pointers_latex(project: Project) -> Report:
     """G2's pointers, as the module says, of a LaTeX manuscript."""
+    return read_pointers_latex(project).report
+
+
+def read_pointers_latex(project: Project) -> Read:
+    """G2's pointers of a LaTeX manuscript, and what they were counted from."""
     from manuscript_guard.text.latex.structure import read_document
 
     folder = project.path("manuscript")
@@ -114,13 +131,17 @@ def check_pointers_latex(project: Project) -> Report:
                         and not source.path.lower().endswith(".sty")]
         for supplementary in (False, True)
     }  # fmt: skip
-    return pointers_in_documents(documents, folder, as_files)
+    return _read_documents(documents, folder, as_files)
 
 
 def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Report:
     """G2's pointers of the main text's sources and the supplement's, `documents` by whether
     each is the supplement, each list in the include tree's order; `as_files` what paper.yaml
     declares sent as files, by document and kind."""
+    return _read_documents(documents, folder, as_files).report
+
+
+def _read_documents(documents: dict, folder: Path, as_files: dict) -> Read:
     from manuscript_guard.text.latex.printed import printed
     from manuscript_guard.text.latex.structure import ENTRY
 
@@ -131,7 +152,7 @@ def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Repo
     report = _to_nothing(typed, total, bound, as_files, uncounted)
     report = report.merge(_unchecked(pointers, total, uncounted, folder / ENTRY))
     report = report.merge(_in_order(pointers, total, uncounted, folder / ENTRY, apart))
-    return report.with_counts(
+    report = report.with_counts(
         pointers=len(pointers),
         pointers_checked=sum(
             total[p.supplementary, p.kind] > 0 and (p.supplementary, p.kind) not in uncounted
@@ -140,6 +161,7 @@ def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Repo
         tables_placed=bound[False, TABLE],
         figures_placed=bound[False, FIGURE],
     )
+    return Read(report, tuple(pointers), total, frozenset(uncounted))
 
 
 def _marks():

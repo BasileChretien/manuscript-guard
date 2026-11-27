@@ -328,6 +328,25 @@ def _latex_pointers() -> Reading:
     return lambda text: [list(span) for span in read(text).pointers]
 
 
+@reading("audit displays")
+def _audit_displays() -> Reading:
+    """What `audit` says of a paper's tables and figures told by their legends, as G2 holds
+    a project's to the order ICMJE asks for (wave B, 2026-11-27)."""
+    from manuscript_guard.auditing.displays import of_files  # noqa: F401 - absent at base
+
+    def said(given: str | dict[str, str]) -> dict[str, Any]:
+        """`given` is `main.md`'s text, or the files' texts by name."""
+        files = given if isinstance(given, dict) else {"main.md": given}
+        read = of_files(files, Path("m"))
+        return {"findings": [[f.code, f.line, f.message] for f in read.findings],
+                "notes": [f.message for f in read.notes], "counted": read.counted,
+                "supplement": {kind: list(numbers) for kind, numbers in read.supplement.items()},
+                "to_supplement": [[kind, number, finding.line]
+                                  for kind, number, finding in read.to_supplement]}  # fmt: skip
+
+    return said
+
+
 @reading("latex displays cited")
 def _latex_displays_cited() -> Reading:
     """What G2 says of a LaTeX document's pointers to the tables and figures it numbers, and
@@ -945,6 +964,19 @@ def _disclosures() -> Reading:
         contributions statements against an authors.yaml, at submission."""
         return _told(judge(given["authors"], given["main"], given.get("supplement", ""),
                            submission=True, path=MAIN))  # fmt: skip
+
+    return read
+
+
+@reading("statements")
+def _statements() -> Reading:
+    from manuscript_guard.gates.statements import empty_headings, stated
+
+    def read(text: str) -> dict[str, Any]:
+        """Which statements every paper makes a main text holds, and which of its headings
+        have nothing under them (`gates/statements.py`)."""
+        return {"stated": stated(text),
+                "empty": [[heading.title, heading.line] for heading in empty_headings(text)]}
 
     return read
 

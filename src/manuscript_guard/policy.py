@@ -248,6 +248,12 @@ BINDS_AT = {
     "missing-abstract": INTERNAL_REVIEW,
     "abstract-headings-missing": INTERNAL_REVIEW,
     "missing-required-statement": INTERNAL_REVIEW,
+    # A heading with nothing under it, and a statement every paper makes that the manuscript
+    # lacks where no profile lists the journal's: a note before drafting, a warning while
+    # drafting, a failure from internal review (`gates/statements.py` reads the stage;
+    # Basile, 2026-11-26). Listed so that a run at drafting says when they bind.
+    "section-empty": INTERNAL_REVIEW,
+    "declaration-missing": INTERNAL_REVIEW,
     # A box the profile asks for (highlights, key points): G4 warns while the paper is
     # written and fails at submission where the box is required, as the author decided
     # (2026-10-28). Listed so that a run at submission says when they bind.

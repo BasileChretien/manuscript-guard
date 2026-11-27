@@ -1,6 +1,6 @@
 ---
 name: submission-pack
-description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --stage submission is close to clean and you want to see what remains, when check reports ai-use-model-unnamed, ai-use-not-stated or ai-use-undeclared, or when the journal's proof comes back.
+description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --stage submission is close to clean and you want to see what remains, when check reports declaration-missing, ai-use-model-unnamed, ai-use-not-stated or ai-use-undeclared, or when the journal's proof comes back.
 ---
 
 # Assembling a submission
@@ -46,6 +46,23 @@ Two things the generator will tell you rather than paper over. An author with no
 roles produces a statement saying the roles are missing, because most journals now require
 them. An author whose `competing_interests` field is empty is listed as having made no
 declaration — an empty field is not a declaration of none, and journals ask per author.
+
+## The statements every paper makes
+
+Where no journal profile lists the statements the journal asks for, `check` asks for the
+ones every paper makes: data availability, ethics, funding, competing interests, author
+contributions, and AI use where the records show a model at work or `authors.yaml` declares
+a tool (`declaration-missing`), in the main text or the supplement. Each is a heading or a
+paragraph's label of its kind with words after it: a label over a comment or over "TO
+CONFIRM" states nothing, and a short paragraph wholly in emphasis is a label too ("*No
+competing interests.*"), so write a statement in plain text or after its label ("Competing
+interests: none."). A heading with only a comment or a placeholder under it prints as a
+heading alone, and is `section-empty`. Both are notes before drafting, warnings while
+drafting and failures from internal review. Draft each from `authors.yaml` and ask the
+authors, with your question tool, what no file records: the ethics committee and its
+reference, or why none was needed;
+where the data can be had. Never fill one in from a guess. Once a profile lists the journal's
+statements, `missing-required-statement` asks for those instead.
 
 ## The AI-use statement
 

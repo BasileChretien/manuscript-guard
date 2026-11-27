@@ -235,6 +235,10 @@ ROUTES: dict[str, Route] = {
     # right, each author's own entries asked of them, as the setup skill has the author fill
     # authors.yaml. No command fixes either.
     **_all("project-setup", None, "funding-", "interests-", "ethics-approval-", "credit-"),
+    # A statement every paper makes, missing: drafted from authors.yaml, what it lacks asked of
+    # the authors; and a heading with nothing under it, written or taken out.
+    **_all("submission-pack", None, "declaration-missing"),
+    **_all("manuscript-writing", ("check",), "section-empty"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical
     # abstract is put right and the check run again, as the research-communication skill

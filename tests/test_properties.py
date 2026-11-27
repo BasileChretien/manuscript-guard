@@ -26523,20 +26523,23 @@ from generated import doi_title_records  # noqa: E402
 
 @holds(40, doi_title_records())
 def test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title(
-    drawn: list[tuple[str, str, str, bool]],
+    drawn: list[tuple[str, str, str, str, bool]],
 ) -> None:
     """Item 7b (Basile, 2026-11-26): a DOI's record is another work's where its title, with
-    its subtitle, folded, holds under half the searched words of the title the entry gives;
+    its subtitle, folded, holds under half the searched words of the title the entry gives,
+    each record counted alone, Crossref's and OpenAlex's; never where a record's title is
+    the entry's; never for a title of under three words with a letter in them;
     never where it is that title in other case, accents or punctuation, split into a title
     and a subtitle, half its words in another order, or its words joined by a registry's
     tags; never for an entry whose "title" is a citation's tail read wrong, a link or a
     volume and pages; never for one that holds the record's title word for word, where a
-    journal's name was read as its title; and never for one that says its title is a
-    translation (`auditing.references._title_differs`)."""
+    journal's name was read as its title, though for one whose title holds the record's and
+    more; and never for one that says its title is a translation
+    (`auditing.references._title_differs`)."""
     read = READINGS["doi title differs"]()
-    for entry, title, subtitle, differs in drawn:
-        said = read({"entry": entry, "title": title, "subtitle": subtitle})
-        assert bool(said) == differs, (entry, title, subtitle, said)
+    for entry, title, subtitle, openalex, differs in drawn:
+        said = read({"entry": entry, "title": title, "subtitle": subtitle, "openalex": openalex})
+        assert bool(said) == differs, (entry, title, subtitle, openalex, said)
 
 
 def _a_title_is_said_to_differ_at_half_its_words(patch: pytest.MonkeyPatch) -> None:
@@ -26583,7 +26586,55 @@ def _a_title_s_words_are_not_folded(patch: pytest.MonkeyPatch) -> None:
 def _a_record_s_title_is_not_looked_for_in_the_entry(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import references
 
-    patch.setattr(references, "_gives_record_title", lambda text, titles: False)
+    patch.setattr(references, "_gives_record_title", lambda text, title, records: False)
+
+
+def _a_record_s_title_is_looked_for_inside_the_title_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    kept = references._gives_record_title
+    patch.setattr(references, "_gives_record_title",
+                  lambda text, title, records: kept(text, "", records))  # fmt: skip
+
+
+def _a_title_of_one_word_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "TITLE_WORDS", 1)
+
+
+def _a_title_s_numbers_count_as_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+    from manuscript_guard.gates.searched import search_words
+
+    patch.setattr(references, "_worded", search_words)
+
+
+def _only_crossref_s_record_is_held_to_the_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def crossref_only(entry, answers, path, style):  # noqa: ANN001, ANN202
+        return compared(entry, {"crossref": answers.get("crossref")}, path, style)
+
+    patch.setattr(references, "_title_differs", crossref_only)
+
+
+def _both_records_are_counted_together(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def together(entry, answers, path, style):  # noqa: ANN001, ANN202
+        found = [answer for answer in answers.values() if isinstance(answer, dict)
+                 and answer.get("title")]  # fmt: skip
+        merged = {"status": "found",
+                  "title": " ".join(str(one["title"]) for one in found),
+                  "subtitle": " ".join(str(one.get("subtitle") or "") for one in found)}
+        return compared(entry, {"crossref": merged}, path, style)
+
+    patch.setattr(references, "_title_differs", together)
 
 
 def _a_translation_s_marker_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -26705,6 +26756,26 @@ BROKEN = {
     ),
     "a translated title is compared with its record's": (
         _a_translation_s_marker_is_not_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's title is looked for inside the title read": (
+        _a_record_s_title_is_looked_for_inside_the_title_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title of one word is held to its record": (
+        _a_title_of_one_word_is_compared,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title's numbers count as its words": (
+        _a_title_s_numbers_count_as_its_words,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "only Crossref's record of a DOI is held to its title": (
+        _only_crossref_s_record_is_held_to_the_title,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's two records are counted together": (
+        _both_records_are_counted_together,
         test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
     ),
     "registration numbers are read in the reference list too": (

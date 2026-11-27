@@ -31137,16 +31137,26 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An entry that says its title is a translation, "[Article in Spanish]", "(in Japanese
     with English abstract)", is not compared; one that does not say so is, which is most of
     them. Pinned by `tests/test_audit_doi_title.py::test_an_entry_that_says_its_title_is_a_translation_is_not_compared`.
-  - An entry that holds its record's title word for word is not said, wherever its reader
-    took its title to be. One whose reader took the journal for its title and whose record
+  - An entry that holds its record's title word for word outside the title its reader took
+    it to give is not said; within that title the record's title is never looked for, so
+    that an invented title holding the real one and more is held to the record (round 1 of
+    #846). One whose reader took the journal for its title and whose record
     is not in it word for word is said, and quotes the journal's name as the title given:
     an entry giving a work's Spanish title, whose record at OpenAlex is its English one, was
     said with "Rev Panam Salud Publica" as its title. Accepted.
   - A fabricated title that shares half the searched words of the DOI's work, or more, is
     not said: the share was chosen so that a title cut short or split into a subtitle is
     not said either. Pinned by `tests/test_audit_doi_title.py::test_a_title_the_record_holds_most_of_is_not_said`.
-  - Only Crossref's and OpenAlex's records are compared. A DOI only DataCite or doi.org
-    knows, and a PMID, are not held to a title. Accepted.
+  - Only Crossref's and OpenAlex's records are compared, each alone, and the finding quotes
+    the one that shares the most. A DOI only DataCite or doi.org knows, and a PMID, are not
+    held to a title. Accepted.
+  - An entry whose title its reader does not find is not compared. In a list that gives
+    the title between commas, `by_title.cited` takes for the title what follows the first
+    full stop: where that is the citation's tail, "A. Smith, B. Lee, A title, Mol. Plant 8
+    (6) (2015) 871-884", it is passed over, and where the journal's name has no full stop
+    it finds no title. Where it is the rest of a journal's name, "Sci. China Life Sci.",
+    the entry is held to its record under that name, and said unless the record's title
+    stands in it word for word (round 1 of #846). Accepted.
   - Its record, 6 judged, is under the 10 the editor's report rates a kind by
     (`auditing.editor.SHOWN_FROM`): the report shows it as too few to rate, and puts the kind
     under "Ask the authors", not "Look at before you decide" (Basile, 2026-11-27). Pinned by

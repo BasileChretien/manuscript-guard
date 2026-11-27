@@ -1432,6 +1432,8 @@ def _doi_title_differs() -> Reading:
         entry = Entry("entry 1", 1, 1, dois=("10.5555/given.1",), text=given["entry"])
         answers = {"crossref": {"status": "found", "title": given["title"],
                                 "subtitle": given["subtitle"] or None}}  # fmt: skip
+        if given.get("openalex"):
+            answers["openalex"] = {"status": "found", "title": given["openalex"]}
         return [problem.message for problem in _title_differs(entry, answers, None, NUMBERED)]
 
     return read

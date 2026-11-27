@@ -871,16 +871,22 @@ _NO_TITLE = re.compile(
 _TAG = re.compile(r"<[^<>]{1,40}>")
 #: The languages an entry says its title was translated from, as PubMed marks it, "[Article
 #: in Spanish]", or as a list does, "(in Japanese with English abstract)".
-LANGUAGES = ("Arabic", "Catalan", "Chinese", "Croatian", "Czech", "Danish", "Dutch", "Finnish",
-             "French", "German", "Greek", "Hebrew", "Hungarian", "Indonesian", "Italian",
-             "Japanese", "Korean", "Lithuanian", "Norwegian", "Persian", "Polish", "Portuguese",
-             "Romanian", "Russian", "Serbian", "Slovak", "Slovenian", "Spanish", "Swedish",
-             "Thai", "Turkish", "Ukrainian", "Vietnamese")  # fmt: skip
+LANGUAGES = ("Afrikaans", "Albanian", "Arabic", "Armenian", "Basque", "Belarusian", "Bengali",
+             "Bosnian", "Bulgarian", "Catalan", "Chinese", "Croatian", "Czech", "Danish",
+             "Dutch", "Estonian", "Farsi", "Finnish", "French", "Galician", "Georgian",
+             "German", "Greek", "Hebrew", "Hindi", "Hungarian", "Icelandic", "Indonesian",
+             "Irish", "Italian", "Japanese", "Kazakh", "Korean", "Latvian", "Lithuanian",
+             "Macedonian", "Malay", "Mongolian", "Norwegian", "Persian", "Polish",
+             "Portuguese", "Romanian", "Russian", "Serbian", "Slovak", "Slovenian", "Spanish",
+             "Swahili", "Swedish", "Tamil", "Thai", "Turkish", "Ukrainian", "Urdu",
+             "Vietnamese", "Welsh")  # fmt: skip
+_LANGUAGE = "(?:" + "|".join(LANGUAGES) + ")"
 #: An entry that says its title is a translation: the registry holds the title in the
-#: language the work was written in, which shares no words with it.
+#: language the work was written in, which shares no words with it. One work may be in two,
+#: "[Article in German, French]" (round 1 of #846).
 _TRANSLATED = re.compile(
-    r"(?i)[\[(](?:article |text )?in (?:" + "|".join(LANGUAGES)
-    + r")(?:,? with (?:an )?English abstract)?[\])]"
+    rf"(?i)[\[(](?:article |text )?in {_LANGUAGE}(?:(?:,| and| or) {_LANGUAGE})*"
+    r"(?:,? with (?:an )?English abstract)?[\])]"
 )
 #: What the check was worth on 100 PMC papers (2026-11-27): 1 of the 6 notes judged by two
 #: readers was right; the others gave a work's title in translation. A note, then, and never
@@ -898,21 +904,32 @@ def _worded(title: str) -> list[str]:
     return [word for word in search_words(title) if any(c.isalpha() for c in word)]
 
 
-def _gives_record_title(text: str, titles: list[str]) -> bool:
+def _found_at(words: list[str], part: list[str]) -> int | None:
+    """Where `part` stands in `words`, word for word, or None."""
+    return next((at for at in range(len(words) - len(part) + 1)
+                 if words[at:at + len(part)] == part), None)  # fmt: skip
+
+
+def _gives_record_title(text: str, title: str, records: list[str]) -> bool:
     """Whether an entry holds a record's title, with its subtitle, word for word, folded as a
-    title search folds them: it names that work, wherever its reader took its title to be.
-    In a list that puts the title between commas, "Z.C. Dong, Y. Chen, Transcriptomics:
-    advances and approaches, Sci. China Life Sci. 56 (2013)", the reader took "China Life
-    Sci" for its title (2026-11-27). A title of too few words to tell a work by is never
-    looked for."""
+    title search folds them, outside the `title` its reader took it to give: it names that
+    work where its reader took another part of it for the title. In a list that puts the
+    title between commas, "Z.C. Dong, Y. Chen, Transcriptomics: advances and approaches,
+    Sci. China Life Sci. 56 (2013)", the reader took "China Life Sci" for its title
+    (2026-11-27). Within the title read it is never looked for: a title that holds the
+    record's and words of another work is held to the record like any other (round 1 of
+    #846). A record's title of too few words to tell a work by is never looked for."""
     from manuscript_guard.gates.searched import folded_words
 
     held = folded_words(text)
-    for title in titles:
-        words = folded_words(title)
-        if len(_worded(title)) < TITLE_WORDS:
+    read = folded_words(title)
+    at = _found_at(held, read) if read else None
+    outside = [held] if at is None else [held[:at], held[at + len(read):]]
+    for record in records:
+        if len(_worded(record)) < TITLE_WORDS:
             continue
-        if any(held[at:at + len(words)] == words for at in range(len(held) - len(words) + 1)):
+        words = folded_words(record)
+        if any(_found_at(part, words) is not None for part in outside):
             return True
     return False
 
@@ -920,16 +937,16 @@ def _gives_record_title(text: str, titles: list[str]) -> bool:
 def _title_differs(
     entry: Entry, answers: dict[str, Any], path: Path | None, style: str
 ) -> list[Problem]:
-    """A real DOI with another work's title, the commonest fabricated citation: the record
-    Crossref or OpenAlex holds for the entry's DOI is of a work whose title, with its
+    """A real DOI with another work's title, the commonest fabricated citation: each record
+    Crossref and OpenAlex hold for the entry's DOI is of a work whose title, with its
     subtitle, holds under half the searched words (`gates.searched.search_words`) of the
-    title the entry gives, read as a title search reads it (`by_title.cited`), and is not it
-    exactly (`by_title._same_title`). Its first reading must have enough words to tell a
-    work by; each longer one, read on past a full stop, is tried too, and the one the record
-    holds the most of is said, so that a longer reading can only clear an entry: one that
-    runs on into the journal's name never makes a finding of its own. Nor does an entry that
-    holds the record's title word for word, or says its title is a translation. A note
-    (`TITLE_RECORD`)."""
+    title the entry gives, read as a title search reads it (`by_title.cited`), and none is
+    it exactly (`by_title._same_title`). Its first reading must have enough words to tell a
+    work by; each longer one, read on past a full stop, is tried too, against each record
+    alone, and the reading and the record that share the most are said, so that a longer
+    reading can only clear an entry: one that runs on into the journal's name never makes a
+    finding of its own. Nor does an entry that holds a record's title word for word outside
+    the title read, or says its title is a translation. A note (`TITLE_RECORD`)."""
     from manuscript_guard.auditing.by_title import _same_title, _text, cited
     from manuscript_guard.gates.searched import search_words
     from manuscript_guard.lookup.sources import FOUND
@@ -948,23 +965,26 @@ def _title_differs(
         return []
     whole = [_TAG.sub(" ", ": ".join(str(t) for t in (record.get("title"), record.get("subtitle"))
                                       if t)) for record in records]  # fmt: skip
-    if _gives_record_title(text, whole):
+    if _gives_record_title(text, said.title, whole):
         return []
-    held = {word for title in whole for word in search_words(title)}
-    best: tuple[int, int, str] | None = None
-    for title in dict.fromkeys((said.title, *said.titles)):
-        words = _worded(title)
-        if len(words) < TITLE_WORDS:
-            continue
-        shared = sum(word in held for word in words)
-        if best is None or shared * best[1] > best[0] * len(words):
-            best = (shared, len(words), title)
+    # Each record alone, so that the title the finding quotes is the one its words were
+    # counted in (round 1 of #846: counted in both, one quoted, the count was not its own).
+    best: tuple[int, int, str, str] | None = None
+    for record in whole:
+        held = set(search_words(record))
+        for title in dict.fromkeys((said.title, *said.titles)):
+            words = _worded(title)
+            if len(words) < TITLE_WORDS:
+                continue
+            shared = sum(word in held for word in words)
+            if best is None or shared * best[1] > best[0] * len(words):
+                best = (shared, len(words), title, record)
     if best is None or best[0] >= TITLE_SHARE * best[1]:
         return []
-    shared, total, title = best
+    shared, total, title, record = best
     return [Problem(
         "reference-title-differs",
-        f'{entry.label}: its DOI {entry.dois[0]} is of a work titled "{whole[0]}", which has '
+        f'{entry.label}: its DOI {entry.dois[0]} is of a work titled "{record}", which has '
         f'{shared} of the {total} searched words of the title given, "{title}"',
         entry.line, path, entry.label, severity=INFO, hint=TITLE_RECORD,
     )]  # fmt: skip

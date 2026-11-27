@@ -1610,7 +1610,8 @@ def _looked(looked: list, paper: Path, show) -> list[str]:
         lines.append(f"    {_at(p.path, p.line, paper, show)}{p.message}")
         if p.hint:
             lines.append(f"      {p.hint}")
-    if not said:
+    # A note of a title is no word on a work's standing (round 1 of #846).
+    if not [p for p in said if p.severity != INFO]:
         known = sum(1 for one in looked if one.known)
         lines.append(f"    no registry said a work was retracted, withdrawn or under concern: "
                      f"{len(looked)} asked, {known} known to a registry that answered")  # fmt: skip

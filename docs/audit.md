@@ -401,8 +401,11 @@ on 100 published papers (2026-11-27), 1 of the 6 such notes two readers judged w
 and most of the others gave in English the title of a work written in Portuguese or
 Spanish, which no count of shared words tells from another work's. A title of fewer than
 three searched words is not compared, nor one the entry's reader took from the citation's
-tail (a link, a DOI, a year with a volume and pages), nor an entry that holds its record's
-title word for word, nor one that says its title is a translation ("[Article in Spanish]").
+tail (a link, a DOI, a year in brackets with a volume and pages), nor an entry that holds its
+record's title word for word outside the title read, nor one that says its title is a
+translation ("[Article in Spanish]"). Each registry's record is counted alone, and the
+finding quotes the one counted. An entry whose title its reader does not find, as often in a
+list that gives the title between commas, is not compared.
 The editor's report asks it of the authors, with its record (Basile, 2026-11-27).
 An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
 journal article, a book or a chapter; a web page or a legal or official text, listed as "no

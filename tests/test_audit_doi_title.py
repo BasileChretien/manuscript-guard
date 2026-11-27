@@ -26,10 +26,12 @@ def _paper(title: str = GIVEN, doi: str = "10.5555/given.1") -> str:
 
 class Registries:
     """Crossref and OpenAlex answering for each DOI of `records` with its title and
-    subtitle, 404 for any other."""
+    subtitle, OpenAlex with the title `openalex` gives where it gives one, 404 for any
+    other."""
 
     def __init__(self) -> None:
         self.records: dict[str, tuple[str, str]] = {}
+        self.openalex: dict[str, str] = {}
 
     def __call__(self, request, timeout):  # noqa: ARG002 - the transport's signature
         body: dict = {}
@@ -37,8 +39,8 @@ class Registries:
             doi = request.base.rsplit("doi:", 1)[1].lower()
             if doi in self.records:
                 title, subtitle = self.records[doi]
-                body = {"id": "W1", "is_retracted": False, "title": title, "type": "article",
-                        "publication_year": 2020}  # fmt: skip
+                body = {"id": "W1", "is_retracted": False, "type": "article",
+                        "title": self.openalex.get(doi, title), "publication_year": 2020}
         elif "/works/" in request.base:
             doi = request.base.rsplit("/works/", 1)[1].lower()
             if doi in self.records:
@@ -92,7 +94,42 @@ def test_it_is_a_note_with_its_record_on_published_papers(
     assert "1 of the 6" in TITLE_RECORD and "translation" in TITLE_RECORD
     paper = tmp_path / "paper.md"
     main(["audit", str(paper), "--lookup"])
-    assert TITLE_RECORD in capsys.readouterr().out
+    text = capsys.readouterr().out
+    # A note of a title is no word on the work's standing, which is still said (round 1 of
+    # #846).
+    assert TITLE_RECORD in text and "no registry said a work was retracted" in text
+    cited = tmp_path / "cited.md"
+    main(["audit", str(paper), "--lookup", "--cited", str(cited)])
+    capsys.readouterr()
+    listed = cited.read_text(encoding="utf-8")
+    assert "no registry said it was retracted" in listed
+    assert "a note: entry 1: its DOI" in listed and TITLE_RECORD in listed
+
+
+def test_each_record_is_counted_alone_and_the_one_counted_is_quoted(
+    tmp_path: Path, capsys, registries: Registries
+) -> None:
+    """Crossref's title shares 1 of the 7 searched words, OpenAlex's 3: each under half, so
+    the DOI is said, and the finding quotes OpenAlex's title with its own count. Counted in
+    both at once they shared 4 of 7, and the entry was cleared, or said with a count that
+    was not the quoted title's (round 1 of #846)."""
+    registries.records["10.5555/given.1"] = (
+        "Conteos semanales de resultados en una cohorte regional", "")
+    registries.openalex["10.5555/given.1"] = "Weekly counts in a cohort"
+    (said,) = _differs(tmp_path, capsys, _paper())
+    assert '"Weekly counts in a cohort", which has 3 of the 7' in said["message"], said
+
+
+def test_a_title_that_holds_its_record_s_and_more_is_held_to_it(
+    tmp_path: Path, capsys, registries: Registries
+) -> None:
+    """The record's title is looked for outside the title read, never within it: a title
+    that holds the record's and as many words again is held to the record (round 1 of
+    #846)."""
+    registries.records["10.5555/given.1"] = ("Statin therapy and fracture risk", "")
+    given = "Statin therapy and fracture risk in older women with chronic kidney disease"
+    (said,) = _differs(tmp_path, capsys, _paper(given))
+    assert "4 of the 9" in said["message"], said
 
 
 @pytest.mark.parametrize("journal", ["Sci. China Life Sci.", "Proc. Natl Acad Sci."])
@@ -113,7 +150,8 @@ def test_an_entry_that_holds_its_record_s_title_word_for_word_is_not_said(
 
 
 @pytest.mark.parametrize("marker", ["[Article in Spanish]", "(in Portuguese)",
-                                    "(in Japanese with English abstract)"])  # fmt: skip
+                                    "(in Japanese with English abstract)",
+                                    "[Article in German, French]", "(in Estonian)"])  # fmt: skip
 def test_an_entry_that_says_its_title_is_a_translation_is_not_compared(
     tmp_path: Path, capsys, registries: Registries, marker: str
 ) -> None:

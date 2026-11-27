@@ -8061,7 +8061,7 @@ _LANGUAGES = ("Spanish", "Portuguese", "Japanese", "Chinese", "French", "German"
 
 
 @st.composite
-def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
+def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
     """Entries giving a DOI, records it may hold, and whether `audit --lookup` says the DOI is
     another work's (`auditing.references._title_differs`, item 7b), one of each kind. For an
     entry giving a title of six to nine searched words: the same title; the title cased,
@@ -8073,7 +8073,12 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     (`_TAILS`), held to another work's title, which is never compared. An entry that puts its
     title between commas before a journal abbreviated with full stops, whose name is read as
     its title, held to its own title, which it holds word for word. And an entry that says
-    its title is a translation, held to another work's title. Every example holds one of
+    its title is a translation, held to another work's title. An entry whose title holds its
+    record's title and as many words again of another work's. An entry whose title is two
+    words and a volume and pages, held to another work's. An entry whose Crossref record is
+    another work's and whose OpenAlex record is its own. And one whose two records each hold
+    under half its words and both together half or more. Each is (entry, Crossref's title,
+    its subtitle, OpenAlex's title or "", whether it is said). Every example holds one of
     each, so a rule broken for one kind is seen whatever the seed."""
     words = draw(st.permutations(_TITLED))[:draw(st.integers(6, 9))]
     title = " ".join(words).capitalize()
@@ -8091,17 +8096,26 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, bool]]:
     marker = draw(st.sampled_from(_TRANSLATION_MARKERS)).format(draw(st.sampled_from(_LANGUAGES)))
     translated = (f"1. Smith A, Lee B. {title} {marker}. J Test. 2020;12(3):45-56. "
                   "doi:10.5555/given.1")  # fmt: skip
+    extended = " ".join([*words[:3], *other[:4]]).capitalize()
+    short = f"{words[0].capitalize()} {words[1]} 184:1845-56"
+    # Two records, each under half and both together half or more: ceil(n / 4) words each.
+    part = (n + 3) // 4
     return [
-        (entry, title, "", False),
-        (entry, folded.rsplit(" ", 1)[0] + ", " + "a study", "", False),
-        (entry, " ".join(words[:split]), " ".join(words[split:]), False),
-        (entry, " ".join(reversed(words[: (n + 1) // 2])), "", False),
-        (entry, tagged, "", False),
-        (entry, " ".join([*words[: (n - 1) // 2], *other[: n - (n - 1) // 2]]), "", True),
-        (entry, " ".join(other[:n]), "", True),
-        (f"1. Smith A, Lee B. {tail}. doi:10.5555/given.1", " ".join(other[:n]), "", False),
-        (commas, title.upper(), "", False),
-        (translated, " ".join(other[:n]), "", False),
+        (entry, title, "", "", False),
+        (entry, folded.rsplit(" ", 1)[0] + ", " + "a study", "", "", False),
+        (entry, " ".join(words[:split]), " ".join(words[split:]), "", False),
+        (entry, " ".join(reversed(words[: (n + 1) // 2])), "", "", False),
+        (entry, tagged, "", "", False),
+        (entry, " ".join([*words[: (n - 1) // 2], *other[: n - (n - 1) // 2]]), "", "", True),
+        (entry, " ".join(other[:n]), "", "", True),
+        (f"1. Smith A, Lee B. {tail}. doi:10.5555/given.1", " ".join(other[:n]), "", "", False),
+        (commas, title.upper(), "", "", False),
+        (translated, " ".join(other[:n]), "", "", False),
+        (entry.replace(title, extended), " ".join(words[:3]), "", "", True),
+        (entry.replace(title, short), " ".join(other[:n]), "", "", False),
+        (entry, " ".join(other[:n]), "", title, False),
+        (entry, " ".join([*words[:part], *other[:3]]), "",
+         " ".join([*words[part:2 * part], *other[3:6]]), True),
     ]
 
 
@@ -20596,9 +20610,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
     ),
-    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 7)).map(
-        lambda drawn: {"entry": drawn[0][drawn[1]][0], "title": drawn[0][drawn[1]][1],
-                       "subtitle": drawn[0][drawn[1]][2]}
+    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 13)).map(
+        lambda drawn: dict(zip(("entry", "title", "subtitle", "openalex"),
+                               drawn[0][drawn[1]][:4], strict=True))
     ),
     "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
     "rrids typed": st.one_of(

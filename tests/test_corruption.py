@@ -17266,6 +17266,9 @@ _READS_LATEX = (
     "check_ai_use",
     # The declarations held to authors.yaml: read in the same two views.
     "check_disclosures",
+    # The statements every paper makes, read in G4's `main_text`; a LaTeX manuscript's
+    # headings are not held to having something under them (DESIGN.md, Known gaps).
+    "check_statements",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
@@ -24720,6 +24723,12 @@ def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> N
     plan.write_bytes(text.replace("## Population and data source", "## Cohort {#population}")
                      .encode())  # fmt: skip
     assert _sources_said(project) == [("plan-source-unnamed", "warn")]
+    # Headed as a case report heads its patient, "Patients" or "Patient information" whole,
+    # it is the Population G12 counts, and this check reads it as such (round 1 of #840:
+    # neither G12 nor this check said anything of it).
+    for heading in ("## Patients", "## Patient information", "## The patient"):
+        plan.write_bytes(text.replace("## Population and data source", heading).encode())
+        assert _sources_said(project) == [("plan-source-unnamed", "warn")], heading
 
 
 def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:
@@ -40515,6 +40524,107 @@ def test_the_deviations_are_found_by_their_words_and_never_named(project: Path) 
     assert "{#" not in hints["the plan says nothing about deviations"]
 
 
+def test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis(
+    project: Path,
+) -> None:
+    """A case report took `other` until it became a design of the table, and its plan was
+    asked for the seven sections alone: how its data would be analysed and how the plan was
+    departed from, which a report of one patient's care has no use for, and never whether
+    the patient consented or could be recognised. Its plan is asked for CARE's sections,
+    each with its item in the hint, and not for the analysis or the deviations, whether it
+    leaves them out or holds them empty (Basile, 2026-11-27)."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="case-report")
+    care = ["de-identification", "diagnostic assessment", "informed consent",
+            "patient perspective", "timeline"]  # fmt: skip
+    assert _plan_asked(project) == care
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(CARE 2013 checklist, item 13)" in hints[
+        "the plan says nothing about informed consent"]
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Analysis\n" in text and "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Analysis\n", "## Notes\n")
+                    .replace("## Deviations from the plan\n", "## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == care
+    report = check_design(load_project(project)[0])
+    assert report.counts["design_expected"] == 10, report.counts
+    plan.write_text(text.replace("## Deviations from the plan\n",
+                                 "## Deviations from the plan\n\nTBD\n\n## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    report = check_design(load_project(project)[0])
+    assert not [f for f in report.findings if f.code == "plan-section-empty"], report.render()
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Anonymisation", "de-identification", True),
+        ("## Confidentiality", "de-identification", True),
+        ("## Identifiable details", "de-identification", True),
+        ("## Identification of the patient", "de-identification", False),
+        ("## Time line", "timeline", True),
+        ("## Chronology of events", "timeline", True),
+        ("## Follow-up time", "timeline", False),
+        ("## Diagnosis", "diagnostic assessment", True),
+        ("## Differential diagnosis", "diagnostic assessment", True),
+        ("## Prognosis", "diagnostic assessment", False),
+        ("## Work-up", "diagnostic assessment", False),
+        ("## The patient's perspective", "patient perspective", True),
+        ("## Patient’s view", "patient perspective", True),
+        ("## Patients' experiences", "patient perspective", True),
+        ("## Clinical perspective", "patient perspective", False),
+        ("## Patient information", "patient perspective", False),
+        ("## Consent for publication", "informed consent", True),
+        ("## Patient consent", "informed consent", True),
+        ("## Ethics approval", "informed consent", False),
+    ],
+)  # fmt: skip
+def test_a_case_report_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """A case report's sections are found by words those sections alone use, as the
+    cross-sectional and the diagnostic accuracy designs' are (DESIGN.md, Known gaps, "A
+    design's sections are found by the words of their headings"): its own headings count,
+    and a heading of another section, the patient's information or the ethics approval,
+    or of none, does not."""
+    _paper_has(project, study_type="case-report")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("heading", "found"),
+    [
+        ("## Patient information", True), ("## The patient", True), ("## Patient", True),
+        ("## Patients", True), ("## 3. Patient information", True),
+        ("## Patient information (de-identified)", True),
+        ("## Patient perspective", False), ("## Patient consent", False),
+        ("## Patient information sheet", False), ("## Patient and public involvement", False),
+    ],
+)  # fmt: skip
+def test_the_patient_is_the_population_where_the_heading_is_the_patient_whole(
+    project: Path, heading: str, found: bool
+) -> None:
+    """CARE heads what a case report says of its patient "Patient information", and G12
+    reads such a heading as the population of a plan of any design; but only one that is
+    the patient whole, as STARD's index test and target condition are (round 3 of #830),
+    since a heading that names the patient in passing heads another section, the
+    patient's perspective or consent."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Population and data source\n" in text
+    plan.write_text(text.replace("## Population and data source\n", f"{heading}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert ("population" not in _plan_asked(project)) is found
+
+
 def test_a_diagnostic_accuracy_plan_is_asked_for_its_reference_standard_and_thresholds(
     project: Path,
 ) -> None:
@@ -40861,7 +40971,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
 
     assert sorted(study_types()) == sorted([
         "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
-        "self-controlled", "disproportionality", "systematic-review", "prediction-model"])
+        "case-report", "self-controlled", "disproportionality", "systematic-review",
+        "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)
@@ -44499,6 +44610,61 @@ def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Pa
     assert _disclosure_findings(project, "submission") == []
     _disclosures_recorded(project, "Example", funding=[_GRANT])
     assert _disclosure_findings(project, "submission") == [("funding-denied", "fail")]
+
+
+# --------------------------------------------------------------------------------------
+# G4: the statements every paper makes, and no heading with nothing under it
+# (`gates/statements.py`). A note before drafting, a warning while drafting, a failure from
+# internal review.
+
+
+def _statement_findings(root: Path, stage: str) -> list[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return sorted((f.code, f.severity, f.subject or "") for f in report.findings
+                  if f.code in ("section-empty", "declaration-missing"))  # fmt: skip
+
+
+def test_a_statement_left_as_a_comment_under_its_heading_is_caught(project: Path) -> None:
+    """The heading prints alone: the comment saying what is to be written does not print."""
+    _replaced(main_md(project), "This work received no funding.",
+              "<!-- TO CONFIRM WITH THE AUTHORS: no funding. -->")
+    assert _statement_findings(project, "drafting") == [("section-empty", "warn", "Funding")]
+    assert _statement_findings(project, "internal-review") == [
+        ("section-empty", "fail", "Funding")]
+
+
+def test_a_statement_missing_with_no_journal_chosen_is_caught(project: Path) -> None:
+    """Without the journal's list, the five every paper makes are asked for: the example's
+    data, funding and competing interests statements, its ethics in a denial, and no author
+    contributions statement."""
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    assert _statement_findings(project, "drafting") == [
+        ("declaration-missing", "warn", "contributions")]
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.\n", "")
+    assert _statement_findings(project, "submission") == [
+        ("declaration-missing", "fail", "contributions"),
+        ("declaration-missing", "fail", "interests")]
+
+
+def test_a_declarations_section_of_labels_over_comments_is_caught(project: Path) -> None:
+    """Springer's layout before the statements are written: each a label over a comment, or
+    over a placeholder G6 passes. The labels print, so the heading is not empty, and every
+    statement is missing (round 1 of #819); a CRediT role there states no funding."""
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    text = main_md(project).read_text(encoding="utf-8")
+    at = text.index("# Data availability")
+    main_md(project).write_text(text[:at] + (
+        "# Declarations\n\n**Funding:** <!-- TO CONFIRM WITH THE AUTHORS -->\n\n"
+        "**Competing interests:** TO CONFIRM WITH THE AUTHORS.\n\n"
+        "**Ethics approval:** <!-- -->\n\n"
+        "**Availability of data and materials:** To be completed.\n\n"
+        "**Author contributions:** AE: Conceptualization, Funding acquisition.\n"),
+        encoding="utf-8")
+    assert _statement_findings(project, "internal-review") == [
+        ("declaration-missing", "fail", subject)
+        for subject in ("data", "ethics", "funding", "interests")]
 
 
 # --------------------------------------------------------------------------------------

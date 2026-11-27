@@ -117,6 +117,7 @@ from manuscript_guard.gates.rrids import check_rrids
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.software import check_software
 from manuscript_guard.gates.software_methods import check_software_cited
+from manuscript_guard.gates.statements import check_statements
 from manuscript_guard.gates.summaries import check_summaries
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.gates.vault import check_vault_results
@@ -241,6 +242,9 @@ def _gate_run(
             # Its own too: the declarations are held to authors.yaml whether or not a journal is
             # chosen, and a journal that asks for them has G4's required statements as well.
             ("G4", lambda: check_disclosures(project, chosen)),
+            # The statements every paper makes where no profile lists the journal's, and no
+            # heading with nothing under it.
+            ("G4", lambda: check_statements(project, chosen)),
             ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
             ("G6", lambda: check_writing(project, results, submission=at_submission)),
             ("G9", lambda: check_methods(project, namespace, results)),
@@ -876,6 +880,25 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
+def _built_heading_note(sent: Path, returned: Path) -> str:
+    """What `import` says of the heading the build puts over the reference list, where it came
+    back with other words: it is the build's (`docxtext.BUILT_HEADING`), in no file of the
+    manuscript, so `blocks` reads it in neither document and nothing of it is applied. A
+    document without it, built before it or with it deleted, says nothing."""
+    from manuscript_guard.docxtext import DocumentUnreadable, built_heading_text, spaced
+
+    try:
+        wrote, back = built_heading_text(sent), built_heading_text(returned)
+    except DocumentUnreadable:
+        return ""
+    if wrote is None or back is None or spaced(wrote).strip() == spaced(back).strip():
+        return ""
+    return (f'The heading over the reference list came back as "{spaced(back).strip()}", and '
+            f'the build wrote "{spaced(wrote).strip()}". The build writes it, from no file of '
+            f'the manuscript, so nothing of it is applied: it is "References", or the journal '
+            f"profile's `references.heading`.")  # fmt: skip
+
+
 def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
     """How much of the returned document this command could not look at.
 
@@ -1384,6 +1407,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             )
             return 2
         sent = read_blocks(reference)
+        heading_note = _built_heading_note(reference, edited)
         # The marked build is this command's own, not a document anyone sent, and a failure
         # to read it once stopped the import of every paragraph over a file the author had
         # never seen. Without it no token has a position: a reworded paragraph holding a
@@ -1516,7 +1540,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     unaccounted = [n for n in numbered.sent if n not in vouched and n not in present]
     values = sorted(unsure - present)
     said = _not_compared(edited, strangers, unaccounted, values)
-    unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
+    unexamined = "\n  ".join(part for part in (unexamined, *said, heading_note) if part)
     unaccounted += values
 
     # Each comment, anchored where the import vouches for the paragraph it was made on, with

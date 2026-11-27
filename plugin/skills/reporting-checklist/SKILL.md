@@ -174,6 +174,7 @@ that names none: choose the guideline that fits it with the author.
 | case-control | STROBE, RECORD | |
 | cross-sectional | STROBE, RECORD | |
 | diagnostic-accuracy | STARD | |
+| case-report | CARE (no recipe yet) | |
 | self-controlled | STROBE, RECORD (no guideline is written for the design) | |
 | disproportionality | READUS-PV | |
 | systematic-review | PRISMA | PRISMA-P |

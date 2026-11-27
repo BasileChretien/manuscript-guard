@@ -353,14 +353,15 @@ features:
     title: Word documents
     says: >-
       Builds the manuscript and its supplement as Word documents, with live Zotero
-      citations, says why when a citation could not be one, and on request every number
-      coloured by what backs it.
+      citations, says why when a citation could not be one, puts the reference list under
+      its heading, and on request every number coloured by what backs it.
     status: works
     commands: [build]
     tests:
       - tests/test_build.py
       - tests/test_annotate.py
       - tests/test_zotero_word.py
+      - tests/test_references_heading.py
       - tests/test_cli.py::test_an_offline_build_says_its_citations_are_text_and_check_notes_it
 
   - id: readable
@@ -635,11 +636,12 @@ features:
     stage: check
     title: Declarations
     says: >-
-      The funding, competing interests, ethics, contributions and AI-use statements say what
-      the authors' records say.
+      The paper makes the statements every paper makes, data availability, ethics, funding,
+      competing interests, contributions and AI use, each saying what the authors' records
+      say, and no heading is left with nothing under it.
     status: works
     gates: [G4]
-    tests: [tests/test_disclosures.py, tests/test_ai_use.py]
+    tests: [tests/test_disclosures.py, tests/test_ai_use.py, tests/test_statements.py]
 
   - id: reporting-checklist
     stage: check
@@ -894,6 +896,28 @@ features:
       language checks read the paragraphs, the numbers, the Abstract, the references and
       compare reading the PDF's lines as before; front matter and side boxes are read as
       prose (DESIGN.md, Known gaps).
+
+  - id: audit-displays
+    stage: others
+    title: Tables and figures
+    says: >-
+      Holds a paper's tables and figures to the order ICMJE asks for, each counted by its
+      legends: each cited, numbered in the order of its first citation, and no pointer to
+      one the paper has no legend for, the supplement's held to its own legends.
+    status: works
+    commands: [audit]
+    tests:
+      - tests/test_properties.py::test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order
+      - tests/test_audit_displays.py::test_the_three_findings_each_at_its_place
+      - tests/test_audit_displays.py::test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_wherever_given
+      - tests/test_audit_displays.py::test_the_audit_reports_them_in_their_section_and_in_its_summary
+    docs: docs/audit.md
+    limits: >-
+      A kind whose legends do not number it 1 to n once each, or that has none, is not
+      checked, nor a pointer past the legends where the file holds more tables or pictures
+      than they number; a legend missed by its form makes the one past it read as a pointer
+      to nothing; a PDF is read only where its lines were rebuilt into paragraphs (DESIGN.md,
+      Known gaps).
 
   - id: audit-page
     stage: others

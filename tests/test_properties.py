@@ -158,6 +158,7 @@ from generated import (
     latex_trees,
     latex_words,
     latex_writing,
+    legend_displays,
     lines,
     linked_lines,
     margin_tables,
@@ -3876,6 +3877,68 @@ def test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset(drawn: dict[str, 
     assert not [f for f in writing if f.code == "vague-attribution"], writing
 
 
+def _a_legend_without(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    from manuscript_guard.auditing import displays
+
+    assert old in displays._LEGEND.pattern
+    patch.setattr(displays, "_LEGEND", re.compile(displays._LEGEND.pattern.replace(old, new)))
+
+
+def _a_bmc_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|[^\S\n]+(?=[A-Z])", "")
+
+
+def _a_picture_s_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:!?\[)?", "")
+
+
+def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|figs?\.?)", ")")
+
+
+def _a_sentence_opening_with_a_pointer_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?=[A-Z])", "")
+
+
+def _a_link_opening_a_sentence_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #837: a link's end, whatever follows it, read as a legend's.
+    _a_legend_without(patch, r"(?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?", r".*)?")
+
+
+def _a_range_s_dash_sets_off_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", "")
+
+
+def _a_range_of_links_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837: only a number after the dash read as a range's.
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", r"(?![^\S\n]*\d)")
+
+
+def _a_file_s_displays_are_not_held_against_its_legends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import displays
+
+    patch.setattr(displays, "_held", lambda text: {"table": 0, "figure": 0})
+
+
+def _a_kind_holding_more_is_left_uncounted(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837's guard: a kind its file holds more of than its legends number is not
+    # held to anything.
+    from manuscript_guard.auditing import displays
+
+    counted = displays._counted
+
+    def broken(kind, legends, cited, path, held=0):
+        found, notes, checked = counted(kind, legends, cited, path, held)
+        return ([], notes, False) if checked and held > len(legends) else (found, notes, checked)
+
+    patch.setattr(displays, "_counted", broken)
+
+
+def _a_range_from_a_panel_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?",
+                      "[A-Za-z]?")
+
+
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -5472,6 +5535,202 @@ def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosures, "_data", lambda: data)
 
 
+# ------------------------------------------------- the statements every paper makes
+
+from generated import DECLARED_PLANTED, statement_papers  # noqa: E402
+
+
+@holds(100, statement_papers())
+def test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said(
+    drawn: tuple[str, list[tuple[str, str]], list[tuple[str, str, str]], list[str]],
+) -> None:
+    """G4 finds each statement every paper makes under a heading, numbered or not, after a
+    label of any of four shapes, as a sentence of a Declarations section, and an ethics
+    statement in each of its forms, the Methods and a denial among them, and a Data
+    availability statement under each heading journals ask for; a heading with only a
+    comment, Markdown's comment idiom or a placeholder under it is empty, one whose words are
+    all in its subsection is not, nor one the bibliography is printed under, and one over an
+    empty subsection alone is no gap of its own. Each statement taken out is the one
+    missing, its label left over a comment or a placeholder heading nothing, the label after
+    it a Data availability or an AI-use one, a CRediT role stating no funding; and each
+    emptied under its heading is said by that heading alone (`gates/statements.py`)."""
+    from manuscript_guard.gates.statements import empty_headings, missing, stated
+
+    planted = list(DECLARED_PLANTED)
+    paper, removed, emptied, restated = drawn
+    for text in (paper, *restated):
+        shown = sorted(heading.title for heading in empty_headings(text))
+        assert shown == sorted(planted), (shown, text)
+        assert missing(stated(text)) == [], (stated(text), text)
+    for kind, changed in removed:
+        assert missing(stated(changed)) == [kind], (kind, stated(changed), changed)
+    for kind, title, changed in emptied:
+        said = stated(changed)
+        assert said.get(kind) == "empty" and missing(said) == [], (kind, said, changed)
+        shown = sorted(heading.title for heading in empty_headings(changed))
+        assert shown == sorted([title, *planted]), (title, shown, changed)
+
+
+def _a_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+    from manuscript_guard.text.masking import blank, front_matter_end, metadata_blocks
+
+    patch.setattr(statements, "_shown", lambda text: blank(
+        text, [(0, front_matter_end(text)), *metadata_blocks(text)]))
+
+
+def _a_heading_s_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_printed",
+                  lambda headings, bodies: [bool(body.strip()) for body in bodies])
+
+
+def _the_reference_list_s_heading_can_be_empty(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_bibliography", lambda title, last: False)
+
+
+def _only_the_reference_list_s_own_heading_holds_the_bibliography(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_bibliography", lambda title, last: statements.Section(
+        title=title, level=1, body="", line=0).is_references)
+
+
+def _a_heading_over_empty_subsections_is_a_gap_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_gaps", lambda headings, printed: [
+        index for index, (heading, shown) in enumerate(zip(headings, printed, strict=True))
+        if not shown and heading.title.strip()])
+
+
+def _a_placeholder_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_placeholder", lambda text: False)
+
+
+def _a_link_s_reference_definition_prints(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_unprinted", lambda text: text)
+
+
+def _a_label_s_words_are_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_said_words", lambda text: text)
+
+
+def _a_credit_role_states_funding(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_without_roles", lambda folded: folded)
+
+
+def _only_g4_s_data_headings_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+    from manuscript_guard.gates.data_statement import HEADING
+
+    patch.setattr(statements, "_DATA_HEADING", re.compile(HEADING))
+
+
+def _a_label_runs_on_past_a_data_or_ai_use_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_cut", lambda rest, data_heading: rest)
+
+
+def _any_heading_ending_in_references_holds_the_bibliography(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    held = statements._bibliography
+    patch.setattr(statements, "_bibliography", lambda title, last: held(title, True))
+
+
+def _a_label_with_nothing_after_it_outranks_an_empty_heading(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_RANK", {statements.STATED: 0, statements.LABELLED: 1,
+                                        statements.EMPHASISED: 1, statements.HEADED_EMPTY: 2})
+
+
+def _a_label_after_two_blank_lines_is_none(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_one_blank_line", lambda text: text)
+
+
+def _a_label_alone_with_a_stop_is_no_label(patch: pytest.MonkeyPatch) -> None:
+    """A paragraph wholly in emphasis that ends in a stop read as a sentence, where G4's own
+    reading of the declarations takes it for a label alone (Basile, 2026-11-27: strict)."""
+    from manuscript_guard.gates import disclosures
+
+    label = disclosures._label
+
+    def unless_stopped(paragraph: str) -> tuple[str, str] | None:
+        text = paragraph.strip()
+        emphasised = text[:1] in "*_" and text.rstrip(".").endswith(("*", "_"))
+        stopped = text.rstrip("*_").endswith(".") or text.endswith(".")
+        return None if emphasised and stopped else label(paragraph)
+
+    patch.setattr(disclosures, "_label", unless_stopped)
+
+
+def _a_label_s_own_paragraph_is_cut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_held",
+                  lambda own, rest, data_heading: statements._cut(rest, data_heading))
+
+
+def _a_placeholder_g6_fails_is_nothing_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_g6_fails", lambda text: False)
+
+
+def _availability_of_code_is_a_data_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    title = statements._DATA_TITLE + "|availability of (?:the )?code"
+    patch.setattr(statements, "_DATA_HEADING", re.compile(rf"^[\W\d]*(?:{title})\b", re.I))
+
+
+def _a_label_opens_no_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    patch.setattr(disclosures, "_labelled", lambda printed: iter(()))
+
+
+def _the_methods_are_not_read_for_ethics(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "methods_sections", lambda sections, abstract=None: [])
+
+
+def _a_denial_is_no_ethics_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    data = {**disclosures._data(), "no_approval": []}
+    patch.setattr(disclosures, "_data", lambda: data)
+
+
+def _a_declarations_section_s_words_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_words_of", lambda kind, text: False)
+
+
 # ------------------------------------------------- the head over a fetched PDF's title
 
 from generated import PDF_WORK, pdf_first_pages  # noqa: E402
@@ -6424,6 +6683,35 @@ def test_a_plan_section_named_on_its_heading_is_found_whatever_its_words(
     assert named, kinds
     for name in named:
         assert f"the plan says nothing about {name}" not in missing, given["plan"]
+
+
+@holds(30, sectioned_plans(setting_aside=True))
+def test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds(
+    drawn: tuple[dict[str, str], list[tuple[str, str]]],
+) -> None:
+    """A case report has no analysis to plan and no plan to depart from (Basile,
+    2026-11-27): a section of the seven that the design sets aside (`not_asked` in
+    `data/study_types.yaml`) is never said to be missing or empty, whether the plan holds
+    it, words it otherwise, leaves it empty or leaves it out, and G12 expects the other
+    sections alone."""
+    from manuscript_guard.gates.design import study_types
+
+    given, kinds = drawn
+    design = re.search(r"(?m)^study_type: (\S+)$", given["paper"]).group(1)
+    aside = set(study_types()[design]["not_asked"])
+    said = READINGS["plan sections asked"]()(given)
+    told = {f["message"] for f in said["findings"]
+            if f["code"] in ("plan-section-missing", "plan-section-empty")}  # fmt: skip
+    for name in aside:
+        assert f"the plan says nothing about {name}" not in told, given["plan"]
+        assert f"the plan's {name} section is a heading with nothing under it" not in told
+    assert said["counts"]["design_expected"] == len(kinds) - len(aside), said["counts"]
+
+
+def _a_design_s_set_aside_sections_are_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "not_asked", lambda study_type: frozenset())
 
 
 def _a_section_s_name_on_its_heading_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -12014,6 +12302,38 @@ def test_a_ref_prints_the_number_its_display_has_or_is_said(
     findings = said["report"]["findings"]
     found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
     assert found == planted, (files, findings)
+
+
+@holds(100, legend_displays())
+def test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper written outside manuscript-guard, its tables and figures told by their legends
+    in every form a paper sets one, is held as G2 holds a project (`auditing.displays`): the
+    first citation out of order, the display cited nowhere and the pointer past the last
+    legend are said, at their lines, for each kind, and nothing else. Each kind is counted, and
+    no note says otherwise."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert said["notes"] == [] and said["counted"] == 2, (text, said)
+
+
+@holds(100, legend_displays(unread=True))
+def test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper whose file holds a table and a picture its legends do not number may hold a
+    legend the check does not read, and a pointer past its legends may be to one of them: it
+    is said not checked, in one note for each kind, and the kind is held to the rest, the
+    order of its first citations and each one cited, as before (the fix-only round on
+    f0bd603 of #837)."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert [("past its table legends" in note, "past its figure legends" in note)
+            for note in said["notes"]] == [(True, False), (False, True)], (text, said)
+    assert said["counted"] == 2, (text, said)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -26780,6 +27100,46 @@ def _a_registration_number_s_line_counted_in_the_masked_text(patch: pytest.Monke
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "an audited paper's legend set as BMC sets it is read as a citation": (
+        _a_bmc_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's picture's legend is read as a citation": (
+        _a_picture_s_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's legend opened by Fig. is read as a citation": (
+        _a_fig_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's sentence opening with a pointer is read as a legend": (
+        _a_sentence_opening_with_a_pointer_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's cross-reference link opening a sentence is read as a legend": (
+        _a_link_opening_a_sentence_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range opening a sentence is read as a legend": (
+        _a_range_s_dash_sets_off_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range of two links opening a sentence is read as a legend": (
+        _a_range_of_links_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range from a panel opening a sentence is read as a legend": (
+        _a_range_from_a_panel_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's tables and pictures are not held against its legends": (
+        _a_file_s_displays_are_not_held_against_its_legends,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
+    "an audited paper's kind its file holds more of than its legends is left uncounted": (
+        _a_kind_holding_more_is_left_uncounted,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
     "registration numbers are read in the reference list too": (
         _registration_numbers_read_in_the_reference_list,
         test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
@@ -29124,6 +29484,10 @@ BROKEN = {
     "a section's name on its heading is not read": (
         _a_section_s_name_on_its_heading_is_not_read,
         test_a_plan_section_named_on_its_heading_is_found_whatever_its_words,
+    ),
+    "a design's set-aside sections are asked": (
+        _a_design_s_set_aside_sections_are_asked,
+        test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds,
     ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
@@ -34434,6 +34798,94 @@ BROKEN = {
     "an SVG's attributes are read as its text": (
         _attributes_are_read,
         test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "a comment under a heading is printed": (
+        _a_comment_is_printed,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a heading's subsections are not read": (
+        _a_heading_s_subsections_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "the reference list's heading can be empty": (
+        _the_reference_list_s_heading_can_be_empty,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label opens no statement": (
+        _a_label_opens_no_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "the Methods are not read for an ethics statement": (
+        _the_methods_are_not_read_for_ethics,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a denial of approval is no ethics statement": (
+        _a_denial_is_no_ethics_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a Declarations section's words are not read": (
+        _a_declarations_section_s_words_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "only the reference list's own heading holds the bibliography": (
+        _only_the_reference_list_s_own_heading_holds_the_bibliography,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a heading over empty subsections is a gap of its own": (
+        _a_heading_over_empty_subsections_is_a_gap_of_its_own,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a placeholder is a statement": (
+        _a_placeholder_is_a_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a link's reference definition prints": (
+        _a_link_s_reference_definition_prints,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label's words are a sentence": (
+        _a_label_s_words_are_a_sentence,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a CRediT role states funding": (
+        _a_credit_role_states_funding,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "only G4's own data headings are read": (
+        _only_g4_s_data_headings_are_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label runs on past a Data availability or an AI-use label": (
+        _a_label_runs_on_past_a_data_or_ai_use_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "any heading ending in references holds the bibliography": (
+        _any_heading_ending_in_references_holds_the_bibliography,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label as G4 reads it, alone and ending in a stop, is no label": (
+        _a_label_alone_with_a_stop_is_no_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label with nothing after it outranks an empty heading": (
+        _a_label_with_nothing_after_it_outranks_an_empty_heading,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label after two blank lines is none": (
+        _a_label_after_two_blank_lines_is_none,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label's own paragraph is cut": (
+        _a_label_s_own_paragraph_is_cut,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a placeholder G6 fails is nothing printed": (
+        _a_placeholder_g6_fails_is_nothing_printed,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "Availability of code is a data statement": (
+        _availability_of_code_is_a_data_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
     "a tag in a saved page is a space": (
         _a_tag_in_a_saved_page_is_a_space,

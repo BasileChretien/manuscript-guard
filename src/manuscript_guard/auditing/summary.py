@@ -197,6 +197,26 @@ def _small_cells(report) -> str:
     return "no count held back can be worked out"
 
 
+#: The summary's row for G2's tables and figures (`auditing.displays`).
+DISPLAYS_ROW = "Tables and figures"
+
+
+def _displays(report) -> str:
+    """G2's findings on the tables and figures counted, or why none was checked."""
+    from manuscript_guard.auditing.report import display_items, displays_counted
+    from manuscript_guard.findings import INFO
+
+    said = display_items(report)
+    loud = sum(1 for item in said if item.severity != INFO)
+    if loud:
+        return f"{_n(loud, 'finding')} to look at (not counted by --strict)"
+    if displays_counted(report):
+        return "each counted from its legends is cited, and in the order of its number"
+    if not said:
+        return "no table or figure is numbered by a legend or pointed at"
+    return "not counted from their legends: see below"
+
+
 def _words(report) -> str:
     """G6's and G14's findings counted, and each paper they did not run on said: one
     unread paper beside another's findings is not a paper checked (round 1 of #600)."""
@@ -343,6 +363,8 @@ def rows(report) -> list[tuple[str, str]]:
     rows.append(("Small cells", _small_cells(report)))
     if report.gates:
         rows.append(("Writing and language", _words(report)))
+    if any(getattr(run, "displays", None) is not None for run in report.gates or []):
+        rows.append((DISPLAYS_ROW, _displays(report)))
     if report.references:
         rows.append(("References", _references(report)))
     for name, present in (("Journal", report.journal), ("Causal words", report.causal),
@@ -430,6 +452,15 @@ def standings(report) -> dict[str, str]:
         # G14's question open where nothing else is to say ("Show the questions").
         if words_asked(report) and out["Writing and language"] == CLEAR:
             out["Writing and language"] = ASKED
+    if any(getattr(run, "displays", None) is not None for run in report.gates or []):
+        from manuscript_guard.auditing.report import display_items, displays_counted
+        from manuscript_guard.findings import INFO
+
+        said = display_items(report)
+        loud = any(item.severity != INFO for item in said)
+        # Nothing numbered and nothing pointed at is nothing to find, not a check not run.
+        out[DISPLAYS_ROW] = (NOT_RUN if said and not loud and not displays_counted(report)
+                             else of(False, loud))  # fmt: skip
     if report.references:
         counted = [census for census in report.references if not census.note]
         problems = any(census.problems or census.unsent for census in counted)

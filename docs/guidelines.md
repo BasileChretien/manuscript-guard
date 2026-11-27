@@ -80,13 +80,13 @@ each new item's `where`, and keeps the quotes already written.
 G5 warns where a declared design has none of its
 guidelines: a trial is reported with CONSORT, a cohort study with STROBE, RECORD or TARGET, a
 case-control, cross-sectional or self-controlled study with STROBE or RECORD, a diagnostic
-accuracy study with STARD, a disproportionality analysis with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
+accuracy study with STARD, a case report with CARE, a disproportionality analysis with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
 `study_type: other` is a design none of these is. MDAR and SAGER belong to no one design, so
 no design asks for them: a project that follows one names it in `reporting_guideline` beside
 its design's guideline. It warns too when the manuscript says it
 followed a guideline that `paper.yaml` does not name, and when a recipe records that the
 guideline's authors replaced it, as TRIPOD 2015's recipes do for TRIPOD+AI.
-TARGET has no recipe yet.
+TARGET and CARE have no recipe yet.
 
 A new edition of a guideline is a new recipe, and the items are made again from the new
 document by `transcribe`; a generated checklist is never edited by hand, so it stays what

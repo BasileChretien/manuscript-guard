@@ -82,13 +82,15 @@ MEASURED: dict[str, Measured] = {
     # the false ones from 4 papers, most of them a section rewritten rather than a claim
     # reversed. Not `reworded`'s, which reads one edit of a project's own text. At 0949b4b.
     "claim-negation": Measured(INFO, true=1, judged=17, papers=4, gate="compare"),
-    # G14's short form used before its definition, in text read from a PDF, whose paragraphs
-    # are gone: 35 true of the 81 reported, the false ones from 17 papers. These are all the
-    # reported findings read from a PDF: the `audit` of a PDF paper (25 of 65, from 12) and
-    # the `audit-pdf` of a LaTeX paper (10 of 16, from 5; the corpus holds no Word paper's
-    # own PDF). From Word, LaTeX or Markdown, where 111 of the 166 reported were true, it
-    # keeps its warning. At 77abd45db (Basile, 2026-11-23, "INFO on PDFs now").
-    "abbreviation-used-before-defined": Measured(INFO, true=35, judged=81, papers=17,
+    # G14's short form used before its definition, in text read from a PDF. Lowered at
+    # 77abd45db, the PDF's paragraphs gone: 35 true of the 81 reported, the false ones from
+    # 17 papers (Basile, 2026-11-23, "INFO on PDFs now"). Measured again with the paragraphs
+    # rebuilt for G6 and G14 (#802), at f1bd2fad5: 49 true of the 85 judged findings present
+    # on text read from a PDF, 0.576, the false ones from 16 papers, short of the 0.75 a fix
+    # must measure for the warning to come back, so it stays a note (Basile, 2026-11-26,
+    # "Keep INFO, the 0.75 rule"). From Word, LaTeX or Markdown, where 111 of the 166
+    # reported were true, it keeps its warning.
+    "abbreviation-used-before-defined": Measured(INFO, true=49, judged=85, papers=16,
                                                  gate="G14", read_from=PDF),
 }
 

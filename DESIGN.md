@@ -30877,6 +30877,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     word alone, in bold or as a heading, is passed over to the list's end, the first
     paragraph that is no entry. Pinned by
     `tests/test_audit.py::test_literature_alone_opens_a_reference_list`.
+  - A label "Literature" alone on its line over items that are no references opens a list
+    all the same, a diagram's or a table's label in an appendix among them (docx-meta-2's
+    Appendix 8, "Literature" over "1. Explore the knowledge ...", Basile, 2026-11-27): the
+    items are read as entries, G7 counts them, and the gates that pass a list over read
+    none of them, to the first paragraph that is no entry. Pinned by
+    `tests/test_audit.py::test_a_lone_literature_label_over_numbered_items_opens_a_list`.
   - The title again ends the Abstract only in bold as a whole and repeating a paragraph of
     four words or more before the Abstract word for word, case, emphasis and a closing stop
     or colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends

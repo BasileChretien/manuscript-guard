@@ -3483,3 +3483,17 @@ def test_literature_alone_opens_a_reference_list(label: str, listed: bool) -> No
 
     text = f"# Discussion\n\nIt held.\n\n{label}\n\n1. Doe A. Large language models (LLMs). 2020.\n"
     assert bool(unmarked_reference_lists(text)) == listed
+
+
+def test_a_lone_literature_label_over_numbered_items_opens_a_list() -> None:
+    """A limit written down in DESIGN.md's Known gaps (docx-meta-2, Basile, 2026-11-27): a
+    label "Literature" alone on its line, a diagram's in an appendix, over numbered items that
+    are no references, opens a list, and the items are read as its entries."""
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    text = ("# Appendix 8\n\nThe tool helps the data steward.\n\nLiterature\n\n1. Explore "
+            "the knowledge, skills and abilities of the function\n\n2. Self-assess the "
+            "existing knowledge\n\n3. Find resources to bridge the gaps\n")
+    (listed,) = unmarked_reference_lists(text)
+    assert text[listed[0]:listed[1]].startswith("Literature")
+    assert "3. Find resources" in text[listed[0]:listed[1]]

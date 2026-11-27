@@ -17259,6 +17259,109 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     assert "tex-not-input" not in codes(report)
 
 
+
+# ------------------------------------------ inline maths in a text argument of display maths
+# amsmath sets `\tag`'s argument as text, so `\(1\)` in it is inline maths that LaTeX
+# balances: the reader refused the file there as unbalanced, read nothing past it, and G7
+# said each work cited further on was cited nowhere (Basile, 2026-11-27). A display of each
+# kind holds one, each text argument with each delimiter of inline maths in it.
+
+_TEXT_IN_DISPLAYS = {
+    "a tag of brackets": "![!label{value}!tag{!(1!)} V(x) = !max_a u(x, a)!]",
+    "a starred tag with dollars": "![!tag*{$1$} V(x) = 1!]",
+    "a tag in an equation": "!begin{equation}!tag{!(A!)} y = x!end{equation}",
+    "a tag in an align": "!begin{align}!tag{$2$} a &= 1 !end{align}",
+    "a short intertext": "!begin{align} a &= 1 !shortintertext{and !(b!)} b &= 2 !end{align}",
+    "an intertext": "!begin{align*} a &= 1 !intertext{where !(b > 0!)} b &= 2 !end{align*}",
+    "a text": "![V = 1 !text{if !(x > 0!)}!]",
+    "an mbox": "!begin{equation*} V = 1 !mbox{if $x > 0$}!end{equation*}",
+}
+
+
+def _latex_with_display(display: str) -> str:
+    """A LaTeX paper that cites one work before `display`, one after it, and ends in a
+    sentence of its own: `!` stands for a backslash."""
+    return (
+        "!documentclass{article}\n!usepackage{amsmath}\n!begin{document}\n"
+        "!section{Methods}\nAs before !cite{fictionalHepaticCohort2021}, the value is\n"
+        f"{display}\n"
+        "and it was used again !cite{fictionalClassSignal2019}.\nThe last line is read.\n"
+        "!end{document}\n"
+    ).replace("!", chr(92))
+
+
+@pytest.mark.parametrize("display", list(_TEXT_IN_DISPLAYS.values()), ids=list(_TEXT_IN_DISPLAYS))
+def test_inline_maths_in_a_text_argument_of_display_maths_is_read_to_the_end(
+    project: Path, display: str
+) -> None:
+    """The whole file is read, nothing is refused as unbalanced, and G7 sees the work cited
+    after the display as cited."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.latex.mask import read
+
+    text = _latex_with_display(display)
+    reading = read(text)
+    assert reading.refusals == (), reading.refusals
+    assert "The last line is read." in reading.masked
+    assert [c.key for c in reading.cited] == ["fictionalHepaticCohort2021",
+                                              "fictionalClassSignal2019"]  # fmt: skip
+    _as_latex(project).write_text(text, encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    refused = [f for f in report.findings if f.gate == "BUILD" and f.code.startswith("tex-")]
+    assert refused == [], report.render(project)
+    uncited = [f for f in _g7(project).findings if f.code == "reference-uncited"]
+    assert uncited == [], uncited
+
+
+@pytest.mark.parametrize("display", list(_TEXT_IN_DISPLAYS.values()), ids=list(_TEXT_IN_DISPLAYS))
+def test_an_audited_paper_with_inline_maths_in_a_display_text_argument_is_read(
+    tmp_path: Path, display: str
+) -> None:
+    """`audit` reads such a paper, and holds the entry cited after the display as cited."""
+    from manuscript_guard.audit import audit
+
+    text = _latex_with_display(display).replace(
+        "The last line is read.\n",
+        "The last line is read.\n!begin{thebibliography}{9}\n"
+        "!bibitem{fictionalHepaticCohort2021} Hepatic A. J Ex. 2021;1:1-2.\n"
+        "!bibitem{fictionalClassSignal2019} Signal B. J Ex. 2019;2:3-4.\n"
+        "!end{thebibliography}\n".replace("!", chr(92)),
+    )
+    paper = tmp_path / "paper.tex"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], None)
+    assert report.unreadable == [], report.unreadable
+    assert [p.code for c in report.references for p in c.problems] == []
+
+
+_UNBALANCED_IN_DISPLAYS = {
+    "a tag's inline maths left open": ("![!tag{!(1} V = 1!]", "closes nothing"),
+    "a tag's inline maths never opened": ("![!tag{1!)} V = 1!]", "closes no maths"),
+    "inline maths in the display itself": ("![V = !(x!) + 1!]", "closes no maths"),
+    "dollars in the display itself": ("![V = $x$ + 1!]", "maths is opened inside maths"),
+    "a text's inline maths left open": ("![V = 1 !text{if !(x}!]", "closes nothing"),
+}
+
+
+@pytest.mark.parametrize(("display", "said"), list(_UNBALANCED_IN_DISPLAYS.values()),
+                         ids=list(_UNBALANCED_IN_DISPLAYS))  # fmt: skip
+def test_inline_maths_left_unbalanced_in_display_maths_is_still_refused(
+    project: Path, display: str, said: str
+) -> None:
+    """A `\\(` a text argument does not close, a `\\)` that closes nothing, and inline maths
+    in the display's own maths, where LaTeX stops on it, fail BUILD at the display's line."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.latex.mask import read
+
+    text = _latex_with_display(display)
+    [refusal] = read(text).refusals
+    assert refusal.code == "tex-unbalanced" and said in refusal.message, refusal
+    _as_latex(project).write_text(text, encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    found = [(f.code, f.line) for f in report.failures if f.gate == "BUILD"]
+    assert ("tex-unbalanced", 6) in found, report.render(project)
+
+
 @pytest.mark.parametrize("stop", ["latin1", "csname"])
 def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
     project: Path, stop: str

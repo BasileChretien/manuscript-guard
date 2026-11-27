@@ -3568,6 +3568,58 @@ def latex_cited(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text, planted
 
 
+#: A text argument inside display maths, its `{}` the inline maths it holds, and the displays
+#: it may stand in: amsmath sets `\\tag`'s argument, `\\text`'s and `\\intertext`'s as text,
+#: mathtools `\\shortintertext`'s and LaTeX `\\mbox`'s, so inline maths there balances as it
+#: does in text (Basile, 2026-11-27: `\\tag{\\(1\\)}` was refused as unbalanced, and nothing
+#: past it read). Each display holds its rows on either side of the argument.
+LATEX_TEXT_IN_DISPLAYS = (
+    ("\\tag{{{}}}", ("\\[", "equation", "align", "gather", "multline", "equation*")),
+    ("\\tag*{{{}}}", ("\\[", "equation", "align*", "gather*")),
+    ("\\text{{if {}}}", ("\\[", "$$", "equation", "align", "gather*", "multline*")),
+    ("\\mbox{{if {}}}", ("\\[", "$$", "equation*", "align*", "gather")),
+    ("\\intertext{{where {}}}", ("align", "align*", "gather")),
+    ("\\shortintertext{{where {}}}", ("align", "align*", "gather*")),
+)  # fmt: skip
+#: Inline maths as LaTeX writes it, each `{}` its formula.
+LATEX_INLINE_MATHS = ("\\({}\\)", "${}$")
+_DISPLAY_OPENS = {"\\[": ("\\[", "\\]"), "$$": ("$$", "$$")}
+
+
+@st.composite
+def latex_text_in_displays(draw: st.DrawFn) -> dict[str, Any]:
+    """A LaTeX document with a display holding each text argument of `LATEX_TEXT_IN_DISPLAYS`
+    with each delimiter of `LATEX_INLINE_MATHS` in it, in an order drawn, each in a display
+    drawn among those it may stand in, a citation after each and words between; and what the
+    reader owes it: the keys cited, in order, where each display runs, and where each inline
+    formula in a text argument runs. Every argument with every delimiter is in every
+    document, so that a rule broken for one is seen in each."""
+    kinds = [(argument, displays, inline) for argument, displays in LATEX_TEXT_IN_DISPLAYS
+             for inline in LATEX_INLINE_MATHS]  # fmt: skip
+    order = draw(st.permutations(range(len(kinds))))
+    filler = _spaced(FILLER)
+    text = "\\documentclass{article}\n\\usepackage{mathtools}\n\\begin{document}\n"
+    keys, displays, inlines = [], [], []
+    for index in order:
+        argument, kinds_of_display, inline = kinds[index]
+        text += "".join(draw(st.lists(st.sampled_from(filler), min_size=1, max_size=6)))
+        display = draw(st.sampled_from(kinds_of_display))
+        opens, closes = _DISPLAY_OPENS.get(display,
+                                           (f"\\begin{{{display}}}", f"\\end{{{display}}}"))
+        formula = inline.format(f"x_{{{draw(st.integers(1, 9))}}} > {draw(st.integers(0, 99))}")
+        before, after = argument.split("{}")
+        start = len(text)
+        text += f"{opens} V_{{n}} = 1 \\\\ {before.replace('{{', '{').replace('}}', '}')}"
+        inlines.append((len(text), len(text) + len(formula)))
+        text += formula + after.replace("{{", "{").replace("}}", "}") + f" W = 2 {closes}"
+        displays.append((start, len(text)))
+        key = f"k{4101 + len(keys)}"
+        keys.append(key)
+        text += f"\nand so \\cite{{{key}}}.\n"
+    text += "The last line is read.\n\\end{document}\n"
+    return {"text": text, "keys": keys, "displays": displays, "inlines": inlines}
+
+
 @st.composite
 def latex_declared(draw: st.DrawFn) -> tuple[str, dict[str, object]]:
     """A LaTeX preamble that states its class with options drawn, a bibliography style and
@@ -20169,7 +20221,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         linked_lines().map(lambda drawn: drawn[0]),
     ),
     "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
-    "latex refusals": latex_texts(),
+    # Inline maths in a text argument of display maths, `\\tag{\\(1\\)}`, balances as in text
+    # (2026-11-27).
+    "latex refusals": st.one_of(
+        latex_texts(), latex_text_in_displays().map(lambda drawn: drawn["text"])),
     "latex skipped": st.one_of(
         latex_texts(),
         latex_skipped_blocks().flatmap(lambda cases: st.sampled_from([c[0] for c in cases])),
@@ -20183,7 +20238,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             lambda cases: st.sampled_from([{**case[0], **case[1]} for case in cases])),
     ),
     "latex bindings": latex_texts(),
-    "latex citations": latex_texts(),
+    "latex citations": st.one_of(
+        latex_texts(), latex_text_in_displays().map(lambda drawn: drawn["text"])),
     "latex printed": latex_texts(),
     "latex words": latex_texts(),
     "latex writing": latex_texts(),

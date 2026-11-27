@@ -111,9 +111,14 @@ COMMANDS = _specs(
                 "emph", "textbf", "textit", "textsc", "textsf", "texttt", "textrm", "textup",
                 "textmd", "textsl", "textnormal", "underline", "mbox", "fbox", "textsuperscript",
                 "textsubscript", "enquote", "text", "intertext", "citetext",
+                "shortintertext",
             ),
             "{p}",
         ),
+        # amsmath's equation tag, set as text as mathtools' `\\shortintertext` is: inline maths
+        # in either balances as it does in text (Basile, 2026-11-27: `\\tag{\\(1\\)}` was
+        # refused as unbalanced, and nothing past it read).
+        "tag": "*{p}",
         **dict.fromkeys(
             ("part", "chapter", "section", "subsection", "subsubsection", "paragraph",
              "subparagraph"),

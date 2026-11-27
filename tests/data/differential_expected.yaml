@@ -128,11 +128,11 @@ expected:
       were (Basile, 2026-11-14, decision 16: 1,405 such notes on 22 real preprints)
   - reading: latex refusals
     why: >-
-      a `\makeatletter` in the body is skipped to its `\makeatother`, and a conditional in
-      the body to its matching `\fi`, and the file read on past it, where the base stopped
-      reading at it; a block skipped is no refusal of the reader's but the tree's, so it is
-      not listed here, and one with no end in the file is refused as before (Basile,
-      2026-11-13, three real papers whose reading stopped at one)
+      inline maths in a text argument of display maths, amsmath's `\tag{\(1\)}` or
+      mathtools' `\shortintertext{where $x > 0$}`, is a formula of its own there, as it is
+      in `\text` and `\intertext`, where the base refused the file as unbalanced at it and
+      read nothing past it (Basile, 2026-11-27); the inputs now hold such displays, each
+      text argument with each delimiter in every example
   - reading: latex bindings
     why: >-
       past a `\makeatletter` or a conditional skipped in the body the file is read on, so a
@@ -357,12 +357,10 @@ expected:
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex citations
     why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+      a citation after a display whose `\tag` or `\shortintertext` holds inline maths,
+      `\tag{\(1\)}`, is read, where the base refused the file as unbalanced at the display
+      and read no citation past it (Basile, 2026-11-27); the inputs now hold such displays,
+      a citation after each
   - reading: latex places
     why: >-
       optidef's problems, `mini!`, `maxi` and the rest, are maths (decision 13), so the lines

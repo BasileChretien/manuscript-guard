@@ -1421,6 +1421,11 @@ order is `printed_order`.
   maths. So are optidef's problems, `mini`, `maxi`, `argmini` and `argmaxi`, each also with
   `*`, `!` and `e`, whose variables, objective and constraints optidef.sty sets in an
   `align` (decision 13, 2026-11-13: tex-qbio-pe-A2's `w_{min}` was read as prose).
+- Inside maths, a text argument is prose: `\text`, `\mbox`, `\intertext`, mathtools'
+  `\shortintertext` and amsmath's `\tag`, starred too. Inline maths in it, `\tag{\(1\)}` or
+  `\text{if $x > 0$}`, is a formula of its own and balances as it does in text. Inline maths
+  in the display's own maths is still refused, since LaTeX stops on it (Basile, 2026-11-27:
+  `\tag{\(1\)}` was refused as unbalanced, and nothing past it was read).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This

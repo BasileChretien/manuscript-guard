@@ -8,9 +8,10 @@ For each case (the .docx against the results, the .docx alone, the Markdown alon
 .docx against the results under names a reader may give them, outside ASCII and with
 spaces, under names that start with "-", against two outputs whose names the page once
 made one, with a referee's options set, with the copy with tracked changes asked for,
-held to a journal's rules typed in the page's form, its review double-blind, and a LaTeX
-project as a .zip and as a .tar.gz, which the command line is given as the folder they hold),
-the command line's `audit` is run here, then the same command is run as the page runs it,
+held to a journal's rules typed in the page's form, its review double-blind, a LaTeX
+project as a .zip and as a .tar.gz, which the command line is given as the folder they hold,
+and a PDF of the .docx's text against the results and held to that journal's rules), the
+command line's `audit` is run here, then the same command is run as the page runs it,
 in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its `--json`
 must be the command line's. Where the copy with tracked changes is asked for, the command
 line's `--tracked` says how many corrections it tracks, and the page's copy must track as
@@ -32,14 +33,27 @@ the release it runs, its licences and the proof that nothing is uploaded, presel
 journal a link names with `?journal=<slug>`, and say so where it offers none of that slug.
 
 The command line here must be the one the wheel was built from, with the pandoc the page's
-pandoc.wasm is (pins.json), which is what CI's `web` job and the Pages workflow install.
+pandoc.wasm is (pins.json), which is what CI's `web` job and the Pages workflow install. It
+reads a PDF with the pdftotext and pdfinfo the page runs, the build the site serves, run in
+Node (`program.mjs`): each is put first on PATH for it as a shell script, and
+MANUSCRIPT_GUARD_POPPLER, which would name another, is left out. Windows starts no shell
+script, so there the command line reads a PDF with the pdftotext on PATH, and the PDF cases
+are the same only where that is one that runs the page's build.
+
+The PDF is the built .docx's text, as pandoc gives it in plain text, set in two columns with
+a running head, its pages numbered, its lines numbered in the margin and an author in its
+Info dictionary, by tests/proof_pdf.py, which no tool on the machine has to be: so that each
+of the ways `audit` reads a PDF is run, the line numbers read, the lines rebuilt into
+paragraphs (-bbox-layout) and its Author read (pdfinfo) where the review is blind.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -101,6 +115,16 @@ OWN_FILES = ("manifest.json", "files.sha256")
 #: The authors the page's boxes name for a blind review, set in its boxes (their ids).
 AUTHORS_BOXES = {"author-1-given": "Ada", "author-1-family": "Example",
                  "affiliations": "Department of Examples"}
+#: poppler's programs the page runs (web/poppler.mjs), which the command line here is given
+#: as the same build, run in Node.
+PROGRAMS = ("pdftotext", "pdfinfo")
+#: The PDF a case is given, set from the .docx's text (`pdf_of`), and how it is set: its
+#: author is the one a blind review's authors name, read from its Info dictionary.
+PDF_PAPER = "paper.pdf"
+PDF_SETTING = {"head": "Journal of Examples", "foot": "Page", "first_page": 1,
+               "line_numbers": True, "author": "Ada Example"}
+#: The width of a column of the PDF, in characters of pandoc's plain text.
+PDF_COLUMNS = 50
 
 
 def argument(name: str) -> str:
@@ -108,11 +132,53 @@ def argument(name: str) -> str:
     return "./" + name if name.startswith("-") else name
 
 
+#: The environment the command line here is run in (`programs_for`).
+ENVIRONMENT: dict[str, str] = dict(os.environ)
+
+
 def native(folder: Path, arguments: list[str]) -> dict:
     done = subprocess.run([sys.executable, "-m", "manuscript_guard.cli", *arguments], cwd=folder,
                           capture_output=True, text=True, encoding="utf-8", timeout=600,
-                          check=False)  # fmt: skip
+                          check=False, env=ENVIRONMENT)  # fmt: skip
     return {"code": done.returncode, "out": done.stdout, "err": done.stderr}
+
+
+def programs_for(page: Path, folder: Path) -> dict[str, str]:
+    """The environment the command line here reads a PDF in with the page's own pdftotext and
+    pdfinfo: a shell script for each in `folder`, which runs it as the page does, in Node
+    (`program.mjs`), put first on PATH, and MANUSCRIPT_GUARD_POPPLER left out. On Windows,
+    which starts no shell script, PATH as it is, and a line that says which pdftotext the
+    command line reads a PDF with."""
+    environment = {key: value for key, value in os.environ.items()
+                   if key != "MANUSCRIPT_GUARD_POPPLER"}  # fmt: skip
+    if os.name == "nt":
+        print("the command line reads a PDF with the pdftotext on PATH, "
+              f"{shutil.which('pdftotext') or 'none'}: Windows starts no shell script, so the "
+              "PDF cases are the same only where that one runs the page's build", flush=True)
+        return environment
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in PROGRAMS:
+        script = folder / name
+        command = [NODE, str(TEST / "program.mjs"), str(page), name]
+        script.write_text(f"#!/bin/sh\nexec {shlex.join(command)} \"$@\"\n", encoding="utf-8")
+        script.chmod(0o755)
+    environment["PATH"] = os.pathsep.join([str(folder), environment.get("PATH", "")])
+    return environment
+
+
+def pdf_of(docx: Path) -> bytes:
+    """The .docx's text, as pandoc gives it in plain text, set as a PDF in two columns
+    (tests/proof_pdf.py `typeset`, `PDF_SETTING`)."""
+    sys.path.insert(0, str(TEST.parents[1] / "tests"))
+    import proof_pdf
+
+    done = subprocess.run(["pandoc", str(docx), "-t", "plain", "--wrap=auto",
+                           f"--columns={PDF_COLUMNS}"], capture_output=True, timeout=300,
+                          check=True)  # fmt: skip
+    try:
+        return proof_pdf.typeset(done.stdout.decode("utf-8").splitlines(), **PDF_SETTING)
+    except ValueError as exc:
+        raise SystemExit(f"the .docx's text cannot be set as a PDF: {exc}") from None
 
 
 def in_node(site: Path, folder: Path, arguments: list[str], unpack: str | None = None) -> dict:
@@ -242,10 +308,15 @@ def main(argv: list[str] | None = None) -> int:
         ("a journal's rules, its review double-blind", "paper.docx", [], JOURNAL),
         ("a LaTeX project as a .zip", "project.zip", [], ([], {})),
         ("a LaTeX project as a .tar.gz", "project.tar.gz", [], ([], {})),
+        ("a PDF against its results", PDF_PAPER, ["results.json"], ([], {})),
+        ("a PDF held to a journal's rules, its review double-blind", PDF_PAPER, [], JOURNAL),
     ]
     failed = 0
-    with tempfile.TemporaryDirectory(prefix="mg-page-") as scratch:
+    global ENVIRONMENT
+    with (tempfile.TemporaryDirectory(prefix="mg-page-") as scratch,
+          tempfile.TemporaryDirectory(prefix="mg-programs-") as programs):  # fmt: skip
         folder = Path(scratch)
+        ENVIRONMENT = programs_for(args.site / AUDIT, Path(programs))
         # The files the journal's form makes, as the page makes them today.
         from datetime import date
 
@@ -271,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
                               (args.markdown, ("paper.md",))):  # fmt: skip
             for name in names:
                 shutil.copyfile(source, folder / name)
+        (folder / PDF_PAPER).write_bytes(pdf_of(args.docx))
         listed, wrong = compared(args.site / AUDIT, folder,
                                  [(*case, made if "--journal" in case[3][0] else None)
                                   for case in cases], "expect")  # fmt: skip

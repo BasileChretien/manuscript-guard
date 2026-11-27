@@ -94,8 +94,8 @@ finding of the check, not something left for a reviewer to notice.
 **I have a manuscript.** `audit` checks a paper written some other way: its numbers against
 each other and against the analysis outputs you give it, its Abstract against its Results,
 its words and its reference list. The
-[audit page](https://basilechretien.github.io/manuscript-guard/audit/) runs it on a .docx in a
-web browser, and the paper is not uploaded ([how it works](docs/audit-page.md)).
+[audit page](https://basilechretien.github.io/manuscript-guard/audit/) runs it on a .docx or a
+PDF in a web browser, and the paper is not uploaded ([how it works](docs/audit-page.md)).
 At a terminal, with [uv](https://docs.astral.sh/uv/) and nothing else installed:
 
 ```bash
@@ -393,8 +393,8 @@ one line, fetching a Python if there is none:
 uvx manuscript-guard audit paper.docx
 ```
 
-Or, with no terminal at all, [the audit page](docs/audit-page.md) runs `audit` on a .docx in
-a web browser, and the paper is not uploaded.
+Or, with no terminal at all, [the audit page](docs/audit-page.md) runs `audit` on a .docx or a
+PDF in a web browser, and the paper is not uploaded.
 
 To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R, and
 `pdftotext` or pypdf for reading PDFs, are needed only for particular things, and the tool

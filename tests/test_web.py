@@ -1,14 +1,17 @@
 """The in-browser audit page's side of the package (`manuscript_guard.web`): pandoc.wasm in
-place of the pandoc on PATH, and the transport a page sends lookups with.
+place of the pandoc on PATH, poppler's pdftotext and pdfinfo in WebAssembly in place of
+those on PATH, and the transport a page sends lookups with.
 
-The page itself, in Pyodide with the real pandoc.wasm, is held by CI's `web` job
+The page itself, in Pyodide with the real pandoc.wasm and poppler, is held by CI's `web` job
 (`web/test/`). Here pandoc.wasm is stood in for by pandoc run on a defaults file, which is
-the object pandoc.wasm takes, so that what the translation sends is what pandoc reads.
+the object pandoc.wasm takes, so that what the translation sends is what pandoc reads; and
+the page's `subprocess.run` is held to the real one, run on a program that prints the same.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -395,8 +398,29 @@ def test_the_page_runs_the_pandoc_ci_pins() -> None:
     assert pandoc["version"] == pinned
     assert f"/{pinned}/" in pandoc["wasm"]["url"] and f"/{pinned}/" in pandoc["licence"]["url"]
     npm = json.loads((WEB / "package.json").read_text(encoding="utf-8"))
-    assert all(re.fullmatch(r"\d+(\.\d+)+", v) for part in ("dependencies", "devDependencies")
+    # A version with a build of its own, "26.11.0-1", is as exact.
+    assert all(re.fullmatch(r"\d+(\.\d+)+(-\d+)?", v)
+               for part in ("dependencies", "devDependencies")
                for v in npm[part].values()), "web/package.json pins each version exactly"
+
+
+def test_the_pages_pdftotext_is_the_build_the_lock_pins_with_its_source() -> None:
+    """The page's pdftotext and pdfinfo are the npm package pins.json names, at the version
+    web/package.json pins and package-lock.json holds to its SHA-512, under its licence; the
+    page links to the poppler release it is built from and to the recipe that built it, at a
+    commit (Basile, 2026-11-26: the pinned npm build)."""
+    poppler = json.loads((WEB / "pins.json").read_text(encoding="utf-8"))["poppler"]
+    npm = json.loads((WEB / "package.json").read_text(encoding="utf-8"))
+    lock = json.loads((WEB / "package-lock.json").read_text(encoding="utf-8"))
+    assert npm["dependencies"][poppler["package"]] == poppler["version"]
+    entry = lock["packages"][f"node_modules/{poppler['package']}"]
+    assert entry["version"] == poppler["version"] and entry["integrity"].startswith("sha512-")
+    assert entry["license"] == poppler["licence"] == "GPL-2.0-only OR GPL-3.0-only"
+    assert poppler["version"].startswith(poppler["upstream"] + "-")
+    assert poppler["source"] == (
+        f"https://poppler.freedesktop.org/poppler-{poppler['upstream']}.tar.xz")
+    assert re.fullmatch(r"https://github\.com/ai-ecoverse/homescoop/tree/[0-9a-f]{40}/packages/"
+                        r"poppler", poppler["recipe"])  # fmt: skip
 
 
 def _policy() -> tuple[str, dict[str, list[str]]]:
@@ -540,8 +564,8 @@ def test_the_loading_bar_counts_each_step_the_worker_says() -> None:
 def test_the_bar_counts_the_bytes_the_build_says_the_worker_fetches() -> None:
     """The percentage is of the bytes the worker fetches while it starts, which web/build.py
     writes to the manifest as `bytes`: every file of Pyodide's but the two the worker imports
-    as modules, the wheel and pandoc.wasm. CI's browser check holds the count to what the
-    browser received; here, that each side names the other's."""
+    as modules, the wheel, pandoc.wasm and poppler's programs. CI's browser check holds the
+    count to what the browser received; here, that each side names the other's."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("web_build", WEB / "build.py")
@@ -554,6 +578,11 @@ def test_the_bar_counts_the_bytes_the_build_says_the_worker_fetches() -> None:
     assert set(build.IMPORTED) <= set(build.PYODIDE_CORE)
     written = (WEB / "build.py").read_text(encoding="utf-8")
     assert '"bytes": sum(path.stat().st_size for path in fetching),' in written
+    # pandoc.wasm and poppler's programs, each fetched by the worker and counted by the build.
+    for folder, name in (("pandoc", "pandoc.wasm"), ("poppler", build.POPPLER_WASM)):
+        assert f'fetch(BASE + "{folder}/{name}")' in worker
+    assert 'out / "pandoc" / "pandoc.wasm",' in written
+    assert 'out / "poppler" / POPPLER_WASM]' in written
     assert "loading.expected = manifest.bytes || 0;" in worker
     assert "self.fetch = counted;" in worker and "self.fetch = ownFetch;" in worker
 
@@ -878,3 +907,200 @@ def test_the_page_writes_the_tracked_copy_from_the_audit_it_drew(
     assert said["tracked"] == 2 and said["left"] == 0
     assert read(tmp_path / "page.docx", accept=True) == read(tmp_path / "cli.docx", accept=True)
     assert read(tmp_path / "page.docx", accept=False) == read(paper)
+
+
+# ---------------------------------------------------------- poppler's programs on the page
+
+#: A program that writes what it is given, as bytes, and exits with the code given.
+_CHILD = ("import sys\n"
+          "sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))\n"
+          "sys.stderr.buffer.write(bytes.fromhex(sys.argv[2]))\n"
+          "sys.exit(int(sys.argv[3]))\n")  # fmt: skip
+#: What a program prints that `subprocess.run` makes something of: line ends of each kind, a
+#: form feed between pages, and bytes that are not UTF-8.
+_PRINTED = (b"page one\r\nline\rlast\n\x0cpage two \xff\xfe\n", b"Syntax Warning: \xe9\r\n")
+
+
+@pytest.mark.parametrize("options", [
+    {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"},
+    {"capture_output": True},
+    {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "encoding": "latin-1"},
+    {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace",
+     "check": True},
+])  # fmt: skip
+@pytest.mark.parametrize("code", [0, 3])
+def test_the_pages_programs_give_what_subprocess_run_gives(options: dict, code: int) -> None:
+    """What the package reads of a program on the page is what `subprocess.run` gives it of
+    the program on a computer: its exit code, and what it printed, as bytes or decoded with
+    each line end read as `subprocess.run` reads it, and a failure raised where `check` is
+    set. Each of the ways the package calls pdftotext and pdfinfo is among these."""
+    out, err = _PRINTED
+
+    def program(name: str, args: list[str], cwd: str) -> tuple[int, bytes, bytes]:
+        assert (name, args, cwd) == ("pdftotext", ["-enc", "UTF-8", "paper.pdf", "-"],
+                                     os.getcwd())  # fmt: skip
+        return code, out, err
+
+    on_page = web.program_runner(program, fallback=None)
+    command = [sys.executable, "-c", _CHILD, out.hex(), err.hex(), str(code)]
+    try:
+        expected = subprocess.run(command, timeout=60, **options)
+    except subprocess.CalledProcessError as exc:
+        expected = exc
+    try:
+        given = on_page(["pdftotext", "-enc", "UTF-8", "paper.pdf", "-"], timeout=60, **options)
+    except subprocess.CalledProcessError as exc:
+        given = exc
+    assert type(given) is type(expected)
+    assert (given.returncode, given.stdout, given.stderr) == (
+        expected.returncode, expected.stdout, expected.stderr)
+
+
+def test_another_program_goes_to_subprocess_run_and_one_found_elsewhere_too(
+    tmp_path: Path,
+) -> None:
+    """Only pdftotext and pdfinfo, by their names or their files in the page's folder, are the
+    page's: any other command is handed on as it was given, and so is a pdftotext found
+    anywhere else, which is not the one the page runs."""
+    handed = []
+
+    def fallback(args, *rest, **options):
+        handed.append((args, rest, options))
+        return "handed"
+
+    def program(name, args, cwd):
+        return 0, name.encode(), b""
+
+    run = web.program_runner(program, fallback, folder=str(tmp_path))
+    assert run(["pandoc", "-v"], capture_output=True) == "handed"
+    assert run("pdftotext -v", shell=True) == "handed"
+    assert run([str(tmp_path / "other" / "pdftotext"), "-v"], capture_output=True) == "handed"
+    assert handed == [(["pandoc", "-v"], (), {"capture_output": True}),
+                      ("pdftotext -v", (), {"shell": True}),
+                      ([str(tmp_path / "other" / "pdftotext"), "-v"], (),
+                       {"capture_output": True})]  # fmt: skip
+    assert run([str(tmp_path / "pdfinfo"), "x.pdf"], capture_output=True).stdout == b"pdfinfo"
+    assert run([Path("pdftotext"), "-v"], capture_output=True).args == ["pdftotext", "-v"]
+
+
+@pytest.mark.parametrize("options, said", [
+    ({"capture_output": True, "input": b"x"}, "takes no input"),
+    ({"capture_output": True, "cwd": "/elsewhere"}, "takes no cwd"),
+    ({"capture_output": True, "env": {}}, "takes no env"),
+    ({}, "takes no output it does not capture"),
+    ({"stdout": subprocess.PIPE}, "takes no output it does not capture"),
+])  # fmt: skip
+def test_a_run_the_page_cannot_give_as_a_computer_would_is_refused(options: dict,
+                                                                  said: str) -> None:
+    """A program run otherwise than the package runs it would be given what the page does not
+    give it (its standard input, another folder, another environment) or print where nothing
+    reads it: refused, as a program that cannot be run is, rather than run otherwise."""
+    run = web.program_runner(lambda name, args, cwd: pytest.fail("it was run"), fallback=None)
+    with pytest.raises(OSError, match=said):
+        run(["pdftotext", "paper.pdf", "-"], **options)
+
+
+def test_a_run_longer_than_its_timeout_is_said_as_one_once_it_ends() -> None:
+    """The page cannot stop a program under way, which runs in its own thread: one that took
+    longer than the command line waits is said as the command line says one it stopped."""
+    import time
+
+    def slow(name, args, cwd):
+        time.sleep(0.05)
+        return 0, b"text", b""
+
+    run = web.program_runner(slow, fallback=None)
+    with pytest.raises(subprocess.TimeoutExpired):
+        run(["pdftotext", "paper.pdf", "-"], capture_output=True, timeout=0.01)
+    assert run(["pdftotext", "paper.pdf", "-"], capture_output=True, timeout=60).stdout == b"text"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="shutil.which finds no file without an extension")
+def test_with_the_programs_put_a_pdf_is_read_through_them_by_the_command_lines_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`put_programs` gives this Python pdftotext and pdfinfo as a computer has them: each found
+    on PATH, first, as `shutil.which` finds a program, and run by `subprocess.run`. The code
+    that reads a PDF is the command line's, unchanged: it asks which pdftotext it is, reads
+    the PDF in both orders and asks pdfinfo its author, each with the arguments it gives the
+    program on a computer, from the folder it runs in."""
+    from manuscript_guard.auditing import pdf, pdf_layout
+
+    monkeypatch.setattr(subprocess, "run", subprocess.run)
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    monkeypatch.delenv(pdf_layout.POPPLER, raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "paper.pdf").write_bytes(b"%PDF-1.4\n% read by the stand-in\n")
+    folder = tmp_path / "bin"
+    calls = []
+
+    def program(name: str, args: list[str], cwd: str) -> tuple[int, bytes, bytes]:
+        calls.append((name, args, cwd))
+        if args == ["-v"]:
+            return 0, b"", (b"pdftotext version 26.11.0\nCopyright 2005-2026 The Poppler "
+                            b"Developers - http://poppler.freedesktop.org\n")  # fmt: skip
+        if name == "pdfinfo":
+            return 0, b"Title:  A paper\nAuthor:  Ada Example\nPages:  1\n", b""
+        page = ("Methods\nWe studied 120 patients.\n" if "-raw" in args else
+                "Methods\nWe studied 120 patients.\nResults\nThe ROR was 2.5.\n")  # fmt: skip
+        return 0, page.encode(), b""
+
+    web.put_programs(program, str(folder))
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(folder)
+    assert shutil.which("pdftotext") == str(folder / "pdftotext")
+    assert shutil.which("pdfinfo") == str(folder / "pdfinfo")
+    read = pdf.read_pdf(Path("paper.pdf"))
+    assert read.reader == "pdftotext 26.11.0 (poppler), layout order"
+    assert read.text == "Methods\nWe studied 120 patients.\nResults\nThe ROR was 2.5."
+    assert pdf.author(Path("paper.pdf")) == ("Ada Example", "")
+    assert calls == [("pdftotext", ["-v"], str(tmp_path)),
+                     ("pdftotext", ["-enc", "UTF-8", "paper.pdf", "-"], str(tmp_path)),
+                     ("pdftotext", ["-raw", "-enc", "UTF-8", "paper.pdf", "-"], str(tmp_path)),
+                     ("pdfinfo", ["-enc", "UTF-8", "paper.pdf"], str(tmp_path))]  # fmt: skip
+
+
+POPPLER_PACKAGE = WEB / "node_modules" / "@ai-ecoverse" / "wasm-poppler"
+
+
+@pytest.mark.skipif(shutil.which("node") is None or not POPPLER_PACKAGE.is_dir(),
+                    reason="node, or web/node_modules from `npm ci`, is not here")
+def test_each_run_of_a_program_on_the_page_is_one_of_its_own(tmp_path: Path) -> None:
+    """web/poppler.mjs, with the package's glue as web/build.py puts it in, run in Node: a
+    program reads the file its argument names from the folder it is run in, and what one run's
+    options set does not carry to the next, as it would in one instance (pdftotext's order
+    after `-raw`); a program the page has not is refused, and a file it cannot open is said as
+    pdftotext says it, with its exit code."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("web_build", WEB / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    (tmp_path / "poppler.mjs").write_text(build.poppler_module(
+        (WEB / "poppler.mjs").read_text(encoding="utf-8"),
+        (POPPLER_PACKAGE / build.POPPLER_GLUE).read_text(encoding="utf-8")), encoding="utf-8")
+    sys.path.insert(0, str(ROOT / "tests"))
+    import proof_pdf
+
+    lines = [f"Left {index} of the first column" for index in range(3)]
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "paper.pdf").write_bytes(proof_pdf.typeset(lines, line_numbers=True))
+    layout = ["pdftotext", "-enc", "UTF-8", "sub/paper.pdf", "-"]
+    runs = [layout, ["pdftotext", "-raw", "-enc", "UTF-8", "sub/paper.pdf", "-"], layout,
+            ["pdftotext", "-enc", "UTF-8", "missing.pdf", "-"]]
+    given = {"module": str(tmp_path / "poppler.mjs"), "runs": runs,
+             "wasm": str(POPPLER_PACKAGE / "bin" / build.POPPLER_WASM)}
+    done = subprocess.run([shutil.which("node"), str(WEB / "test" / "runs.mjs")], cwd=tmp_path,
+                          input=json.dumps(given), capture_output=True, text=True,
+                          encoding="utf-8", timeout=120, check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    told = json.loads(done.stdout)
+    first, raw, after, missing = told["said"]
+    assert first["code"] == raw["code"] == 0 and "Left 0 of the first column" in first["out"]
+    # The margin's numbers: set apart as a column in the layout order, in front of each line
+    # in the drawing order (auditing/pdf.py).
+    assert raw["out"] != first["out"] and after == first
+    assert missing["code"] == 1 and "missing.pdf" in missing["err"]
+    assert told["refused"] == "no program pdftoppm here"
+    assert told["programs"] == list(web.PROGRAMS)
+    # The glue's exit sets Node's exit code, which each run puts back.
+    assert told["code"] is None

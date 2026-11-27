@@ -90,8 +90,8 @@ the worked example.
 
 Copy the folder where you want the page, `https://www.example.org/check/` say. The server
 must send `.wasm` as `application/wasm` and `.mjs` and `.js` as `text/javascript`; most do.
-The page is about 76 MB of files, nearly all of it Python and pandoc compiled for the
-browser, and a first visit fetches about 26 MB when the server compresses what it sends, as
+The page is about 81 MB of files, nearly all of it Python, pandoc and poppler compiled for
+the browser, and a first visit fetches about 28 MB when the server compresses what it sends, as
 GitHub Pages does; after that the browser has it in its cache.
 
 The page's rules are in the page itself, as on GitHub Pages: no header is needed. A
@@ -130,8 +130,11 @@ rest is the project's page, and stays:
   *Test the rules*, `files.sha256`, and *What this page loaded and sent*.
 - The Questions, the referee's options and the rest of the page.
 - The licences at its foot, with pandoc's GPL-2.0-or-later and a link to pandoc's source at
-  the version the page serves. pandoc.wasm is GPL software, and a site that serves it
-  distributes it: the page's link to its source and the licence file are how that is kept.
+  the version the page serves, and poppler's GPL-2.0-only or GPL-3.0-only, with links to
+  poppler's source and to how it was built, and the notices of the libraries in it.
+  pandoc.wasm and poppler's programs are GPL software, and a site that serves them
+  distributes them: the page's links to their source and the licence files are how that is
+  kept.
 
 Your files go in as data. The page's code, `index.html`, `app.js`, `worker.js` and
 `style.css` among it, is byte for byte the code of the page built from the same release

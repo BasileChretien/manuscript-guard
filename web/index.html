@@ -54,7 +54,8 @@
 
   <ol class="how" aria-label="How it works">
     <li><span class="num">1</span><span><strong>Drop your paper</strong>
-      A Word file (.docx), Markdown (.md), or a LaTeX project as a .zip or .tar.gz.</span></li>
+      A Word file (.docx), Markdown (.md), a PDF, or a LaTeX project as a .zip or
+      .tar.gz.</span></li>
     <li><span class="num">2</span><span><strong>We read it here</strong>
       On this computer, in this browser tab.</span></li>
     <li><span class="num">3</span><span><strong>Read your report</strong>
@@ -64,7 +65,7 @@
   <section class="card start" aria-labelledby="starthead">
     <h2 id="starthead" class="sr-only">Check a paper</h2>
     <div id="loading">
-      <p id="status" role="status">Getting the checker ready: about 26 MB the first time,
+      <p id="status" role="status">Getting the checker ready: about 28 MB the first time,
         nothing after that.</p>
       <div class="bar">
         <progress id="progress" max="100" value="0" aria-label="Getting the checker ready">0%</progress>
@@ -93,10 +94,10 @@
       <label class="drop">
         <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path class="fill-card stroke-teal" d="M12 4h17l9 9v29a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path class="stroke-teal" d="M29 4v9h9M24 34V20M18 26l6-6 6 6"/></svg>
         <span class="field">The paper</span>
-        <span class="help">Drop your .docx or .md file, or your LaTeX project as a .zip or
-          .tar.gz, here, or click to choose it.</span>
+        <span class="help">Drop your .docx, .md or .pdf file, or your LaTeX project as a .zip
+          or .tar.gz, here, or click to choose it.</span>
         <span id="chosen" class="chosen" hidden></span>
-        <input id="paper" name="paper" type="file" accept=".docx,.md,.zip,.gz,.tgz" required disabled></label>
+        <input id="paper" name="paper" type="file" accept=".docx,.md,.pdf,.zip,.gz,.tgz" required disabled></label>
       <!-- Shown for a .docx only: the copy is of a Word document (app.js). -->
       <label id="trackedbox" class="tick" hidden><input id="tracked" type="checkbox" disabled>
         <span><span class="field">Also make a copy with the corrections as tracked changes</span>
@@ -376,8 +377,8 @@
     <details>
       <summary>What does it not check?</summary>
       <ul>
-        <li>PDFs, figures and reproducibility packages. The command line reads them, with
-          the same checks: <code>uvx manuscript-guard audit paper.pdf</code></li>
+        <li>Figures and reproducibility packages. The command line reads them, with the
+          same checks: <code>uvx manuscript-guard audit paper.pdf --figures figures/</code></li>
         <li>Whether a number is right. A number found in the outputs may be there by chance,
           and the report says how often that would happen.</li>
       </ul>
@@ -405,7 +406,11 @@
     <p id="versions"></p>
     <p>Licences: manuscript-guard, <a href="licences/manuscript-guard-MIT.txt">MIT</a>;
       pandoc, <a href="licences/pandoc-GPL-2.0.txt">GPL-2.0-or-later</a>
-      (<a id="src-pandoc" href="https://github.com/jgm/pandoc">source</a>); Pyodide,
+      (<a id="src-pandoc" href="https://github.com/jgm/pandoc">source</a>); poppler, which
+      reads a PDF, <a href="licences/poppler-GPL-2.0.txt">GPL-2.0-only or GPL-3.0-only</a>
+      (<a id="src-poppler" href="https://poppler.freedesktop.org/">source</a>,
+      <a id="build-poppler" href="https://github.com/ai-ecoverse/homescoop">how it was built</a>,
+      <a href="licences/poppler-third-party-notices.txt">the libraries in it</a>); Pyodide,
       <a href="licences/pyodide-MPL-2.0.txt">MPL-2.0</a>; browser_wasi_shim,
       <a href="licences/browser_wasi_shim-LICENSE-MIT.txt">MIT</a> or
       <a href="licences/browser_wasi_shim-LICENSE-APACHE.txt">Apache-2.0</a>. Each Python

@@ -27,7 +27,7 @@ const waiting = new Map();
 // after this long is said to be slow, with what to do; the page keeps waiting, as a slow
 // network is no failure.
 const SLOW_AFTER_MS = 90000;
-const loading = { at: 0, of: 4, what: "", received: 0, expected: 0, shown: 0 };
+const loading = { at: 0, of: 5, what: "", received: 0, expected: 0, shown: 0 };
 window.mgLoading = loading;
 let slow = null;
 let started = false;
@@ -41,7 +41,7 @@ function showBar() {
   $("progress").max = 100;
   $("progress").value = loading.shown;
   // A share, not megabytes: the bytes counted are the files' own, several times what the
-  // network carries of them compressed, which is what "about 26 MB" says.
+  // network carries of them compressed, which is what "about 28 MB" says.
   $("amount").textContent = `${loading.shown}%`;
 }
 function loadingStep({ at, of, what }) {
@@ -191,9 +191,12 @@ const booted = Promise.all([ask("boot"), hostLoaded]).then(([boot]) => {
   const m = boot.manifest;
   say(`Ready (${seconds} s). You can turn off your network now: the audit does not need it.`);
   $("versions").textContent =
-    `manuscript-guard ${m.manuscript_guard}, Pyodide ${m.pyodide}, pandoc ${boot.pandocVersion}`;
+    `manuscript-guard ${m.manuscript_guard}, Pyodide ${m.pyodide}, pandoc ${boot.pandocVersion}, `
+    + `poppler ${m.poppler}`;
   $("source").href = m.sources["manuscript-guard"];
   $("src-pandoc").href = m.sources.pandoc;
+  $("src-poppler").href = m.sources.poppler;
+  $("build-poppler").href = m.sources["poppler-build"];
   $("netlog").textContent =
     `Loaded ${boot.loaded.length} files from ${location.host}, ${megabytes(sent)} over the network ` +
     `(nothing if they were already in this browser's cache).\n` +
@@ -258,9 +261,9 @@ dropBox.addEventListener("drop", (event) => {
   }
   const [file] = event.dataTransfer.files;
   if (!file) return;
-  if (!/\.(docx|md|zip|tar\.gz|tgz)$/i.test(file.name)) {
-    say(`${file.name} is not a .docx, a .md, or a LaTeX project's .zip or .tar.gz: drop or `
-      + "choose the paper itself.");
+  if (!/\.(docx|md|pdf|zip|tar\.gz|tgz)$/i.test(file.name)) {
+    say(`${file.name} is not a .docx, a .md, a .pdf, or a LaTeX project's .zip or .tar.gz: `
+      + "drop or choose the paper itself.");
     return;
   }
   const chosen = new DataTransfer();

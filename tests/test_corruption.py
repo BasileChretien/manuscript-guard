@@ -41009,8 +41009,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
 
     assert sorted(study_types()) == sorted([
         "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
-        "case-report", "self-controlled", "disproportionality", "systematic-review",
-        "prediction-model"])
+        "case-report", "case-series", "self-controlled", "disproportionality",
+        "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)

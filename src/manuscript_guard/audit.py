@@ -64,6 +64,7 @@ from manuscript_guard.text.reference_lists import (
     ends_a_list_alone,
     is_bibliography_heading,
     is_no_entry,
+    literature_over_prose,
 )
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
@@ -739,7 +740,8 @@ def bibliography_spans(
     for start, line in enumerate(lines):
         if start in cells or not is_bibliography_heading(
             line, marked=start in headings, markdown=markdown
-        ):
+        ) or literature_over_prose(line, lines, start, marked=start in headings,
+                                   markdown=markdown):  # fmt: skip
             continue
         if spans and start < spans[-1][1]:
             continue

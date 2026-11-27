@@ -3206,3 +3206,33 @@ def test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read(
     assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
     report = written(project, "# Methods\n\n> The SE was kept.\n>\n>     SE: standard error\n")
     assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    [
+        # A list item of three paragraphs, as pandoc writes one (round 1 of #841).
+        "-   The SE was kept.\n\n    It held.\n\n    SE: standard error\n",
+        # A lettered, a roman and a bracketed item, as pandoc writes Word's lists.
+        "a.  The SE was kept.\n\n    SE: standard error\n",
+        "iv. The SE was kept.\n\n    SE: standard error\n",
+        "A)  The SE was kept.\n\n    SE: standard error\n",
+        "(1) The SE was kept.\n\n    SE: standard error\n",
+        # A footnote's second paragraph.
+        "The ratio was low.[^1]\n\n[^1]: The SE was kept.\n\n    SE: standard error\n",
+        # A multiline table's row whose first cell is empty.
+        "The SE was kept.\n\n-------------------------------------\n  Group       Note\n"
+        "----------- -------------------------\n  one         It held.\n\n"
+        "              The standard error (SE) of it.\n-------------------------------------\n",
+    ],
+    ids=["third paragraph", "lettered", "roman", "letter and bracket", "bracketed number",
+         "footnote", "multiline table"],
+)  # fmt: skip
+def test_an_indented_paragraph_of_an_item_a_note_or_a_table_is_read(
+    project: Path, written_as: str
+) -> None:
+    """Round 1 of #841: an indented paragraph is no code inside a list item, whatever its
+    marker and its place among the item's paragraphs, inside a footnote, or in a table's
+    row: the definition in it is read, so the use above it is used before it."""
+    report = written(project, f"# Methods\n\n{written_as}")
+    assert codes(report) == {"abbreviation-used-before-defined"}, found(report)

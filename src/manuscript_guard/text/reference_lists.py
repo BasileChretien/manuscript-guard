@@ -116,6 +116,45 @@ def is_bibliography_heading(
     return found.group("word")[0].isupper() and "." not in found.group("tail")
 
 
+#: An entry of a numbered list, a number then an author's surname and initials: "1. Doe
+#: HA,", "[3] Roe MB.", "2\\. Smith J" as pandoc escapes a numbered Word paragraph.
+_NUMBERED_AUTHORS = re.compile(
+    r"\s*(?:\[\d{1,4}\]|\d{1,4}\\?[.)])\s+[^\W\d_][\w'’-]+\s+[A-Z]{1,3}\b"
+)
+
+
+def _shaped_as_an_entry(line: str) -> bool:
+    """Whether a line opens like a reference entry: authors and a year, or a numbered style's
+    entry (`audit.looks_like_reference`), or a number then an author's surname and initials
+    (`_NUMBERED_AUTHORS`)."""
+    from manuscript_guard.audit import looks_like_reference
+
+    line = _QUOTED.sub("", line, count=1).replace("\r", "")
+    return bool(looks_like_reference(line) or _NUMBERED_AUTHORS.match(line))
+
+
+def literature_over_prose(
+    line: str, lines: list[str], number: int, *, marked: bool = False, markdown: bool = True
+) -> bool:
+    """Whether `line`, line `number` of `lines` and a bibliography heading, titles its list
+    "Literature" alone where the paragraph after it is not shaped like an entry
+    (`_shaped_as_an_entry`): a section of prose titled so, under a heading or a paragraph in
+    bold, opens no list (Basile, 2026-11-28, "Only over entry-shaped lines"). In Markdown the
+    paragraph after is the first after a blank line; in a .docx's text, the next line."""
+    if markdown:
+        line = _LINK.sub(r"\g<words>", _QUOTED.sub("", without_spans(line), count=1))
+    text = strip_attributes(line.lstrip().rstrip(" \t")) if marked else line.strip()
+    found = _BIBLIOGRAPHY.match(text.rstrip("#").rstrip(" \t") if marked else text)
+    if found is None or found.group("word").casefold() != "literature":
+        return False
+    at = number + 1
+    if markdown:
+        while at < len(lines) and lines[at].strip():
+            at += 1
+    following = next((each for each in lines[at:] if each.strip()), "")
+    return not _shaped_as_an_entry(following)
+
+
 def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
     """Where a Markdown file's reference lists run under a line that is no heading, as offsets
     `[start, end)`.
@@ -218,7 +257,8 @@ def _lists(text: str, *, marked: bool, ends: bool = False) -> list[tuple[int, in
     if marked:
         for heading in headings:
             start = line_of(heading.start)
-            if is_bibliography_heading(lines[start], marked=True):
+            if is_bibliography_heading(lines[start], marked=True) and not literature_over_prose(
+                    lines[start], lines, start, marked=True):
                 end = runs_to(start + 1 + heading.setext)
                 spans.append((offsets[start], offsets[end] if end < len(lines) else len(text)))
         return spans
@@ -229,6 +269,7 @@ def _lists(text: str, *, marked: bool, ends: bool = False) -> list[tuple[int, in
             or not _opens_a_paragraph(lines, number, under)
             or _in_a_list(lines, number)
             or not is_bibliography_heading(_first_printed(lines, number))
+            or literature_over_prose(_first_printed(lines, number), lines, number)
         ):
             number += 1
             continue

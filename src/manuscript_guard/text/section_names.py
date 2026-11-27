@@ -27,6 +27,8 @@ _NUMBER = re.compile(
     r"^\s*(?:\(\d+\)|\d+(?:\.\d+)*[.)]?|[IVXLC]+[.)]|[A-Z][.)])\s+", re.IGNORECASE
 )
 _ABSTRACT = re.compile(r"(?:structured\s+)?abstract\b", re.IGNORECASE)
+#: The same as a whole title, a stop or a colon after it: how a title in bold names it.
+_ABSTRACT_WHOLE = re.compile(r"(?:structured\s+)?abstract[\s.:]*", re.IGNORECASE)
 #: The Results by the word a title opens with: "Results", "3. Results and discussion",
 #: "**Findings**". Not anywhere in it: "Comparison with earlier results" is the Discussion's.
 _RESULTS = re.compile(r"(?:results?|findings)\b", re.IGNORECASE)
@@ -245,8 +247,12 @@ def names_abstract(title: str, named: str | None = None) -> bool:
     docx-educ-2)."""
     from manuscript_guard.text.attributes import without_spans
 
-    title = bare(_unemphasised(without_spans(title)))
-    if _ABSTRACT.match(title):
+    plain = without_spans(title).strip()
+    unwrapped = _unemphasised(plain)
+    title = bare(unwrapped)
+    # A title in bold names it only whole: "### **Abstract reasoning tasks**" is a section of
+    # the Methods (round 1 of #841); a plain title is read as before.
+    if _ABSTRACT_WHOLE.fullmatch(title) if unwrapped != plain else _ABSTRACT.match(title):
         return True
     return bool(named) and title.rstrip(" .:").casefold() == str(named).strip().casefold()
 

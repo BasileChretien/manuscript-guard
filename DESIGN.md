@@ -5467,19 +5467,25 @@ those; Known gaps says where one is read as a contributions statement.
 are readings every gate that finds the part shares. A reference list's title in a block quote
 opens the list under a line of `>` alone as under a blank line, which is how pandoc writes the
 blank line between two quoted paragraphs of a Word document, "> **11. REFERENCES**:"; and
-"Literature" alone titles a list, as a German paper has it (`text/reference_lists.py`), so
-that G14, G4's word counts, the recycling check and the gates that pass a list over read
-none of its entries. A heading set in bold as a whole, "### **Abstract**", names the Abstract
-(`section_names.names_abstract`), for every reader of the Abstract. An APA manuscript repeats
+"Literature" alone titles a list, as a German paper has it, where the paragraph under it is
+shaped like an entry (`text/reference_lists.py`; Basile, 2026-11-28, "Only over entry-shaped
+lines"; over prose it is a section's title), so that G14, G4's word counts, the recycling
+check and the gates that pass a list over read none of its entries. A heading set in bold
+as a whole, "### **Abstract**", names the Abstract, and only whole, so "### **Abstract
+reasoning tasks**" does not (`section_names.names_abstract`), for every reader of the
+Abstract. An APA manuscript repeats
 its title in bold to open its Introduction, with no heading: G14 ends the Abstract at a
-paragraph wholly in bold, in it, that repeats a paragraph of four words or more standing
-before it, the title as typed, inside the comment `init --from` sets the title page aside in
-or not (decision D6), so the Introduction's definitions are the main text's. A paper's
+paragraph wholly in bold, in it and after some of its text, that repeats a paragraph of four
+words or more standing before it, the title as typed, inside the comment `init --from` sets
+the title page aside in or not, or a title typed as a heading or held in front matter
+(decision D6; round 1 of #841), so the Introduction's definitions are the main text's; the
+title in bold as the Abstract's first paragraph opens it and ends nothing. A paper's
 Highlights, under "Highlights", "Research highlights", "Key points" or "Key messages", owe
 no definition, as a keywords section does, a journal printing them beside the Abstract
 (decision D4: the Abstract's definitions still do not serve the main text). And an indented
-code block, lines indented four spaces or a tab after a blank line, not under a list item's
-paragraph, is hidden as a fenced one is (`language._views`, which G15 and the code names
+code block, lines indented four spaces or a tab after a blank line, not inside a list item,
+whatever its marker or the paragraph's place in it, nor inside a footnote or a table, is
+hidden as a fenced one is (`language._views`, which G15 and the code names
 share), so R pasted into a Word paper's appendix is no prose.
 
 **The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
@@ -30983,24 +30989,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
   2026-11-27).** A list's title, a bold Abstract heading, the title again, Highlights and an
   indented code block are each read by their typing, and a paper that types its part
   otherwise is read as before. Accepted.
-  - "Literature" alone over the entries titles a list, so a review's section headed by the
-    word alone, in bold or as a heading, is passed over to the list's end, the first
-    paragraph that is no entry. Pinned by
-    `tests/test_audit.py::test_literature_alone_opens_a_reference_list`.
-  - A label "Literature" alone on its line over items that are no references opens a list
-    all the same, a diagram's or a table's label in an appendix among them (docx-meta-2's
-    Appendix 8, "Literature" over "1. Explore the knowledge ...", Basile, 2026-11-27): the
-    items are read as entries, G7 counts them, and the gates that pass a list over read
-    none of them, to the first paragraph that is no entry. Pinned by
-    `tests/test_audit.py::test_a_lone_literature_label_over_numbered_items_opens_a_list`.
+  - "Literature" alone titles a list only where the paragraph under it is shaped like an
+    entry, authors and a year or a numbered style's (`audit.looks_like_reference`), or a
+    number then an author's surname and initials (Basile, 2026-11-28, "Only over
+    entry-shaped lines"): a list whose first entry has another shape, an organisation's web
+    page with no year, is read as prose, and a section of prose whose first paragraph opens
+    like an entry, "Smith, J. (2019). A study.", is passed over as a list. Pinned by
+    `tests/test_audit.py::test_literature_alone_opens_a_reference_list` and
+    `tests/test_audit.py::test_literature_opens_a_list_only_over_an_entry`.
   - The title again ends the Abstract only in bold as a whole and repeating a paragraph of
-    four words or more before the Abstract word for word, case, emphasis and a closing stop
-    or colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
+    four words or more before the Abstract, or a heading's or front matter's title, word for
+    word, case, emphasis and a closing stop or colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
     nothing, and the Abstract runs to the next heading as before. Pinned by
     `tests/test_g14_places.py::test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract`.
-  - An indented paragraph is a code block unless the paragraph before it opens a list item;
-    one under a list item nested deeper than that, or a block quote's own indented code,
-    `>     SE <- 1`, is read as text. Pinned by
+  - An indented paragraph is a code block unless it stands inside a list item, from its
+    marker's line to the next paragraph that is not indented, inside a footnote so read, or
+    in a table; a block quote's own indented code, `>     SE <- 1`, is read as text, and so is
+    a code block indented inside a list item, which pandoc reads as the item's code. Pinned by
     `tests/test_language.py::test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in
   scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",

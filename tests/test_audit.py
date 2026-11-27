@@ -3485,15 +3485,28 @@ def test_literature_alone_opens_a_reference_list(label: str, listed: bool) -> No
     assert bool(unmarked_reference_lists(text)) == listed
 
 
-def test_a_lone_literature_label_over_numbered_items_opens_a_list() -> None:
-    """A limit written down in DESIGN.md's Known gaps (docx-meta-2, Basile, 2026-11-27): a
-    label "Literature" alone on its line, a diagram's in an appendix, over numbered items that
-    are no references, opens a list, and the items are read as its entries."""
-    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+@pytest.mark.parametrize(
+    ("titled", "under", "listed"),
+    [
+        # Over entries: authors and a year, a numbered style's, a number and authors.
+        ("**Literature**", "Almeida, F., & Smith, G. (2019). Word embeddings. arXiv.", True),
+        ("**Literature**", "1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.", True),
+        ("## 2. Literature", "[1] Doe HA, Roe MB. Trials of drugs.", True),
+        # Over prose, under a paragraph in bold and under a heading alike (Basile,
+        # 2026-11-28, "Only over entry-shaped lines"); and over a diagram's numbered items,
+        # docx-meta-2's Appendix 8.
+        ("**2. Literature**", "Large language models (LLMs) were studied.", False),
+        ("## 2. Literature", "Large language models (LLMs) were studied.", False),
+        ("Literature", "1. Explore the knowledge, skills and abilities of the function", False),
+    ],
+)  # fmt: skip
+def test_literature_opens_a_list_only_over_an_entry(titled: str, under: str, listed: bool) -> None:
+    """"Literature" alone titles a reference list only where the paragraph under it is shaped
+    like an entry (`reference_lists._shaped_as_an_entry`); over prose it is a section's
+    title, read as one by every reader of a list, `reference_lists` and the audit's cut."""
+    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.text.reference_lists import reference_lists
 
-    text = ("# Appendix 8\n\nThe tool helps the data steward.\n\nLiterature\n\n1. Explore "
-            "the knowledge, skills and abilities of the function\n\n2. Self-assess the "
-            "existing knowledge\n\n3. Find resources to bridge the gaps\n")
-    (listed,) = unmarked_reference_lists(text)
-    assert text[listed[0]:listed[1]].startswith("Literature")
-    assert "3. Find resources" in text[listed[0]:listed[1]]
+    text = f"# Discussion\n\nIt held.\n\n{titled}\n\n{under}\n\n# Methods\n\nThe LLMs ran.\n"
+    assert bool(reference_lists(text)) == listed
+    assert bool(bibliography_spans(text)) == listed

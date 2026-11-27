@@ -817,6 +817,9 @@ def test_a_heading_in_bold_is_the_abstract_and_not_the_methods() -> None:
     for title in ("**Abstract**", "__Abstract__", "**1. Abstract**", "***Abstract:***"):
         assert names_abstract(title), title
     assert not names_abstract("**Abstract** of the trial")
+    # Round 1 of #841: in bold the title names it only whole.
+    assert not names_abstract("**Abstract reasoning tasks**")
+    assert not names_abstract("### **Abstract reasoning tasks**".lstrip("# "))
     assert names_results(titles["Results"])
     assert not is_methods([titles["Methods"]]) and is_methods(["Methods"])
 

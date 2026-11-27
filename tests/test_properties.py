@@ -2535,19 +2535,38 @@ def test_an_abstract_titled_in_bold_is_the_abstract(drawn: list[tuple[str, int]]
         assert sections_module.measure(text).abstract_words == words, text
 
 
-@holds(30, apa_layouts())
+@holds(10, apa_layouts())
 def test_an_apa_abstract_ends_at_the_title_repeated_in_bold(
-    drawn: tuple[str, list[tuple[str, str]]],
+    drawn: list[tuple[str, list[tuple[str, str]]]],
 ) -> None:
     """An APA manuscript repeats its title in bold to open its Introduction, with no heading:
     in its case or in capitals, with a stop or a colon, in asterisks or underscores, it ends
     the Abstract, so the Introduction's definitions are the main text's, and the Abstract's
     are not; a bold sub-heading in the Abstract, and the title with words added, end nothing
-    (decision D6, the author, 2026-11-27)."""
-    text, expected = drawn
+    (decision D6, the author, 2026-11-27). The title is typed as a paragraph, a heading or in
+    front matter, and the title in bold as the Abstract's first paragraph ends nothing (round
+    1 of #841)."""
     nothing = language_gate._Known(frozenset(), frozenset())
-    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
-    assert sorted((f.code, f.message) for f in report.findings) == expected, text
+    for text, expected in drawn:
+        report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+        assert sorted((f.code, f.message) for f in report.findings) == expected, text
+
+
+def _the_title_again_ends_the_abstract_at_its_first_paragraph(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    kept = language_gate._ends_the_abstract
+    patch.setattr(language_gate, "_ends_the_abstract",
+                  lambda paragraph, titles, read: kept(paragraph, titles, True))
+
+
+def _a_title_is_read_from_paragraphs_alone(patch: pytest.MonkeyPatch) -> None:
+    def paragraphs(typed: str) -> set[str]:
+        found = {language_gate._plain_paragraph(each)
+                 for each in language_gate._BLANK_LINE.split(typed)}  # fmt: skip
+        return {each for each in found if len(each.split()) >= language_gate._TITLE_WORDS}
+
+    patch.setattr(language_gate, "_titles_before", paragraphs)
 
 
 def _an_abstract_runs_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
@@ -2596,6 +2615,28 @@ def _indented_code_is_prose(patch: pytest.MonkeyPatch) -> None:
 
 def _an_indented_item_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_ITEM_LINE", re.compile("(?!)"))
+
+
+def _an_item_s_third_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_keeps_the_item", lambda line: False)
+
+
+def _only_a_bullet_or_a_number_opens_an_item(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]"))
+
+
+def _a_footnote_s_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_FOOTNOTE_LINE", re.compile("(?!)"))
+
+
+def _a_table_s_indented_row_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "table_lines", lambda lines: set())
+
+
+def _a_bold_title_names_the_abstract_by_its_first_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_ABSTRACT_WHOLE", section_names._ABSTRACT)
 
 
 def _the_title_page_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
@@ -13508,6 +13549,17 @@ def _a_line_is_read_with_its_quote_s_marks(patch: pytest.MonkeyPatch) -> None:
 def _a_quote_s_line_of_marks_is_no_blank_line(patch: pytest.MonkeyPatch) -> None:
     def kept(lines: list[str], number: int, under: set[int]) -> bool:
         return not number or not lines[number - 1].strip() or number - 1 in under
+
+    patch.setattr(reference_lists_module, "_opens_a_paragraph", kept)
+
+
+def _literature_over_prose_titles_a_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "literature_over_prose", lambda *args, **kwargs: False)
+
+
+def _a_carriage_return_is_no_blank_line(patch: pytest.MonkeyPatch) -> None:
+    def kept(lines: list[str], number: int, under: set[int]) -> bool:
+        return not number or not lines[number - 1].strip(" \t>") or number - 1 in under
 
     patch.setattr(reference_lists_module, "_opens_a_paragraph", kept)
 
@@ -30271,6 +30323,42 @@ BROKEN = {
     "highlights are text": (
         _highlights_are_text,
         test_a_paper_s_highlights_owe_no_definition,
+    ),
+    "an item's third paragraph is code": (
+        _an_item_s_third_paragraph_is_code,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "only a bullet or a number opens an item": (
+        _only_a_bullet_or_a_number_opens_an_item,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "a footnote's second paragraph is code": (
+        _a_footnote_s_paragraph_is_code,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "a table's indented row is code": (
+        _a_table_s_indented_row_is_code,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "a bold title names the Abstract by its first word": (
+        _a_bold_title_names_the_abstract_by_its_first_word,
+        test_an_abstract_titled_in_bold_is_the_abstract,
+    ),
+    "the title again ends the Abstract at its first paragraph": (
+        _the_title_again_ends_the_abstract_at_its_first_paragraph,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "a title is read from paragraphs alone": (
+        _a_title_is_read_from_paragraphs_alone,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "literature over prose titles a list": (
+        _literature_over_prose_titles_a_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a carriage return is no blank line": (
+        _a_carriage_return_is_no_blank_line,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
     ),
     "an indented code block is prose": (
         _indented_code_is_prose,

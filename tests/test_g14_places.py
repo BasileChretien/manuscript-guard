@@ -479,6 +479,31 @@ def test_an_apa_abstract_ends_at_the_title_repeated_in_bold(tmp_path: Path, agai
         "CAP is used once in the abstract as G14 reads it, and not defined there")]
 
 
+def test_the_title_in_bold_opening_the_abstract_ends_nothing(tmp_path: Path) -> None:
+    """Round 1 of #841: the title in bold as the Abstract's first paragraph opens it, and the
+    Abstract runs on to the title again after its text."""
+    text = (f"{APA_TITLE}\n\n# Abstract\n\n**{APA_TITLE}**\n\nWe read 40 records of the "
+            f"CAP.\n\n**{APA_TITLE}**\n\nThe content acquisition podcasts (CAP) were played."
+            "\n\n# Methods\n\nThe CAP ran.\n")
+    assert checked(tmp_path, {"main.md": text}) == [(
+        "abbreviation-undefined",
+        "CAP is used once in the abstract as G14 reads it, and not defined there")]
+
+
+@pytest.mark.parametrize("given", [f"# {APA_TITLE}", f'---\ntitle: "{APA_TITLE}"\n---'])
+def test_a_title_given_as_a_heading_or_in_front_matter_is_the_title_again(
+    tmp_path: Path, given: str
+) -> None:
+    """Round 1 of #841: a title typed as a heading, or held in front matter, is matched by
+    the bold paragraph that repeats it as well as a title in a paragraph."""
+    text = (f"{given}\n\n# Abstract\n\nWe read 40 records of the CAP.\n\n**{APA_TITLE}**\n\n"
+            "The content acquisition podcasts (CAP) were played.\n\n# Methods\n\nThe CAP "
+            "ran.\n")
+    assert checked(tmp_path, {"main.md": text}) == [(
+        "abbreviation-undefined",
+        "CAP is used once in the abstract as G14 reads it, and not defined there")]
+
+
 def test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract(
     tmp_path: Path,
 ) -> None:

@@ -30069,6 +30069,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
     public repository only; it shows the last finished run on the default branch; and it is
     check's alone, so a run that fails for its build or its verify can show "passes".
     Accepted.
+- **An audited paper's tables and figures (`auditing.displays`, docs/audit.md): what its
+  legends cannot tell.** A paper written outside manuscript-guard has no bindings, so a kind is
+  counted by its legends alone, and only where they number it 1 to n once each (the author,
+  2026-11-27). Accepted.
+  - *A kind numbered otherwise is not checked*: "Table 1", "Table 3", a "Table 1
+    (continued)", or no legend at all, as for figures sent to the journal as files of their
+    own. One note says so. Pinned by
+    `tests/test_audit_displays.py::test_legends_that_do_not_number_a_kind_1_to_n_leave_it_uncounted`
+    and
+    `tests/test_audit_displays.py::test_a_kind_pointed_at_with_no_legend_is_said_not_counted_and_one_with_neither_is_silent`.
+  - *A pointer past the legends, in a file that holds more tables or more pictures than
+    they number*, is not checked, and a note says so: the file may hold one whose legend the
+    check does not read, in a layout table, inside a picture or as pandoc's own caption under
+    a table (`: Table 1. X`) (the corpus run of ea3fc52). Which of the tables and pictures
+    are the supplement's, or panels of one figure, the check does not tell: three rules that
+    guessed at it each failed on a layout a review found (rounds 1 and 2 of #837 and the
+    fix-only round on f0bd603), so a pointer past the legends is not checked either where
+    the supplement's displays, a figure in several pictures, a logo or a graphical abstract
+    make the file hold more than the legends number. The kind is held to the rest, its order
+    and its citations, and the note is G2's `pointers-unchecked`, among what the check read
+    (the fix-only round on df69672). Pinned by
+    `tests/test_audit_displays.py::test_a_file_holding_more_of_a_kind_than_its_legends_leaves_pointers_past_them_unchecked`,
+    `tests/test_audit_displays.py::test_the_supplement_s_legends_listed_alone_do_not_hide_a_legend_unread`
+    and
+    `tests/test_audit_displays.py::test_a_legend_below_its_picture_with_the_supplement_in_the_file_counts_the_figures`.
+  - *A legend in a form the check does not read* is read as a citation, or not at all where
+    G2's pointer does not see it: bold set with underscores, which pandoc never writes, and a
+    legend set as a heading (`## Figure 2. B`), which round 1 of #837 found. Where it is the
+    last of its kind, and the file holds no more tables or pictures than the legends number,
+    the legends number one fewer, and the citation of it is said to point at nothing.
+    Pinned by
+    `tests/test_audit_displays.py::test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing`.
+  - *Two forms are read the wrong way* (the fix-only round on f0bd603 of #837): a range from
+    a panel with spaces around its dash ("Figures 1A - C show") opening a paragraph is read
+    as Figure 1's legend, and a legend whose title opens with a link or a bracket after a
+    dash ("Table 2 - [placeholder]") as a citation. Accepted.
+  - *A PDF whose lines were not rebuilt into paragraphs* is not checked: a legend cannot be
+    told from a line of prose there. Pinned by
+    `tests/test_audit_displays.py::test_a_pdf_whose_lines_were_not_rebuilt_is_said_not_checked`.
+  - *A pointer to the supplement* is checked only where the supplement's legends are given,
+    in its own file or in the main text's. Pinned by
+    `tests/test_audit_displays.py::test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_wherever_given`.
 - **The audit page (`web/`, docs/audit-page.md): what its rules and its checks do not hold.**
   Accepted.
   - *Leaving the page.* A Content-Security-Policy has no rule for navigation: a script that

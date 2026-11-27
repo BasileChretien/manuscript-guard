@@ -125,13 +125,15 @@ def _fill(paper: _Paper, folder: Folder, key: str, value: Any, why: str, *,
 def _paper_edits(folder: Folder, answers: dict) -> _Paper:
     from manuscript_guard.gates.design import study_types
     from manuscript_guard.guide.rules import ENGLISH_NAMES
-    from manuscript_guard.scaffold import UNTITLED
+    from manuscript_guard.scaffold import UNTITLED, checked_title
 
     paper = _Paper()
     title = answer(answers, "title")
     if folder.is_project and isinstance(title, str) and title.strip():
-        _fill(paper, folder, "title", title, "the document's title, in paper.yaml and the "
-              "manuscript's header", blank=lambda held: held in (None, "", UNTITLED))  # fmt: skip
+        # As `init` writes a title, on one line (round 4 of #844); the reason says, once the
+        # manuscript is read, what its header is given (`_title_kept`).
+        _fill(paper, folder, "title", checked_title(title), _IN_PAPER_YAML,
+              blank=lambda held: held in (None, "", UNTITLED))  # fmt: skip
     english = _english(answers)
     if folder.is_project and english:
         _fill(paper, folder, "english_variant", english,
@@ -270,6 +272,13 @@ class _Keep:
     reason: str
 
 
+_IN_PAPER_YAML = "the document's title, in paper.yaml"
+_IN_THE_HEADER = f"{_IN_PAPER_YAML} and the manuscript's header"
+_HEADER_OUT = (f"{_IN_PAPER_YAML}; the manuscript's header, which cannot hold it as typed, is "
+               "taken out, as `init` writes none for such a title")  # fmt: skip
+_LINE_OUT = (f"{_IN_PAPER_YAML}; its line in the manuscript's header, which cannot hold it as "
+             "typed, is taken out")  # fmt: skip
+_NO_TITLE = f"{_IN_PAPER_YAML}; the manuscript's header holds none, and is left as it is"
 _OWN_TITLE = _Keep("the manuscript's header holds a title of its own; change the two "
                    "together by hand")  # fmt: skip
 _BOM = chr(0xFEFF)
@@ -284,12 +293,13 @@ def _manuscript_text(path: Path) -> str | None:
         return None
 
 
-def _markdown_header(text: str, title: str) -> str | None | _Keep:
+def _markdown_header(text: str, title: str) -> tuple[str, str] | None | _Keep:
     """`text`, a main.md, with `title` on the line of its header that holds `init`'s
     placeholder, or that line taken out where the header cannot hold the title, as `init`
     then writes none (round 3 of #844); None where the header holds no title, or there is
-    none; `_Keep` where it holds a title of its own. Each line keeps its ending, and a
-    byte-order mark is kept."""
+    none; `_Keep` where it holds a title of its own. The text comes with what was done to it.
+    Each line keeps its ending, and a byte-order mark is kept; a header left with nothing but
+    comments and blank lines goes whole (round 4 of #844)."""
     from manuscript_guard.scaffold import UNTITLED, _header
 
     mark = _BOM if text.startswith(_BOM) else ""
@@ -314,15 +324,18 @@ def _markdown_header(text: str, title: str) -> str | None | _Keep:
     line = lines[held[0]]
     if len(ours) >= 2:
         lines[held[0]] = ours[1] + line[len(line.rstrip("\r\n")):]
-    elif close == 2:  # the header held the title alone: it goes, and the blank line after it
-        blank = 1 if len(lines) > 3 and not lines[3].strip() else 0
-        del lines[: 3 + blank]
-    else:
-        del lines[held[0]]
-    return mark + "".join(lines)
+        return mark + "".join(lines), _IN_THE_HEADER
+    rest = [lines[n] for n in range(1, close) if n != held[0]]
+    if all(not entry.strip() or entry.lstrip().startswith("#") for entry in rest):
+        # The header held the title alone: it goes, and the blank line after it.
+        blank = 1 if len(lines) > close + 1 and not lines[close + 1].strip() else 0
+        del lines[: close + 1 + blank]
+        return mark + "".join(lines), _HEADER_OUT
+    del lines[held[0]]
+    return mark + "".join(lines), _LINE_OUT
 
 
-def _latex_header(text: str, title: str) -> str | None | _Keep:
+def _latex_header(text: str, title: str) -> tuple[str, str] | None | _Keep:
     """`text`, a main.tex, with `title` in the `title` command that holds `init`'s placeholder;
     None where it has no such command, and `_Keep` where it holds a title of its own."""
     from manuscript_guard.build.latex_values import NotPrintable, escaped
@@ -333,12 +346,13 @@ def _latex_header(text: str, title: str) -> str | None | _Keep:
     if text.count(line) != 1:
         return None if command not in text else _OWN_TITLE
     try:
-        return text.replace(line, command + escaped(title, "title") + "}", 1)
+        made = text.replace(line, command + escaped(title, "title") + "}", 1)
     except NotPrintable as exc:
         raise _Refused(f"the title cannot be printed in LaTeX: {exc}") from exc
+    return made, _IN_THE_HEADER
 
 
-def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | _Keep:
+def _header_with(folder: Folder, title: str) -> tuple[Path, str, str] | None | _Keep:
     """The manuscript of a project under way with `title` in its header where the header holds
     `init`'s placeholder; None where it holds no title to replace; `_Keep`, with why, where it
     holds a title of its own or cannot be read, which setup does not write over."""
@@ -352,7 +366,7 @@ def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | _Keep:
                 return _Keep(f"{path.name} is not UTF-8, so its header was not read; change "
                              "the title in both by hand")  # fmt: skip
             made = edit(text, title)
-            return (path, made) if isinstance(made, str) else made
+            return (path, *made) if isinstance(made, tuple) else made
     return None
 
 
@@ -368,7 +382,9 @@ def _title_kept(paper: _Paper, folder: Folder) -> tuple[Path, str] | None:
         paper.kept.append(Change("paper.yaml", f"title: {folder.setting('title')}",
                                  header.reason))  # fmt: skip
         return None
-    return header
+    said = _NO_TITLE if header is None else header[2]
+    paper.edits[paper.edits.index(edit)] = (*edit[:3], said)
+    return None if header is None else header[:2]
 
 
 def _writable(folder: Folder, paper: _Paper) -> None:

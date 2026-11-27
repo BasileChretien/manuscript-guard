@@ -815,3 +815,52 @@ def test_a_manuscript_not_in_utf8_keeps_the_placeholder_and_says_why(tmp_path: P
     assert settings(root)["title"] == "Untitled manuscript"
     assert any("UTF-8" in change.why for change in done.kept)
     assert main_tex.read_bytes() == before
+
+
+# ---------------------------------------------------------------------------- round 4 of #844
+
+
+def _title_reason(done) -> str:
+    return next(change.why for change in done.written if change.what.startswith("title:"))
+
+
+def test_the_title_s_reason_says_what_the_header_was_given(tmp_path: Path) -> None:
+    """Round 4 of #844: the header taken out was reported as given the title."""
+    cases = (("Plain", None, "and the manuscript's header"),
+             ('"Wait and see": patients' + "'" + " views", None, "is taken out, as `init`"),
+             ('"Wait and see": patients' + "'" + " views", "lang: en", "its line in the"),
+             ("Plain", "no title", "holds none"))  # fmt: skip
+    for number, (title, extra, said) in enumerate(cases):
+        root = no_git(tmp_path / f"paper{number}")
+        assert main(["init", str(root)]) == 0
+        main_md = root / "manuscript" / "main.md"
+        if extra == "no title":
+            main_md.write_text("---\nlang: en\n---\n\n# Introduction\n", encoding="utf-8")
+        elif extra:
+            main_md.write_text(f'---\ntitle: "Untitled manuscript"\n{extra}\n---\n\n# I\n',
+                               encoding="utf-8")  # fmt: skip
+        answered(root, {**ANSWERS, "title": title})
+        dry, done = apply_answers(root, dry_run=True), apply_answers(root)
+        assert said in _title_reason(dry) and said in _title_reason(done), (title, extra)
+
+
+def test_a_title_answered_over_two_lines_is_written_on_one(tmp_path: Path) -> None:
+    """Round 4 of #844: a folded answer's newline reached the header and paper.yaml."""
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    answered(root, {**ANSWERS, "title": "Patients views\n"})
+    assert apply_answers(root).ok
+    assert settings(root)["title"] == "Patients views"
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert text.startswith('---\ntitle: "Patients views"\n---\n')
+
+
+def test_a_header_left_with_only_a_comment_goes_whole(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    main_md = root / "manuscript" / "main.md"
+    main_md.write_text('---\ntitle: "Untitled manuscript"\n# note\n---\n\n# Introduction\n',
+                       encoding="utf-8")  # fmt: skip
+    answered(root, {**ANSWERS, "title": '"Wait and see": patients' + "'" + " views"})
+    assert apply_answers(root).ok
+    assert main_md.read_text(encoding="utf-8") == "# Introduction\n"

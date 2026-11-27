@@ -10717,8 +10717,13 @@ other than the one run.
     three designs among them, chose none, and described the loop. The criterion asked for
     the questions put, or the command named, and the reply named the tool's questions
     without the command. The criterion now passes a reply that says it cannot run commands
-    and lists the decisions as the questions it will put, deciding none; it was not run
-    again.
+    and lists the decisions as the questions it will put, deciding none.
+  - Run again on the same day with that criterion, at ea8096e ($0.31): the skill fired and
+    the outcome passed, three votes of three. The reply said it could not run commands, put
+    the first four questions (the title, the study described in the author's words for three
+    designs to be offered, how the paper is written, the English), named
+    `manuscript-guard setup questions --json` for the author to run in the meantime, and chose
+    none of them.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
 finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of

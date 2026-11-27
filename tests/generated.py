@@ -7767,12 +7767,20 @@ PLAN_HEADINGS = {
     "patient perspective": ("The patient's perspective", "Patient’s view",
                             "Clinical perspective"),
     "informed consent": ("Consent for publication", "Patient consent", "Ethics approval"),
+    "case selection": ("Consecutive patients", "Recruitment", "Case identification",
+                       "Patient selection"),
+    "follow-up": ("Follow up", "Loss to follow-up", "Length of observation"),
+    "comparison": ("Comparison with published series", "Historical controls",
+                   "External controls", "Statistical comparisons"),
+    "consent and ethics": ("Ethical approval", "Informed consent", "Ethics committee",
+                           "Data protection"),
 }  # fmt: skip
 #: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
 _SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
 #: Headings of no section, between the plan's own.
-#: Not "Timeline", which heads a case report's timeline.
-_PLAN_OTHER = ("Background", "Glossary", "Ethics", "References")
+#: Not "Timeline", which heads a case report's timeline, nor "Ethics", a case series's
+#: consent and ethics.
+_PLAN_OTHER = ("Background", "Glossary", "Funding", "References")
 #: How a plan is laid out: its title, then the level of its sections' headings.
 _PLAN_LAYOUTS = (("# Analysis plan\n\n", 2), ("", 2), ("", 1))
 

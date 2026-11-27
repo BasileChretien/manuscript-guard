@@ -94,6 +94,7 @@ domains, where it is published and the date it was read. By design:
 | cross-sectional | `encepp-guide`, `strobe`, `record-pe` |
 | diagnostic-accuracy | `quadas-3` |
 | case-report | `murad-2018` |
+| case-series | `murad-2018` |
 | self-controlled | `sccs`, `robins-i`, `encepp-guide`, `record-pe` |
 | disproportionality | `readus-pv`, `encepp-guide` |
 | trial | `rob-2` |

@@ -225,7 +225,7 @@ standards:
     doi: 10.1136/bmjebm-2017-110853
     url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6234235/fullTextXML
     read_on: 2026-11-27
-    applies_to: [case-report]
+    applies_to: [case-report, case-series]
     domains:
       - Selection
       - Ascertainment

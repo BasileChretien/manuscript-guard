@@ -1195,29 +1195,65 @@ def test_with_the_programs_put_a_pdf_is_read_through_them_by_the_command_lines_c
                      ("pdfinfo", ["-enc", "UTF-8", "paper.pdf"], str(tmp_path))]  # fmt: skip
 
 
+def check_script():
+    """web/test/check.py, loaded as a module."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("web_check", WEB / "test" / "check.py")
+    check = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check)
+    return check
+
+
 def test_the_programs_check_gives_the_command_line_name_the_page_from_any_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """web/test/check.py runs the command line from each case's own folder, and CI names the
     site as `--site _site`: a pdftotext script that named the page so looked for it under the
     case's folder, and read no PDF (#850's first run in CI). Each script names it whole, and
-    Node too where PATH found it in a folder named from here; a bare `node` is left to PATH."""
-    import importlib.util
+    Node as `node_found` names it."""
     import shlex
 
-    spec = importlib.util.spec_from_file_location("web_check", WEB / "test" / "check.py")
-    check = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(check)
+    check = check_script()
     monkeypatch.chdir(tmp_path)
     page = str((tmp_path / "_site" / check.AUDIT).resolve())
-    found = os.path.join("node-bin", "node")
-    for node, named in ((found, os.path.join(os.getcwd(), found)), ("node", "node")):
-        monkeypatch.setattr(check, "NODE", node)
-        for name in check.PROGRAMS:
-            shebang, line = check.script_for(Path("_site") / check.AUDIT, name).splitlines()
-            assert shebang == "#!/bin/sh"
-            assert shlex.split(line) == ["exec", named, str(check.TEST / "program.mjs"), page,
-                                         name, "$@"]  # fmt: skip
+    for name in check.PROGRAMS:
+        shebang, line = check.script_for(Path("_site") / check.AUDIT, name).splitlines()
+        assert shebang == "#!/bin/sh"
+        assert shlex.split(line) == ["exec", check.NODE, str(check.TEST / "program.mjs"), page,
+                                     name, "$@"]  # fmt: skip
+
+
+@pytest.mark.parametrize("entry", ["node-bin", "", os.path.join("node-bin", "..", "node-bin")],
+                         ids=["relative", "empty", "through .."])  # fmt: skip
+def test_check_names_node_whole_as_path_finds_it_from_the_folder_it_is_run_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    """A PATH entry relative to the folder check.py is run in, an empty one (that folder) or
+    one through `..` gives `shutil.which` a relative path, which the scripts, run from each
+    case's own folder, would not find (rounds 5 and 6 of #850). Node is named whole, that
+    path joined as it is to the folder check.py is run in: `..` kept, as the system reads it,
+    and a symbolic link not followed."""
+    check = check_script()
+    folder = tmp_path / "node-bin" if entry else tmp_path
+    folder.mkdir(exist_ok=True)
+    program = folder / ("node.exe" if os.name == "nt" else "node")
+    program.write_bytes(b"")
+    program.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    # An empty entry as two: a PATH that is empty finds nothing (bpo-35755).
+    monkeypatch.setenv("PATH", entry or os.pathsep)
+    found = shutil.which("node")
+    assert found is not None and not os.path.isabs(found), found
+    named = check.node_found()
+    assert os.path.isabs(named) and os.path.samefile(named, program)
+    assert named == os.path.join(os.getcwd(), found)
+    # Where PATH has no node, the name, as it was.
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.chdir(empty)
+    monkeypatch.setenv("PATH", str(empty))
+    assert check.node_found() == "node"
 
 
 POPPLER_PACKAGE = WEB / "node_modules" / "@ai-ecoverse" / "wasm-poppler"

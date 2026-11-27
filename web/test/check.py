@@ -65,7 +65,17 @@ from pathlib import Path
 TEST = Path(__file__).resolve().parent
 #: The folder of the site the audit page is in (AUDIT in web/build.py).
 AUDIT = "audit"
-NODE = shutil.which("node") or "node"
+
+
+def node_found() -> str:
+    """Node as PATH finds it, named from the folder this is run in, so that the scripts the
+    command line runs from each case's own folder find it too: a relative entry of PATH, an
+    empty one or one through `..`, joined as it is to this folder; "node" where PATH has none."""
+    found = shutil.which("node")
+    return os.path.join(os.getcwd(), found) if found else "node"
+
+
+NODE = node_found()
 #: A paper and an output named as a reader may name them. The page once wrote each file
 #: under its name made ASCII, so two such names became one file (round 1 of #527).
 PAPER, OUTPUT = "Mon article (v3).docx", "résultats 結果.json"
@@ -168,10 +178,8 @@ def programs_for(page: Path, folder: Path) -> dict[str, str]:
 def script_for(page: Path, name: str) -> str:
     """The shell script that runs the page's program `name` in Node. The command line runs it
     from each case's own folder, so the page's folder is named whole, not as `--site` gave it,
-    and so is Node where PATH found it in a folder named from here; a bare name is looked up
-    on PATH."""
-    node = os.path.abspath(NODE) if os.path.dirname(NODE) else NODE
-    command = [node, str(TEST / "program.mjs"), str(page.resolve()), name]
+    and Node as `node_found` names it."""
+    command = [NODE, str(TEST / "program.mjs"), str(page.resolve()), name]
     return f"#!/bin/sh\nexec {shlex.join(command)} \"$@\"\n"
 
 

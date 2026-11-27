@@ -8081,7 +8081,8 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
     under half its words and both together half or more. An entry whose title is its
     record's whole title, a colon and a subtitle the record does not hold, as long as the
     title and more; one whose title is another work's main title, a colon and its own words;
-    and one that says it is in English, held to another work's title. Each is (entry,
+    one that says it is in English, held to another work's title; and one whose record keeps
+    a short title and its subtitle apart, given whole before a second colon. Each is (entry,
     Crossref's title,
     its subtitle, OpenAlex's title or "", whether it is said). Every example holds one of
     each, so a rule broken for one kind is seen whatever the seed."""
@@ -8104,6 +8105,10 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
     extended = " ".join([*words[:3], *other[:4]]).capitalize()
     short = f"{words[0].capitalize()} {words[1]} 184:1845-56"
     subtitled = f"{' '.join(words[:3]).capitalize()}: {' '.join([*words[3:], *other[:3]])}"
+    # A record of a short title and a subtitle kept apart, "COVID-19" and "lessons learned",
+    # given whole before a second colon and five words of another work's: 4 of 9 shared.
+    apart = (f"{' '.join(words[:2]).capitalize()}: {' '.join(words[2:4])}: "
+             f"{' '.join(other[:5])}")  # fmt: skip
     # Another work's main title before the colon: held to the record like any other.
     colon = f"{' '.join(other[:3]).capitalize()}: {' '.join(words[3:])}"
     # Two records, each under half and both together half or more: ceil(n / 4) words each.
@@ -8127,6 +8132,7 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
         (entry.replace(title, subtitled), " ".join(words[:3]), "", "", False),
         (entry.replace(title, colon), " ".join(words[:3]), "", "", True),
         (entry.replace(f"{title}.", f"{title} (in English)."), " ".join(other[:n]), "", "", True),
+        (entry.replace(title, apart), " ".join(words[:2]), " ".join(words[2:4]), "", False),
     ]
 
 
@@ -20621,7 +20627,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
     ),
-    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 16)).map(
+    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 17)).map(
         lambda drawn: dict(zip(("entry", "title", "subtitle", "openalex"),
                                drawn[0][drawn[1]][:4], strict=True))
     ),

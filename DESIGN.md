@@ -31140,9 +31140,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An entry that holds its record's title word for word outside the title its reader took
     it to give is not said; within that title the record's title is never looked for, so
     that an invented title holding the real one and more is held to the record (round 1 of
-    #846); one that gives the record's whole title, a colon and a subtitle the record does
-    not hold is passed over, whichever colon ends the record's title, as is an invented
-    subtitle after the real title (rounds 2 and 3).
+    #846); one whose title is the record's title, alone or with its subtitle, then a colon
+    and words the record does not hold is passed over, whichever colon ends it, as is an
+    invented subtitle after the real title, even where the record holds a subtitle of its
+    own (rounds 2 to 5).
     One whose reader took the journal for its title and whose record
     is not in it word for word is said, and quotes the journal's name as the title given:
     an entry giving a work's Spanish title, whose record at OpenAlex is its English one, was

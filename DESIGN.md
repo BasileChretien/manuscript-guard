@@ -2333,7 +2333,12 @@ The result is compiled and packed by the code above, and checked three times:
   Word copies, and `submit` says so in a note (step 10).
 - A LaTeX manuscript's `\title` is not compared with paper.yaml's title, where a Markdown
   file's header title is (`two-titles`), and the PDF prints the `\title` (round 1 of step
-  13).
+  13). So G5 holds a checklist answer's quote under `where: Title` to the one `\title{}` of the
+  main text TeX reads, as the reader prints the body, its `\thanks` and `\footnote` left out,
+  and to paper.yaml's title only where no file of the main text sets one (round 1 of #813).
+  Where TeX reads several, in two files or in a conditional's two branches, it names where
+  each stands and holds the quote to none, since which prints cannot be told from the source
+  (round 2). A class's `\subtitle` or `\shorttitle` is not read as part of it.
 - G7's text recycling places a passage that runs on past an `\input` at its first file only,
   ending on its first line there (step 13).
 - G7's text recycling does not compare a caption `\subfloat[...]` takes in its option, nor a
@@ -18065,6 +18070,27 @@ to fix is pinned until the fix lands, and the fix changes its test.
   change.
   Pinned by `tests/test_checking.py::test_a_cross_reference_renumbered_stales_the_methods_answers_that_cite_it`
   and `tests/test_checking.py::test_a_claim_keeps_its_identifier_when_a_bound_value_changes`.
+- **The page carries no stored copy of a cited work.** A cited sentence and a value quoted from
+  the literature are shown with the quotes and passages the author recorded, and never with the
+  PDF or a page of it, so a co-author asked whether the work says what the sentence says reads
+  only what the author copied out. Where the computer that builds the page holds no full copy of
+  a work (none, its abstract alone, or one kept out of git), each item citing it says so, and
+  `checker build` lists those works by group and key; a copy counts under the work's filed name
+  in `literature/sources/`, as a ledger entry's `source_file`, or as a file the record lists,
+  and a file every ledger entry naming it reads at `depth: abstract-only` is the abstract.
+  What is said is outside the digest, so storing the copy later keeps the answers given. A copy
+  stored is not shown either. Whether the page is to carry the PDF, or the cited pages as images
+  with the passage marked, awaits the author's decision.
+  Pinned by `tests/test_checking.py::test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so`,
+  `tests/test_checking.py::test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held`,
+  `tests/test_checking.py::test_a_file_the_ledger_reads_as_an_abstract_is_only_the_abstract`
+  and `tests/test_checking.py::test_storing_a_copy_later_keeps_the_answers_given_without_it`.
+- **On the checker page, a file's depth is the ledger's.** A stored file is a cited work's
+  abstract where every ledger entry naming it reads it at `depth: abstract-only`, and nothing
+  reads the file to see which it is: a full text saved later over that file is still said to
+  be only its abstract, on each item citing the work and in `checker build`'s list, until the
+  entry's depth is changed. Accepted.
+  Pinned by `tests/test_checking.py::test_the_depth_is_the_ledgers_and_not_the_files`.
 - **A methods item's code is read from disk, and only what the step's digest holds.** The
   lines shown are the script as it is when the page is built, and a script whose digest is not
   the one its run recorded is said to be so on the page and by `build`; a fragment that records
@@ -19699,13 +19725,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Eight designs are named, a cross-sectional study the last added; a design outside
+  not. Nine designs are named, a diagnostic accuracy study the last added; a design outside
   them (a narrative review, a descriptive case series or a case report, a qualitative study,
-  a diagnostic accuracy study, a target trial emulation as a design of its own) takes
+  a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case reports, case series, diagnostic accuracy and qualitative
+  from a draft" (above) plans case reports, case series and qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19714,7 +19740,10 @@ Added by the adversarial review, verified and **not** fixed:
   assessment, and missing survey wordings. So a heading of their own in other words, "Study
   sample", "Measures", "Covariate assessment" or "Probability weights", is refused and the
   plan told it lacks the section, a false alarm chosen over a false pass (Basile,
-  2026-11-26). The author answers such a false alarm, for any design and any section but
+  2026-11-26). By the same rule a diagnostic accuracy plan's exposure and outcome are
+  found under STARD's words only where the heading is "Index test" or "Target condition"
+  whole, plural, bracketed or numbered "3.", "3)", "A." or "III.": "10a. Index test" and
+  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19728,6 +19757,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
+  `tests/test_corruption.py::test_the_index_test_and_the_target_condition_are_their_heading_whole`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
   `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
@@ -20136,6 +20166,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
   `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
   and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
+- **An infinity in a results file.** A fragment holding an infinite value, an open end
+  printed as a comparator, carries a bare `Infinity`, as the Python emitter's always did and
+  the R emitter's now does: `check` reads it, and a strict JSON reader (R's
+  `jsonlite::fromJSON`, a browser's `JSON.parse`) refuses the file. Accepted.
+- **A plain display for an infinite value.** A fragment or a ledger entry whose value is
+  infinite and whose display is a plain number ("7.02"), taken at `main` before #812, is
+  G0 `no-display` at check time: an infinite value takes only a comparator on its side, or
+  "100+" above. Accepted.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",
@@ -20164,6 +20202,19 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
   `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
   and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
+- **Which interpreter verify runs.** An R script runs with `--rscript`, else the Rscript
+  MANUSCRIPT_GUARD_RSCRIPT names, else the first on PATH; a Python script always with the
+  Python manuscript-guard runs in, and a Quarto document with the first `quarto` on PATH. The
+  analysis inherits the environment, so MANUSCRIPT_GUARD_RSCRIPT or
+  MANUSCRIPT_GUARD_VERIFY_TIMEOUT set for one run of `verify` only is one more way for it to
+  tell that run from an ordinary one; the flags are not seen. An R's version is what
+  `Rscript --version` prints, and renv.lock's R is held to it by major and minor version
+  alone, renv's library being kept by them. Accepted.
+- **What says a re-run was another R's.** `check` says that `verify` re-ran the analysis with
+  another R or Python than the results were written with, or another R than renv.lock pins;
+  the deposit record (`deposit/verification.py`) and the companion page
+  (`deposit/companion_parts.py`) say only whether the run passed, and name no other R.
+  Accepted.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
@@ -20258,6 +20309,14 @@ Open, recorded as each change landed:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other. Accepted.
+- **A page `journal --store` keeps holds what its hidden elements say** (`gates/journal_quotes.py`,
+  `_Shown`). A saved page keeps the words of an element hidden by `hidden` or `display: none`,
+  so that a section folded in an accordion, opened to copy a quote from, is on the stored page.
+  So a cookie notice or a modal hidden on the page is stored with it, and a bot check's page
+  whose words sit only in hidden elements holds text and is stored as the journal's page; only
+  one whose words are in its title, a `<noscript>`, a script or a `<template>` is refused. The
+  skill says to read the stored text before filling the profile from it. Accepted. Pinned by
+  `tests/test_journal_saved_page.py::test_what_a_page_hides_is_stored_with_it`.
 - **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
   page for rules that are neither a field nor under `manual:`: which sentences of a page are
   rules is the reader's judgement, and a heuristic that guessed it would warn of every
@@ -31023,6 +31082,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `2012. `, is two sentences, and every key placed in it moves; a re-wrap at any other space
   moves none. Pinned by
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
+- **What says a citation is not a Zotero field reads the source and the document.** A live
+  build counts the citations in its source (each group in brackets, and each narrative
+  citation outside one, leaving out comments, listings and inline code) and warns where the
+  document, its footnotes and its endnotes hold fewer Zotero fields; a citation pandoc reads
+  that this count does not, or the reverse, moves the count. `check` notes a built document
+  (`citations-not-live`) only where the document records no live build and holds a reference
+  list as pandoc bookmarks one (`refs`, then its first entry's `ref-<key>`), so one built
+  offline in a style that prints no reference list is not noted, nor one whose properties are
+  not UTF-8. Pinned by
+  `tests/test_cli.py::test_only_a_document_holding_a_reference_list_as_text_is_noted`.
 - **The editor's report parts each finding by its code.** `audit --editor` puts a finding in
   one of its four parts by the table in `auditing/editor.py` (the author's, 2026-11-25), and
   by what the finding holds for three codes alone: `over-header-n` by its severity, G6's

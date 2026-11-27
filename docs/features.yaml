@@ -265,8 +265,8 @@ features:
     stage: analyse
     title: Run it all again
     says: >-
-      Runs the analysis again and checks that it gives the recorded results, value by
-      value.
+      Runs the analysis again, with the R the author names, and checks that it gives the
+      recorded results, value by value, saying which R or Python ran each script.
     status: works
     commands: [verify]
     tests: [tests/test_verify.py]
@@ -353,10 +353,15 @@ features:
     title: Word documents
     says: >-
       Builds the manuscript and its supplement as Word documents, with live Zotero
-      citations, and on request every number coloured by what backs it.
+      citations, says why when a citation could not be one, and on request every number
+      coloured by what backs it.
     status: works
     commands: [build]
-    tests: [tests/test_build.py, tests/test_annotate.py, tests/test_zotero_word.py]
+    tests:
+      - tests/test_build.py
+      - tests/test_annotate.py
+      - tests/test_zotero_word.py
+      - tests/test_cli.py::test_an_offline_build_says_its_citations_are_text_and_check_notes_it
 
   - id: readable
     stage: write
@@ -623,7 +628,7 @@ features:
     gates: [G4]
     skills: [journal-profile]
     tests: [tests/test_compliance.py, tests/test_journal_boxes.py, tests/test_style.py,
-      tests/test_submission.py]
+      tests/test_submission.py, tests/test_journal_saved_page.py]
     docs: docs/journal-profiles.md
 
   - id: declarations
@@ -741,6 +746,9 @@ features:
     skills: [co-author-checking]
     tests: [tests/test_checking.py]
     docs: docs/co-authors.md
+    limits: >-
+      The page shows the quotes and passages the author recorded, never the stored copy of a
+      cited work; where no copy is stored, it says so on each item citing the work.
 
   - id: approvals
     stage: review

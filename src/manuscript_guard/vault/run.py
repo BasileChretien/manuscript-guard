@@ -298,7 +298,7 @@ def default_scripts(root: Path) -> list[str]:
 def scripts_to_run(root: Path, named: list[str]) -> list[str]:
     """The scripts to run, by their paths from the root, each one there with a runner here;
     refused otherwise."""
-    from manuscript_guard.verify import runner_for
+    from manuscript_guard.verify import named_r_problem, runner_for
 
     chosen = []
     for given in named or default_scripts(root):
@@ -310,6 +310,9 @@ def scripts_to_run(root: Path, named: list[str]) -> list[str]:
             raise RunRefused(f"{given} is not a file of the project") from exc
         if not (root / relative).is_file():
             raise RunRefused(f"{given} is not there")
+        problem = named_r_problem(root / relative)
+        if problem is not None:
+            raise RunRefused(problem)
         if runner_for(root / relative) is None:
             raise RunRefused(f"no runner for {Path(relative).suffix} on this machine, to run "
                              f"{relative}")  # fmt: skip

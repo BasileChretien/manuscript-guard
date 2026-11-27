@@ -14628,6 +14628,69 @@ def test_a_feasibility_fragment_that_fails_its_schema_is_said_to_emit_nothing(
                     "answer: nothing is emitted under feasibility. or quality.")
 
 
+# ------------------------------------------------- a key two scripts publish
+
+
+def _second_fragment(project: Path, values: dict[str, dict]) -> list[str]:
+    """A second script's fragment beside the example's, holding `values`, and what G0 says
+    of the results then: each `duplicate-key` message, in order."""
+    first = project / "results" / "01_disproportionality.json"
+    document = json.loads(first.read_text(encoding="utf-8"))
+    (project / "analysis" / "02_trials.py").write_bytes(b"# the trials\n")
+    document["provenance"]["generated_by"] = "analysis/02_trials.py"
+    for section in ("tables", "code_lists", "variables", "models", "steps", "relations",
+                    "flows", "corrections", "datasets", "controls"):  # fmt: skip
+        document.pop(section, None)
+    document["values"] = values
+    second = project / "results" / "02_trials.json"
+    second.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(second)
+    return [f.message for f in gate_report(project).failures if f.code == "duplicate-key"]
+
+
+def test_a_key_two_scripts_publish_is_defined_twice_unless_one_software_version(
+    project: Path,
+) -> None:
+    """On the bisphosphonates paper two scripts each recorded which R they ran, the same R,
+    and `check` failed it as a key defined twice. One version of one piece of software is one
+    record. Two versions are still `duplicate-key`, since the Methods can name only one, and
+    any other key two scripts publish is too, its value the same or not: one script owns a
+    result, so that G1 knows which run made it."""
+    first = json.loads((project / "results" / "01_disproportionality.json")
+                       .read_text(encoding="utf-8"))["values"]  # fmt: skip
+    python = first["software.python"]
+    assert _second_fragment(project, {"software.python": dict(python)}) == []
+    older = {**python, "value": "2.7.0", "display": "2.7.0"}
+    said = _second_fragment(project, {"software.python": older})
+    assert said == [f"'software.python' is {python['display']} in 01_disproportionality.json "
+                    "and 2.7.0 in 02_trials.json: two versions of one piece of software"]
+    # A result is not a software record by its role alone, nor by its key alone.
+    point = first["ror.point"]
+    for values in ({"ror.point": dict(point)}, {"ror.point": {**point, "role": "software"}},
+                   {"software.python": {k: v for k, v in python.items() if k != "role"}}):
+        key = next(iter(values))
+        assert _second_fragment(project, values) == [f"results key {key!r} is defined twice"]
+
+
+def test_a_software_record_two_scripts_write_otherwise_is_defined_twice(project: Path) -> None:
+    """Round 1 of #821: one record is the same in every field, or the second's other fields
+    were dropped without a word. A record of the same version written otherwise is still
+    `duplicate-key`, and the message names how each fragment wrote it, not two versions."""
+    first = json.loads((project / "results" / "01_disproportionality.json")
+                       .read_text(encoding="utf-8"))["values"]  # fmt: skip
+    python = first["software.python"]
+    shown = python["display"]
+    said = _second_fragment(project, {"software.python": {**python, "display": f"Python {shown}"}})
+    assert said == [f"'software.python' is recorded as {shown!r} in 01_disproportionality.json "
+                    f"and 'Python {shown}' in 02_trials.json, differing in display"]
+    for field, other in (("quoted", False), ("unit", "release"), ("label", False),
+                         ("same_as", "software.r"), ("digits", 1)):  # fmt: skip
+        said = _second_fragment(project, {"software.python": {**python, field: other}})
+        assert said == [f"'software.python' is recorded as {shown!r} in "
+                        f"01_disproportionality.json and {shown!r} in 02_trials.json, "
+                        f"differing in {field}"], field
+
+
 # ------------------------------------------------- the plan's Software section
 
 
@@ -37499,13 +37562,18 @@ def test_build_says_the_two_titles_differ_and_builds(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
 def test_build_says_nothing_of_titles_that_agree(project: Path, capsys) -> None:
-    """The baseline: a build with nothing to say prints the documents it made, and no more."""
+    """The baseline: a build with nothing to say of its titles prints the documents it made,
+    then only what an offline build says of the citations it formatted as text."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
     said = capsys.readouterr().out
     assert TWO_TITLES not in said
-    assert [line[:6] for line in said.splitlines()] == ["built ", "built "]
+    lines = said.splitlines()
+    assert [line[:6] for line in lines[:2]] == ["built ", "built "], said
+    assert len(lines) == 4, said
+    assert lines[2].startswith("  The citations are formatted text"), said
+    assert lines[3].startswith("  A live build would"), said
 
 
 def test_a_build_the_check_refuses_says_the_two_titles_differ_once(
@@ -40447,6 +40515,123 @@ def test_the_deviations_are_found_by_their_words_and_never_named(project: Path) 
     assert "{#" not in hints["the plan says nothing about deviations"]
 
 
+def test_a_diagnostic_accuracy_plan_is_asked_for_its_reference_standard_and_thresholds(
+    project: Path,
+) -> None:
+    """A diagnostic accuracy study took `other` until it became a design of the table, and
+    its plan was asked for the seven sections alone, so a plan that never said what decides
+    who has the condition, where a test turns positive or who reads each test blind passed.
+    Each section is asked for with its STARD 2015 item in the hint; and STARD's own words
+    for the exposure and the outcome, the index test and the target condition, are read so."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="diagnostic-accuracy")
+    asked = _plan_asked(project)
+    assert {"reference standard", "thresholds", "blinding", "indeterminate results",
+            "sampling"} <= set(asked), asked  # fmt: skip
+    assert "sample size" not in asked  # the example's own section
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(STARD 2015, items 10b and 11)" in hints[
+        "the plan says nothing about reference standard"]
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Exposure\n" in text and "## Outcome\n" in text
+    plan.write_text(text.replace("## Exposure\n", "## Index test\n")
+                    .replace("## Outcome\n", "## Target condition\n"), encoding="utf-8")
+    asked = _plan_asked(project)
+    assert "exposure" not in asked and "outcome" not in asked, asked
+    # Only a heading that is the index test or the target condition: one that names it in
+    # passing heads another section (round 1 of #830).
+    plan.write_text(text.replace("## Exposure\n", "## Blinding of index test readers\n")
+                    .replace("## Outcome\n", "## Reference standard for the target condition\n"),
+                    encoding="utf-8")  # fmt: skip
+    asked = _plan_asked(project)
+    assert "exposure" in asked and "outcome" in asked, asked
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Index test", "exposure", True),
+        ("## Index tests", "exposure", True),
+        ("## Index test(s)", "exposure", True),
+        ("## Index test (CT angiography)", "exposure", True),
+        ("## 3. Index test", "exposure", True),
+        ("## 3.1. Index test", "exposure", True),
+        ("## 3 Index test", "exposure", True),
+        ("## 3) Index test", "exposure", True),
+        ("## A. Index test", "exposure", True),
+        ("## III. Index test", "exposure", True),
+        ("## The index test", "exposure", True),
+        ("## Index test:", "exposure", True),
+        ("## **Index test**", "exposure", True),
+        ("## Exposure", "exposure", True),
+        ("## Blinding of index test readers", "exposure", False),
+        ("## Indeterminate index test results", "exposure", False),
+        ("## Positivity cut-off of the index test", "exposure", False),
+        ("## Index test and comparator", "exposure", False),
+        ("## A index test", "exposure", False),
+        ("## Target condition", "outcome", True),
+        ("## Target condition(s)", "outcome", True),
+        ("## III. Target condition", "outcome", True),
+        ("## Target conditions", "outcome", True),
+        ("## Target condition (coronary disease)", "outcome", True),
+        ("## Outcome", "outcome", True),
+        ("## Reference standard for the target condition", "outcome", False),
+    ],
+)  # fmt: skip
+def test_the_index_test_and_the_target_condition_are_their_heading_whole(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """STARD heads every plan's exposure "Index test" and its outcome "Target condition",
+    and G12 reads such a heading so; but only one that is the index test or the target
+    condition, numbered, plural or with a qualifier in brackets, since a heading that names
+    one in passing heads another section, the blinding or the reference standard (rounds 1
+    and 2 of #830)."""
+    _paper_has(project, study_type="diagnostic-accuracy")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    own = {"exposure": "## Exposure", "outcome": "## Outcome"}[section]
+    assert f"{own}\n" in text
+    plan.write_text(text.replace(f"{own}\n", f"{heading}\n"), encoding="utf-8")
+    assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Reference standard", "reference standard", True),
+        ("## Gold standard", "reference standard", True),
+        ("## Index test", "reference standard", False),
+        ("## Cut-off values", "thresholds", True),
+        ("## Positivity threshold", "thresholds", True),
+        ("## Cut-points", "thresholds", True),
+        ("## Masking of readers", "blinding", True),
+        ("## Blinding", "blinding", True),
+        ("## Inconclusive results", "indeterminate results", True),
+        ("## Uninterpretable images", "indeterminate results", True),
+        ("## Consecutive recruitment", "sampling", True),
+        ("## Selection of participants", "sampling", True),
+        ("## Sample size", "sampling", False),
+        ("## Sampling bias", "sampling", False),
+    ],
+)  # fmt: skip
+def test_a_diagnostic_accuracy_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """The diagnostic accuracy design's sections are found by words those sections alone use,
+    as the cross-sectional design's are since #801 (DESIGN.md, Known gaps, "A design's
+    sections are found by the words of their headings"): its own headings count, and a
+    heading of another section, the index test or a sample's size, does not."""
+    _paper_has(project, study_type="diagnostic-accuracy")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
 def test_a_cross_sectional_plan_is_asked_for_its_sampling_and_its_measurement(
     project: Path,
 ) -> None:
@@ -40675,8 +40860,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
     from manuscript_guard.gates.design import REQUIRED, required_for, study_types
 
     assert sorted(study_types()) == sorted([
-        "trial", "cohort", "case-control", "cross-sectional", "self-controlled",
-        "disproportionality", "systematic-review", "prediction-model"])  # fmt: skip
+        "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
+        "self-controlled", "disproportionality", "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)

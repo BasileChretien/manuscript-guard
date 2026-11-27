@@ -7,7 +7,10 @@ to know where a number came from — only the reporting does.
 
 from __future__ import annotations
 
+import math
+import numbers
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +23,101 @@ ATTESTED = "attested"
 
 class DisplayError(Exception):
     """A value cannot be rendered without the author deciding how."""
+
+
+class MissingValueError(DisplayError):
+    """A value that is no number to print: NaN, infinite, or missing with no display."""
+
+
+#: Displays that spell a missing value rather than say what the paper prints in its place,
+#: compared without case and untrimmed, as the R emitter compares them. Not "NA": not
+#: applicable is something papers print (round 2 of #812).
+MISSING_SPELLINGS = frozenset({"nan", "inf", "-inf", "null", "none"})
+INFINITE = "is infinite"
+
+
+def _absent(value: object) -> str | None:
+    """"is None" for None; "is NA" for pandas' NA and NaT and NumPy's NaT, which json cannot
+    write; None for anything else."""
+    if value is None:
+        return "is None"
+    pandas = sys.modules.get("pandas")
+    if pandas is not None and any(value is getattr(pandas, name, None) for name in ("NA", "NaT")):
+        return "is NA"
+    numpy = sys.modules.get("numpy")
+    if numpy is not None and isinstance(value, (numpy.datetime64, numpy.timedelta64)):
+        return "is NA" if bool(numpy.isnat(value)) else None
+    return None
+
+
+def missing_problem(value: object, display: str | None = None) -> str | None:
+    """What makes `value` no number to print, as a refusal says it; None for a value that
+    is one. The R emitter's `mg_missing_problem` is the same rule.
+
+    - "is NaN", whatever the display, since none renders it.
+    - "is infinite" with no display. With one, the display's own check decides: an unbounded
+      limit printed as a comparator (">100") was taken before, and is.
+    - "is NA" for pandas' and NumPy's missing values, whatever the display: json cannot
+      write them, as R refuses `NA_integer_` with one.
+
+    None with a display is the author saying what is printed where there is no number ("not
+    estimable"), taken before; with none, `derive_display` refuses it as a value of no type
+    it formats. A display that spells a missing value is the emitters' to refuse
+    (`spelled_missing`), and not this, which `check` reads files written before through.
+
+    Found writing a real paper (2026-11-26): R stopped on `NaN` with `digits` in its own
+    words, "missing value where TRUE/FALSE needed", in the session's language and naming no
+    key, and this emitter printed "nan".
+    """
+    if isinstance(value, numbers.Real) and not isinstance(value, numbers.Integral):
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if math.isnan(number):
+            return "is NaN"
+        if math.isinf(number) and display is None:
+            return INFINITE
+        return None
+    return "is NA" if _absent(value) == "is NA" else None
+
+
+def spelled_missing(value: object, display: str | None) -> str | None:
+    """Where a missing value's display spells a missing value ("nan", "NULL", "None"), what
+    the emitters' refusal says of it; None otherwise. At emit time only, never as `check`
+    reads a fragment or the ledger written before (round 2 of #812)."""
+    if display is None or _absent(value) != "is None":
+        return None
+    if str(display).lower() in MISSING_SPELLINGS:
+        return f"is None, and its display {display!r} spells a missing value"
+    return None
+
+
+def missing_refusal(key: str, problem: str, *, point: str | None = None) -> MissingValueError:
+    """The refusal of a value that is no number to print, naming its key: the same words as
+    the R emitter's, ending in what to do for that problem. A part of an interval whose
+    estimate is `point` is told how to emit an open end with `value()`, since `interval()`
+    and `control()` take no display, and that a control cannot have one (round 3 of #812)."""
+    if problem == INFINITE and point is not None:
+        end = "low" if key.endswith("_low") else "high"
+        shown = "<-100" if end == "low" else ">100"
+        bound = key if key != point else f"{point.removesuffix('.point')}.ci_high"
+        then = ("so there is no number to print. interval() and control() take no display: "
+                f'emit the estimate as value("{point}", ...) and each end as value("{bound}", '
+                f'..., display="{shown}", bounds="{point}", bound="{end}"), an open end with a '
+                "comparator on its side. A control cannot have an open end")  # fmt: skip
+    elif problem == INFINITE:
+        then = ("so there is no number to print. Say with `display` what the paper prints in "
+                'its place, a comparator such as ">100" for an unbounded limit, or emit the '
+                "key only where there is a value")  # fmt: skip
+    elif problem.endswith("spells a missing value"):
+        then = ("which is no number to print. Say with `display` what the paper prints in its "
+                'place ("not estimable"), or emit the key only where there is a value')  # fmt: skip
+    else:
+        then = ("so there is no number to print. Find out why the analysis computed none (a "
+                "model that did not converge, a share whose denominator is 0) and emit the "
+                "key only where there is a value")  # fmt: skip
+    return MissingValueError(f"{key}: the value {problem}, {then}")
 
 
 @dataclass(frozen=True)
@@ -99,7 +197,12 @@ def derive_display(key: str, value: object, display: str | None, digits: int | N
     than formatted with some default. Implicit rounding is exactly how the same quantity
     comes to be written 4.3 in the abstract and 4.28 in a table, and no downstream check
     can recover the author's intent once it is lost.
+
+    A value that is no number to print is refused first (`missing_problem`).
     """
+    problem = missing_problem(value, display)
+    if problem is not None:
+        raise missing_refusal(key, problem)
     if display is not None:
         _check_display_matches(key, value, display)
         return display
@@ -322,6 +425,17 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
     text, exponent_text = _number_of(match)
     shown = float(text)
     compare = match.group("compare")
+    if not compare and math.isinf(float(value)):
+        # A number's tolerance is infinite for an infinite value, so "7.02" was taken for an
+        # unbounded limit (round 2 of #812). A comparator on its side is what it prints, and
+        # "100+" above, whose "+" reads as a unit (round 3).
+        if float(value) > 0 and match.group("unit") == "+":
+            return
+        raise DisplayError(
+            f"{key}: display {display!r} is a number, and the value is infinite: an "
+            f'unbounded limit is printed as a comparator on its side, ">100" or "100+" above, '
+            f'"<-100" below'
+        )
     if compare:
         # "<0.001" is true of any value below 0.001 and false of 0.4. Checking the direction
         # rather than the distance is the whole content of a comparator display.

@@ -5700,9 +5700,11 @@ of 150 characters or fewer, which is how a heading is typed in Word with no head
 (decision D5); and a citation's author typed as text, its year after it, "(EOSC-HLEG,
 2016)", or in a bracket on one line of author-year citations a comma divides, "(Kaye et al.
 2009, NIH 2016a, NIH 2016b)". And a form of the statistical list, where the journal does not
-ask it defined, is not used before a definition the paper gives later, "SD" over a table
-note's "standard deviation (SD)" (decision D2: the statistical list only; DOI, on the shipped
-list, is held to its later definition as before). A display's definition still counts for
+ask it defined, is not used before a later definition that only a table's or a figure's own
+text gives, "SD" over a table note's "standard deviation (SD)" (decision D2, narrowed on
+2026-11-27, "Narrow it to displays": the statistical list only; a later definition in the
+running text, tex-cs-lg-1's "root mean square error (RMSE)", is owed at first use, as DOI's,
+on the shipped list, is). A display's definition still counts for
 the text where the text gives none (decision D1, "Still counts", kept), and the letters still
 decide (D9). Known gaps holds where each ends.
 
@@ -30936,8 +30938,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     one line with another year before a comma, a semicolon or the close is read as one. A
     reference typed in a table's cell, "Consortium. (2020). *Levels.*", is not. Pinned by
     `tests/test_g14_places.py::test_a_citation_s_author_owes_no_definition_and_is_a_use`.
-  - Only the statistical list's forms owe no later definition; one listed in paper.yaml, on
-    the shipped list or among G2's names is used before a definition the paper gives later.
+  - Only the statistical list's forms owe no later definition, and only one a table's or a
+    figure's own text gives; one the running text gives later, and one listed in paper.yaml,
+    on the shipped list or among G2's names, is used before it. A PDF whose lines are not
+    rebuilt into paragraphs has no display, so there every later definition is the text's.
     Pinned by
     `tests/test_language.py::test_a_statistical_abbreviation_defined_later_was_not_used_before_its_definition`.
 - **G14's places that owe no definition are read by their places, not their meaning

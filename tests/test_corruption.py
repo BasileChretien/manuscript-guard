@@ -41181,17 +41181,44 @@ def test_a_citation_s_author_owes_no_definition(project: Path) -> None:
         assert [code for code, _line in language_findings(project)] == said, written
 
 
+
 def test_a_statistical_abbreviation_defined_later_is_not_used_before_it(project: Path) -> None:
-    """Decision D2 (docx-psych-C4): SD, on the statistical list, used in the Introduction and
-    defined in the Methods, is not used before its definition; DOI, on the shipped list, is."""
+    """Decision D2, narrowed to displays (Basile, 2026-11-27; docx-psych-C4, tex-cs-lg-1):
+    SD, on the statistical list, used in the Introduction and defined after it only in a
+    table's note, is not used before its definition; defined after it in the running text,
+    it is, as DOI, on the shipped list, is wherever it is defined."""
     mended = with_ror_defined(project)
     early = mended.replace("This analysis asks", "The mean (SD) age and the DOI of each record "
-                           "were read. This analysis asks", 1).replace(
-        _BEFORE_PYTHON, "The standard deviation (SD) and the digital object identifier (DOI) "
-        "were kept. The SD and the DOI held.\n\n" + _BEFORE_PYTHON, 1)  # fmt: skip
-    main_md(project).write_text(early, encoding="utf-8")
-    assert language_findings(project) == [
-        ("abbreviation-used-before-defined", line_of(early, "The mean (SD) age"))]
+                           "were read. This analysis asks", 1)  # fmt: skip
+    note = ("| Group | Age |\n|---|---|\n| one | 54 |\n\n*Note.* The standard deviation (SD) "
+            "and the digital object identifier (DOI) of each record.\n\n")
+    spelt = ("The standard deviation (SD) and the digital object identifier (DOI) were kept. "
+             "The SD and the DOI held.\n\n")
+    for later, said in ((note, ["DOI"]), (spelt, ["DOI", "SD"])):
+        text = early.replace(_BEFORE_PYTHON, later + _BEFORE_PYTHON, 1)
+        main_md(project).write_text(text, encoding="utf-8")
+        line = line_of(text, "The mean (SD) age")
+        assert language_findings(project) == [
+            ("abbreviation-used-before-defined", line)] * len(said), later
+
+
+def test_a_statistical_abbreviation_a_pdf_s_legend_defines_later_is_not_used_before_it(
+    tmp_path: Path,
+) -> None:
+    """The same in a PDF whose lines are rebuilt into paragraphs, its legends displays: a
+    table's legend that defines SD after the text used it leaves the use alone, and the
+    running text's later definition does not (Basile, 2026-11-27)."""
+    used = _set_lines("Methods", *_UNSAID, "The mean (SD) rose in each site.")
+    legend = [{"words": ("Table", "1.", "Ages;", "the", "standard", "deviation", "(SD)", "of",
+                         "each."), "size": 7.5},
+              {"words": ("one", "12", "14"), "size": 7.5, "cells": True}]
+    for later, said in ((legend, []), (_set_lines("The standard deviation (SD) was read.",
+                                                  "The SD held."),
+                                       [("abbreviation-used-before-defined", False)])):
+        run = _rebuilt_run(tmp_path, [([], [*used, *later], _set_lines(*_UNSAID))])
+        found = [each for each in _rebuilt_said(run, "SD")
+                 if each[0] == "abbreviation-used-before-defined"]
+        assert found == said, run.language
 
 
 # --------------------------------------------------------------------------------------

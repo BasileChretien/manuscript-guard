@@ -1739,17 +1739,21 @@ STATISTICS_SPELT = {"ANOVA": "analysis of variance", "RMSD": "root mean square d
 
 
 @st.composite
-def statistics_used(draw: st.DrawFn) -> tuple[str, list[str], tuple[str, str]]:
+def statistics_used(draw: st.DrawFn) -> tuple[str, list[str], tuple[str, str, str]]:
     """A manuscript using every abbreviation of `STATISTICS_EXEMPT` and `STATISTICS_NOT`, in
-    an order drawn, and defining one of each list in its Discussion, after it was used; the
-    names a journal is drawn to ask defined, one of each list at least; and the two defined
-    later, the exempt one first."""
+    an order drawn, then defining, after they were used, one exempt form in a table's note,
+    another in the running text, and one of `STATISTICS_NOT` in the running text (decision
+    D2, narrowed to displays, Basile, 2026-11-27); the names a journal is drawn to ask
+    defined, one of each list at least; and the three defined later, in that order."""
     planted = draw(st.permutations([*STATISTICS_EXEMPT, *STATISTICS_NOT]))
     text, _starts = _paragraphs(draw, (f"the {short} was given" for short in planted))
     named = [draw(st.sampled_from(STATISTICS_EXEMPT)), draw(st.sampled_from(STATISTICS_NOT))]
-    later = (draw(st.sampled_from(STATISTICS_EXEMPT)), draw(st.sampled_from(STATISTICS_NOT)))
-    spelt = " and ".join(f"the {STATISTICS_SPELT[short]} ({short})" for short in later)
-    return (f"# Results\n\n{text}# Discussion\n\nIn short, {spelt} were read.\n",
+    noted, spelt_exempt = draw(st.permutations(STATISTICS_EXEMPT))[:2]
+    later = (noted, spelt_exempt, draw(st.sampled_from(STATISTICS_NOT)))
+    spelt = " and ".join(f"the {STATISTICS_SPELT[short]} ({short})" for short in later[1:])
+    table = (f"| Group | n |\n|---|---|\n| one | 3 |\n\n*Note.* The {STATISTICS_SPELT[noted]} "
+             f"({noted}) of each group.\n")  # fmt: skip
+    return (f"# Results\n\n{text}# Discussion\n\nIn short, {spelt} were read.\n\n{table}",
             sorted(set(named)), later)  # fmt: skip
 
 

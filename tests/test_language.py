@@ -3226,20 +3226,77 @@ def test_a_glossary_line_whose_tab_word_printed_as_a_space_defines_where_its_wor
 # ------------------------------------ a statistical abbreviation defined later (2026-11-27)
 
 
+
 def test_a_statistical_abbreviation_defined_later_was_not_used_before_its_definition(
     project: Path,
 ) -> None:
-    """Decision D2 (docx-psych-C4): a form of the statistical list, which may stand undefined
-    where the journal does not ask, is not used before its definition where the paper defines
-    it later, SD here. A form of the shipped list, DOI, still is; and where the journal asks
-    the statistics defined, SD is too."""
-    text = ("# Methods\n\nThe mean (SD) age and the DOI of each record were read.\n\n"
-            "# Results\n\nThe standard deviation (SD) was 12, and the digital object "
-            "identifier (DOI) was kept. The SD and the DOI were read again.\n")  # fmt: skip
-    report = written(project, text)
-    assert [f.message.split()[0] for f in report.findings
-            if f.code == "abbreviation-used-before-defined"] == ["DOI"], found(report)
+    """Decision D2, narrowed (Basile, 2026-11-27, "Narrow it to displays"; docx-psych-C4,
+    tex-cs-lg-1): a form of the statistical list, which may stand undefined where the
+    journal does not ask, is not used before its definition where only a table's or a
+    figure's own text defines it later, SD in a table's note; where the running text spells
+    it out later, the use before is used before its definition, as DOI's is; and where the
+    journal asks the statistics defined, the note's SD is too."""
+    methods = "# Methods\n\nThe mean (SD) age and the DOI of each record were read.\n\n"
+    note = ("# Results\n\n| Group | Age |\n|---|---|\n| one | 54 |\n\n*Note.* The standard "
+            "deviation (SD) of each group, and the digital object identifier (DOI).\n")
+    spelt = ("# Results\n\nThe standard deviation (SD) was 12, and the digital object "
+             "identifier (DOI) was kept. The SD and the DOI were read again.\n")
+
+    def early(text: str) -> list[str]:
+        return sorted(f.message.split()[0] for f in written(project, text).findings
+                      if f.code == "abbreviation-used-before-defined")  # fmt: skip
+
+    assert early(methods + note) == ["DOI"]
+    assert early(methods + spelt) == ["DOI", "SD"]
     journal_asks(project, {"define_statistics": True})
-    report = written(project, text)
-    assert sorted(f.message.split()[0] for f in report.findings
-                  if f.code == "abbreviation-used-before-defined") == ["DOI", "SD"]
+    assert early(methods + note) == ["DOI", "SD"]
+
+
+def test_a_statistical_abbreviation_a_latex_float_defines_later_was_not_used_before_it(
+    tmp_path: Path,
+) -> None:
+    """The same in LaTeX: a table's float that defines SD in its caption after the text used
+    it leaves the use alone, and the running text's later definition does not."""
+    from manuscript_guard.gates.language import _asked, _judge, _Known, _shipped
+
+    exact, lowered = _shipped()
+    known = _asked(_Known(exact, lowered), False, frozenset())
+    floated = ("\\begin{table}\n\\caption{Ages by group, and the standard deviation (SD) of "
+               "each.}\n\\begin{tabular}{ll}\none & 54 \\\\\n\\end{tabular}\n\\end{table}\n")
+    spelt = "The standard deviation (SD) was 12, and the SD held.\n"
+    for later, said in ((floated, []), (spelt, ["SD"])):
+        (tmp_path / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nThe mean (SD) "
+            f"age was read.\n\n\\section{{Results}}\n{later}\\end{{document}}\n",
+            encoding="utf-8")  # fmt: skip
+        report = _judge(_latex_read(tmp_path, None), known, tmp_path)
+        assert [f.message.split()[0] for f in report.findings
+                if f.code == "abbreviation-used-before-defined"] == said, later
+
+
+def test_a_statistical_abbreviation_a_word_legend_defines_later_was_not_used_before_it(
+    tmp_path: Path, capsys,
+) -> None:
+    """The same in the audit of a .docx: a table's legend typed as a paragraph, "Table 1.
+    ...", that defines SD after the text used it leaves the use alone, and the running
+    text's later definition does not."""
+    import json
+    import sys
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed")
+    sys.path.insert(0, str(Path(__file__).parent))
+    from test_definition_shapes import _docx, _paragraph
+
+    from manuscript_guard.cli import main
+
+    legend = "Table 1. Ages by group; the standard deviation (SD) of each."
+    spelt = "The standard deviation (SD) was 12, and the SD held."
+    for at, (later, said) in enumerate(((legend, []), (spelt, ["SD"]))):
+        paper = _docx(tmp_path / f"paper{at}.docx", [
+            _paragraph("Methods", "Heading1"), _paragraph("The mean (SD) age was read."),
+            _paragraph("Results", "Heading1"), _paragraph(later)])
+        assert main(["audit", str(paper), "--json"]) in (0, 1)
+        report = json.loads(capsys.readouterr().out)
+        assert [f["message"].split()[0] for f in report["findings"]
+                if f["code"] == "abbreviation-used-before-defined"] == said, later

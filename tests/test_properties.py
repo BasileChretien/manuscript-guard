@@ -3458,15 +3458,16 @@ from generated import (  # noqa: E402
 
 @holds(60, statistics_used())
 def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
-    drawn: tuple[str, list[str], tuple[str, str]],
+    drawn: tuple[str, list[str], tuple[str, str, str]],
 ) -> None:
     """The statistical abbreviations G14's list holds are not reported as undefined, and
     the others are; a journal that asks for the statistical ones defined has all of them
-    reported, and one that names some has those reported, from either list. One of each
-    list the paper defines after using it: the statistical one, where the journal does not
-    ask it defined, was not used before its definition, and the other was (decision D2,
+    reported, and one that names some has those reported, from either list. The paper
+    defines three after using them: a statistical one in a table's note, where the journal
+    does not ask it defined, was not used before its definition; another statistical one
+    in the running text was, and so was the other list's (decision D2, narrowed to displays,
     the author, 2026-11-27)."""
-    text, named, (exempt, other) = drawn
+    text, named, (noted, spelt, other) = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     read = [_file(0, Path("main.md"), text, [], False)]
 
@@ -3476,8 +3477,9 @@ def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
         return sorted((f.code, f.message.split()[0]) for f in report.findings)
 
     def expected(reported: set[str]) -> list[tuple[str, str]]:
-        early = {other} | ({exempt} & reported)
-        return sorted([*(("abbreviation-undefined", short) for short in reported - {exempt, other}),
+        early = {spelt, other} | ({noted} & reported)
+        return sorted([*(("abbreviation-undefined", short)
+                         for short in reported - {noted, spelt, other}),
                        *(("abbreviation-used-before-defined", short) for short in early)])
 
     assert said(False, frozenset()) == expected(set(STATISTICS_NOT)), text
@@ -3487,6 +3489,15 @@ def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
 
 def _a_statistical_abbreviation_owes_a_later_definition(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_may_stand_undefined", lambda short, known: False)
+
+
+def _a_statistical_abbreviation_owes_no_later_definition_anywhere(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """D2 as first decided, before "Narrow it to displays": the running text's later
+    definition as quiet as a table's."""
+    patch.setattr(language_gate, "_quiet_later",
+                  lambda short, known, covering: language_gate._may_stand_undefined(short, known))
 
 
 from generated import pointer_restated  # noqa: E402
@@ -30110,6 +30121,10 @@ BROKEN = {
     ),
     "a statistical abbreviation owes a later definition": (
         _a_statistical_abbreviation_owes_a_later_definition,
+        test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a statistical abbreviation owes no later definition anywhere": (
+        _a_statistical_abbreviation_owes_no_later_definition_anywhere,
         test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
     ),
     "a pointer after a bracket's semicolon defines nothing": (

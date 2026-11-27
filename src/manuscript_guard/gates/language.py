@@ -2936,6 +2936,16 @@ def _may_stand_undefined(short: str, known: _Known) -> bool:
     return short in _statistical() and short in known
 
 
+def _quiet_later(short: str, known: _Known, covering: list[_Definition]) -> bool:
+    """Whether a use of `short` before `covering`, the definitions a use outside a display is
+    held to, is no use before its definition: where `short` may stand undefined
+    (`_may_stand_undefined`) and only a table's or a figure's own text defines it, as SD in
+    docx-psych-C4's table note; the running text's definition, RMSE in tex-cs-lg-1's, is owed
+    at first use (Basile, 2026-11-27, "Narrow it to displays")."""
+    return _may_stand_undefined(short, known) and all(
+        mark.display is not None for mark in covering)
+
+
 def _covering(definitions: Iterable[_Definition]) -> list[_Definition]:
     """The definitions of one form, in order, that a use outside a display defining it is
     held to: the text's, and where the text gives none, the displays'
@@ -3115,11 +3125,12 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             owed = [use for use in _loose(uses, definitions) if not use.undue]
             covering = _covering(definitions)
             # A form the statistical list lets stand undefined, where the journal does not
-            # ask it defined, owes no definition, so none later makes its use early (decision
-            # D2, the author, 2026-11-27: the statistical list only; the shipped list and G2's
-            # names are held to a later definition as before).
+            # ask it defined, is not used before a later definition that only a table's or a
+            # figure's own text gives (decision D2, the author, 2026-11-27, "Narrow it to
+            # displays": the statistical list only, and the running text's later definition
+            # is owed at first use, as the shipped list's and G2's names are).
             before = (bool(covering) and bool(owed) and owed[0].key < covering[0].key
-                      and not _may_stand_undefined(short, known))  # fmt: skip
+                      and not _quiet_later(short, known, covering))  # fmt: skip
 
             if before and all(listed(mark) for mark in covering):
                 # Defined only in the list of abbreviations, after this use: the text owes

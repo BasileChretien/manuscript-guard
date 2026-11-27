@@ -33,7 +33,9 @@ of that kind:
 - the arithmetic, the Abstract against the Results, and the small cells a total gives away;
 - the words, by G6 and G14, through pandoc's WebAssembly build of the version CI tests with;
 - the reference list (G7), and with the box ticked, whether a cited work was retracted or is
-  in no registry.
+  in no registry;
+- the tables and figures (G2), counted by their legends, each cited and numbered in the order
+  of its first citation ([audit.md](audit.md)).
 
 The page shows the report as the PDF `audit --pdf` writes, from the same audit, inside the
 page, in the browser's own viewer: its summary in colour, every section and every place of

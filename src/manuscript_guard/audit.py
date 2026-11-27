@@ -154,6 +154,11 @@ class AuditReport:
     backing_files: tuple[Path, ...] = ()
     backing_values: set[str] = field(default_factory=set)
     matched: list[Candidate] = field(default_factory=list)
+    #: Each number found in the outputs only as a rounding of one there: the outputs carry it
+    #: at more places than the paper prints it, "3.8" for 3.84. Listed apart from `matched`
+    #: and not counted by --strict, as the Abstract against Results lists its own roundings:
+    #: a paper that prints fewer places than its analysis stores is printing, not a defect.
+    rounded: list[Candidate] = field(default_factory=list)
     unmatched: list[Candidate] = field(default_factory=list)
     classified: int = 0
     unreadable: list[str] = field(default_factory=list)
@@ -291,8 +296,8 @@ class AuditReport:
     @property
     def examined(self) -> int:
         return (
-            len(self.matched) + len(self.unmatched) + len(self.reference_like)
-            + self.classified + self.uncompared
+            len(self.matched) + len(self.rounded) + len(self.unmatched)
+            + len(self.reference_like) + self.classified + self.uncompared
         )
 
 
@@ -509,6 +514,38 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
             skipped.append(f"{given}: does not exist")
 
     return values, used, skipped
+
+
+def roundings_of(values: set[str]) -> set[tuple[str, int]]:
+    """Each coarser form a number in the outputs can be printed as, with its places: the
+    index a number of the paper is looked up in when it is not there as printed.
+
+    A paper prints fewer places than the analysis stored — "3.8" for 3.84, "52%" for 51.6 —
+    and that is what printing is, not a defect. The Abstract against Results has always read
+    a rounding as a match (`auditing.abstract.coarser`); this is the same relation, held
+    over the outputs, so that --against reads one there too (round 1 of #839).
+
+    A whole number rounds to nothing finer than itself, and the outputs hold far more of
+    those than of the rest: skipping one before `coarser` parses it is what keeps a folder
+    of CSVs quick.
+    """
+    from manuscript_guard.auditing.abstract import coarser
+
+    found: set[tuple[str, int]] = set()
+    for value in values:
+        if "." in value:
+            found |= coarser(value)
+    return found
+
+
+def _rounded(part: str, values: set[str], roundings: set[tuple[str, int]]) -> bool:
+    """Whether one number the paper prints is in the outputs: as printed, or as a rounding of
+    a number there. `part` is normalised, as `parts_of` gives it, so its places are its own
+    digits after the point — "3.8" has one, "52" none."""
+    if part in values:
+        return True
+    _whole, dot, fraction = part.partition(".")
+    return (part, len(fraction) if dot else 0) in roundings
 
 
 # A reference-list entry, recognised by its shape rather than by a heading. citeproc appends
@@ -1738,10 +1775,12 @@ def audit(
     for source in sources[:read]:
         report.registered += named_in(source.path, source.hidden, source.text)
     pieces = []
+    roundings = roundings_of(values)
     for source in sources:
         report.read["tables"] = report.read.get("tables", 0) + len(source.tables)
         report.read["headings"] = report.read.get("headings", 0) + len(source.heading_lines)
-        atoms = _read_numbers(report, source, classifier, values, adjusted.get(source.path))
+        atoms = _read_numbers(report, source, classifier, values, adjusted.get(source.path),
+                              roundings)
         _flows(report, source)
         pieces.append(_piece(source, atoms))
     from manuscript_guard.auditing.abstract import against_results
@@ -1980,11 +2019,13 @@ def _flows(report: AuditReport, source: _Source) -> None:
 
 def _read_numbers(
     report: AuditReport, source: _Source, classifier: Classifier, values: set[str],
-    adjusted: object = None,
+    adjusted: object = None, roundings: set[tuple[str, int]] | None = None,
 ) -> list[Atom]:
     """Every number of one source, classified and, where outputs were given, compared; the
     numbers the classifier left unexplained are returned, for the Abstract against Results.
-    `adjusted` is where its paper says its P values are adjusted, None where it does not."""
+    `adjusted` is where its paper says its P values are adjusted, None where it does not;
+    `roundings` is `roundings_of` of the outputs, taken once for the run."""
+    roundings = roundings if roundings is not None else set()
     rendered_only = {
         rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
     }
@@ -2047,7 +2088,14 @@ def _read_numbers(
         # Every number the atom carries has to be in the outputs, not just one of them:
         # an interval is accounted for when both its bounds are, and "0.72-0.99" with
         # only 0.72 published is exactly the discrepancy this command is for.
-        matched = all(part in values for part in parts_of(atom.text))
+        parts = parts_of(atom.text)
+        matched = all(part in values for part in parts)
+        # A paper prints fewer places than the analysis stored, and that is printing rather
+        # than a discrepancy: a number found only as a rounding of one in the outputs counts
+        # apart from a match and outside --strict, as the Abstract against Results counts the
+        # same relation (#839). Only where no part is in the outputs exactly, since a hit
+        # says the paper prints what it stored.
+        rounded = not matched and all(_rounded(part, values, roundings) for part in parts)
         # A line shaped like a reference entry is compared like any other. Its numbers
         # are most likely a volume, a page and a year, so a miss is listed apart from
         # the findings rather than among them; a hit counts as a reference. The shape
@@ -2055,10 +2103,14 @@ def _read_numbers(
         if source.by_shape and looks_like_reference(atom.line_text):
             if matched:
                 report.classified += 1
+            elif rounded:
+                report.rounded.append(candidate)
             else:
                 report.reference_like.append(candidate)
         elif matched:
             report.matched.append(candidate)
+        elif rounded:
+            report.rounded.append(candidate)
         else:
             report.unmatched.append(candidate)
     return unexplained

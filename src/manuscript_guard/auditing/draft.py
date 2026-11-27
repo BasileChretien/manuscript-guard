@@ -279,7 +279,8 @@ def _checks_of_audit(report, items: list[Item]) -> list[tuple[str, str, int]]:
     tables = read.get("tables", 0)
     checks: list[tuple[str, str, int]] = []
     if report.compared:
-        compared = len(report.matched) + len(report.unmatched) + len(report.reference_like)
+        compared = (len(report.matched) + len(report.rounded) + len(report.unmatched)
+                    + len(report.reference_like))
         among = _n(len(report.backing_files), "output")
         checks.append(("Numbers against the outputs",
                        _read(compared, "number", more=f"looked for among {among}"),

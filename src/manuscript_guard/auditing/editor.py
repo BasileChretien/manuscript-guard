@@ -290,6 +290,9 @@ KINDS: tuple[Kind, ...] = (
     Kind("abstract-rounded", COPYEDIT,
          "A number in the Abstract found in the Results only rounded another way.",
          _codes("audit", "abstract-rounded")),
+    Kind("in-outputs-rounded", COPYEDIT,
+         "A number in the paper that the outputs hold, at more places than the paper prints "
+         "it.", _codes("audit", "found-only-as-a-rounding")),
     # ---------------------------------------------------------- what the check read
     Kind("unread", READ, "What could not be read.",
          _codes("audit", "unreadable", "output-not-read", "nothing-read")),

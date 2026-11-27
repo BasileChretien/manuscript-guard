@@ -881,12 +881,15 @@ LANGUAGES = ("Afrikaans", "Albanian", "Arabic", "Armenian", "Basque", "Belarusia
              "Swahili", "Swedish", "Tamil", "Thai", "Turkish", "Ukrainian", "Urdu",
              "Vietnamese", "Welsh")  # fmt: skip
 _LANGUAGE = "(?:" + "|".join(LANGUAGES) + ")"
+_OR_ENGLISH = "(?:" + "|".join((*LANGUAGES, "English")) + ")"
+_JOINED = r"(?:,| and| or) "
 #: An entry that says its title is a translation: the registry holds the title in the
 #: language the work was written in, which shares no words with it. One work may be in two,
-#: "[Article in German, French]" (round 1 of #846).
+#: "[Article in German, French]" (round 1 of #846), English among them where another is
+#: named, "[Article in English, Portuguese]" (round 2).
 _TRANSLATED = re.compile(
-    rf"(?i)[\[(](?:article |text )?in {_LANGUAGE}(?:(?:,| and| or) {_LANGUAGE})*"
-    r"(?:,? with (?:an )?English abstract)?[\])]"
+    rf"(?i)[\[(](?:article |text )?in (?:{_OR_ENGLISH}{_JOINED})*{_LANGUAGE}"
+    rf"(?:{_JOINED}{_OR_ENGLISH})*(?:,? with (?:an )?English abstract)?[\])]"
 )
 #: What the check was worth on 100 PMC papers (2026-11-27): 1 of the 6 notes judged by two
 #: readers was right; the others gave a work's title in translation. A note, then, and never
@@ -921,10 +924,13 @@ def _gives_record_title(text: str, title: str, records: list[str]) -> bool:
     #846). A record's title of too few words to tell a work by is never looked for."""
     from manuscript_guard.gates.searched import folded_words
 
-    held = folded_words(text)
     read = folded_words(title)
-    at = _found_at(held, read) if read else None
-    outside = [held] if at is None else [held[:at], held[at + len(read):]]
+    outside, rest = [], folded_words(text)
+    # Each place the title read stands is cut out, should the entry give it twice (round 2).
+    while read and (at := _found_at(rest, read)) is not None:
+        outside.append(rest[:at])
+        rest = rest[at + len(read):]
+    outside.append(rest)
     for record in records:
         if len(_worded(record)) < TITLE_WORDS:
             continue
@@ -932,6 +938,19 @@ def _gives_record_title(text: str, title: str, records: list[str]) -> bool:
         if any(_found_at(part, words) is not None for part in outside):
             return True
     return False
+
+
+def _with_subtitle(title: str, records: list[str]) -> bool:
+    """Whether the title read is a record's whole title, a colon and a subtitle the record
+    does not hold: "Statin therapy and fracture risk: a cohort of older women", whose record
+    is "Statin therapy and fracture risk" (round 2 of #846). A record's title of too few words
+    to tell a work by is never taken for it."""
+    from manuscript_guard.gates.searched import folded_words
+
+    main, colon, _subtitle = title.partition(":")
+    return bool(colon) and any(len(_worded(record)) >= TITLE_WORDS
+                               and folded_words(main) == folded_words(record)
+                               for record in records)  # fmt: skip
 
 
 def _title_differs(
@@ -946,7 +965,8 @@ def _title_differs(
     alone, and the reading and the record that share the most are said, so that a longer
     reading can only clear an entry: one that runs on into the journal's name never makes a
     finding of its own. Nor does an entry that holds a record's title word for word outside
-    the title read, or says its title is a translation. A note (`TITLE_RECORD`)."""
+    the title read, gives a record's title with a subtitle it does not hold, or says its
+    title is a translation. A note (`TITLE_RECORD`)."""
     from manuscript_guard.auditing.by_title import _same_title, _text, cited
     from manuscript_guard.gates.searched import search_words
     from manuscript_guard.lookup.sources import FOUND
@@ -965,7 +985,8 @@ def _title_differs(
         return []
     whole = [_TAG.sub(" ", ": ".join(str(t) for t in (record.get("title"), record.get("subtitle"))
                                       if t)) for record in records]  # fmt: skip
-    if _gives_record_title(text, said.title, whole):
+    titles = [_TAG.sub(" ", str(record["title"])) for record in records]
+    if _gives_record_title(text, said.title, whole) or _with_subtitle(said.title, titles):
         return []
     # Each record alone, so that the title the finding quotes is the one its words were
     # counted in (round 1 of #846: counted in both, one quoted, the count was not its own).

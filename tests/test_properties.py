@@ -26534,7 +26534,8 @@ def test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_ha
     tags; never for an entry whose "title" is a citation's tail read wrong, a link or a
     volume and pages; never for one that holds the record's title word for word, where a
     journal's name was read as its title, though for one whose title holds the record's and
-    more; and never for one that says its title is a translation
+    more; never for the record's whole title with a subtitle it lacks; and never for one that
+    says its title is a translation
     (`auditing.references._title_differs`)."""
     read = READINGS["doi title differs"]()
     for entry, title, subtitle, openalex, differs in drawn:
@@ -26595,6 +26596,12 @@ def _a_record_s_title_is_looked_for_inside_the_title_read(patch: pytest.MonkeyPa
     kept = references._gives_record_title
     patch.setattr(references, "_gives_record_title",
                   lambda text, title, records: kept(text, "", records))  # fmt: skip
+
+
+def _a_subtitle_the_record_lacks_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_with_subtitle", lambda title, records: False)
 
 
 def _a_title_of_one_word_is_compared(patch: pytest.MonkeyPatch) -> None:
@@ -26760,6 +26767,10 @@ BROKEN = {
     ),
     "a DOI record's title is looked for inside the title read": (
         _a_record_s_title_is_looked_for_inside_the_title_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title with a subtitle its record lacks is held to it": (
+        _a_subtitle_the_record_lacks_is_compared,
         test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
     ),
     "a DOI's title of one word is held to its record": (

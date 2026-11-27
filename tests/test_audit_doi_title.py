@@ -130,6 +130,9 @@ def test_a_title_that_holds_its_record_s_and_more_is_held_to_it(
     given = "Statin therapy and fracture risk in older women with chronic kidney disease"
     (said,) = _differs(tmp_path, capsys, _paper(given))
     assert "4 of the 9" in said["message"], said
+    # The record's whole title with a subtitle it does not hold is the record's (round 2).
+    given = "Statin therapy and fracture risk: a cohort of older women with kidney disease"
+    assert _differs(tmp_path, capsys, _paper(given)) == []
 
 
 @pytest.mark.parametrize("journal", ["Sci. China Life Sci.", "Proc. Natl Acad Sci."])
@@ -151,7 +154,8 @@ def test_an_entry_that_holds_its_record_s_title_word_for_word_is_not_said(
 
 @pytest.mark.parametrize("marker", ["[Article in Spanish]", "(in Portuguese)",
                                     "(in Japanese with English abstract)",
-                                    "[Article in German, French]", "(in Estonian)"])  # fmt: skip
+                                    "[Article in German, French]", "(in Estonian)",
+                                    "[Article in English, Portuguese]"])  # fmt: skip
 def test_an_entry_that_says_its_title_is_a_translation_is_not_compared(
     tmp_path: Path, capsys, registries: Registries, marker: str
 ) -> None:
@@ -160,6 +164,7 @@ def test_an_entry_that_says_its_title_is_a_translation_is_not_compared(
     registries.records["10.5555/given.1"] = ("Normativa sobre la utilización de fármacos", "")
     assert _differs(tmp_path, capsys, _paper(f"{GIVEN} {marker}")) == []
     assert len(_differs(tmp_path, capsys, _paper(f"{GIVEN} (in press)"))) == 1
+    assert len(_differs(tmp_path, capsys, _paper(f"{GIVEN} (in English)"))) == 1
 
 
 @pytest.mark.parametrize("record", [

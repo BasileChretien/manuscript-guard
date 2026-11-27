@@ -31140,7 +31140,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - An entry that holds its record's title word for word outside the title its reader took
     it to give is not said; within that title the record's title is never looked for, so
     that an invented title holding the real one and more is held to the record (round 1 of
-    #846). One whose reader took the journal for its title and whose record
+    #846); one that gives the record's whole title, a colon and a subtitle the record does
+    not hold is passed over, as is an invented subtitle after the real title (round 2).
+    One whose reader took the journal for its title and whose record
     is not in it word for word is said, and quotes the journal's name as the title given:
     an entry giving a work's Spanish title, whose record at OpenAlex is its English one, was
     said with "Rev Panam Salud Publica" as its title. Accepted.
@@ -31152,7 +31154,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     held to a title. Accepted.
   - An entry whose title its reader does not find is not compared. In a list that gives
     the title between commas, `by_title.cited` takes for the title what follows the first
-    full stop: where that is the citation's tail, "A. Smith, B. Lee, A title, Mol. Plant 8
+    full stop after a word that is no initial: where that is the citation's tail, "A. Smith,
+    B. Lee, A title, Mol. Plant 8
     (6) (2015) 871-884", it is passed over, and where the journal's name has no full stop
     it finds no title. Where it is the rest of a journal's name, "Sci. China Life Sci.",
     the entry is held to its record under that name, and said unless the record's title

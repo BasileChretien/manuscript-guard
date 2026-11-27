@@ -36798,13 +36798,18 @@ def test_build_says_the_two_titles_differ_and_builds(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
 def test_build_says_nothing_of_titles_that_agree(project: Path, capsys) -> None:
-    """The baseline: a build with nothing to say prints the documents it made, and no more."""
+    """The baseline: a build with nothing to say of its titles prints the documents it made,
+    then only what an offline build says of the citations it formatted as text."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
     said = capsys.readouterr().out
     assert TWO_TITLES not in said
-    assert [line[:6] for line in said.splitlines()] == ["built ", "built "]
+    lines = said.splitlines()
+    assert [line[:6] for line in lines[:2]] == ["built ", "built "], said
+    assert len(lines) == 4, said
+    assert lines[2].startswith("  The citations are formatted text"), said
+    assert lines[3].startswith("  A live build would"), said
 
 
 def test_a_build_the_check_refuses_says_the_two_titles_differ_once(

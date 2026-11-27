@@ -138,12 +138,21 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.fixture(autouse=True)
-def zotero_kept_away(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+def zotero_kept_away(request: pytest.FixtureRequest):
     """No test asks the Zotero of the machine it runs on (MANUSCRIPT_GUARD_NO_ZOTERO, set
     above), unless the test is marked `real_zotero`: for it the switch is lifted. A test that
-    wants Zotero to answer otherwise patches it in its own way."""
-    if request.node.get_closest_marker(REAL_ZOTERO) is not None:
-        monkeypatch.delenv("MANUSCRIPT_GUARD_NO_ZOTERO", raising=False)
+    wants Zotero to answer otherwise patches it in its own way.
+
+    With a patch of its own, not the `monkeypatch` fixture: an autouse fixture that asks for
+    `monkeypatch` sets it up before every other fixture of every test, so it is undone after
+    them, and a test's own patch of `os.open` was still in place while `tmp_path` was removed
+    (`shutil.rmtree` calls `os.open(..., dir_fd=...)` on Linux; CI of #811)."""
+    if request.node.get_closest_marker(REAL_ZOTERO) is None:
+        yield
+        return
+    with pytest.MonkeyPatch.context() as patch:
+        patch.delenv("MANUSCRIPT_GUARD_NO_ZOTERO", raising=False)
+        yield
 
 
 def _require_latex() -> None:

@@ -407,6 +407,13 @@ def test_the_instruction_for_a_key_several_items_carry_comes_only_with_one() -> 
     assert "several items in it carry 1 cited key (@b)" in why
 
 
+def test_no_fixture_every_test_gets_asks_for_monkeypatch(request) -> None:
+    """The fixtures every test gets leave `monkeypatch` to the tests that ask for it: one that
+    asked set it up first in every test and undid it last, so a test's patch of `os.open`
+    outlived its `tmp_path` and Linux's `shutil.rmtree` failed at teardown (CI of #811)."""
+    assert "monkeypatch" not in request.fixturenames
+
+
 def test_no_test_asks_the_zotero_of_the_machine_it_runs_on(
     monkeypatch, zotero_forgotten
 ) -> None:

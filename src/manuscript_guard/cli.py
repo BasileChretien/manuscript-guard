@@ -34,7 +34,7 @@ from manuscript_guard.build import (
     build_document,
 )
 from manuscript_guard.build.assemble import check_shapes
-from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.document import ZoteroNotReady, abbreviations
 from manuscript_guard.build.latex_check import check_latex
 from manuscript_guard.build.latex_values import check_values
 from manuscript_guard.build.tex_check import check_tex
@@ -4833,13 +4833,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         try:
             return _build_annotated(project, namespace, results, assembled, args)
         except BuildError as exc:
-            print(f"manuscript-guard: {exc}", file=sys.stderr)
-            if not args.offline:
-                print(
-                    "  If Zotero is not running, `--offline` formats citations from "
-                    "references.bib instead.",
-                    file=sys.stderr,
-                )
+            _said_build_error(exc, args.offline)
             return 2
 
     mode = OFFLINE if args.offline else LIVE
@@ -4859,13 +4853,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 1
     except BuildError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        if not args.offline:
-            print(
-                "  If Zotero is not running, `--offline` formats citations from "
-                "references.bib instead.",
-                file=sys.stderr,
-            )
+        _said_build_error(exc, args.offline)
         return 2
 
     print(f"built {result.output} ({result.mode})")
@@ -4891,6 +4879,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
+    if mode == OFFLINE:
+        _said_offline_citations(project, result, supplement)
     # Built, and said, but not to be sent: the journal's review is blind and the document
     # names an author. The supplement's findings were printed as it was built.
     from manuscript_guard.build.blinding import CODE, check_blinded
@@ -4940,6 +4930,52 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("The document names an author, or could not be read for their names, and the "
               "journal's review is blind: do not send it.")  # fmt: skip
     return 1 if named or hidden else 0
+
+
+def _said_build_error(exc: BuildError, offline: bool) -> None:
+    """A build that could not run, said. A live build Zotero could not have made says its
+    own reason (`ZoteroNotReady`); any other names `--offline` in case Zotero was the cause."""
+    print(f"manuscript-guard: {exc}", file=sys.stderr)
+    if not offline and not isinstance(exc, ZoteroNotReady):
+        print(
+            "  If Zotero is not running, `--offline` formats citations from "
+            "references.bib instead.",
+            file=sys.stderr,
+        )
+
+
+def _said_offline_citations(project, result, supplement: Path | None) -> None:
+    """What an offline build's citations are, and whether a live build would work now.
+
+    The document built `--offline` holds its citations as text, and nothing said so: the
+    author found out in Word, where the Zotero plugin had nothing to refresh. Said only of a
+    document that cites something; Zotero is asked, read-only, what a live build would meet
+    (`zotero.readiness`)."""
+    from manuscript_guard.build.document import outside_code, zotero_not_ready
+    from manuscript_guard.zotero import BUSY, client, find_citations
+
+    keys = set(result.citations)
+    if supplement is not None:
+        source = project.path("build") / f"{supplement.stem}.md"
+        with contextlib.suppress(OSError):
+            text = outside_code(source.read_text(encoding="utf-8"))
+            keys |= {use.citekey for use in find_citations(text, source)}
+    if not keys:
+        return
+    print("  The citations are formatted text from literature/references.bib, not Zotero "
+          "fields: Word's Zotero plugin cannot refresh, restyle or add to them.")  # fmt: skip
+    found = client.readiness(tuple(sorted(keys)))
+    if found.ready:
+        print("  A live build would work now: Zotero and Better BibTeX answer and hold every "
+              "cited key. Build without --offline for Zotero fields.")  # fmt: skip
+        return
+    if found.state == BUSY:
+        print("  Whether a live build would work now is not known: Zotero is running and "
+              "Better BibTeX did not answer in time. Build without --offline to try.")  # fmt: skip
+        return
+    why, what = zotero_not_ready(found)
+    print(f"  A live build would not work now: {why}. For Zotero fields, {what}, then build "
+          "without --offline.")  # fmt: skip
 
 
 def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Path | None:

@@ -192,7 +192,10 @@ sending. A stale `.docx` (`document-stale`) never stops the Word build that rewr
 `build` needs Zotero running for live fields; the first live build also downloads Better
 BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which
 `manuscript-guard sync-bib` writes from Zotero with just the cited keys. Commit it, so the
-offline build works anywhere.
+offline build works anywhere. An offline build's citations are text, which Word's Zotero
+plugin cannot refresh: the build says so and why a live one would not work now, and `check`
+notes it (`citations-not-live`). Tell the author before sending them a document built
+offline when they expect Zotero fields.
 
 ## 5. What to do next, and which skill
 

@@ -7,6 +7,7 @@ one CI and a co-author without Zotero rely on.
 
 from __future__ import annotations
 
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -23,7 +24,22 @@ from manuscript_guard.zotero import available, find_citations
 
 HAS_PANDOC = shutil.which("pandoc") is not None
 needs_pandoc = pytest.mark.skipif(not HAS_PANDOC, reason="pandoc is not installed")
-needs_zotero = pytest.mark.skipif(not available(), reason="Zotero is not running")
+
+
+def _zotero_here() -> bool:
+    """Whether a Zotero answers on this machine, asked past the switch the suite sets
+    (MANUSCRIPT_GUARD_NO_ZOTERO), for the tests marked `real_zotero`."""
+    from manuscript_guard.zotero.client import NO_ZOTERO
+
+    kept = os.environ.pop(NO_ZOTERO, None)
+    try:
+        return available()
+    finally:
+        if kept is not None:
+            os.environ[NO_ZOTERO] = kept
+
+
+needs_zotero = pytest.mark.skipif(not _zotero_here(), reason="Zotero is not running")
 
 
 def loaded(root: Path):
@@ -257,8 +273,192 @@ def test_the_built_document_carries_no_unresolved_bindings(project: Path) -> Non
     assert "{{" not in docx_text(result.output)
 
 
+@pytest.fixture
+def zotero_forgotten():
+    """`lookup` keeps its answers for the process: each test here asks its own fake."""
+    from manuscript_guard.zotero import reset_cache
+
+    reset_cache()
+    yield
+    reset_cache()
+
+
+@pytest.mark.parametrize(
+    ("ping", "said"),
+    [(False, "Zotero is not running"), (True, "Better BibTeX does not answer")],
+)
+def test_a_live_build_says_why_zotero_cannot_make_its_fields_before_pandoc_runs(
+    project: Path, monkeypatch, zotero_forgotten, ping: bool, said: str
+) -> None:
+    """The build used to run pandoc, fail, and add "If Zotero is not running" whatever the
+    reason was. It now asks first, and says which of the things a live build needs is
+    missing, and what to do."""
+    import urllib.error
+
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import client
+
+    asked: list[object] = []
+
+    def nothing_there(target, *_args, **_kwargs):
+        asked.append(target)
+        raise urllib.error.HTTPError(client.ENDPOINT, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: ping)
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
+    monkeypatch.setattr(client.urllib.request, "urlopen", nothing_there)
+    monkeypatch.setattr(document, "pandoc", lambda: pytest.fail("pandoc ran"))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(document.ZoteroNotReady, match=said) as caught:
+        build_document(proj, assembled, mode=LIVE)
+    assert "--offline" in str(caught.value)
+    # Better BibTeX is asked where Zotero answered its ping, and only there.
+    assert bool(asked) == ping
+
+
+def test_a_live_build_refuses_keys_the_library_does_not_hold_and_names_them(
+    project: Path, monkeypatch, zotero_forgotten
+) -> None:
+    """A key Zotero does not hold comes out of zotero.lua as text, among fields, and nothing
+    said so: the build names each such key before it runs."""
+    from test_zotero import FakeBBT, csl
+
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import client
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("fictionalClassSignal2019", True)]))
+    monkeypatch.setattr(document, "pandoc", lambda: pytest.fail("pandoc ran"))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    with pytest.raises(document.ZoteroNotReady) as caught:
+        build_document(proj, assembled, mode=LIVE)
+    assert "fictionalHepaticCohort2021" in str(caught.value)
+    assert "fictionalClassSignal2019" not in str(caught.value)
+
+
+def _docx_with(path: Path, xml: str, **parts: str) -> Path:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+        for name, part in parts.items():
+            archive.writestr(f"word/{name}.xml", part)
+    return path
+
+
+def test_fewer_zotero_fields_than_citations_are_said(tmp_path: Path) -> None:
+    """Only a document with no field at all was warned of: one in which zotero.lua made
+    fields of some citations and left the rest as text passed as live."""
+    from manuscript_guard.build.document import _verify_live_fields
+
+    field = "<w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {}</w:instrText>"
+    docx = _docx_with(tmp_path / "some.docx", f"<w:document>{field}</w:document>")
+    report = _verify_live_fields(docx, 3)
+    assert [f.code for f in report.findings] == ["no-live-citations"]
+    assert "2 of the 3 citations" in report.findings[0].message
+    assert report.counts["zotero_fields"] == 1
+    whole = _docx_with(tmp_path / "all.docx", f"<w:document>{field * 3}</w:document>")
+    assert not _verify_live_fields(whole, 3).findings
+
+
+def test_a_citation_in_a_note_is_counted_where_the_note_is(tmp_path: Path) -> None:
+    """Round 1 of #811: pandoc writes a footnote's Zotero field into word/footnotes.xml, and
+    only word/document.xml was counted, so `Text [@a].[^1]` with `[^1]: As shown by @b.` was
+    said to hold a citation as plain text."""
+    from manuscript_guard.build.document import _verify_live_fields
+
+    field = "<w:instrText> ADDIN ZOTERO_ITEM CSL_CITATION {}</w:instrText>"
+    noted = _docx_with(tmp_path / "notes.docx", f"<w:document>{field}</w:document>",
+                       footnotes=f"<w:footnotes>{field}</w:footnotes>",
+                       endnotes=f"<w:endnotes>{field}</w:endnotes>")  # fmt: skip
+    report = _verify_live_fields(noted, 3)
+    assert not report.findings
+    assert report.counts["zotero_fields"] == 3
+
+
+def test_a_better_bibtex_slow_to_answer_lets_the_live_build_try_and_says_so(
+    monkeypatch,
+) -> None:
+    """Round 1 of #811: a Better BibTeX slow to answer just after Zotero starts refused a
+    live build that worked before. Not knowing is not a refusal: the build runs, says Zotero
+    did not answer in time, and counts the fields it got."""
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import BUSY, NOT_RUNNING, Readiness, client
+
+    busy = Readiness(BUSY, detail="did not answer")
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: busy)
+    said = document._require_zotero(("a",))
+    assert [f.code for f in said.findings] == ["zotero-unreadable"]
+    assert "did not answer in time" in said.findings[0].message
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(NOT_RUNNING))
+    with pytest.raises(document.ZoteroNotReady):
+        document._require_zotero(("a",))
+
+
+def test_the_instruction_for_a_key_several_items_carry_comes_only_with_one() -> None:
+    """Round 1 of #811: "give a key to one item only" was said where no key was ambiguous."""
+    from manuscript_guard.build.document import zotero_not_ready
+    from manuscript_guard.zotero import KEYS_MISSING, Readiness
+
+    _why, what = zotero_not_ready(Readiness(KEYS_MISSING, missing=("a",)))
+    assert "one item only" not in what
+    why, what = zotero_not_ready(Readiness(KEYS_MISSING, ambiguous=("b",)))
+    assert "one item only" in what
+    assert "several items in it carry 1 cited key (@b)" in why
+
+
+def test_no_fixture_every_test_gets_asks_for_monkeypatch(request) -> None:
+    """The fixtures every test gets leave `monkeypatch` to the tests that ask for it: one that
+    asked set it up first in every test and undid it last, so a test's patch of `os.open`
+    outlived its `tmp_path` and Linux's `shutil.rmtree` failed at teardown (CI of #811)."""
+    assert "monkeypatch" not in request.fixturenames
+
+
+def test_no_test_asks_the_zotero_of_the_machine_it_runs_on(
+    monkeypatch, zotero_forgotten
+) -> None:
+    """Rounds 1 and 2 of #811: every test that builds offline asked 127.0.0.1:23119 what a
+    live build would meet, and G7's ping and lookup in every `check` asked the real library
+    where Zotero was open. conftest.py sets MANUSCRIPT_GUARD_NO_ZOTERO for the run and every
+    process it starts, and the client then opens no connection: the ping G7 asks, the
+    probe's, and a call. A test marked `real_zotero` is let through; one that fakes the
+    transport lifts it in the test."""
+    from manuscript_guard.zotero import NOT_RUNNING, ZoteroUnavailable, client, readiness
+
+    assert os.environ.get(client.NO_ZOTERO)
+    monkeypatch.setattr(client.urllib.request, "urlopen",
+                        lambda *_a, **_k: pytest.fail("a test reached Zotero"))  # fmt: skip
+    assert not client.available()
+    assert readiness(("a",)).state == NOT_RUNNING
+    with pytest.raises(ZoteroUnavailable):
+        client.rpc("api.ready", [])
+
+
+@needs_pandoc
+def test_a_live_build_zotero_was_slow_to_answer_for_says_so_in_its_report(
+    project: Path, monkeypatch, tmp_path: Path
+) -> None:
+    """Round 2 of #811: the warning that Better BibTeX did not answer in time reaches the
+    live build's report. A filter that makes no field stands in for Better BibTeX's."""
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import BUSY, Readiness, client
+
+    lua = tmp_path / "zotero.lua"
+    lua.write_text("return {}", encoding="utf-8")
+    monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
+    monkeypatch.setattr(document, "_zotero_version", lambda: None)
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(BUSY))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    result = build_document(proj, assembled, mode=LIVE)
+    codes = [f.code for f in result.report.findings]
+    assert "zotero-unreadable" in codes
+    assert "no-live-citations" in codes, "and the fields it got are counted"
+
+
 @needs_pandoc
 @needs_zotero
+@pytest.mark.real_zotero
 def test_live_build_writes_real_zotero_fields(tmp_path: Path) -> None:
     """The end the whole architecture rests on: Markdown in, live Zotero citations out."""
     from manuscript_guard.zotero import ZoteroUnavailable, rpc

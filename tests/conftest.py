@@ -79,6 +79,11 @@ os.environ["MANUSCRIPT_GUARD_REPORTS"] = str(_FOR_THIS_RUN / "reports")
 #: tests/test_generated_sessions.py took an import that raised for one that wrote nothing.
 #: The tests of the sentence and the record lift it.
 os.environ["MANUSCRIPT_GUARD_DEBUG"] = "1"
+#: And no test asks the Zotero of the machine it runs on, in this process or in one it
+#: starts: with Zotero open, G7's ping and lookup in every `check` and the probe of every
+#: build read the real library (round 2 of #811). A test marked `real_zotero` is let
+#: through (`zotero_kept_away`), and a test that fakes the transport lifts it in the test.
+os.environ["MANUSCRIPT_GUARD_NO_ZOTERO"] = "1"
 
 #: `communicate publish --post` and `communicate orcid` send nothing while this is set: a test
 #: that forgot to give its own transport fails rather than posting under somebody's name. A
@@ -100,6 +105,8 @@ _TERMINAL: int | None = None
 
 #: The mark of a test that reads a clock. See `pytest_collection_modifyitems`.
 TIMING = "timing"
+#: The mark of a test that asks the Zotero running on this machine. See `zotero_kept_away`.
+REAL_ZOTERO = "real_zotero"
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -107,6 +114,7 @@ def pytest_configure(config: pytest.Config) -> None:
     needs it. Unset, a missing pandoc still skips them."""
     global _TERMINAL
     config.addinivalue_line("markers", f"{TIMING}: reads a clock; CI runs it apart, in one process")
+    config.addinivalue_line("markers", f"{REAL_ZOTERO}: asks the Zotero running on this machine")
     try:
         _TERMINAL = os.dup(sys.stderr.fileno())
     except (AttributeError, OSError, ValueError):
@@ -135,6 +143,24 @@ def pytest_configure(config: pytest.Config) -> None:
     version = line.group(1) if line else "unreadable"
     if version != wanted:
         raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
+
+
+@pytest.fixture(autouse=True)
+def zotero_kept_away(request: pytest.FixtureRequest):
+    """No test asks the Zotero of the machine it runs on (MANUSCRIPT_GUARD_NO_ZOTERO, set
+    above), unless the test is marked `real_zotero`: for it the switch is lifted. A test that
+    wants Zotero to answer otherwise patches it in its own way.
+
+    With a patch of its own, not the `monkeypatch` fixture: an autouse fixture that asks for
+    `monkeypatch` sets it up before every other fixture of every test, so it is undone after
+    them, and a test's own patch of `os.open` was still in place while `tmp_path` was removed
+    (`shutil.rmtree` calls `os.open(..., dir_fd=...)` on Linux; CI of #811)."""
+    if request.node.get_closest_marker(REAL_ZOTERO) is None:
+        yield
+        return
+    with pytest.MonkeyPatch.context() as patch:
+        patch.delenv("MANUSCRIPT_GUARD_NO_ZOTERO", raising=False)
+        yield
 
 
 def _require_latex() -> None:

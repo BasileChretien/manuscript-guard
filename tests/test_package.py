@@ -579,6 +579,23 @@ def test_the_readme_says_how_to_re_run_and_what_verify_checks(project: Path) -> 
     assert "sha256sum -c SHA256SUMS" in readme
 
 
+def test_each_script_s_line_lists_the_software_it_recorded() -> None:
+    """A version two scripts record is kept once in the results, by the first fragment; the
+    README's line for the second script still lists it, read from that script's fragment."""
+    from manuscript_guard.contracts.results import Fragment
+    from manuscript_guard.deposit.texts import _session_line
+
+    second = Fragment(path=Path("results/05_rct.json"), generated_by="analysis/05_rct.R",
+                      generated_at="2026-11-25T10:00:00Z", inputs=(), vcs={},
+                      session={"language": "R", "version": "4.6.1"})  # fmt: skip
+    software = {"value": "4.6.1", "display": "4.6.1", "label": True, "role": "software"}
+    document = {"provenance": {}, "values": {
+        "software.r": software, "software.meta": {**software, "value": "8.0-1", "display": "8.0-1"},
+        "trials.n": {"value": 3, "display": "3"}, "release": {**software, "role": None}}}
+    assert _session_line(second, document) == (
+        "- `analysis/05_rct.R`: R 4.6.1; the software it declared: meta 8.0-1, r 4.6.1.")
+
+
 def test_the_bound_results_are_listed_and_the_prose_is_not(project: Path) -> None:
     ready(project)
     assert main(["package", str(project)]) == 0

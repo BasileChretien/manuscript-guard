@@ -308,6 +308,19 @@
         }
       }
     },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How `manuscript-guard verify` re-runs the analysis. Which R runs it is the machine's, not the project's, and is not written here: `--rscript PATH` names it for a run, MANUSCRIPT_GUARD_RSCRIPT for the machine.",
+      "properties": {
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "Seconds one analysis script may run before verify stops it, for a project whose slowest script takes longer than the default of 1800; at most 604800, seven days, well inside the 49 days Windows can wait for a program, past which a limit wrapped round or raised. --timeout and MANUSCRIPT_GUARD_VERIFY_TIMEOUT come first."
+        }
+      }
+    },
     "lookup": {
       "type": "object",
       "additionalProperties": false,

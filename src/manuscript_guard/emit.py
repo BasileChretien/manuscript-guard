@@ -35,7 +35,15 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.contracts.project import find_root
-from manuscript_guard.contracts.values import DisplayError, check_string_value, derive_display
+from manuscript_guard.contracts.values import (
+    DisplayError,
+    MissingValueError,
+    check_string_value,
+    derive_display,
+    missing_problem,
+    missing_refusal,
+    spelled_missing,
+)
 from manuscript_guard.datasets import NAME as DATASET_NAME
 from manuscript_guard.datasets import dataset_digest, declare, pin_of, slug
 from manuscript_guard.paths import lockfiles
@@ -88,10 +96,18 @@ class Composed:
     parts: tuple[tuple[object, int | None, str | None], ...]
 
     def render(self, where: str) -> tuple[str, list[str]]:
-        shown = [
-            derive_display(where, value, display, digits) for value, digits, display in self.parts
-        ]
+        shown = [_emitted_display(where, value, display, digits)
+                 for value, digits, display in self.parts]  # fmt: skip
         return self.template.format(*shown), shown
+
+
+def _emitted_display(key: str, value: object, display: str | None, digits: int | None) -> str:
+    """`derive_display`, with the emitters' own refusal first: a missing value whose display
+    spells a missing value (`spelled_missing`), which files written before are not held to."""
+    problem = spelled_missing(value, display)
+    if problem is not None:
+        raise missing_refusal(key, problem)
+    return derive_display(key, value, display, digits)
 
 
 @dataclass(frozen=True)
@@ -190,6 +206,8 @@ def _cell(
         wanted = digits.get(column) if isinstance(digits, dict) else digits
         try:
             shown = derive_display(where, cell, None, wanted)
+        except MissingValueError:
+            raise
         except DisplayError as exc:
             raise DisplayError(
                 f"{exc}. Pass `digits=` to table() — an int for every column, or a "
@@ -1586,7 +1604,7 @@ class Emitter:
         # person who can fix it, while they are running the analysis.
         if isinstance(value, str):
             check_string_value(key, value, label=label)
-        spec: dict = {"value": value, "display": derive_display(key, value, display, digits)}
+        spec: dict = {"value": value, "display": _emitted_display(key, value, display, digits)}
         if label:
             spec["label"] = True
         if digits is not None:
@@ -2192,23 +2210,39 @@ class Emitter:
             raise DisplayError(f"{key}: an interval needs both `low` and `high`")
 
         point_key = f"{key}.point"
-        if point is None:
+        given = point is not None
+        if not given:
             if point_key not in self._values:
                 raise DisplayError(
                     f"{key}: no `point` given and {point_key} has not been emitted. Publish "
                     f"the estimate with its first interval, then add further levels"
                 )
             point = self._values[point_key]["value"]
-        else:
-            self.value(point_key, point, digits=digits, unit=unit, quoted=quoted)
 
+        # Every part is read before any key is written, so that a refusal leaves nothing
+        # behind: the estimate was written first, and a script that caught a refused bound
+        # and called again was told "'ror.point' emitted twice" (round 1 of #812).
+        stem = f"ci{_level_slug(level)}" if level else "ci"
+        parts = [(point_key, point)] if given else []
+        parts += [(f"{key}.{stem}_low", low), (f"{key}.{stem}_high", high)]
+        for part_key, part in parts:
+            # Before the bracket: a NaN brackets nothing, and the refusal said the
+            # arguments were in the wrong order.
+            problem = missing_problem(part)
+            if problem is not None:
+                raise missing_refusal(part_key, problem, point=point_key)
+            if part_key in self._values:
+                raise ValueError(f"{part_key!r} emitted twice by {self.script}")
         if not low <= point <= high:
             raise DisplayError(
                 f"{key}: the interval does not bracket the estimate — {low!r} to {high!r} "
                 f"around {point!r}. Check the order of the arguments"
             )
+        for part_key, part in parts:
+            derive_display(part_key, part, None, digits)
 
-        stem = f"ci{_level_slug(level)}" if level else "ci"
+        if given:
+            self.value(point_key, point, digits=digits, unit=unit, quoted=quoted)
         for end, bound in ((low, "low"), (high, "high")):
             self.value(
                 f"{key}.{stem}_{bound}", end, digits=digits, unit=unit, quoted=quoted,

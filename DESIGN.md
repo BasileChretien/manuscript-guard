@@ -20125,6 +20125,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
   `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
   and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
+- **An infinity in a results file.** A fragment holding an infinite value, an open end
+  printed as a comparator, carries a bare `Infinity`, as the Python emitter's always did and
+  the R emitter's now does: `check` reads it, and a strict JSON reader (R's
+  `jsonlite::fromJSON`, a browser's `JSON.parse`) refuses the file. Accepted.
+- **A plain display for an infinite value.** A fragment or a ledger entry whose value is
+  infinite and whose display is a plain number ("7.02"), taken at `main` before #812, is
+  G0 `no-display` at check time: an infinite value takes only a comparator on its side, or
+  "100+" above. Accepted.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",
@@ -20153,6 +20161,19 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
   `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
   and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
+- **Which interpreter verify runs.** An R script runs with `--rscript`, else the Rscript
+  MANUSCRIPT_GUARD_RSCRIPT names, else the first on PATH; a Python script always with the
+  Python manuscript-guard runs in, and a Quarto document with the first `quarto` on PATH. The
+  analysis inherits the environment, so MANUSCRIPT_GUARD_RSCRIPT or
+  MANUSCRIPT_GUARD_VERIFY_TIMEOUT set for one run of `verify` only is one more way for it to
+  tell that run from an ordinary one; the flags are not seen. An R's version is what
+  `Rscript --version` prints, and renv.lock's R is held to it by major and minor version
+  alone, renv's library being kept by them. Accepted.
+- **What says a re-run was another R's.** `check` says that `verify` re-ran the analysis with
+  another R or Python than the results were written with, or another R than renv.lock pins;
+  the deposit record (`deposit/verification.py`) and the companion page
+  (`deposit/companion_parts.py`) say only whether the run passed, and name no other R.
+  Accepted.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
@@ -31016,6 +31037,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `2012. `, is two sentences, and every key placed in it moves; a re-wrap at any other space
   moves none. Pinned by
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
+- **What says a citation is not a Zotero field reads the source and the document.** A live
+  build counts the citations in its source (each group in brackets, and each narrative
+  citation outside one, leaving out comments, listings and inline code) and warns where the
+  document, its footnotes and its endnotes hold fewer Zotero fields; a citation pandoc reads
+  that this count does not, or the reverse, moves the count. `check` notes a built document
+  (`citations-not-live`) only where the document records no live build and holds a reference
+  list as pandoc bookmarks one (`refs`, then its first entry's `ref-<key>`), so one built
+  offline in a style that prints no reference list is not noted, nor one whose properties are
+  not UTF-8. Pinned by
+  `tests/test_cli.py::test_only_a_document_holding_a_reference_list_as_text_is_noted`.
 - **The editor's report parts each finding by its code.** `audit --editor` puts a finding in
   one of its four parts by the table in `auditing/editor.py` (the author's, 2026-11-25), and
   by what the finding holds for three codes alone: `over-header-n` by its severity, G6's

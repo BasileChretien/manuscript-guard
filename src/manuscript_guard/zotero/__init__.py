@@ -2,9 +2,16 @@
 
 from manuscript_guard.zotero.citations import CitationUse, find_citations
 from manuscript_guard.zotero.client import (
+    BUSY,
+    KEYS_MISSING,
+    NO_BETTER_BIBTEX,
+    NOT_RUNNING,
+    READY,
     Attachment,
     Lookup,
+    Readiness,
     Reference,
+    ZoteroBusy,
     ZoteroRefused,
     ZoteroUnavailable,
     attachments,
@@ -12,15 +19,23 @@ from manuscript_guard.zotero.client import (
     export,
     library,
     lookup,
+    readiness,
     reset_cache,
     rpc,
 )
 
 __all__ = [
+    "BUSY",
+    "KEYS_MISSING",
+    "NOT_RUNNING",
+    "NO_BETTER_BIBTEX",
+    "READY",
     "Attachment",
     "CitationUse",
     "Lookup",
+    "Readiness",
     "Reference",
+    "ZoteroBusy",
     "ZoteroRefused",
     "ZoteroUnavailable",
     "attachments",
@@ -29,6 +44,7 @@ __all__ = [
     "find_citations",
     "library",
     "lookup",
+    "readiness",
     "reset_cache",
     "rpc",
 ]

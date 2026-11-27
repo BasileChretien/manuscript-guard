@@ -164,7 +164,7 @@ def inputs_text(project: Project, inputs: list[Input]) -> str:
     return "\n".join(out) + "\n"
 
 
-def _session_line(fragment: Fragment, document: dict, results: Results) -> str:
+def _session_line(fragment: Fragment, document: dict) -> str:
     session = fragment.session or {}
     said = f"{session.get('language', 'an unknown language')} {session.get('version', '')}"
     tool = (document.get("provenance") or {}).get("tool") or {}
@@ -177,9 +177,13 @@ def _session_line(fragment: Fragment, document: dict, results: Results) -> str:
     packages = session.get("packages")
     if isinstance(packages, dict) and packages:
         line += "; R packages " + ", ".join(f"{n} {v}" for n, v in sorted(packages.items()))
+    # Read from the fragment itself: a version two scripts record is kept once in the results,
+    # by the first fragment, and each script still declared it.
     software = sorted(
-        (key.removeprefix("software."), value.display) for key, value in results.values.items()
-        if value.role == "software" and value.source == fragment.path
+        (key.removeprefix("software."), str(spec.get("display", spec.get("value"))))
+        for key, spec in (document.get("values") or {}).items()
+        if isinstance(spec, dict) and spec.get("role") == "software"
+        and key.startswith("software.")
     )  # fmt: skip
     if software:
         line += "; the software it declared: " + ", ".join(f"{name} {version}"
@@ -233,7 +237,7 @@ def readme(project: Project, results: Results, inputs: list[Input], entries: lis
     from .readme import readme_text
 
     documents = _documents(results)
-    sessions = [_session_line(f, documents[f.path], results)
+    sessions = [_session_line(f, documents[f.path])
                 for f in sorted(results.fragments, key=lambda f: f.generated_by)]  # fmt: skip
     tools = [(d.get("provenance") or {}).get("tool") or {} for d in documents.values()]
     versions = sorted({str(tool["version"]) for tool in tools if tool.get("version")})

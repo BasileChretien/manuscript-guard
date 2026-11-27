@@ -20619,6 +20619,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
     ),
+    "audit displays": st.one_of(
+        legend_displays().map(lambda drawn: drawn[0]),
+        legend_displays(unread=True).map(lambda drawn: drawn[0]),
+    ),
     "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
     "rrids typed": st.one_of(
         rrid_papers().map(lambda drawn: drawn[0]),

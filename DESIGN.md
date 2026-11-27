@@ -11335,10 +11335,23 @@ hosting.
 
 Pyodide runs the wheel unchanged; its release ships every dependency built for WebAssembly,
 `rpds-py` included. On a `.docx`, `audit` starts a program in one place only, pandoc, for G6
-and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each release. So
-the package has two places for a page and no more: `from_word.runner`, which runs pandoc
-another way where it is set, and `lookup.http.default_transport`, which sends one
-XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
+and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each release. On a
+PDF it starts poppler's `pdftotext`, in each order and with each word's place, and `pdfinfo`
+for the Author field, from three modules (`auditing.pdf`, `auditing.pdf_layout`,
+`proof.reading`), each through `subprocess.run`. The page runs poppler 26.11.0 built for
+WebAssembly, the npm package `@ai-ecoverse/wasm-poppler` pinned by its SHA-512 (Basile,
+2026-11-26, after a trial on 20 papers of the robustness sweep: its text was native poppler
+24.04's in layout order on 17, and the findings the same on 14 but for the version named).
+Rather than a seam in each of them, the page gives Pyodide the two programs as a
+computer has them: a file of each name first on PATH, which `shutil.which` finds, and a
+`subprocess.run` that runs either in WebAssembly, in a fresh instance each time, and gives
+back what it printed as `subprocess.run` would (`web.program_runner`). The code that reads a
+PDF is then the command line's, unchanged, and gives each program the arguments it gives it
+on a computer. So the package has three places for a page and no more: `from_word.runner`,
+which runs pandoc another way where it is set, `lookup.http.default_transport`, which sends
+one XMLHttpRequest under Pyodide, and `web.install_programs`, which is the only code that
+replaces `subprocess.run`, and only under Pyodide, where it starts nothing;
+`manuscript_guard.web` holds all three. Every file comes from the
 page's own origin, so that its Content-Security-Policy names no host but its own and the seven
 registries `--lookup` asks, and a test holds that list to `lookup.run.Services` and
 `auditing.registration.asked_at`.
@@ -30266,10 +30279,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a
+  - *What it reads.* A `.docx`, Markdown or PDF paper, or a LaTeX project as a `.zip` or a
     `.tar.gz`, outputs beside it, and a journal's profile and the authors' names, from its
-    form or from a file. PDFs (`pdftotext`), figures, packages, `--cited` and `--report-draft`
-    are the command line's. Accepted.
+    form or from a file. Figures, packages, `--cited` and `--report-draft` are the command
+    line's. Accepted.
+  - *The page's `pdftotext` is not the reader's.* The page reads a PDF with poppler 26.11.0
+    built for WebAssembly, whatever the reader has installed; the command line reads it with
+    the `pdftotext` on PATH, poppler's of another release, or Xpdf's, which gives no word's
+    place. The text each reads can differ, and with it the report: on 20 papers of the
+    robustness sweep (2026-11-26) the layout order was poppler 24.04's on 17, the drawing
+    order (`-raw`) differed by poppler 26.11's own changes, and the findings were the same on
+    14, the version named aside. Each report names the `pdftotext` that read it. CI's
+    word-for-word check gives the command line the page's own build, run in Node, so it holds
+    the page to the command line's code, not to a reader's `pdftotext`. A PDF whose text
+    needs poppler-data's character maps (a CJK font with no map of its own to Unicode) gives
+    no text for it on the page, where a poppler with poppler-data installed reads it. And a
+    PDF whose reading needs more than the 2 GiB of memory the build can take stops the
+    program on the page, where one on a computer may go on, and the page says it as the
+    command line says a program that failed, or one that ran past its timeout (below).
+    Which build the page runs is held by
+    `tests/test_web.py::test_the_pages_pdftotext_is_the_build_the_lock_pins_with_its_source`;
+    what it reads otherwise is not. Accepted.
+  - *A program on the page is not stopped at its timeout.* The page cannot stop pdftotext
+    or pdfinfo under way, which runs to its end in the checker's thread; one that took longer
+    than the command line waits for it (`proof.reading.PDFTOTEXT_SECONDS` for a reading, 30
+    seconds for `pdftotext -v`, `auditing.pdf.PDFINFO_SECONDS` for pdfinfo) is said, once it
+    ends, as the command line says one it stopped. Pinned by
+    `tests/test_web.py::test_a_run_longer_than_its_timeout_is_said_as_one_once_it_ends`.
   - *An archive is unpacked into the browser's memory*, so it is refused past 1 GiB
     unpacked (`web.PAGE_MAX_BYTES`), where a package's `.zip` is taken up to 16 GiB; a
     browser may run out of memory below that, and then says so as its own error. Pinned by
@@ -30285,9 +30321,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
     that start with "-", the `.docx` against two outputs whose names the page once made
     one, with a referee's options, in American English with the copy with tracked changes,
-    held to a journal's rules from the form with a double-blind review, and a LaTeX project
-    as a `.zip` and as a `.tar.gz` held to the folder they hold), in Node and in two
-    browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    held to a journal's rules from the form with a double-blind review, a LaTeX project
+    as a `.zip` and as a `.tar.gz` held to the folder they hold, and a PDF of the `.docx`'s
+    text set by `tests/proof_pdf.py`, against the results and held to that journal's rules),
+    in Node and in two browsers. The PDF is one typeset in a standard font with every
+    character mapped: a PDF a journal's system made is not in it. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the seven registries answer a page (CORS) was tested by hand,

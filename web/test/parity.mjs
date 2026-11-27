@@ -1,6 +1,7 @@
 // One command, run as the page runs it, with the files of a built site: Pyodide, the
-// wheel, pandoc.wasm and its bundled shim, and `manuscript_guard.web`. Prints
-// {"code", "out", "err"} as JSON, for web/test/check.py to hold to the command line.
+// wheel, pandoc.wasm and its bundled shim, poppler's pdftotext and pdfinfo, and
+// `manuscript_guard.web`. Prints {"code", "out", "err"} as JSON, for web/test/check.py to
+// hold to the command line.
 //
 //   node web/test/parity.mjs <site> <folder> -- audit paper.docx --against results.json --json
 //   node web/test/parity.mjs <site> <folder> --unpack project.zip -- audit project
@@ -11,6 +12,7 @@
 // that <folder> holds removed, and the archive unpacked into one of that name, which the
 // command is then given.
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -31,8 +33,21 @@ await py.loadPackage(manifest.load, { messageCallback: () => {} });
 py.unpackArchive(new Uint8Array(readFileSync(join(root, manifest.wheel))), "wheel");
 const { createPandoc } = await import(pathToFileURL(join(root, "pandoc", "pandoc.mjs")).href);
 const pandoc = await createPandoc(readFileSync(join(root, "pandoc", "pandoc.wasm")));
+// poppler's programs, given the files of Pyodide's their arguments name, as worker.js gives
+// them (`programs`). Under Node the glue asks for Node's own `require`.
+const { createPoppler } = await import(pathToFileURL(join(root, "poppler", "poppler.mjs")).href);
+const poppler = await createPoppler(readFileSync(join(root, "poppler", "poppler-multicall.wasm")),
+  createRequire(import.meta.url));
+const fileOf = (path) => {
+  try {
+    return py.FS.isFile(py.FS.stat(path).mode) ? py.FS.readFile(path) : null;
+  } catch {
+    return null;
+  }
+};
+py.globals.set("POPPLER_JS", { run: (program, args, cwd) => poppler.run(program, args, cwd, fileOf) });
 py.globals.set("PANDOC_JS", pandoc);
-py.runPython("from manuscript_guard import web; web.install(PANDOC_JS)");
+py.runPython("from manuscript_guard import web; web.install_programs(POPPLER_JS); web.install(PANDOC_JS)");
 
 // Every file and folder in <folder>, a LaTeX project's folder among them, copied as it is.
 function copied(from, to) {

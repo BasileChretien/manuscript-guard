@@ -22,7 +22,8 @@ What the audit page loads is all here, so that its Content-Security-Policy can n
 its own and the registries: Pyodide's runtime (from npm, held by package-lock.json), the
 Python packages `audit` imports (from Pyodide's own release, each held to the SHA-256 its
 pyodide-lock.json gives), pandoc.wasm (from the pandoc release CI pins, held to pins.json),
-the shim that runs it, bundled, and the wheel given. Each licence goes beside them, and
+the shim that runs it, bundled, poppler's pdftotext and pdfinfo (from npm, held by
+package-lock.json, `poppler_module`), and the wheel given. Each licence goes beside them, and
 `files.sha256` lists every file with its hash, which the page links to.
 
 Downloads are kept in web/.cache and checked again each time they are read. Nothing here
@@ -52,6 +53,14 @@ PYODIDE_CORE = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_st
 #: what the worker fetches while it starts leaves them out (manifest `bytes`).
 IMPORTED = ("pyodide.mjs", "pyodide.asm.mjs")
 SHIM_LICENCES = ("LICENSE-MIT", "LICENSE-APACHE")
+#: poppler's programs, from the npm package pins.json names and package-lock.json pins by its
+#: SHA-512: the glue, which web/poppler.mjs runs (`poppler_module`), the programs compiled,
+#: and the package's licence and the notices of what it bundles, by the names the page gives
+#: them. Its fonts are left out: reading a PDF's text needs none.
+POPPLER_GLUE = "bin/poppler-multicall"
+POPPLER_WASM = "poppler-multicall.wasm"
+POPPLER_LICENCES = {"LICENSE": "poppler-GPL-2.0.txt",
+                    "THIRD-PARTY-NOTICES.md": "poppler-third-party-notices.txt"}
 LANDING = WEB / "landing"
 LANDING_PAGE = ("index.html", "style.css")
 #: The folder of the site the audit page is built in.
@@ -85,6 +94,16 @@ def fetched(url: str, digest: str, cache: Path) -> bytes:
     cache.mkdir(parents=True, exist_ok=True)
     kept.write_bytes(data)
     return data
+
+
+def poppler_module(runner: str, glue: str) -> str:
+    """The module the worker imports poppler's programs from: web/poppler.mjs, then the
+    package's glue as it is, inside the function web/poppler.mjs calls for each run. The
+    glue is a script that sets up one instance where it runs; inside a function, each call
+    sets up one more, and Node's `require` and `__dirname`, which it reads under Node, are
+    the function's own."""
+    return (f"{runner.rstrip()}\n\n// {POPPLER_GLUE} of the npm package, as it is.\n"
+            f"function glue(Module, require, __dirname) {{\n{glue.rstrip()}\nreturn Module;\n}}\n")
 
 
 def needed(lock: dict, names: list[str]) -> list[str]:
@@ -357,6 +376,7 @@ def build(wheel: Path, site: Path, cache: Path, host: dict | None = None) -> dic
     out.mkdir(parents=True, exist_ok=True)
     (out / "pyodide").mkdir()
     (out / "pandoc").mkdir()
+    (out / "poppler").mkdir()
     (out / "wheels").mkdir()
     (out / "licences").mkdir()
 
@@ -381,6 +401,18 @@ def build(wheel: Path, site: Path, cache: Path, host: dict | None = None) -> dic
                     f"--outfile={out / 'pandoc' / 'pandoc.mjs'}"],
                    check=True, timeout=300, cwd=WEB)  # fmt: skip
 
+    poppler = pins["poppler"]
+    package = modules / poppler["package"]
+    installed = json.loads((package / "package.json").read_text(encoding="utf-8"))["version"]
+    if installed != poppler["version"]:
+        raise SystemExit(f"web/node_modules holds {poppler['package']} {installed}, and pins.json "
+                         f"names {poppler['version']}: run `npm ci` in web/ first")
+    (out / "poppler" / "poppler.mjs").write_text(
+        poppler_module((WEB / "poppler.mjs").read_text(encoding="utf-8"),
+                       (package / POPPLER_GLUE).read_text(encoding="utf-8")),
+        encoding="utf-8", newline="\n")  # fmt: skip
+    shutil.copyfile(package / "bin" / POPPLER_WASM, out / "poppler" / POPPLER_WASM)
+
     shutil.copyfile(wheel, out / "wheels" / wheel.name)
     version = wheel.name.split("-")[1]
 
@@ -394,11 +426,15 @@ def build(wheel: Path, site: Path, cache: Path, host: dict | None = None) -> dic
     for name in SHIM_LICENCES:
         shutil.copyfile(modules / "@bjorn3" / "browser_wasi_shim" / name,
                         licences / f"browser_wasi_shim-{name}.txt")  # fmt: skip
+    for name, served in POPPLER_LICENCES.items():
+        shutil.copyfile(package / name, licences / served)
 
     # What the worker fetches while it starts, for the page's bar: Pyodide's files but those
-    # it imports, the packages it loads, the wheel and pandoc.wasm (worker.js `counted`).
+    # it imports, the packages it loads, the wheel, pandoc.wasm and poppler's programs
+    # (worker.js `counted`).
     fetching = [*(path for path in (out / "pyodide").iterdir() if path.name not in IMPORTED),
-                out / "wheels" / wheel.name, out / "pandoc" / "pandoc.wasm"]  # fmt: skip
+                out / "wheels" / wheel.name, out / "pandoc" / "pandoc.wasm",
+                out / "poppler" / POPPLER_WASM]  # fmt: skip
     manifest = {
         "manuscript_guard": version,
         "wheel": f"wheels/{wheel.name}",
@@ -406,11 +442,14 @@ def build(wheel: Path, site: Path, cache: Path, host: dict | None = None) -> dic
         "load": pins["pyodide"]["load"],
         "bytes": sum(path.stat().st_size for path in fetching),
         "pandoc": pandoc["version"],
+        "poppler": poppler["version"],
         "sources": {
             "manuscript-guard":
                 f"https://github.com/BasileChretien/manuscript-guard/tree/v{version}",
             "pandoc": pandoc["source"],
             "pyodide": pins["pyodide"]["source"].format(version=pyodide),
+            "poppler": poppler["source"],
+            "poppler-build": poppler["recipe"],
         },
     }
     if host is not None:
@@ -465,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
     size = sum(p.stat().st_size for p in args.out.rglob("*") if p.is_file())
     print(f"built {args.out} ({size / 1e6:.1f} MB): manuscript-guard "
           f"{manifest['manuscript_guard']}, Pyodide {manifest['pyodide']}, "
-          f"pandoc {manifest['pandoc']}"
+          f"pandoc {manifest['pandoc']}, poppler {manifest['poppler']}"
           + (f"; the audit page alone, for {host['name']}, with {len(host['journals'])} "
              "journals" if host else ""))  # fmt: skip
     return 0

@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@ai-ecoverse/wasm-poppler": "26.11.0-1",
     "@bjorn3/browser_wasi_shim": "0.4.2",
     "pyodide": "314.0.7"
   },

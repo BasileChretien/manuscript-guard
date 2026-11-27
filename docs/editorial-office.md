@@ -24,9 +24,17 @@ editor then does with it is in [For editors and reviewers](refereeing.md).
 ## Two ways to run it
 
 **The audit page**, <https://basilechretien.github.io/manuscript-guard/audit/>, for an
-editor who will not open a terminal. It reads a Word (.docx) or Markdown paper. The page and
-every file it loads are plain files that GitHub Pages serves; the paper is read inside the
-browser, and nothing behind the page could receive it.
+editor who will not open a terminal. It reads a Word (.docx) or Markdown paper, or a LaTeX
+project given as a .zip or a .tar.gz. The page and every file it loads are plain files that
+GitHub Pages serves; the paper is read inside the browser, and nothing behind the page could
+receive it.
+
+A publisher may also serve the page on its own site, with its journals' rules built in
+([Hosting the audit page](hosting-the-audit-page.md)). Its code is that of the same
+release's page, byte for byte, but the publisher's server serves it, not GitHub's, and the
+page's rules let it send requests to that server, which it needs to load its files. Once
+loaded, it sends that server nothing either. Its `files.sha256` can be compared with that of
+the same release's page, and turning the network off shows that the paper is not sent.
 
 **The command line**, `uvx manuscript-guard audit paper.pdf`, for an editor or an office
 that will. It also reads PDF (with poppler's `pdftotext` installed) and LaTeX, holds the
@@ -61,8 +69,10 @@ What the page's rules cannot stop, so that nobody trusts them beyond it:
 - A browser extension the editor installed can read any page.
 - No browser rule forbids a page to follow a link, and an address can carry text. The
   page's code does neither, which anyone can read, and turning the network off covers it.
-- The page is loaded from GitHub's servers. Once loaded, it sends them nothing, and the
-  network test covers this too.
+- The page is loaded from the server that serves it: GitHub's for the project's page, the
+  publisher's for a copy a publisher hosts. Once loaded, it sends that server nothing, and
+  the network test covers this too. A publisher could change its copy's code after building
+  it; comparing its `files.sha256` with the same release's shows that.
 
 [The audit page](audit-page.md) has the rest of how the page works.
 

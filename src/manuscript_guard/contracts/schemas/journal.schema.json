@@ -518,7 +518,8 @@
       "properties": {
         "csl": { "type": "string", "description": "The style's name in the CSL style repository, as Zotero names it (the-lancet), or its zotero.org/styles URL. A live build hands it to Zotero; `manuscript-guard style` keeps the file in the project, and an offline build then formats with it unless --csl names another." },
         "style_name": { "type": "string" },
-        "numbered": { "type": "boolean" }
+        "numbered": { "type": "boolean" },
+        "heading": { "type": "string", "minLength": 1, "description": "The heading the build puts over the reference list, where the journal names it other than References. None is added where the manuscript has its own just before the list." }
       }
     },
     "latex": {

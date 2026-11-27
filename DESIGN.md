@@ -31101,6 +31101,48 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
   - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
+- **The heading the build puts over the reference list is known by its bookmark only.**
+  `build/references_heading.lua` gives it the bookmark `mg-references`, and a document read
+  back passes that paragraph over (`docxtext.BUILT_HEADING`), so that `import` reads a document
+  built before the heading as it did, and a co-author's rewording of it changes nothing.
+  Where Word drops the bookmark, as it drops a paragraph's identifier when the paragraph is cut
+  and pasted, the heading comes back as one without an identifier that the build compared with
+  does not hold, and `import` lists it among the paragraphs that came back different and were
+  not compared, though it is in no paragraph of the source. Accepted.
+- **No heading is added over a reference list placed inside another block.** A `::: {#refs}`
+  div within another div is the author's arrangement, and the build adds no heading over it,
+  nor makes a place for the list elsewhere. Pinned by
+  `tests/test_references_heading.py::test_a_list_inside_another_block_gets_no_heading`.
+- **The place and the heading are given before citeproc formats the list.** The filter runs
+  before citeproc, so that the list it places under an author's empty heading of it is filled
+  there. It adds none where the style the offline build formats with has no `<bibliography>`,
+  its own or its parent's (`document.prints_a_list`), or where the metadata sets
+  `suppress-bibliography` on that build; it cannot see whether citeproc will print an entry otherwise, and a
+  document whose every citation names a key the bibliography lacks, which `check` fails, built
+  with `--skip-checks`, has the heading over an empty list. A live build's style is Zotero's,
+  read by nothing here, and its bibliography field gets the heading whatever the style.
+  Accepted.
+- **An author's empty heading of the list takes it only where the next printed block is a
+  heading of its level or above.** Where the manuscript has no `refs` div, the list goes under
+  the last heading of a reference list with nothing printed under it before such a heading,
+  comments and the build's empty div between files aside. Where the next file opens with a
+  paragraph, a table, a lower heading or a page break, the heading is not empty to the build:
+  the list goes at the end with a heading of its own, and the document prints that file's
+  opening under the author's "References", as pandoc reads it. Accepted.
+- **"Literature" alone is no reference list's name, and German's "Literatur" is one.** An
+  author's empty "# Literature" ending main.md, before a file that opens with a heading, does
+  not take the list, which goes at the end with a heading of its own; an empty numbered
+  "2.1 Literatur" before "2.2 Methoden" in an outline does take it. Pinned by
+  `tests/test_references_heading.py::test_literature_alone_names_no_list_in_english_and_literatur_names_one_in_german`.
+- **The note `import` gives of the heading compares it with a fresh build.** The returned
+  heading is held to the one the source builds now, not to the one the document was sent
+  with: a heading the journal profile renamed after the document was sent is said as words a
+  co-author typed. Pinned by
+  `tests/test_references_heading.py::test_a_profile_heading_changed_since_sending_is_said_as_typed`.
+- **The marked-up copy writes the build's heading where its walk reaches it.** A paragraph
+  deleted at the end of the text, in a document received before the heading, is shown deleted
+  below the heading rather than above it. Pinned by
+  `tests/test_references_heading.py::test_the_marked_up_copy_puts_a_deletion_at_the_end_below_the_heading`.
 - **The audit asks about every registration number the text names, whoever's it is.** Under
   `--lookup`, a trial the Introduction or the Discussion cites by its NCT or ISRCTN number is
   looked up and shown, and a late registration of it said, as though it were the paper's own;

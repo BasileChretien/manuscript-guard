@@ -114,6 +114,9 @@ class GateRun:
     corrections: list[Tracked] = field(default_factory=list)
     #: For a PDF, what G6 and G14 read of it (`_staged_pdf`), a note of the report's.
     read: str = ""
+    #: The paper's tables and figures held to the order ICMJE asks for, as G2 holds a
+    #: project's (`auditing.displays`); None where they could not be read.
+    displays: object = None
 
 
 @dataclass(frozen=True)
@@ -440,6 +443,7 @@ def run_gates(
         # that, before they are sorted by it.
         read_from = PDF if staged.from_pdf else None
         writing = Report(tuple(measured(f, read_from=read_from) for f in writing.findings))
+        displays = _displays(paper, tree, staged, project, put_back, read_from)
         return GateRun(
             paper,
             writing=[put_back(f) for f in writing.sorted().findings],
@@ -450,7 +454,30 @@ def run_gates(
             places=staged.placer if staged.placer is not None else staged.places,
             corrections=corrections,
             read=staged.read,
+            displays=displays,
         )
+
+
+def _displays(paper: Path, tree, staged: _Staged, project: Project, put_back, read_from):
+    """The paper's tables and figures (`auditing.displays`), at its own places, each finding
+    at the severity the audit gives its code where that was measured; None where reading them
+    raised, which is recorded as a crash and leaves G6's and G14's findings as they are."""
+    from manuscript_guard.auditing import displays
+    from manuscript_guard.auditing.measured import measured
+    from manuscript_guard.diagnostics import crashes
+
+    if staged.from_pdf and staged.placer is None:
+        return displays.unread_pdf(paper)
+    try:
+        read = (displays.of_latex(project) if tree is not None
+                else displays.of_files(staged.files, project.path("manuscript")))  # fmt: skip
+    except Exception as exc:  # noqa: BLE001 - the findings on the words stand without it
+        if crashes.debugging():
+            raise
+        crashes.record(exc, kind=crashes.GATE, name="G2 on the tables and figures")
+        return None
+    read = read.mapped(put_back)
+    return replace(read, findings=tuple(measured(f, read_from=read_from) for f in read.findings))
 
 
 def _corrections(project: Project) -> list[Tracked]:

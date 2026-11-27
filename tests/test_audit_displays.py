@@ -47,16 +47,20 @@ def test_a_legend_as_word_writes_one_counts_its_table(legend: str) -> None:
     # Round 2 of #837: pandoc's own caption under a table is a legend the check does not read.
     ("| a |\n|---|\n| 1 |\n\n| b |\n|---|\n| 2 |\n\n: Table 2. B\n", "tables"),
 ])  # fmt: skip
-def test_a_file_that_holds_more_of_a_kind_than_its_legends_number_leaves_it_uncounted(
+def test_a_file_holding_more_of_a_kind_than_its_legends_leaves_pointers_past_them_unchecked(
     body: str, kind: str
 ) -> None:
     """The corpus run of ea3fc52: a legend the check does not read, in a layout table or in
     a picture, leaves the legends one short of the tables or pictures the file holds, and its
-    citations would point at nothing. Such a kind is not counted."""
+    citation would point at nothing. A pointer past the legends of such a kind is said not
+    checked, and the kind is held to the rest (the fix-only round on f0bd603 of #837)."""
     word = "Table" if kind == "tables" else "Figure"
     read = said(f"In {word} 1 and {word} 2.\n\n{word} 1. A\n\n{body}")
-    assert read.findings == () and read.counted == 0, read
-    assert len(read.notes) == 1 and f"its legends number 1 {kind[:-1]}" in read.notes[0].message
+    assert read.findings == () and read.counted == 1, read
+    assert [note.code for note in read.notes] == [displays.NOT_COUNTED], read
+    assert read.notes[0].message.startswith(f"'{word} 2' past its {kind[:-1]} legends was not "
+                                            "checked"), read.notes  # fmt: skip
+    assert f"and its legends number 1 {kind[:-1]}," in read.notes[0].message, read.notes
 
 
 @pytest.mark.parametrize("legend", [
@@ -104,14 +108,31 @@ def test_the_supplement_s_legends_in_the_file_count_against_the_tables_it_holds(
     assert codes(read) == [("cited-out-of-order", 1)] and read.notes == (), read
 
 
-def test_the_supplement_s_legends_listed_alone_do_not_hide_a_legend_unread() -> None:
-    """Round 2 of #837: the supplement's legends listed at the end, without their displays,
-    stand for none of the pictures the main text holds before them, and Figure 3's legend,
-    inside its picture, still leaves the figures uncounted."""
-    read = said("In Figure 1, Figure 2 and Figure 3.\n\nFigure 1. A\n\n![](a.png)\n\n"
-                "Figure 2. B\n\n![](b.png)\n\n![](c.png)\n\nFigure S1. C\n")  # fmt: skip
-    assert read.findings == () and read.counted == 0, read
-    assert [note.code for note in read.notes] == [displays.NOT_COUNTED], read
+@pytest.mark.parametrize("supplement", ["end", "start"])
+def test_the_supplement_s_legends_listed_alone_do_not_hide_a_legend_unread(
+    supplement: str,
+) -> None:
+    """Round 2 of #837 and the fix-only round on f0bd603: the supplement's legends listed
+    without their displays, at the end or before the main text's, stand for none of the
+    pictures it holds, and Figure 3, whose legend is inside its picture, is not said to be
+    pointed at in vain."""
+    listed = "Figure S1. C\n"
+    body = ("Figure 1. A\n\n![](a.png)\n\nFigure 2. B\n\n![](b.png)\n\n![](c.png)\n")
+    text = (f"In Figure 1, Figure 2 and Figure 3.\n\n{body}\n{listed}" if supplement == "end"
+            else f"In Figure 1, Figure 2 and Figure 3.\n\n{listed}\n{body}")  # fmt: skip
+    read = said(text)
+    assert read.findings == () and read.counted == 1, read
+    assert [note.message[:12] for note in read.notes] == ["'Figure 3' p"], read
+
+
+def test_a_legend_below_its_picture_with_the_supplement_in_the_file_counts_the_figures(
+) -> None:
+    """The fix-only round on f0bd603: Word sets a figure's caption below its picture, so the
+    supplement's first picture stands before its legend, and the main text's figures are
+    held as before."""
+    read = said("In Figure 1.\n\n![](a.png)\n\nFigure 1. A\n\n![](s.png)\n\n"
+                "Figure S1. B\n")  # fmt: skip
+    assert read.findings == () and read.notes == () and read.counted == 1, read
 
 
 def test_a_display_cited_nowhere_is_not_said_to_be_cited_after_the_next() -> None:
@@ -276,6 +297,24 @@ def test_a_paper_whose_tables_and_figures_are_in_order_says_so(
     assert "Tables and figures        each counted from its legends is cited, and in the " \
         "order of its number" in out
     assert "Each table and figure counted from its legends is cited" in out
+
+
+def test_the_section_claims_nothing_of_a_pointer_it_did_not_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The fix-only round on f0bd603 of #837: a pointer past the legends of a paper that holds
+    more pictures than they number is not checked, so the section does not say that nothing
+    points at a figure the legends do not number."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "paper.md").write_text(
+        "# Results\n\nIn Figure 1, Figure 2 and Figure 3.\n\nFigure 1. A\n\n![](a.png)\n\n"
+        "Figure 2. B\n\n![](b.png)\n\n![](c.png)\n", encoding="utf-8")  # fmt: skip
+    assert main(["audit", "paper.md"]) == 0
+    out = capsys.readouterr().out
+    assert "'Figure 3' past its figure legends was not checked" in out
+    assert "nothing points at one the legends do not number" not in out
+    assert "Each table and figure counted from its legends is cited, in the order of its " \
+        "number." in out
 
 
 def test_a_failure_of_the_check_is_recorded_and_leaves_the_words_checked(

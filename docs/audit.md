@@ -395,11 +395,10 @@ past the last legend (`pointer-to-nothing`). A pointer to the supplement, "Table
 given, the main text's file among them, and only where some are. Legends that number a kind
 otherwise, "Table 1", "Table 3", or "Table 1 (continued)" beside "Table 1", leave the kind
 uncounted, and so does a kind pointed at with no legend, as when the figures go to the journal
-as files of their own, and a kind the main text holds more of, in tables or in pictures, than
-its legends number, as where a legend stands inside a layout table or in a picture (the main
-text's being those before the supplement's first legend): a note says so, and nothing else is
-said of it. A LaTeX paper numbers its floats
-itself, and is held by G2's own reader of one, as `check` holds a LaTeX project, with the
+as files of their own: a note says so, and nothing else is said of it. Where a file holds more
+tables, or more pictures, than its legends number, as where a legend stands inside a layout
+table or in a picture, a pointer past the legends is said not checked rather than pointing at
+nothing, and the rest is held as before. A LaTeX paper numbers its floats itself, and is held by G2's own reader of one, as `check` holds a LaTeX project, with the
 audit's notes and hints. A PDF is read where its lines were rebuilt into paragraphs, each
 display a block opening with its legend; one whose lines were not is said not checked. Each
 finding is a warning until the corpus measures its code, and its severity then follows how

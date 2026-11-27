@@ -357,8 +357,12 @@ def _displays(report, show) -> list[str]:
         if item.hint:
             lines.append(f"         hint: {item.hint}")
     if not lines and displays_counted(report):
+        # A pointer past the legends is said only where none was left unchecked (the fix-only
+        # round on f0bd603 of #837).
+        unchecked = any(item.severity == INFO for item in said)
         lines.append("  Each table and figure counted from its legends is cited, in the order of "
-                     "its number, and nothing points at one the legends do not number.")
+                     "its number" + ("." if unchecked else
+                                     ", and nothing points at one the legends do not number."))
     return lines + [f"  {show(item.path)}: {item.message}" if item.path is not None
                     else f"  {item.message}" for item in said if item.severity == INFO]
 

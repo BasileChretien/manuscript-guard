@@ -19,7 +19,9 @@ writing one it missed.
 - **The main text's kinds** are held to ICMJE ("Number tables consecutively in the order of
   their first citation in the text"): each cited (`display-not-cited`), the first citations
   in the order of their numbers (`cited-out-of-order`), and none to a number past the last
-  legend (`pointer-to-nothing`). The codes are G2's.
+  legend (`pointer-to-nothing`). The codes are G2's. Where the file holds more tables, or
+  more pictures, than the legends number, a pointer past them may be to one whose legend
+  the check does not read, and a note says it was not checked (`_counted`).
 - **A pointer to the supplement**, "Table S1", "Supplementary Figure 2", "eTable 3", is held
   to the supplement's legends, read in every paper the audit is given, the main text's file
   among them, and only where some are: they are then counted as the main text's are.
@@ -104,18 +106,14 @@ def of_files(files: dict[str, str], folder: Path) -> Displays:
     counted = 0
     for name, text in files.items():
         legends, cited = _read(text, folder / name)
-        # The tables and pictures the main text holds stand before the supplement's first
-        # legend: those after it are the supplement's, and its legends listed alone at the
-        # end stand for none (rounds 1 and 2 of #837).
-        cut = min((p.line for p in legends if p.supplementary), default=0)
-        held = _held("\n".join(text.split("\n")[:cut - 1]) if cut else text)
+        held = _held(text)
         for kind in ("table", "figure"):
             main = [p for p in legends if p.kind == kind and not p.supplementary]
             pointed = [p for p in cited if p.kind == kind and not p.supplementary]
-            got, said = _counted(kind, main, pointed, folder / name, held[kind], bool(cut))
+            got, said, checked = _counted(kind, main, pointed, folder / name, held[kind])
             found += got
             notes += said
-            counted += bool(main) and not said
+            counted += checked
             supplement.setdefault(kind, []).extend(
                 p.number for p in legends if p.kind == kind and p.supplementary)
             to_supplement += [(kind, p.number, _to_nothing(p, "the supplement", folder / name))
@@ -255,42 +253,41 @@ def _held(text: str) -> dict[str, int]:
 
 
 def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Path,
-             held: int = 0, cut: bool = False) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
-    """The findings on one kind of a file's main text, and the note where it is not counted:
-    where its legends do not number it 1 to n once each, or where the main text holds more
-    of the kind than they number (`held`, counted before the supplement's first legend where
-    the file gives one, `cut`), as where a legend stands in a layout table or in a picture
-    the check does not read (the corpus run of ea3fc52), and its citations would point at
-    nothing."""
+             held: int = 0) -> tuple[list[Finding], list[Finding], bool]:  # fmt: skip
+    """The findings on one kind of a file's main text, its notes, and whether it was
+    counted, which it is where its legends number it 1 to n once each.
+
+    A file that holds more tables, or more pictures, than its legends number (`held`) may
+    hold one whose legend the check does not read, in a layout table, inside a picture or
+    under a table as pandoc captions one (the corpus run of ea3fc52), and a pointer past the
+    legends may be to it: such pointers are said not checked. Which tables and pictures are
+    the supplement's, or panels of one figure, the check cannot tell, so it holds the kind
+    to the rest, its legends' order and citations, all the same (the fix-only round on
+    f0bd603 of #837, after two rounds of guessing at it)."""
     numbers = sorted(p.number for p in legends)
     if not numbers:
         if not cited:
-            return [], []
+            return [], [], False
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
                             subject=f"{kind}s",
                             message=f"{kind}s are pointed at and no legend numbers "
-                            f"one, so its {kind}s were not counted")]  # fmt: skip
+                            f"one, so its {kind}s were not counted")], False  # fmt: skip
     count = len(numbers)
-    if numbers == list(range(1, count + 1)) and held > count:
-        what = "tables" if kind == "table" else "pictures"
-        before = " before the supplement's first legend" if cut else ""
-        return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
-                            line=legends[0].line, subject=f"{kind}s",
-                            message=f"it holds {held} {what}{before}, and its legends "
-                            f"number {count} {kind}{'s' if count != 1 else ''}, so its {kind}s "
-                            "were not counted")]  # fmt: skip
     if numbers != list(range(1, count + 1)):
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
                             line=legends[0].line, subject=f"{kind}s",
                             message=f"its {kind} legends read {_listing(numbers)}, "
-                            f"not 1 to {count} once each, so its {kind}s were not counted")]
+                            f"not 1 to {count} once each, so its {kind}s were not "
+                            "counted")], False  # fmt: skip
     found: list[Finding] = []
     first: dict[int, _Pointer] = {}
+    past = [pointer for pointer in cited if pointer.number > count]
     for pointer in cited:
         if pointer.number <= count:
             first.setdefault(pointer.number, pointer)
-        else:
-            found.append(_counting(_to_nothing(pointer, "the paper", path), count))
+    notes = [_past_unchecked(kind, past, path, held, count)] if past and held > count else []
+    if not notes:
+        found += [_counting(_to_nothing(pointer, "the paper", path), count) for pointer in past]
     # Held among the numbers cited: one cited nowhere is said so below, and is not said to be
     # cited after the next (round 1 of #837).
     for expected, (number, pointer) in zip(sorted(first), first.items(), strict=True):
@@ -309,7 +306,22 @@ def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Pa
                       "cited nowhere in its text",
                       hint=f"ICMJE: each {kind} is cited in the text")
               for number in range(1, count + 1) if number not in first]  # fmt: skip
-    return found, []
+    return found, notes, True
+
+
+def _past_unchecked(kind: str, past: list[_Pointer], path: Path, held: int,
+                    count: int) -> Finding:  # fmt: skip
+    """The note on a kind's pointers past its legends, in a file that holds more tables or
+    pictures of it than they number."""
+    what = "tables" if kind == "table" else "pictures"
+    shown = list(dict.fromkeys(repr(pointer.shown) for pointer in past))
+    return Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path, line=past[0].line,
+                   subject=f"{kind}s",
+                   message=f"{', '.join(shown)} past its {kind} legends "
+                   f"{'was' if len(shown) == 1 else 'were'} not checked: it holds {held} "
+                   f"{what}, and its legends number {count} {kind}{'s' if count != 1 else ''}, "
+                   f"so one of them may be a {kind} whose legend the check does not "
+                   "read")  # fmt: skip
 
 
 def _to_nothing(pointer: _Pointer, where: str, path: Path) -> Finding:

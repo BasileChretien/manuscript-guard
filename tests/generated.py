@@ -213,7 +213,7 @@ LEGEND_FORMS = {
 
 
 @st.composite
-def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
+def legend_displays(draw: st.DrawFn, unread: bool = False) -> tuple[str, set[tuple[str, int]]]:
     """A paper written outside manuscript-guard, as `audit` reads its text, whose tables and
     figures are told by their legends alone (`auditing.displays`). Each kind has every form of
     legend it may take, in a drawn order, each a paragraph of its own somewhere in the text,
@@ -223,6 +223,11 @@ def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
     kind. Citations again, after the first, come anywhere, three of each kind opening their
     paragraphs as a legend does.
 
+    With `unread`, the file also holds one table and one picture more than its legends
+    number, after its text, as where a legend stands in a layout table or inside a picture
+    (the fix-only round on f0bd603 of #837): a pointer past the legends cannot be told from a
+    pointer to one of them, so it is no finding.
+
     Returns the text and the findings it must give, by code and line."""
 
     def words() -> str:
@@ -230,10 +235,12 @@ def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
 
     paragraphs: list[tuple[str, str]] = []  # what each paragraph is, and its text
     planted: set[tuple[str, int]] = set()
+    counts: dict[str, int] = {}
     expected: list[tuple[str, str, int]] = []  # code, the paragraph's id it is in
     for kind, word in (("table", "Table"), ("figure", "Figure")):
         forms = list(draw(st.permutations(LEGEND_FORMS[kind])))
         count = len(forms) + draw(st.integers(0, 1))
+        counts[kind] = count
         forms += [draw(st.sampled_from(LEGEND_FORMS[kind])) for _ in range(count - len(forms))]
         # The first citations, of every display but the last: in order, but for two swapped.
         cited = list(range(1, count))
@@ -276,8 +283,14 @@ def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
     # them, never one of them before another.
     order = [name for name, _text in paragraphs]
     for code, name in expected:
-        planted.add((code, 2 * order.index(name) + 1))
-    return "\n\n".join(text for _name, text in paragraphs) + "\n", planted
+        if not (unread and code == "pointer-to-nothing"):
+            planted.add((code, 2 * order.index(name) + 1))
+    text = "\n\n".join(text for _name, text in paragraphs) + "\n"
+    if unread:
+        held = (["| a |\n|---|\n| 1 |"] * (counts["table"] + 1)
+                + ["![](media/unread.png)"] * (counts["figure"] + 1))
+        text += "\n" + "\n\n".join(draw(st.permutations(held))) + "\n"
+    return text, planted
 
 
 @st.composite

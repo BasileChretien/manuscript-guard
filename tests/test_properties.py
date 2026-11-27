@@ -3913,6 +3913,26 @@ def _a_range_of_links_is_a_legend(patch: pytest.MonkeyPatch) -> None:
     _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", r"(?![^\S\n]*\d)")
 
 
+def _a_file_s_displays_are_not_held_against_its_legends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import displays
+
+    patch.setattr(displays, "_held", lambda text: {"table": 0, "figure": 0})
+
+
+def _a_kind_holding_more_is_left_uncounted(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837's guard: a kind its file holds more of than its legends number is not
+    # held to anything.
+    from manuscript_guard.auditing import displays
+
+    counted = displays._counted
+
+    def broken(kind, legends, cited, path, held=0):
+        found, notes, checked = counted(kind, legends, cited, path, held)
+        return ([], notes, False) if checked and held > len(legends) else (found, notes, checked)
+
+    patch.setattr(displays, "_counted", broken)
+
+
 def _a_range_from_a_panel_is_a_legend(patch: pytest.MonkeyPatch) -> None:
     _a_legend_without(patch, r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?",
                       "[A-Za-z]?")
@@ -12051,6 +12071,23 @@ def test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_o
     said = READINGS["audit displays"]()(text)
     assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
     assert said["notes"] == [] and said["counted"] == 2, (text, said)
+
+
+@holds(100, legend_displays(unread=True))
+def test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper whose file holds a table and a picture its legends do not number may hold a
+    legend the check does not read, and a pointer past its legends may be to one of them: it
+    is said not checked, in one note for each kind, and the kind is held to the rest, the
+    order of its first citations and each one cited, as before (the fix-only round on
+    f0bd603 of #837)."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert [("past its table legends" in note, "past its figure legends" in note)
+            for note in said["notes"]] == [(True, False), (False, True)], (text, said)
+    assert said["counted"] == 2, (text, said)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -26566,6 +26603,14 @@ BROKEN = {
     "an audited paper's range from a panel opening a sentence is read as a legend": (
         _a_range_from_a_panel_is_a_legend,
         test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's tables and pictures are not held against its legends": (
+        _a_file_s_displays_are_not_held_against_its_legends,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
+    "an audited paper's kind its file holds more of than its legends is left uncounted": (
+        _a_kind_holding_more_is_left_uncounted,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
     ),
     "registration numbers are read in the reference list too": (
         _registration_numbers_read_in_the_reference_list,

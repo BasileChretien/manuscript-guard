@@ -2759,9 +2759,15 @@ _CITED_PART = re.compile(
 )
 
 
+#: A span's brackets and attributes around a part, "[Holdren 2012]{.mark}" as pandoc writes
+#: a citation Word highlighted, and emphasis: what is left is read (docx-pharm-epi-A1).
+_PART_MARKUP = re.compile(r"\]\{[^{}\n]*\}|[\[\]*]")
+
+
 def _cited_part(part: str) -> bool:
-    """Whether a part of a bracket is an author-year citation typed as text (`_CITED_PART`)."""
-    return _CITED_PART.fullmatch(part) is not None
+    """Whether a part of a bracket is an author-year citation typed as text (`_CITED_PART`),
+    once a span's or emphasis's markup around it is set aside (`_PART_MARKUP`)."""
+    return _CITED_PART.fullmatch(_PART_MARKUP.sub("", part)) is not None
 
 
 def _ends_its_part(prose: str, at: int) -> bool:

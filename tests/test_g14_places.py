@@ -511,3 +511,9 @@ def test_a_citation_s_author_owes_no_definition_and_is_a_use(tmp_path: Path) -> 
     text = ("# Introduction\n\nRules were set (AERA, 2014; APA, 2020).\n\n# Methods\n\nThe "
             "American Educational Research Association (AERA) set them. The AERA held.\n")
     assert checked(tmp_path, {"main.md": text}) == []
+    # docx-pharm-epi-A1 as typed: an author ending in a full stop, and a citation Word
+    # highlighted, which pandoc writes as a span, are parts of the list all the same.
+    text = ("# Introduction\n\nRules were set (Kaye et al. 2009, Research Councils UK. 2011, "
+            "NIH 2016a, NIH 2016b, [Holdren 2012]{.mark}).\n\n# Methods\n\nThe National "
+            "Institutes of Health (NIH) paid. The NIH rose.\n")
+    assert checked(tmp_path, {"main.md": text}) == []

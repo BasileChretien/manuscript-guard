@@ -5701,7 +5701,8 @@ definition, as a keywords line does, and a use there is still one: a paragraph w
 of 150 characters or fewer, which is how a heading is typed in Word with no heading's style
 (decision D5); and a citation's author typed as text, its year after it, "(EOSC-HLEG,
 2016)", or in a bracket on one line of author-year citations a comma divides, "(Kaye et al.
-2009, NIH 2016a, NIH 2016b)". And a form of the statistical list, where the journal does not
+2009, NIH 2016a, NIH 2016b)", a part Word highlighted read as its words, "[Holdren
+2012]{.mark}". And a form of the statistical list, where the journal does not
 ask it defined, is not used before a later definition that only a table's or a figure's own
 text gives, "SD" over a table note's "standard deviation (SD)" (decision D2, narrowed on
 2026-11-27, "Narrow it to displays": the statistical list only; a later definition in the

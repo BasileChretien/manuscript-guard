@@ -3552,6 +3552,10 @@ def _any_bracket_of_years_is_a_list_of_citations(patch: pytest.MonkeyPatch) -> N
     patch.setattr(language_gate, "_cited_part", lambda part: True)
 
 
+def _a_highlighted_citation_ends_a_list_of_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_PART_MARKUP", re.compile(r"(?!)"))
+
+
 def _a_year_after_a_word_makes_it_a_citation_s_author(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_authors_a_citation",
                   lambda prose, end: language_gate._YEAR_AFTER.match(prose, end) is not None)
@@ -30517,6 +30521,10 @@ BROKEN = {
     ),
     "any bracket of years is a list of citations": (
         _any_bracket_of_years_is_a_list_of_citations,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a highlighted citation ends a list of citations": (
+        _a_highlighted_citation_ends_a_list_of_citations,
         test_no_definition_is_asked_where_none_is_due,
     ),
     "a year after a word makes it a citation's author": (

@@ -1705,8 +1705,9 @@ def undue_places(
     body = ["# Introduction", f"The {_DEFINED_LONG} ({defined}) was read. The {defined} rose.",
             "# Methods", f"**The {both['bold heading']} study**",
             f"Keyword-based retrieval used the {keyword} index.",
-            f"Rules held (Kaye et al. 2009, {only['citation author']} 2016a, "
-            f"{also['citation author']} 2016b).",
+            f"Rules held (Kaye et al. 2009, Research Councils. 2011, "
+            f"{only['citation author']} 2016a, {also['citation author']} 2016b, "
+            "[Holdren 2012]{.mark}).",
             *(owed.format(short) for owed, short in zip(UNDUE_OWED, UNDUE_OWED_FORMS,
                                                        strict=True)),  # fmt: skip
             "# Results",

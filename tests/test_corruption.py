@@ -44662,3 +44662,30 @@ def test_two_findings_that_share_a_key_with_no_ordinal_are_caught(project: Path)
                  for one in said]  # fmt: skip
     (caught,) = keys.shared(corrupted)
     assert caught.split("|")[2] == "7.77"
+
+
+def test_an_audit_says_a_trial_registered_after_it_started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Corrupted: the registry's own dates show the trial registered a month after it began
+    (2020-08-02, for a study started in 2020-07). `audit --lookup` must say so, under the
+    paper's own registration number (`auditing.registration`), and not for the number its
+    reference list cites."""
+    from test_audit_registration import PAPER, Registries, _study
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.lookup import http
+    from manuscript_guard.lookup import run as lookup
+
+    table = Registries()
+    table.studies["NCT04446611"] = _study("NCT04446611", "2020-08-02", "2020-07")
+    table.studies["NCT01111111"] = _study("NCT01111111", "2019-09-01", "2019-01")
+    monkeypatch.setattr(http, "default_transport", table)
+    paced = lookup.Pacer
+    monkeypatch.setattr(lookup, "Pacer", lambda: paced(sleep=lambda seconds: None))
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    main(["audit", str(paper), "--lookup", "--json"])
+    said = json.loads(capsys.readouterr().out)["findings"]
+    late = [f["message"] for f in said if f["code"] == "registration-late"]
+    assert len(late) == 1 and late[0].startswith("NCT04446611"), late

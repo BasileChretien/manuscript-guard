@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1144" width="880" height="1144" role="img" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 73 work, 3 work in part and 2 are planned.</title>
+  <title>The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 74 work, 3 work in part and 2 are planned.</title>
   <rect width="880" height="1144" fill="#0d1117"/>
   <circle cx="25" cy="22" r="4.5" fill="#3fb950"/>
-  <text x="36" y="26" font-size="12.5" fill="#9198a1">works (73)</text>
+  <text x="36" y="26" font-size="12.5" fill="#9198a1">works (74)</text>
   <circle cx="125" cy="22" r="4.5" fill="#0d1117" stroke="#d29922" stroke-width="1.5"/><path d="M 125 17.5 A 4.5 4.5 0 0 0 125 26.5 Z" fill="#d29922"/>
   <text x="136" y="26" font-size="12.5" fill="#9198a1">works in part (3)</text>
   <circle cx="274" cy="22" r="4.5" fill="#0d1117" stroke="#9198a1" stroke-width="1.5"/>
@@ -16,25 +16,28 @@
   <text x="52" y="131" font-size="12" fill="#f0f6fc">Start a project</text>
   <rect x="28" y="142" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="152.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="157" font-size="12" fill="#f0f6fc">Say what to do now</text>
+  <text x="52" y="157" font-size="12" fill="#f0f6fc">Start in conversation</text>
   <rect x="28" y="168" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="178.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="183" font-size="12" fill="#f0f6fc">Change a setting</text>
+  <text x="52" y="183" font-size="12" fill="#f0f6fc">Say what to do now</text>
   <rect x="28" y="194" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="204.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="209" font-size="12" fill="#f0f6fc">Stages of a paper</text>
+  <text x="52" y="209" font-size="12" fill="#f0f6fc">Change a setting</text>
   <rect x="28" y="220" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="230.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="235" font-size="12" fill="#f0f6fc">Skills for agent tools</text>
+  <text x="52" y="235" font-size="12" fill="#f0f6fc">Stages of a paper</text>
   <rect x="28" y="246" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="256.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="261" font-size="12" fill="#f0f6fc">Hooks that catch slips</text>
+  <text x="52" y="261" font-size="12" fill="#f0f6fc">Skills for agent tools</text>
   <rect x="28" y="272" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="282.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="287" font-size="12" fill="#f0f6fc">Checks on GitHub</text>
+  <text x="52" y="287" font-size="12" fill="#f0f6fc">Hooks that catch slips</text>
   <rect x="28" y="298" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
   <circle cx="40" cy="308.5" r="4.5" fill="#3fb950"/>
-  <text x="52" y="313" font-size="12" fill="#f0f6fc">Report a problem</text>
+  <text x="52" y="313" font-size="12" fill="#f0f6fc">Checks on GitHub</text>
+  <rect x="28" y="324" width="250" height="21" rx="5" fill="#0d1117" stroke="#3d444d" stroke-width="1"/>
+  <circle cx="40" cy="334.5" r="4.5" fill="#3fb950"/>
+  <text x="52" y="339" font-size="12" fill="#f0f6fc">Report a problem</text>
   <rect x="306" y="44" width="266" height="312" rx="8" fill="#161b22" stroke="#3d444d" stroke-width="1.5"/>
   <text x="318" y="68" font-size="15" font-weight="600" fill="#f0f6fc">2 &#183; Plan</text>
   <text x="318" y="86" font-size="11.5" fill="#9198a1">Decide the study before its data are</text>

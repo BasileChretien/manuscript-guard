@@ -63,6 +63,18 @@ features:
     tests: [tests/test_scaffold.py, tests/test_from_word.py]
     docs: docs/getting-started.md
 
+  - id: setup-conversation
+    stage: start
+    title: Start in conversation
+    says: >-
+      Puts to the authors, one question at a time, each decision a project needs at its
+      start, then writes the project exactly as they answered, filling only what is blank.
+    status: works
+    commands: [setup]
+    skills: [project-setup]
+    tests: [tests/test_setup.py]
+    docs: docs/setup.md
+
   - id: what-next
     stage: start
     title: Say what to do now

@@ -39,6 +39,8 @@ from manuscript_guard.contracts._schema import _not_utf8, _plain, load_schema
 #: The keys `set` writes, and of them the one that holds a list.
 KEYS = ("stage", "target_journal", "english_variant", "reporting_guideline", "study_type")
 LIST_KEYS = frozenset({"reporting_guideline"})
+#: The top-level keys `setup` writes as values, each only where it is blank (`setup/apply.py`).
+SETUP_KEYS = (*KEYS, "title")
 
 #: What is written without quotation marks: a name, read back by YAML as the same text.
 _PLAIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
@@ -77,9 +79,14 @@ class Edited:
 
 def written(value: Any) -> str:
     """A value as `set` writes it: a name plain, other text in single quotation marks, a
-    list between brackets."""
+    list between brackets; and, for `setup`, a whole number as its digits and a yes or no
+    as `true` or `false`."""
     if isinstance(value, list):
         return "[" + ", ".join(written(entry) for entry in value) + "]"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
     plain = _PLAIN.match(value) and not _YAML_12.match(value)
     if plain and yaml.safe_load(f"k: {value}") == {"k": value}:
         return value
@@ -264,11 +271,12 @@ def _errors(document: dict) -> set[tuple[str, str]]:
     }
 
 
-def edit(text: str, key: str, new: Any) -> Edited:
+def edit(text: str, key: str, new: Any, *, keys: tuple[str, ...] = KEYS) -> Edited:
     """`text`, a `paper.yaml`, with `key` set to `new`; `Refused` where that cannot be done
-    with nothing else changed."""
-    if key not in KEYS:
-        raise Refused(f"`set` writes {', '.join(KEYS)}, and not `{key}`")
+    with nothing else changed. `keys` are those that may be written: `set`'s, and `setup`
+    adds the title (`SETUP_KEYS`)."""
+    if key not in keys:
+        raise Refused(f"`set` writes {', '.join(keys)}, and not `{key}`")
     held = Draft202012Validator(load_schema("paper")["properties"][key])
     wrong = next(iter(held.iter_errors(new)), None)
     if wrong is not None:
@@ -478,29 +486,38 @@ TEST_PREFIX = "10.5072/"
 
 
 def _doi_inserted(text: str, root: yaml.Node | None, doi: str) -> str:
-    """The text with `doi` written under `package`: its value replaced where it is a line of
-    its own, a line added under `package:` at its keys' indent where it is not, and the two
-    lines added at the end where there is no `package`."""
+    """The text with `doi` written under `package` (`_child_inserted`)."""
+    return _child_inserted(
+        text, root, "package", "doi", doi,
+        refusal="`package` is not written one key to a line, which `deposit` does not "
+        "rewrite; add `doi:` under it by hand",
+    )  # fmt: skip
+
+
+def _child_inserted(text: str, root: yaml.Node | None, parent: str, child: str, new: Any, *,
+                    refusal: str) -> str:  # fmt: skip
+    """The text with `child` written under `parent`: its value replaced where it is a line of
+    its own, a line added under `parent:` at its keys' indent where it is not, and the two
+    lines added at the end where there is no `parent`."""
     found = [(name, value) for name, value in (root.value if root is not None else ())
-             if isinstance(name, yaml.ScalarNode) and name.value == "package"]  # fmt: skip
+             if isinstance(name, yaml.ScalarNode) and name.value == parent]  # fmt: skip
     end = _line_break(text)
     if not found:
         body = text if not text or text.endswith(("\n", "\r")) else text + end
-        return f"{body}package:{end}  doi: {written(doi)}{end}"
+        return f"{body}{parent}:{end}  {child}: {written(new)}{end}"
     key, value = found[0]
     if isinstance(value, yaml.MappingNode) and not value.flow_style:
         inner = [(name, held) for name, held in value.value
-                 if isinstance(name, yaml.ScalarNode) and name.value == "doi"]  # fmt: skip
+                 if isinstance(name, yaml.ScalarNode) and name.value == child]  # fmt: skip
         if inner:
-            return _replaced(text, *inner[0], doi)
+            return _replaced(text, *inner[0], new)
         indent = " " * value.value[0][0].start_mark.column
     elif isinstance(value, yaml.ScalarNode) and value.value == "" and value.style is None:
-        indent = "  "  # `package:` with nothing under it
+        indent = "  "  # `parent:` with nothing under it
     else:
-        raise Refused("`package` is not written one key to a line, which `deposit` does not "
-                      "rewrite; add `doi:` under it by hand")  # fmt: skip
+        raise Refused(refusal)
     after_key = _line_end(text, key.end_mark.index)
-    line = f"{indent}doi: {written(doi)}"
+    line = f"{indent}{child}: {written(new)}"
     if after_key == len(text):
         return f"{text}{end}{line}{end}"
     breaks = "\r\n" if text[after_key : after_key + 2] == "\r\n" else text[after_key]
@@ -560,13 +577,100 @@ def set_package_doi(path: Path, doi: str) -> Edited:
     return done
 
 
+# --------------------------------------------------------------------------- setup's writes
+
+
+def _checked_text(text: str) -> tuple[yaml.Node | None, dict]:
+    """The file's structure and settings, refused as `edit` refuses a file it cannot edit."""
+    other = next((name for character, name in _OTHER_BREAKS.items() if character in text), None)
+    if other is not None:
+        raise Refused(f"it holds {other}, which YAML reads as the end of a line where an "
+                      "editor may show none; take it out first")  # fmt: skip
+    root, _scalars = _structure(text)
+    return root, _loaded(text)
+
+
+def _read_back(candidate: str, before: dict, expected: dict, what: str) -> None:
+    try:
+        after = _loaded(candidate)
+        _structure(candidate)
+    except Refused:
+        after = None
+    if after != expected:
+        raise Refused(f"the file, written, would not read back as its settings with only "
+                      f"`{what}` changed; edit it by hand")  # fmt: skip
+    added = _errors(after) - _errors(before)
+    if added:
+        where, said = sorted(added)[0]
+        raise Refused(f"the schema would refuse the file: {where or '(root)'}: {said}")
+
+
+def edit_child(text: str, parent: str, child: str, new: Any) -> Edited:
+    """`text`, a `paper.yaml`, with `parent.child` set to `new` (`custodian:
+    {minimum_cell_count: 5}`, `literature: {sources_in_git: true}`) and nothing else changed;
+    `Refused` where that cannot be done."""
+    schema = load_schema("paper")["properties"][parent]["properties"][child]
+    wrong = next(iter(Draft202012Validator(schema).iter_errors(new)), None)
+    if wrong is not None:
+        raise Refused(f"`{parent}.{child}` cannot be {written(new)}: {wrong.message}")
+    root, before = _checked_text(text)
+    held = before.get(parent)
+    if held is not None and not isinstance(held, dict):
+        raise Refused(f"`{parent}` is not a mapping of settings")
+    was = (held or {}).get(child)
+    if was == new:
+        return Edited(text, "unchanged", was)
+    candidate = _child_inserted(
+        text, root, parent, child, new,
+        refusal=f"`{parent}` is not written one key to a line, which `setup` does not "
+        f"rewrite; add `{child}:` under it by hand",
+    )  # fmt: skip
+    expected = {**before, parent: {**(held or {}), child: new}}
+    _read_back(candidate, before, expected, f"{parent}.{child}")
+    return Edited(candidate, "replaced" if was is not None else "appended", was)
+
+
+def _block(value: Any, indent: str, end: str) -> list[str]:
+    """`value`, a list of mappings of names (the registrations), as lines of a block."""
+    lines = []
+    for entry in value:
+        pairs = list(entry.items())
+        first, *rest = pairs
+        lines.append(f"{indent}- {first[0]}: {written(first[1])}")
+        lines += [f"{indent}  {name}: {written(held)}" for name, held in rest]
+    return lines
+
+
+def edit_block(text: str, key: str, new: list) -> Edited:
+    """`text`, a `paper.yaml`, with the top-level `key` it does not hold added at the end as a
+    block, one entry of `new` to a line (`registration`); `Refused` where the key is there or
+    the file would not read back as its settings with it added."""
+    schema = load_schema("paper")["properties"][key]
+    wrong = next(iter(Draft202012Validator(schema).iter_errors(new)), None)
+    if wrong is not None:
+        raise Refused(f"`{key}` cannot be {new!r}: {wrong.message}")
+    _root, before = _checked_text(text)
+    if key in before:
+        if before[key] == new:
+            return Edited(text, "unchanged", before[key])
+        raise Refused(f"`{key}` is set already, and `setup` replaces no setting")
+    end = _line_break(text)
+    body = text if not text or text.endswith(("\n", "\r")) else text + end
+    candidate = body + end.join([f"{key}:", *_block(new, "  ", end)]) + end
+    _read_back(candidate, before, {**before, key: new}, key)
+    return Edited(candidate, "appended", None)
+
+
 __all__ = [
     "KEYS",
     "LIST_KEYS",
+    "SETUP_KEYS",
     "TEST_PREFIX",
     "Edited",
     "Refused",
     "edit",
+    "edit_block",
+    "edit_child",
     "edit_package_doi",
     "journals",
     "read",

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/setup-applied/1",
+  "title": "manuscript-guard setup apply --json",
+  "description": "What `manuscript-guard setup apply --json` prints: what was written from design/setup.yaml, or with --dry-run what would be, each with why it matters; what was kept as it was; what this machine lacks for the analysis language; and what comes next. A field added keeps the schema at /1; a field renamed or removed, or a value added to a fixed list, makes it /2. docs/setup.md describes each field.",
+  "type": "object",
+  "required": ["schema", "tool_version", "folder", "dry_run", "ok", "refused", "open", "written", "kept", "notes", "tools", "after"],
+  "additionalProperties": false,
+  "$defs": {
+    "change": {
+      "type": "object",
+      "required": ["file", "what", "why"],
+      "additionalProperties": false,
+      "properties": {"file": {"type": "string"}, "what": {"type": "string"}, "why": {"type": "string"}}
+    }
+  },
+  "properties": {
+    "schema": {"const": "manuscript-guard/setup-applied/1"},
+    "tool_version": {"type": "string"},
+    "folder": {"type": "string"},
+    "dry_run": {"type": "boolean"},
+    "ok": {"type": "boolean"},
+    "refused": {"type": ["string", "null"], "description": "Why nothing, or nothing more, was written."},
+    "open": {"type": "array", "items": {"type": "string"}, "description": "The questions still open, where that is why."},
+    "written": {"type": "array", "items": {"$ref": "#/$defs/change"}},
+    "kept": {"type": "array", "items": {"$ref": "#/$defs/change"}, "description": "A setting the project holds already, left as it was."},
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "tools": {
+      "type": "array",
+      "items": {"type": "object", "required": ["name", "found", "said"], "additionalProperties": false,
+                "properties": {"name": {"type": "string"}, "found": {"type": "boolean"}, "said": {"type": "string"}}}
+    },
+    "after": {
+      "type": "array",
+      "items": {"type": "object", "required": ["skill", "title", "why", "who"], "additionalProperties": false,
+                "properties": {"skill": {"type": ["string", "null"]}, "title": {"type": "string"},
+                               "why": {"type": "string"}, "who": {"enum": ["agent", "author"]}}}
+    }
+  }
+}

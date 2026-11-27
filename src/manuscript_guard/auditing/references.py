@@ -941,11 +941,11 @@ def _gives_record_title(text: str, title: str, records: list[str]) -> bool:
 
 
 def _with_subtitle(title: str, records: list[str]) -> bool:
-    """Whether the title read is one of `records`, a colon and words the record does not
-    hold: "Statin therapy and fracture risk: a cohort of older women", whose record is
+    """Whether the title read is one of `records`, a colon and any words, which are not
+    read: "Statin therapy and fracture risk: a cohort of older women", whose record is
     "Statin therapy and fracture risk" (round 2 of #846). `_title_differs` gives each record's
     title alone and with its subtitle, so that the words after the colon may be the record's
-    subtitle given otherwise, or none it holds (round 5). Each colon is tried, for a
+    subtitle given otherwise, or none it holds (rounds 5 and 6). Each colon is tried, for a
     record whose own title holds one, "COVID-19: lessons learned" (round 3). A record's title
     of too few words to tell a work by is never taken for it."""
     from manuscript_guard.gates.searched import folded_words

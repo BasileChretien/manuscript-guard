@@ -45633,3 +45633,28 @@ def test_an_audit_says_a_trial_registered_after_it_started(
     said = json.loads(capsys.readouterr().out)["findings"]
     late = [f["message"] for f in said if f["code"] == "registration-late"]
     assert len(late) == 1 and late[0].startswith("NCT04446611"), late
+
+
+def test_an_audit_says_a_reference_whose_doi_is_another_work_s(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Corrupted: a reference gives a real DOI with an invented title, the commonest
+    fabricated citation. `audit --lookup` must say its DOI is of another work, with both
+    titles (`auditing.references._title_differs`, item 7b)."""
+    from test_audit_doi_title import GIVEN, Registries, _paper
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.lookup import http
+    from manuscript_guard.lookup import run as lookup
+
+    table = Registries()
+    table.records["10.5555/given.1"] = ("Mitochondrial dynamics in budding yeast", "")
+    monkeypatch.setattr(http, "default_transport", table)
+    paced = lookup.Pacer
+    monkeypatch.setattr(lookup, "Pacer", lambda: paced(sleep=lambda seconds: None))
+    paper = tmp_path / "paper.md"
+    paper.write_text(_paper(), encoding="utf-8")
+    main(["audit", str(paper), "--lookup", "--json"])
+    said = [f["message"] for f in json.loads(capsys.readouterr().out)["findings"]
+            if f["code"] == "reference-title-differs"]  # fmt: skip
+    assert len(said) == 1 and GIVEN in said[0] and "Mitochondrial dynamics" in said[0], said

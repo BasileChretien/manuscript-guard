@@ -1018,6 +1018,19 @@ features:
     tests: [tests/test_audit_registration.py]
     docs: docs/audit.md
 
+  - id: audit-doi-title
+    stage: others
+    title: A DOI of another work
+    says: >-
+      With the lookups on, notes a reference whose DOI leads to a work with another title
+      than the one it gives: a wrong DOI, or a real DOI with an invented title. A note, with
+      what it was worth on published papers, since a title given in translation looks the
+      same.
+    status: works
+    commands: [audit]
+    tests: [tests/test_audit_doi_title.py]
+    docs: docs/audit.md
+
   - id: editor-letter
     stage: others
     title: A letter to the authors

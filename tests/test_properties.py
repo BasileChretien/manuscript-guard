@@ -26977,6 +26977,164 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+from generated import doi_title_records  # noqa: E402
+
+
+@holds(40, doi_title_records())
+def test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title(
+    drawn: list[tuple[str, str, str, str, bool]],
+) -> None:
+    """Item 7b (Basile, 2026-11-26): a DOI's record is another work's where its title, with
+    its subtitle, folded, holds under half the searched words of the title the entry gives,
+    each record counted alone, Crossref's and OpenAlex's; never where a record's title is
+    the entry's; never for a title of under three words with a letter in them;
+    never where it is that title in other case, accents or punctuation, split into a title
+    and a subtitle, half its words in another order, or its words joined by a registry's
+    tags; never for an entry whose "title" is a citation's tail read wrong, a link or a
+    volume and pages; never for one that holds the record's title word for word, where a
+    journal's name was read as its title, though for one whose title holds the record's and
+    more; never for the record's whole title with a subtitle it lacks; and never for one that
+    says its title is a translation
+    (`auditing.references._title_differs`)."""
+    read = READINGS["doi title differs"]()
+    for entry, title, subtitle, openalex, differs in drawn:
+        said = read({"entry": entry, "title": title, "subtitle": subtitle, "openalex": openalex})
+        assert bool(said) == differs, (entry, title, subtitle, openalex, said)
+
+
+def _a_title_is_said_to_differ_at_half_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "TITLE_SHARE", 1.01)
+
+
+def _a_record_s_subtitle_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def untitled(entry, answers, path, style):  # noqa: ANN001, ANN202
+        bare = {name: {**answer, "subtitle": None} if isinstance(answer, dict) else answer
+                for name, answer in answers.items()}  # fmt: skip
+        return compared(entry, bare, path, style)
+
+    patch.setattr(references, "_title_differs", untitled)
+
+
+def _a_citation_s_tail_is_compared_as_a_title(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_NO_TITLE", re.compile(r"(?!)"))
+
+
+def _a_registry_s_tags_are_taken_out_with_no_space(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_TAG", re.compile(r"(?!)"))
+
+
+def _a_title_s_words_are_not_folded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "search_words", lambda title: title.split())
+
+
+def _a_record_s_title_is_not_looked_for_in_the_entry(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_gives_record_title", lambda text, title, records: False)
+
+
+def _a_record_s_title_is_looked_for_inside_the_title_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    kept = references._gives_record_title
+    patch.setattr(references, "_gives_record_title",
+                  lambda text, title, records: kept(text, "", records))  # fmt: skip
+
+
+def _a_subtitle_the_record_lacks_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_with_subtitle", lambda title, records: False)
+
+
+def _any_title_with_a_colon_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_with_subtitle", lambda title, records: ":" in title)
+
+
+def _a_title_in_english_is_taken_for_a_translation(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    either = references._OR_ENGLISH
+    patch.setattr(references, "_TRANSLATED", re.compile(
+        rf"(?i)[\[(](?:article |text )?in {either}(?:{references._JOINED}{either})*[\])]"))
+
+
+def _a_record_s_subtitle_is_not_tried_before_a_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    kept = references._with_subtitle
+    patch.setattr(references, "_with_subtitle", lambda title, records: kept(
+        title, [record for record in records if ": " not in record]))
+
+
+def _a_title_of_one_word_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "TITLE_WORDS", 1)
+
+
+def _a_title_s_numbers_count_as_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+    from manuscript_guard.gates.searched import search_words
+
+    patch.setattr(references, "_worded", search_words)
+
+
+def _only_crossref_s_record_is_held_to_the_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def crossref_only(entry, answers, path, style):  # noqa: ANN001, ANN202
+        return compared(entry, {"crossref": answers.get("crossref")}, path, style)
+
+    patch.setattr(references, "_title_differs", crossref_only)
+
+
+def _both_records_are_counted_together(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def together(entry, answers, path, style):  # noqa: ANN001, ANN202
+        found = [answer for answer in answers.values() if isinstance(answer, dict)
+                 and answer.get("title")]  # fmt: skip
+        merged = {"status": "found",
+                  "title": " ".join(str(one["title"]) for one in found),
+                  "subtitle": " ".join(str(one.get("subtitle") or "") for one in found)}
+        return compared(entry, {"crossref": merged}, path, style)
+
+    patch.setattr(references, "_title_differs", together)
+
+
+def _a_translation_s_marker_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_TRANSLATED", re.compile(r"(?!)"))
+
+
 # ------------------------------------------------------- what a figure script names by number
 
 from generated import _SCRIPT_NAMES, figure_scripts, svg_figures  # noqa: E402
@@ -27268,6 +27426,70 @@ def _a_registration_number_s_line_counted_in_the_masked_text(patch: pytest.Monke
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a DOI's title is said to differ at half its words or more": (
+        _a_title_is_said_to_differ_at_half_its_words,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's subtitle is not read with its title": (
+        _a_record_s_subtitle_is_not_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a citation's tail read as an entry's title is compared": (
+        _a_citation_s_tail_is_compared_as_a_title,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's tags are taken out with no space": (
+        _a_registry_s_tags_are_taken_out_with_no_space,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title is compared in words not folded": (
+        _a_title_s_words_are_not_folded,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's title is not looked for in the entry": (
+        _a_record_s_title_is_not_looked_for_in_the_entry,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a translated title is compared with its record's": (
+        _a_translation_s_marker_is_not_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's title is looked for inside the title read": (
+        _a_record_s_title_is_looked_for_inside_the_title_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title with a subtitle its record lacks is held to it": (
+        _a_subtitle_the_record_lacks_is_compared,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title with a colon is passed over whatever its main part": (
+        _any_title_with_a_colon_is_passed_over,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title said to be in English is taken for a translation": (
+        _a_title_in_english_is_taken_for_a_translation,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's subtitle is not tried before a colon": (
+        _a_record_s_subtitle_is_not_tried_before_a_colon,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title of one word is held to its record": (
+        _a_title_of_one_word_is_compared,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title's numbers count as its words": (
+        _a_title_s_numbers_count_as_its_words,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "only Crossref's record of a DOI is held to its title": (
+        _only_crossref_s_record_is_held_to_the_title,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's two records are counted together": (
+        _both_records_are_counted_together,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
     "a TeX comment is read for a \\nocite of every entry": (
         _a_tex_comment_is_read,
         test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,

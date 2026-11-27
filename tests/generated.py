@@ -8219,6 +8219,107 @@ def registration_texts(
     return plain, given
 
 
+#: Words a title is drawn from, each one `gates.searched.search_words` keeps: long enough and
+#: not common. The second set shares none with the first, for another work's title.
+_TITLED = ("weekly", "outcome", "counts", "regional", "cohort", "adults", "statin",
+           "therapy", "fracture", "incidence", "hospital", "registry", "mortality", "kidney")
+_UNTITLED = ("mitochondrial", "dynamics", "yeast", "membrane", "protein", "folding",
+             "plasmid", "spectrum", "lattice", "quantum", "thermal", "polymer")  # fmt: skip
+
+
+#: What an entry's reader took for a title on 100 PMC papers (2026-11-27), the citation's
+#: tail read wrong: a link, a DOI, a year in brackets with a volume and pages.
+_TAILS = ("Plant 8 (6) (2015) 871-884, https://doi.org/10.5555/given.1",
+          "Available from: https://doi.org/10.5555/GIVEN.1",
+          "Weekly Cohort Counts (2006) 84:673-6",
+          "Registry Data Outcome doi 10.5555/given.1")  # fmt: skip
+#: Journals abbreviated with full stops, whose name the entry's reader takes for the title
+#: of an entry that puts its title between commas ("Sci. China Life Sci.", 2026-11-27).
+_DOTTED_JOURNALS = ("Sci. China Life Sci.", "Proc. Natl Acad Sci.", "Eur. Heart Rhythm Rev.",
+                    "Clin. Data Sci Med.")  # fmt: skip
+#: How an entry says its title is a translation (`auditing.references._TRANSLATED`), and
+#: languages it names.
+_TRANSLATION_MARKERS = ("[Article in {}]", "(in {})", "(in {} with English abstract)",
+                        "[article in {}]", "[Article in English, {}]",
+                        "(in {} and English)")  # fmt: skip
+_LANGUAGES = ("Spanish", "Portuguese", "Japanese", "Chinese", "French", "German", "Turkish")
+
+
+@st.composite
+def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
+    """Entries giving a DOI, records it may hold, and whether `audit --lookup` says the DOI is
+    another work's (`auditing.references._title_differs`, item 7b), one of each kind. For an
+    entry giving a title of six to nine searched words: the same title; the title cased,
+    accented and punctuated otherwise, a word short; the title split into a title of one or
+    two words, too few to be looked for in the entry, and a subtitle; half its words, in
+    another order; the title a word short, its words joined by a registry's tags with no space
+    between ("Recombinant<i>Mycobacterium"); under half of its words among another work's;
+    and another work's title. An entry whose "title" is a citation's tail read wrong
+    (`_TAILS`), held to another work's title, which is never compared. An entry that puts its
+    title between commas before a journal abbreviated with full stops, whose name is read as
+    its title, held to its own title, which it holds word for word. And an entry that says
+    its title is a translation, held to another work's title. An entry whose title holds its
+    record's title and as many words again of another work's. An entry whose title is two
+    words and a volume and pages, held to another work's. An entry whose Crossref record is
+    another work's and whose OpenAlex record is its own. And one whose two records each hold
+    under half its words and both together half or more. An entry whose title is its
+    record's whole title, a colon and a subtitle the record does not hold, as long as the
+    title and more; one whose title is another work's main title, a colon and its own words;
+    one that says it is in English, held to another work's title; and one whose record keeps
+    a short title and its subtitle apart, given whole before a second colon. Each is (entry,
+    Crossref's title,
+    its subtitle, OpenAlex's title or "", whether it is said). Every example holds one of
+    each, so a rule broken for one kind is seen whatever the seed."""
+    words = draw(st.permutations(_TITLED))[:draw(st.integers(6, 9))]
+    title = " ".join(words).capitalize()
+    entry = f"1. Smith A, Lee B. {title}. J Test. 2020;12(3):45-56. doi:10.5555/given.1"
+    n = len(words)
+    split = draw(st.integers(1, 2))
+    other = draw(st.permutations(_UNTITLED))
+    folded = " ".join(w.upper() if i % 2 else w.replace("e", "é", 1) for i, w in enumerate(words))
+    # A word short, so that it is no exact match and its words are what decides.
+    tagged = "".join(w if i % 2 == 0 else f"<i>{w}</i>" for i, w in enumerate(words[:-1]))
+    tail = draw(st.sampled_from(_TAILS))
+    journal = draw(st.sampled_from(_DOTTED_JOURNALS))
+    commas = (f"[1] A. Smith, B. Lee, {title}, {journal} 56 (2013) 960-967, "
+              "https://doi.org/10.5555/given.1.")  # fmt: skip
+    marker = draw(st.sampled_from(_TRANSLATION_MARKERS)).format(draw(st.sampled_from(_LANGUAGES)))
+    translated = (f"1. Smith A, Lee B. {title} {marker}. J Test. 2020;12(3):45-56. "
+                  "doi:10.5555/given.1")  # fmt: skip
+    extended = " ".join([*words[:3], *other[:4]]).capitalize()
+    short = f"{words[0].capitalize()} {words[1]} 184:1845-56"
+    subtitled = f"{' '.join(words[:3]).capitalize()}: {' '.join([*words[3:], *other[:3]])}"
+    # A record of a short title and a subtitle kept apart, "COVID-19" and "lessons learned",
+    # given whole before a second colon and five words of another work's: 4 of 9 shared.
+    apart = (f"{' '.join(words[:2]).capitalize()}: {' '.join(words[2:4])}: "
+             f"{' '.join(other[:5])}")  # fmt: skip
+    # Another work's main title before the colon: held to the record like any other.
+    colon = f"{' '.join(other[:3]).capitalize()}: {' '.join(words[3:])}"
+    # Two records, each under half and both together half or more: ceil(n / 4) words each.
+    part = (n + 3) // 4
+    return [
+        (entry, title, "", "", False),
+        (entry, folded.rsplit(" ", 1)[0] + ", " + "a study", "", "", False),
+        (entry, " ".join(words[:split]), " ".join(words[split:]), "", False),
+        (entry, " ".join(reversed(words[: (n + 1) // 2])), "", "", False),
+        (entry, tagged, "", "", False),
+        (entry, " ".join([*words[: (n - 1) // 2], *other[: n - (n - 1) // 2]]), "", "", True),
+        (entry, " ".join(other[:n]), "", "", True),
+        (f"1. Smith A, Lee B. {tail}. doi:10.5555/given.1", " ".join(other[:n]), "", "", False),
+        (commas, title.upper(), "", "", False),
+        (translated, " ".join(other[:n]), "", "", False),
+        (entry.replace(title, extended), " ".join(words[:3]), "", "", True),
+        (entry.replace(title, short), " ".join(other[:n]), "", "", False),
+        (entry, " ".join(other[:n]), "", title, False),
+        (entry, " ".join([*words[:part], *other[:3]]), "",
+         " ".join([*words[part:2 * part], *other[3:6]]), True),
+        (entry.replace(title, subtitled), " ".join(words[:3]), "", "", False),
+        (entry.replace(title, colon), " ".join(words[:3]), "", "", True),
+        (entry.replace(f"{title}.", f"{title} (in English)."), " ".join(other[:n]), "", "", True),
+        (entry.replace(title, apart), " ".join(words[:2]), " ".join(words[2:4]), "", False),
+    ]
+
+
 #: Each way of writing a registration number that `NAMED_IN_TEXT` finds, with the number as
 #: kept: those `audit --lookup` takes from a paper (`auditing.registration`).
 _AUDITED_NUMBERS = tuple(dict.fromkeys((w, kept) for w, kept, found in REGISTERED if found))
@@ -21224,6 +21325,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "audit registration numbers": st.one_of(
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
+    ),
+    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 17)).map(
+        lambda drawn: dict(zip(("entry", "title", "subtitle", "openalex"),
+                               drawn[0][drawn[1]][:4], strict=True))
     ),
     "audit displays": st.one_of(
         legend_displays().map(lambda drawn: drawn[0]),

@@ -39,6 +39,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from manuscript_guard.findings import INFO, WARN
 from manuscript_guard.gates.identifiers import normal_doi
 from manuscript_guard.keys import placed
 
@@ -191,6 +192,11 @@ class Problem:
     #: and for a citation the digest of the sentence it is typed in.
     subject: str | None = None
     sentence: str | None = None
+    #: What an audit gives it: a warning, or a note for a check right too seldom on published
+    #: papers to warn (`_title_differs`).
+    severity: str = WARN
+    #: What an audit says under it, where the check's record on published papers is shown.
+    hint: str | None = None
 
 
 @dataclass
@@ -848,6 +854,167 @@ def _asked(entry: Entry) -> str:
     return "; ".join(parts)
 
 
+#: Under this share of the searched words of the title an entry gives, its DOI's record is
+#: another work's (Basile, 2026-11-26, item 7b: "warn on few shared words").
+TITLE_SHARE = 0.5
+#: The fewest searched words a title is compared by, as few as a title is searched by
+#: (`by_title`): fewer say too little of a work to tell it from another.
+TITLE_WORDS = 3
+#: A "title" that is no title but a citation's tail read wrong: one holding a link or a DOI,
+#: or a year in brackets with a volume and pages, "J Exp Med (1996) 184:1845-56". On 100 PMC
+#: papers (2026-11-27) the entry's reader took such a tail for the title of 10 entries.
+_NO_TITLE = re.compile(
+    r"(?i)https?://|\bdoi\b|\b10\.\d{4,9}/|\(\d{4}\)\s*\d+\s*(?:\(\d+\)\s*)?[:,]\s*\d+"
+)
+#: A tag of a registry's title, "<i>", taken out as a space: Crossref keeps
+#: "Recombinant<i>Mycobacterium", whose words ran together with the tags taken out.
+_TAG = re.compile(r"<[^<>]{1,40}>")
+#: The languages an entry says its title was translated from, as PubMed marks it, "[Article
+#: in Spanish]", or as a list does, "(in Japanese with English abstract)".
+LANGUAGES = ("Afrikaans", "Albanian", "Arabic", "Armenian", "Basque", "Belarusian", "Bengali",
+             "Bosnian", "Bulgarian", "Catalan", "Chinese", "Croatian", "Czech", "Danish",
+             "Dutch", "Estonian", "Farsi", "Finnish", "French", "Galician", "Georgian",
+             "German", "Greek", "Hebrew", "Hindi", "Hungarian", "Icelandic", "Indonesian",
+             "Irish", "Italian", "Japanese", "Kazakh", "Korean", "Latvian", "Lithuanian",
+             "Macedonian", "Malay", "Mongolian", "Norwegian", "Persian", "Polish",
+             "Portuguese", "Romanian", "Russian", "Serbian", "Slovak", "Slovenian", "Spanish",
+             "Swahili", "Swedish", "Tamil", "Thai", "Turkish", "Ukrainian", "Urdu",
+             "Vietnamese", "Welsh")  # fmt: skip
+_LANGUAGE = "(?:" + "|".join(LANGUAGES) + ")"
+_OR_ENGLISH = "(?:" + "|".join((*LANGUAGES, "English")) + ")"
+_JOINED = r"(?:,| and| or) "
+#: An entry that says its title is a translation: the registry holds the title in the
+#: language the work was written in, which shares no words with it. One work may be in two,
+#: "[Article in German, French]" (round 1 of #846), English among them where another is
+#: named, "[Article in English, Portuguese]" (round 2).
+_TRANSLATED = re.compile(
+    rf"(?i)[\[(](?:article |text )?in (?:{_OR_ENGLISH}{_JOINED})*{_LANGUAGE}"
+    rf"(?:{_JOINED}{_OR_ENGLISH})*(?:,? with (?:an )?English abstract)?[\])]"
+)
+#: What the check was worth on 100 PMC papers (2026-11-27): 1 of the 6 notes judged by two
+#: readers was right; the others gave a work's title in translation. A note, then, and never
+#: a warning (Basile, 2026-11-27: under half right, "a note, with that record shown").
+TITLE_RECORD = ("On 100 published papers, 1 of the 6 such notes judged was right; most of the "
+                "others gave the title in translation, which this check cannot tell from "
+                "another work's.")
+
+
+def _worded(title: str) -> list[str]:
+    """A title's searched words with a letter in them: a volume and pages read as a title,
+    "184:1845-56", is three searched words and no word at all (2026-11-27)."""
+    from manuscript_guard.gates.searched import search_words
+
+    return [word for word in search_words(title) if any(c.isalpha() for c in word)]
+
+
+def _found_at(words: list[str], part: list[str]) -> int | None:
+    """Where `part` stands in `words`, word for word, or None."""
+    return next((at for at in range(len(words) - len(part) + 1)
+                 if words[at:at + len(part)] == part), None)  # fmt: skip
+
+
+def _gives_record_title(text: str, title: str, records: list[str]) -> bool:
+    """Whether an entry holds a record's title, with its subtitle, word for word, folded as a
+    title search folds them, outside the `title` its reader took it to give: it names that
+    work where its reader took another part of it for the title. In a list that puts the
+    title between commas, "Z.C. Dong, Y. Chen, Transcriptomics: advances and approaches,
+    Sci. China Life Sci. 56 (2013)", the reader took "China Life Sci" for its title
+    (2026-11-27). Within the title read it is never looked for: a title that holds the
+    record's and words of another work is held to the record like any other (round 1 of
+    #846). A record's title of too few words to tell a work by is never looked for."""
+    from manuscript_guard.gates.searched import folded_words
+
+    read = folded_words(title)
+    outside, rest = [], folded_words(text)
+    # Each place the title read stands is cut out, should the entry give it twice (round 2).
+    while read and (at := _found_at(rest, read)) is not None:
+        outside.append(rest[:at])
+        rest = rest[at + len(read):]
+    outside.append(rest)
+    for record in records:
+        if len(_worded(record)) < TITLE_WORDS:
+            continue
+        words = folded_words(record)
+        if any(_found_at(part, words) is not None for part in outside):
+            return True
+    return False
+
+
+def _with_subtitle(title: str, records: list[str]) -> bool:
+    """Whether the title read is one of `records`, a colon and any words, which are not
+    read: "Statin therapy and fracture risk: a cohort of older women", whose record is
+    "Statin therapy and fracture risk" (round 2 of #846). `_title_differs` gives each record's
+    title alone and with its subtitle, so that the words after the colon may be the record's
+    subtitle given otherwise, or none it holds (rounds 5 and 6). Each colon is tried, for a
+    record whose own title holds one, "COVID-19: lessons learned" (round 3). A record's title
+    of too few words to tell a work by is never taken for it."""
+    from manuscript_guard.gates.searched import folded_words
+
+    mains = [folded_words(title[:at]) for at, sign in enumerate(title) if sign == ":"]
+    return any(len(_worded(record)) >= TITLE_WORDS and folded_words(record) in mains
+               for record in records)  # fmt: skip
+
+
+def _title_differs(
+    entry: Entry, answers: dict[str, Any], path: Path | None, style: str
+) -> list[Problem]:
+    """A real DOI with another work's title, the commonest fabricated citation: each record
+    Crossref and OpenAlex hold for the entry's DOI is of a work whose title, with its
+    subtitle, holds under half the searched words (`gates.searched.search_words`) of the
+    title the entry gives, read as a title search reads it (`by_title.cited`), and none is
+    it exactly (`by_title._same_title`). Its first reading must have enough words to tell a
+    work by; each longer one, read on past a full stop, is tried too, against each record
+    alone, and the reading and the record that share the most are said, so that a longer
+    reading can only clear an entry: one that runs on into the journal's name never makes a
+    finding of its own. Nor does an entry that holds a record's title word for word outside
+    the title read, gives a record's title with a subtitle it does not hold, or says its
+    title is a translation. A note (`TITLE_RECORD`)."""
+    from manuscript_guard.auditing.by_title import _same_title, _text, cited
+    from manuscript_guard.gates.searched import search_words
+    from manuscript_guard.lookup.sources import FOUND
+
+    records = [answers[name] for name in ("crossref", "openalex")
+               if isinstance(answers.get(name), dict) and answers[name].get("status") == FOUND
+               and answers[name].get("title")]  # fmt: skip
+    # Read as a title search reads an entry: its number, its emphasis and its TeX off. A
+    # list whose entries cannot be told apart has no title to read (`UNTOLD`).
+    text = _text(entry, style) if entry.dois and entry.text and style != UNTOLD else None
+    said = cited(text) if text is not None else None
+    if not records or said is None or any(_same_title(said, record) for record in records):
+        return []
+    if (len(_worded(said.title)) < TITLE_WORDS or _NO_TITLE.search(said.title)
+            or _TRANSLATED.search(text)):  # fmt: skip
+        return []
+    whole = [_TAG.sub(" ", ": ".join(str(t) for t in (record.get("title"), record.get("subtitle"))
+                                      if t)) for record in records]  # fmt: skip
+    titles = [_TAG.sub(" ", str(record["title"])) for record in records]
+    # The title alone and with its subtitle: Crossref keeps "COVID-19" and "lessons learned"
+    # apart (round 4 of #846).
+    if _gives_record_title(text, said.title, whole) or _with_subtitle(said.title, titles + whole):
+        return []
+    # Each record alone, so that the title the finding quotes is the one its words were
+    # counted in (round 1 of #846: counted in both, one quoted, the count was not its own).
+    best: tuple[int, int, str, str] | None = None
+    for record in whole:
+        held = set(search_words(record))
+        for title in dict.fromkeys((said.title, *said.titles)):
+            words = _worded(title)
+            if len(words) < TITLE_WORDS:
+                continue
+            shared = sum(word in held for word in words)
+            if best is None or shared * best[1] > best[0] * len(words):
+                best = (shared, len(words), title, record)
+    if best is None or best[0] >= TITLE_SHARE * best[1]:
+        return []
+    shared, total, title, record = best
+    return [Problem(
+        "reference-title-differs",
+        f'{entry.label}: its DOI {entry.dois[0]} is of a work titled "{record}", which has '
+        f'{shared} of the {total} searched words of the title given, "{title}"',
+        entry.line, path, entry.label, severity=INFO, hint=TITLE_RECORD,
+    )]  # fmt: skip
+
+
 def _unknown(entry: Entry, answers: dict[str, Any], path: Path | None) -> list[Problem]:
     """A DOI every registry asked of it says it does not hold, and a PMID PubMed does not:
     a typo, most often, and no check of the work at all (`gates.lookups._identity`)."""
@@ -930,13 +1097,13 @@ def look_up(
     credentials = credentials or run.Credentials.from_environment(None)
     ask = run._asker(transport or default_transport, pacer or run.Pacer(), credentials)
     asking = _Asking(ask, services, credentials, today or date.today(), cache, dry_run)
-    wanted = [(census.path, entry) for census in censuses for entry in census.entries
-              if entry.dois or entry.pmids]  # fmt: skip
+    wanted = [(census.path, entry, census.style) for census in censuses
+              for entry in census.entries if entry.dois or entry.pmids]  # fmt: skip
     looked: list[Looked] = []
-    for path, entry in wanted:
+    for path, entry, style in wanted:
         # How many of the entries looked up are done, for a reader who waits (`progress`).
         step("lookup", len(looked), len(wanted))
-        looked.append(_looked_up(path, entry, asking))
+        looked.append(_looked_up(path, entry, asking, style=style))
     return looked
 
 
@@ -954,9 +1121,10 @@ class _Asking:
 
 
 def _looked_up(path: Path, entry: Entry, asking: _Asking, *, asked: str = "",
-               by_title: bool = False) -> Looked:  # fmt: skip
+               by_title: bool = False, style: str | None = None) -> Looked:  # fmt: skip
     """One entry with a DOI or a PMID, asked of the registries; `asked` what is said before
-    the registries, for a DOI found by the entry's title."""
+    the registries, for a DOI found by the entry's title. `style` is its list's, by which its
+    title is read for `_title_differs`; given none, the title is not compared."""
     from manuscript_guard.gates.lookups import _standing
     from manuscript_guard.lookup import run
 
@@ -988,6 +1156,8 @@ def _looked_up(path: Path, entry: Entry, asking: _Asking, *, asked: str = "",
                 entry.label)
         for f in found
     ) + tuple(_unknown(entry, answers, where)) + tuple(
+        () if by_title or style is None else _title_differs(entry, answers, where, style)
+    ) + tuple(
         Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",
                 entry.line, where, f"{entry.label} {name}")
         for name, why in _unanswered(record)

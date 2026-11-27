@@ -126,7 +126,9 @@ self-controlled case series, which is `self-controlled`. No general guideline is
 for case series: the paper follows PROCESS (2023), written for surgical case series, or
 Kempen (2011), for uncontrolled case series in any field, and G5 accepts either. The plan
 is asked for all seven sections, the analysis being the counts and summaries the series
-will give. The sections cite PROCESS 2023.
+will give. The sections cite PROCESS 2023. The comparison is found under a comparator,
+a comparison with something, historical or external controls, or a heading that is
+"Comparison" whole; a comparison the analysis makes ("Multiple comparisons") is not it.
 
 - **Case selection.** How the cases are found and chosen: from which records or referrals,
   over which period, and whether the series holds every case seen or only some. (PROCESS

@@ -595,7 +595,7 @@ types:
     guidelines: [PROCESS, Kempen]
     sections:
       - id: case selection
-        heading: '(?i)\bcase (?:selection|identification|finding|ascertainment)\b|\bselection of (?:the )?cases\b|\bconsecutive\b|\brecruit'
+        heading: '(?i)\bcase[- ]?(?:selection|identification|finding|ascertainment)\b|\bselection of (?:the )?cases\b|\bconsecutive|\brecruit'
         says: >-
           how the cases are found and chosen: from which records or referrals, over which
           period, and whether the series holds every case seen or only some
@@ -623,7 +623,9 @@ types:
         url: https://doi.org/10.1097/JS9.0000000000000940
         read_on: 2026-11-28
       - id: comparison
-        heading: '(?i)(?<!statistical\s)\bcompar(?:isons?|ators?)\b|\bhistorical (?:controls?|cohorts?|series|data)\b|\bexternal controls?\b|\bbenchmarks?\b'
+        # The comparison an analysis makes ("multiple comparisons", "comparison of outcomes")
+        # is not the series' own (round 1 of #849).
+        heading: '(?i)\bcomparators?\b|\bcomparisons? (?:with|to|against)\b|\bcomparison (?:groups?|cohorts?|series)\b|\b(?:external|historical) (?:comparisons?|comparators?|controls?|cohorts?|series|data)\b|\bbenchmarks?\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?comparisons?(?:\s*\([^()]*\))?\W*$'
         says: >-
           what the results are set against, published studies, the current standard of care
           or a historical group, and why it is comparable

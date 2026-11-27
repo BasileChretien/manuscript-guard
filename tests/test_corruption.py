@@ -15277,15 +15277,16 @@ def test_a_cross_sectional_study_registered_as_interventional_differs(project: P
     assert _registration(project) == {"registration-design-differs": "warn"}
 
 
-def test_a_case_series_registered_as_interventional_differs(project: Path) -> None:
-    """A registry calls a case series observational, as PROCESS 2023 (item 6a) asks it to
-    be registered: registered as an interventional study, it differs, and registered as
-    observational it agrees."""
+def test_a_case_series_is_registered_as_either_kind_of_study(project: Path) -> None:
+    """Round 1 of #849: a case series was held to an observational registration, but a
+    prospective series of an intervention given by protocol is registered as an
+    interventional study (ClinicalTrials.gov's single group), so a correct paper was told
+    to correct its design. Like a diagnostic accuracy study, it is held to neither."""
     _paper_field(project, "study_type", "case-series")
     _register(project)
     assert _registration(project) == {}
     _register(project, record=_ctgov_record(study_type="interventional"))
-    assert _registration(project) == {"registration-design-differs": "warn"}
+    assert _registration(project) == {}
 
 
 def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
@@ -40607,6 +40608,10 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## Recruitment", "case selection", True),
         ("## Case identification", "case selection", True),
         ("## Selection of cases", "case selection", True),
+        # Round 1 of #849: a hyphen after "case", and "consecutively", were not read.
+        ("## Case-finding", "case selection", True),
+        ("## Case-identification", "case selection", True),
+        ("## Consecutively treated patients", "case selection", True),
         ("## Patient selection", "case selection", False),
         ("## Follow up", "follow-up", True),
         ("## Loss to follow-up", "follow-up", True),
@@ -40614,7 +40619,14 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## Comparison with published series", "comparison", True),
         ("## Historical controls", "comparison", True),
         ("## External controls", "comparison", True),
+        ("## Comparator", "comparison", True),
+        ("## 3. Comparison", "comparison", True),
+        ("## Comparisons with the literature", "comparison", True),
         ("## Statistical comparisons", "comparison", False),
+        # Round 1 of #849: an analysis's comparisons were taken for the external one.
+        ("## Correction for multiple comparisons", "comparison", False),
+        ("## Subgroup comparisons", "comparison", False),
+        ("## Comparison of outcomes between groups", "comparison", False),
         ("## Historical background", "comparison", False),
         ("## Ethical approval", "consent and ethics", True),
         ("## Informed consent", "consent and ethics", True),

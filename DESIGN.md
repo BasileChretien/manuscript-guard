@@ -17567,7 +17567,8 @@ uncontrolled case series, and its sections cite PROCESS 2023 (Basile, 2026-11-27
 studies among the studies `other` covers; the first of them is a design of its own since
 #801, and case reports since 2026-11-27, their plans not asked for an analysis or
 deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27), and
-descriptive case series since 2026-11-28, whose plans are asked for all seven. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+descriptive case series since 2026-11-28, whose plans are asked for all seven (Basile,
+2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -19716,11 +19717,13 @@ Added by the adversarial review, verified and **not** fixed:
   one patient's care, which followed no protocol (Basile, 2026-11-27); a plan of one changed
   after its first results is still told to say so under Deviations, which it may then
   hold (round 1 of #840). A descriptive case series' sections are found by words they
-  alone use (case selection or identification, consecutive, recruitment; follow-up;
-  comparison or comparator, historical or external controls, benchmark; consent,
-  ethics), so "Statistical comparisons" is its analysis and no comparison, and a
-  "Patient selection" or "Length of observation" heading names none of them (Basile,
-  2026-11-27). The author answers such a false alarm, for any design and any section but
+  alone use: case selection, identification or finding, consecutive, recruitment;
+  follow-up; a comparator, a comparison with, to or against something, a comparison
+  group, historical or external controls, a benchmark, or "Comparison" as the whole
+  heading; consent, ethics. So the comparisons an analysis makes, "Statistical
+  comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
+  not its comparison, and a "Patient selection" or "Length of observation" heading names
+  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's

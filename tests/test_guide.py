@@ -193,7 +193,7 @@ def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     # A cross-sectional study is a design of the table since its first new one.
     assert "cross-sectional" not in other.label
     assert "case report" not in other.label
-    # A descriptive case series is one since 2026-11-27.
+    # A descriptive case series is one since 2026-11-28 (Basile, 2026-11-27).
     assert "case series" not in other.label
     assert "seven sections every plan has" in other.effect
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []

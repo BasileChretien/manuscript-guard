@@ -17583,6 +17583,12 @@ _READS_LATEX = (
     # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
     # citation command is written as pandoc's.
     "check_software_cited",
+    # It reads the Methods and the Results of each document, a LaTeX one's in its printed
+    # view (`_latex_named`).
+    "check_analyses_named",
+    # It reads each caption: a LaTeX float's through `caption_spans`, a Markdown one's and
+    # an emitted table's as they print.
+    "check_caption_marks",
 )  # fmt: skip
 
 

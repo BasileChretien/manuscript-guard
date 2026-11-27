@@ -17362,6 +17362,67 @@ def test_inline_maths_left_unbalanced_in_display_maths_is_still_refused(
     assert ("tex-unbalanced", 6) in found, report.render(project)
 
 
+#: An author's own `\tag` or `\shortintertext`, defined in the preamble as a paper that does
+#: not load mathtools may define `\shortintertext`: each is then the author's command, read as
+#: an unknown command is, as the reader read both before it knew them (round 1 of #836). `!`
+#: stands for a backslash and `NAME` for the command.
+_OWN_DEFINITIONS = {
+    "newcommand": "!newcommand{!NAME}[1]{!intertext{#1}}",
+    "renewcommand": "!renewcommand{!NAME}[1]{!intertext{#1}}",
+    "let": "!let!NAME!relax",
+    "def": "!def!NAME#1{!intertext{#1}}",
+}
+_OWN_USES = {
+    "tag": "!begin{equation} y = x !tag{1} !end{equation}",
+    "shortintertext": "!begin{align} a &= 1 !shortintertext{and b} b &= 2 !end{align}",
+}
+
+
+def _with_own_definition(name: str, definer: str) -> tuple[str, str]:
+    """A preamble that defines `name` with `definer`, and a body that uses it in a display
+    between two citations: the preamble alone, and the body after it."""
+    preamble = ("!documentclass{article}\n!usepackage{amsmath}\n"
+                + _OWN_DEFINITIONS[definer].replace("NAME", name) + "\n")  # fmt: skip
+    body = ("!begin{document}\nAs before !cite{j}, the value is\n"
+            f"{_OWN_USES[name]}\nSee !cite{{k}}.\nThe last line is read.\n!end{{document}}\n")
+    return preamble.replace("!", chr(92)), body.replace("!", chr(92))
+
+
+@pytest.mark.parametrize("definer", list(_OWN_DEFINITIONS))
+@pytest.mark.parametrize("name", list(_OWN_USES))
+def test_an_authors_own_tag_or_short_intertext_is_read_as_an_unknown_command(
+    name: str, definer: str
+) -> None:
+    """The use is read, nothing is refused, and the citation after it is cited."""
+    from manuscript_guard.text.latex.mask import read
+
+    preamble, body = _with_own_definition(name, definer)
+    reading = read(preamble + body)
+    assert reading.refusals == (), reading.refusals
+    assert [c.key for c in reading.cited] == ["j", "k"]
+    assert "The last line is read." in reading.masked
+
+
+@pytest.mark.parametrize("definer", list(_OWN_DEFINITIONS))
+@pytest.mark.parametrize("name", list(_OWN_USES))
+def test_an_authors_own_tag_defined_in_an_input_file_is_theirs_in_the_entry_file(
+    tmp_path: Path, name: str, definer: str
+) -> None:
+    """Defined in a file the preamble inputs, the command is the author's in the file that
+    uses it too: the tree tells each file of it."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    preamble, body = _with_own_definition(name, definer)
+    head, definition = preamble.rsplit("\n", 2)[0], preamble.rsplit("\n", 2)[1]
+    (tmp_path / "macros.tex").write_text(definition + "\n", encoding="utf-8")
+    (tmp_path / "main.tex").write_text(f"{head}\n{chr(92)}input{{macros}}\n{body}",
+                                       encoding="utf-8")  # fmt: skip
+    document = read_document(tmp_path)
+    assert document.refusals == (), document.refusals
+    cited = [c.key for source in document.sources for c in source.reading.cited]
+    assert cited == ["j", "k"], cited
+
+
 @pytest.mark.parametrize("stop", ["latin1", "csname"])
 def test_the_files_a_refused_file_inputs_past_its_refusal_are_named_by_its_finding(
     project: Path, stop: str

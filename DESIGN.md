@@ -1425,7 +1425,12 @@ order is `printed_order`.
   `\shortintertext` and amsmath's `\tag`, starred too. Inline maths in it, `\tag{\(1\)}` or
   `\text{if $x > 0$}`, is a formula of its own and balances as it does in text. Inline maths
   in the display's own maths is still refused, since LaTeX stops on it (Basile, 2026-11-27:
-  `\tag{\(1\)}` was refused as unbalanced, and nothing past it was read).
+  `\tag{\(1\)}` was refused as unbalanced, and nothing past it was read). A paper's own
+  definition of `\tag` or `\shortintertext`, by `\newcommand`, `\renewcommand`, `\def` or
+  `\let`, as one that does not load mathtools may make, makes it the author's command, read
+  as an unknown one is, whatever the paper loads, as the reader read both before it knew
+  them (`AUTHORS_IF_DEFINED`; round 1 of #836: known, each use of one so defined was refused
+  as defined again).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This

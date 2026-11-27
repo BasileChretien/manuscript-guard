@@ -3593,13 +3593,18 @@ def latex_text_in_displays(draw: st.DrawFn) -> dict[str, Any]:
     drawn among those it may stand in, a citation after each and words between; and what the
     reader owes it: the keys cited, in order, where each display runs, and where each inline
     formula in a text argument runs. Every argument with every delimiter is in every
-    document, so that a rule broken for one is seen in each."""
+    document, so that a rule broken for one is seen in each.
+
+    And, under `refused`, the same document with a display whose own maths holds inline
+    maths put in at a place drawn, once for each delimiter of `LATEX_INLINE_MATHS`: LaTeX
+    stops there, so the reader refuses it as unbalanced at the sign it stops on (`offset`),
+    and reads only the keys cited before it (`keys`)."""
     kinds = [(argument, displays, inline) for argument, displays in LATEX_TEXT_IN_DISPLAYS
              for inline in LATEX_INLINE_MATHS]  # fmt: skip
     order = draw(st.permutations(range(len(kinds))))
     filler = _spaced(FILLER)
     text = "\\documentclass{article}\n\\usepackage{mathtools}\n\\begin{document}\n"
-    keys, displays, inlines = [], [], []
+    keys, displays, inlines, cuts = [], [], [], [len(text)]
     for index in order:
         argument, kinds_of_display, inline = kinds[index]
         text += "".join(draw(st.lists(st.sampled_from(filler), min_size=1, max_size=6)))
@@ -3616,8 +3621,33 @@ def latex_text_in_displays(draw: st.DrawFn) -> dict[str, Any]:
         key = f"k{4101 + len(keys)}"
         keys.append(key)
         text += f"\nand so \\cite{{{key}}}.\n"
+        cuts.append(len(text))
     text += "The last line is read.\n\\end{document}\n"
-    return {"text": text, "keys": keys, "displays": displays, "inlines": inlines}
+    refused = [_refused_in_display(draw, text, keys, cuts, inline)
+               for inline in LATEX_INLINE_MATHS]  # fmt: skip
+    return {"text": text, "keys": keys, "displays": displays, "inlines": inlines,
+            "refused": refused}  # fmt: skip
+
+
+#: The displays inline maths in a display's own maths is drawn in.
+_OWN_MATHS_DISPLAYS = ("\\[", "$$", "equation", "equation*", "align", "align*", "gather",
+                       "multline*")  # fmt: skip
+
+
+def _refused_in_display(
+    draw: st.DrawFn, text: str, keys: list[str], cuts: list[int], inline: str
+) -> dict[str, Any]:
+    """`text` with a display whose own maths holds `inline` put in at one of `cuts`, drawn:
+    where the reader stops, at the `\\)` that closes no maths or the `$` that opens maths in
+    maths, and the keys cited before it."""
+    place = draw(st.integers(0, len(cuts) - 1))
+    display = draw(st.sampled_from(_OWN_MATHS_DISPLAYS))
+    opens, closes = _DISPLAY_OPENS.get(display, (f"\\begin{{{display}}}", f"\\end{{{display}}}"))
+    formula = inline.format(f"y_{{{draw(st.integers(1, 9))}}}")
+    piece = f"so {opens} V = {formula} + 1 {closes}\nand \\cite{{k4199}}.\n"
+    stops = piece.index(formula) + (formula.index("\\)") if formula.startswith("\\(") else 0)
+    cut = cuts[place]
+    return {"text": text[:cut] + piece + text[cut:], "offset": cut + stops, "keys": keys[:place]}
 
 
 @st.composite

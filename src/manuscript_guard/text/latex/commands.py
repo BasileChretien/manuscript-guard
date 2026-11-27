@@ -419,6 +419,11 @@ PACKAGE_COMMANDS = {
 #: `\\let\\toprule\\hline` was refused, and the rest of the file read as typed).
 TABLE_COMMANDS = frozenset({"toprule", "midrule", "bottomrule", "rowcolor", "cellcolor",
                             "columncolor", "arrayrulecolor", "rowcolors"})  # fmt: skip
+#: amsmath's and mathtools' commands the reader reads as text inside maths, which a paper
+#: may define for itself, as one that does not load mathtools may define `\\shortintertext`:
+#: defined, either is the author's command, read as an unknown one is, as the reader read
+#: both before it knew them (round 1 of #836).
+AUTHORS_IF_DEFINED = frozenset({"tag", "shortintertext"})
 #: The definers that define nothing where the command is defined already.
 PROVIDERS = frozenset({"providecommand", "ProvideDocumentCommand"})
 #: pandoc's commands under citeproc, which its template defines.

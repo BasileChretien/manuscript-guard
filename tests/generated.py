@@ -200,6 +200,72 @@ _NUM_WORDS = {
 }
 
 
+#: The ways a paper written outside manuscript-guard sets a legend, by the kind each is for:
+#: G2's caption, set off by a stop, a colon or bold; BMC's and Springer's, by a space and a
+#: capital; and a figure's, as a picture pandoc writes from Word, and as "Fig.".
+LEGEND_FORMS = {
+    "table": ("**{word} {n}.** {title}", "{word} {n}. {title}", "{word} {n}: {title}",
+              "{word} {n} {Title}"),
+    "figure": ("**{word} {n}.** {title}", "{word} {n}. {title}", "{word} {n}: {title}",
+               "{word} {n} {Title}", "![{word} {n}. {title}](media/image{n}.png)",
+               "Fig. {n}. {title}"),
+}  # fmt: skip
+
+
+@st.composite
+def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
+    """A paper written outside manuscript-guard, as `audit` reads its text, whose tables and
+    figures are told by their legends alone (`auditing.displays`). Each kind has every form of
+    legend it may take, in a drawn order, each a paragraph of its own somewhere in the text,
+    and each kind's displays are cited in a sentence each, one in every example out of order:
+    two of its first citations swapped. The last of each kind is cited nowhere, and a pointer
+    past the last legend is planted, so that every example holds one of each finding of each
+    kind. Citations again, after the first, come anywhere.
+
+    Returns the text and the findings it must give, by code and line."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    paragraphs: list[tuple[str, str]] = []  # what each paragraph is, and its text
+    planted: set[tuple[str, int]] = set()
+    expected: list[tuple[str, str, int]] = []  # code, the paragraph's id it is in
+    for kind, word in (("table", "Table"), ("figure", "Figure")):
+        forms = list(draw(st.permutations(LEGEND_FORMS[kind])))
+        count = len(forms) + draw(st.integers(0, 1))
+        forms += [draw(st.sampled_from(LEGEND_FORMS[kind])) for _ in range(count - len(forms))]
+        # The first citations, of every display but the last: in order, but for two swapped.
+        cited = list(range(1, count))
+        first, second = sorted(draw(st.lists(st.integers(0, count - 2), min_size=2,
+                                              max_size=2, unique=True)))  # fmt: skip
+        cited[first], cited[second] = cited[second], cited[first]
+        for number in cited:
+            pointer = word if kind == "table" else draw(st.sampled_from(("Figure", "Fig.")))
+            paragraphs.append((f"cite {kind} {number}",
+                               f"{words().capitalize()} {pointer} {number} {words()}."))
+        expected.append(("cited-out-of-order", f"cite {kind} {cited[first]}"))
+        expected.append(("display-not-cited", f"legend {kind} {count}"))
+        paragraphs.append((f"past {kind}", f"{words().capitalize()} {word} {count + 1} "
+                                           f"{words()}."))
+        expected.append(("pointer-to-nothing", f"past {kind}"))
+        again = draw(st.lists(st.integers(1, count - 1), max_size=3))
+        paragraphs += [(f"again {kind} {at}", f"{words().capitalize()} {word} {number} "
+                                              f"{words()}.")
+                       for at, number in enumerate(again)]  # fmt: skip
+        for number, form in enumerate(forms, 1):
+            title = words()
+            legend = form.format(word=word, n=number, title=title, Title=title.capitalize())
+            # A legend comes anywhere after the first citation of its kind's first display.
+            paragraphs.insert(draw(st.integers(1, len(paragraphs))),
+                              (f"legend {kind} {number}", legend))
+    # The first citations keep their order: a legend or a citation again may come between
+    # them, never one of them before another.
+    order = [name for name, _text in paragraphs]
+    for code, name in expected:
+        planted.add((code, 2 * order.index(name) + 1))
+    return "\n\n".join(text for _name, text in paragraphs) + "\n", planted
+
+
 @st.composite
 def numbered_displays(
     draw: st.DrawFn,

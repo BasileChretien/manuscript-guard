@@ -887,6 +887,27 @@ features:
       compare reading the PDF's lines as before; front matter and side boxes are read as
       prose (DESIGN.md, Known gaps).
 
+  - id: audit-displays
+    stage: others
+    title: Tables and figures
+    says: >-
+      Holds a paper's tables and figures to the order ICMJE asks for, each counted by its
+      legends: each cited, numbered in the order of its first citation, and no pointer to
+      one the paper has no legend for, the supplement's held to its own legends.
+    status: works
+    commands: [audit]
+    tests:
+      - tests/test_properties.py::test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order
+      - tests/test_audit_displays.py::test_the_three_findings_each_at_its_place
+      - tests/test_audit_displays.py::test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_wherever_given
+      - tests/test_audit_displays.py::test_the_audit_reports_them_in_their_section_and_in_its_summary
+    docs: docs/audit.md
+    limits: >-
+      A kind whose legends do not number it 1 to n once each, or that has none, is not
+      checked; a legend missed by its form makes the one past it read as a pointer to
+      nothing; a PDF is read only where its lines were rebuilt into paragraphs (DESIGN.md,
+      Known gaps).
+
   - id: audit-page
     stage: others
     title: Audit in a web browser

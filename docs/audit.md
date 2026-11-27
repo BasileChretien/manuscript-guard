@@ -374,6 +374,30 @@ table's or a legend's words read as prose. Of the 81 such findings judged on rea
 from PDF papers and from LaTeX papers' own PDFs, 35 were right. From Word, LaTeX or Markdown
 it is still a warning.
 
+**The tables and figures.** G2 holds a project's tables and figures to the order ICMJE asks
+for ("Number tables consecutively in the order of their first citation in the text"), and the
+audit holds a paper's the same way, in "Tables and figures (G2)", which `--strict` does not
+count. A project's are counted by the bindings that place them; a paper's are counted by their
+legends alone (the author, 2026-11-27): where the legends of a kind read "Table 1" to "Table
+n", each once, the paper has n tables. A legend is the first pointer of a line that opens its
+paragraph, set off from its title by a stop, a colon, a dash or the end of its bold ("**Table
+1.** Baseline", "Table 1: Baseline"), by a space and a capital as BMC and Springer set one
+("Table 1 Baseline characteristics"), alone on its line, or opening a picture's caption as
+pandoc writes one from Word, its alternative text opening `![Figure 1. Flow`, "Fig. 1." as
+well as "Figure 1."; every other pointer is a citation. Counted, the main text's tables and
+figures are each held to being cited (`display-not-cited`), to their first citations coming
+in the order of their numbers (`cited-out-of-order`, the first that does not), and to no
+pointer past the last legend (`pointer-to-nothing`). A pointer to the supplement, "Table
+S1", "Supplementary Figure 2", "eTable 3", is held to the supplement's legends, read in every
+paper given, the main text's file among them, and only where some are. Legends that number a
+kind otherwise, "Table 1", "Table 3", or "Table 1 (continued)" beside "Table 1", leave the kind
+uncounted, and so does a kind pointed at with no legend, as when the figures go to the journal
+as files of their own: a note says so, and nothing else is said of it. A LaTeX paper numbers
+its floats itself, and is held by G2's own reader of one, as `check` holds a LaTeX project. A
+PDF is read where its lines were rebuilt into paragraphs, each display a block opening with its
+legend; one whose lines were not is said not checked. Each finding is a warning until the
+corpus measures its code, and its severity then follows how often it was right.
+
 **The references.** The list cut from the text is counted: its entries, and the DOIs and
 PMIDs typed in them. Where the entries carry their numbers, "1." or "[1]", each bracketed
 citation of numbers in the text, `[3]`, `[3, 5]` or `[3-5]`, is held to the list: a number

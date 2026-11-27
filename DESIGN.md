@@ -29846,6 +29846,27 @@ What papers converted from Word showed (see "What papers converted from Word sho
     public repository only; it shows the last finished run on the default branch; and it is
     check's alone, so a run that fails for its build or its verify can show "passes".
     Accepted.
+- **An audited paper's tables and figures (`auditing.displays`, docs/audit.md): what its
+  legends cannot tell.** A paper written outside manuscript-guard has no bindings, so a kind is
+  counted by its legends alone, and only where they number it 1 to n once each (the author,
+  2026-11-27). Accepted.
+  - *A kind numbered otherwise is not checked*: "Table 1", "Table 3", a "Table 1
+    (continued)", or no legend at all, as for figures sent to the journal as files of their
+    own. One note says so. Pinned by
+    `tests/test_audit_displays.py::test_legends_that_do_not_number_a_kind_1_to_n_leave_it_uncounted`
+    and
+    `tests/test_audit_displays.py::test_a_kind_pointed_at_with_no_legend_is_said_not_counted_and_one_with_neither_is_silent`.
+  - *A legend in a form the check does not read* is read as a citation, or not at all where
+    G2's pointer does not see it (bold set with underscores, which pandoc never writes). Where
+    it is the last of its kind, the legends number one fewer, and the citation of it is said
+    to point at nothing. Pinned by
+    `tests/test_audit_displays.py::test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing`.
+  - *A PDF whose lines were not rebuilt into paragraphs* is not checked: a legend cannot be
+    told from a line of prose there. Pinned by
+    `tests/test_audit_displays.py::test_a_pdf_whose_lines_were_not_rebuilt_is_said_not_checked`.
+  - *A pointer to the supplement* is checked only where the supplement's legends are given,
+    in its own file or in the main text's. Pinned by
+    `tests/test_audit_displays.py::test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_wherever_given`.
 - **The audit page (`web/`, docs/audit-page.md): what its rules and its checks do not hold.**
   Accepted.
   - *Leaving the page.* A Content-Security-Policy has no rule for navigation: a script that

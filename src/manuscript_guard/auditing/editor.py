@@ -229,6 +229,10 @@ KINDS: tuple[Kind, ...] = (
     Kind("baseline-p", ASK,
          "A table of baseline characteristics with a column of P values, which CONSORT "
          "advises against.", _codes("audit", "baseline-p-values")),
+    Kind("display-order", ASK,
+         "A table or a figure cited nowhere in the text, numbered out of the order of its "
+         "first citation, or pointed at though the paper has no legend for it (ICMJE).",
+         _codes("G2", "cited-out-of-order", "display-not-cited", "pointer-to-nothing")),
     Kind("package-incomplete", ASK,
          "A file the package's manifest does not list, checks the package says were skipped, "
          "or a result the package cannot tie to its digest.",
@@ -312,6 +316,9 @@ KINDS: tuple[Kind, ...] = (
                 "authors-not-looked-for")),
     Kind("design-unread", READ, "Where the causal words or the baseline tables were not read.",
          _codes("audit", "causal-words-not-read", "baseline-tables-not-read")),
+    Kind("displays-unread", READ,
+         "Where the tables or the figures could not be counted from their legends, and were "
+         "not held to their order.", _codes("G2", "displays-not-counted")),
     Kind("cited", READ, "The table of cited sentences, and what it could not hold.",
          _codes("audit", "cited-written", "cited-not-listed", "would-ask")),
     Kind("self-citation-read", READ, "What the self-citation counts were read from.",

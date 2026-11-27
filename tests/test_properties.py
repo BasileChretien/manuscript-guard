@@ -158,6 +158,7 @@ from generated import (
     latex_trees,
     latex_words,
     latex_writing,
+    legend_displays,
     lines,
     linked_lines,
     margin_tables,
@@ -3873,6 +3874,25 @@ def test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset(drawn: dict[str, 
     expected, spans = _as_markdown(drawn["blocks"])
     assert _g14_said(text, displays) == _g14_said(expected, spans), (text, expected)
     assert not [f for f in writing if f.code == "vague-attribution"], writing
+
+
+def _a_legend_without(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    from manuscript_guard.auditing import displays
+
+    assert old in displays._LEGEND.pattern
+    patch.setattr(displays, "_LEGEND", re.compile(displays._LEGEND.pattern.replace(old, new)))
+
+
+def _a_bmc_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|[ \t]+(?=[A-Z])", "")
+
+
+def _a_picture_s_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:!\[)?", "")
+
+
+def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|figs?\.?)", ")")
 
 
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
@@ -11993,6 +12013,21 @@ def test_a_ref_prints_the_number_its_display_has_or_is_said(
     findings = said["report"]["findings"]
     found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
     assert found == planted, (files, findings)
+
+
+@holds(100, legend_displays())
+def test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper written outside manuscript-guard, its tables and figures told by their legends
+    in every form a paper sets one, is held as G2 holds a project (`auditing.displays`): the
+    first citation out of order, the display cited nowhere and the pointer past the last
+    legend are said, at their lines, for each kind, and nothing else. Each kind is counted, and
+    no note says otherwise."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert said["notes"] == [] and said["counted"] == 2, (text, said)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -26423,6 +26458,18 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "an audited paper's legend set as BMC sets it is read as a citation": (
+        _a_bmc_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's picture's legend is read as a citation": (
+        _a_picture_s_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's legend opened by Fig. is read as a citation": (
+        _a_fig_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
     "a PDF's blocks are read in poppler's flow order": (
         _poppler_s_flow_order,
         test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset,

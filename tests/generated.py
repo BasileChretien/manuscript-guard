@@ -6459,9 +6459,12 @@ CHECKLIST_QUOTES = {
     "binding as printed": "found",
     "in a table's caption": "found",
     "in a figure's legend": "found",
+    "in the title": "found",
     "under another heading": "elsewhere",
     "the parent's own text": "elsewhere",
     "another display's caption": "elsewhere",
+    "the title's words under a heading": "elsewhere",
+    "a heading's words in the title": "elsewhere",
     "in a comment": "nowhere",
     "word changed": "nowhere",
     "inside a word": "nowhere",
@@ -6473,6 +6476,12 @@ CHECKLIST_QUOTES = {
 #: Where a paragraph of `checklist_quotes` holds a word marked up and one set otherwise, and
 #: where the subsection's holds its two bindings.
 _QUOTED_MARKED, _QUOTED_SET, _QUOTED_BOUND = 1, 3, (6, 8)
+#: How an answer says it is addressed in the paper's title, which is `paper.yaml`'s.
+_TITLE_WHERE = ("Title", "title", "The title", "the Title", "Title.", " TITLE ")
+#: How G5 names the title, where a quote stands in it.
+_TITLE_SHOWN = "the title in paper.yaml"
+#: Where the title holds a word with a dash after it, and the dashes it may be.
+_TITLE_DASHED, _DASHED_AS = 5, ("{}\N{EN DASH}x", "{}\N{EM DASH}y")
 
 
 @st.composite
@@ -6484,7 +6493,9 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
     their own (`alpha1`, `bravo2`, ...), each paragraph with a word in emphasis or code and
     one set by the typographer, drawn white space between words, two value bindings in A1's
     paragraph, a comment and a figure's legend typed under B, and two emitted tables'
-    captions; and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
+    captions; the paper's title, `paper.yaml`'s, of words of its own with drawn white space,
+    a word in emphasis or code, one set by the typographer and one with a dash after it;
+    and one answer for each way of `CHECKLIST_QUOTES`, in an order drawn each
     time, each with what G5 finds of it: None for no quote, else whether it stands under what
     its `where` names and the parts it stands under instead.
 
@@ -6520,6 +6531,12 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         shown[para_a1[at]] = values[ref]
     comment, legend = [word() for _ in range(6)], [word() for _ in range(6)]
     captions = [[word() for _ in range(6)], [word() for _ in range(6)]]
+    # The title holds one of each kind a paragraph does, a word marked up and one set by the
+    # typographer, and a dash; paper.yaml's title holds no binding, which the build leaves
+    # as typed.
+    in_title = paragraph()[:10]
+    in_title[0] = in_title[0].capitalize()
+    in_title[_TITLE_DASHED] = draw(st.sampled_from(_DASHED_AS)).format(in_title[_TITLE_DASHED])
     files = {
         # First by path, and printed after `main.md`, as the main text's other files are.
         "01_more.md": f"{joined(para_next)}\n\n## {d}\n\n{joined(para_d)}\n",
@@ -6554,10 +6571,17 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "binding as printed": (a1, " ".join(printed(para_a1[5:10])), found),
         "in a table's caption": ("Table 1", " ".join(run(captions[0], 4, 6)), found),
         "in a figure's legend": ("Figure 1", " ".join(run(legend, 4, 6)), found),
+        # As typed from the page: its markup, typography and dash each folded.
+        "in the title": (draw(st.sampled_from(_TITLE_WHERE)),
+                         " ".join(_as_typed(w) for w in in_title[:6]), found),
         "under another heading": (b, " ".join(para_a[5:10]), under_a),
         "the parent's own text": (a1, " ".join(para_a[5:10]), under_a),
         "another display's caption": ("Table 2", " ".join(run(captions[0], 4, 6)),
                                       [False, ["the caption of Table 1"]]),
+        "the title's words under a heading": (a, " ".join(run(in_title)),
+                                              [False, [_TITLE_SHOWN]]),
+        "a heading's words in the title": (draw(st.sampled_from(_TITLE_WHERE)),
+                                           " ".join(para_a[5:10]), under_a),
         "in a comment": (b, " ".join(run(comment, 4, 6)), [False, []]),
         "word changed": (a, " ".join([*para_a[4:6], word(), *para_a[7:9]]), [False, []]),
         # Its first letter left off: the rest stands inside the word, and is no word anywhere.
@@ -6574,9 +6598,99 @@ def checklist_quotes(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[str, A
         "values": values,
         "captions": [["table", False, n, " ".join(words) + "."]
                      for n, words in enumerate(captions, 1)],
+        "title": joined(in_title),
         "items": [{"where": ways[kind][0], "quote": ways[kind][1]} for kind in order],
     }  # fmt: skip
     return given, [(kind, ways[kind][2]) for kind in order]
+
+
+#: Each way a LaTeX manuscript's main text sets its title (`latex.printed.printed_titles`,
+#: round 2 of #813): one `\title`, in the entry file or in a file its preamble inputs, beside
+#: one TeX does not read, in a comment or in `\iffalse`, after a definition of `\title`,
+#: which sets no title (round 3), with its notes or a CAS option, and two that TeX reads,
+#: which G5 does not choose between.
+LATEX_TITLES = (
+    "in the entry file", "in a file it inputs", "beside a commented one", "beside one in iffalse",
+    "after a definition of it", "with its notes", "with an option", "two of them",
+)  # fmt: skip
+#: How a preamble defines `\title` rather than setting one (round 3 of #813), `{}` its body.
+_TITLE_DEFINERS = (
+    "\\renewcommand\\title[1]{}", "\\renewcommand*\\title[1]{}", "\\providecommand\\title{}",
+    "\\newcommand\\title{}", "\\def\\title{}",
+)  # fmt: skip
+
+
+@st.composite
+def latex_titles(draw: st.DrawFn) -> list[tuple[str, dict[str, str], list[list[Any]]]]:
+    """A small main text for each way of `LATEX_TITLES`, in an order drawn each time, each its
+    files by path and the titles TeX reads in it, each `[text, file, line]`, its text as the
+    body prints it. Every title holds a word in `\\emph`, which prints as the word, and a
+    `--`, which prints as an en dash, between words of their own (`alpha1`, `bravo2`, ...),
+    with drawn white space; a note holds a group of braces. Every way in each example."""
+    counted = iter(range(1, 100_000))
+    BS = "\\"
+
+    def word() -> str:
+        n = next(counted)
+        return f"{TAGS[n % len(TAGS)]}{n}"
+
+    def gap(one_line: bool) -> str:
+        return draw(st.sampled_from((" ", "  ") if one_line else (" ", "  ", "\n", " \n  ")))
+
+    def title(one_line: bool = False) -> tuple[str, str]:
+        """A title as LaTeX writes it, on one line where it is to be a comment's, and as it
+        prints."""
+        one, two, three, four = word(), word(), word(), word()
+        written = (f"{one}{gap(one_line)}{BS}emph{{{two}}}{gap(one_line)}{three}"
+                   f"{gap(one_line)}--{gap(one_line)}{four}")  # fmt: skip
+        return written, f"{one} {two} {three} \N{EN DASH} {four}"
+
+    def note() -> str:
+        return f"{word()} {{{word()} {{{word()}}}}} {word()}"
+
+    head, body = f"{BS}documentclass{{article}}\n", (
+        f"{BS}begin{{document}}\n{BS}maketitle\n{word()} {word()}.\n{BS}end{{document}}\n")
+    cases: dict[str, tuple[dict[str, str], list[list[Any]]]] = {}
+    written, printed = title()
+    cases["in the entry file"] = ({"main.tex": f"{head}{BS}title{{{written}}}\n{body}"},
+                                  [[printed, "main.tex", 2]])  # fmt: skip
+    written, printed = title()
+    cases["in a file it inputs"] = (
+        {"main.tex": f"{head}{BS}input{{front}}\n{body}", "front.tex": f"{BS}title{{{written}}}\n"},
+        [[printed, "front.tex", 1]])  # fmt: skip
+    written, printed = title()
+    other, _ = title(one_line=True)
+    cases["beside a commented one"] = (
+        {"main.tex": f"{head}% {BS}title{{{other}}}\n{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 3]])  # fmt: skip
+    written, printed = title()
+    other, _ = title()
+    hidden = f"{BS}iffalse\n{BS}title{{{other}}}\n{BS}fi\n"
+    cases["beside one in iffalse"] = (
+        {"main.tex": f"{head}{hidden}{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 2 + hidden.count(chr(10))]])  # fmt: skip
+    written, printed = title()
+    other, _ = title(one_line=True)
+    defined = draw(st.sampled_from(_TITLE_DEFINERS)).replace("{}", f"{{{other}}}")
+    cases["after a definition of it"] = (
+        {"main.tex": f"{head}{defined}\n{BS}title{{{written}}}\n{body}"},
+        [[printed, "main.tex", 3]])  # fmt: skip
+    written, printed = title()
+    notes = f"{BS}thanks{{{note()}}}{BS}footnote{{{note()}}}"
+    cases["with its notes"] = ({"main.tex": f"{head}{BS}title{{{written}{notes}}}\n{body}"},
+                               [[printed, "main.tex", 2]])  # fmt: skip
+    written, printed = title()
+    cases["with an option"] = (
+        {"main.tex": f"{head}{BS}title[mode = title]{{{written}}}\n{body}"},
+        [[printed, "main.tex", 2]])  # fmt: skip
+    written, printed = title()
+    second, printed_second = title()
+    cases["two of them"] = (
+        {"main.tex": f"{head}{BS}title{{{written}}}\n{BS}input{{front}}\n{body}",
+         "front.tex": f"{BS}title{{{second}}}\n"},
+        [[printed, "main.tex", 2], [printed_second, "front.tex", 1]])  # fmt: skip
+    order = draw(st.permutations(LATEX_TITLES))
+    return [(kind, *cases[kind]) for kind in order]
 
 
 # ------------------------------------------------------------ passages of cited works
@@ -20276,6 +20390,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
     "checklist quotes": checklist_quotes().map(lambda drawn: drawn[0]),
+    "latex titles": latex_titles().flatmap(
+        lambda cases: st.sampled_from([files for _kind, files, _titles in cases])),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
     "mask": st.one_of(

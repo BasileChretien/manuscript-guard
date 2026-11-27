@@ -265,8 +265,8 @@ features:
     stage: analyse
     title: Run it all again
     says: >-
-      Runs the analysis again and checks that it gives the recorded results, value by
-      value.
+      Runs the analysis again, with the R the author names, and checks that it gives the
+      recorded results, value by value, saying which R or Python ran each script.
     status: works
     commands: [verify]
     tests: [tests/test_verify.py]

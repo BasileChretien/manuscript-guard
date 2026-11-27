@@ -3171,6 +3171,16 @@ def cmd_journal(args: argparse.Namespace) -> int:
     return 0
 
 
+def _seconds(given: str) -> int:
+    """`--timeout`'s value: a whole number of seconds, from 1 to seven days."""
+    from manuscript_guard.verify import VerifyError, seconds
+
+    try:
+        return seconds(given, "--timeout")
+    except VerifyError as exc:
+        raise argparse.ArgumentTypeError(str(exc).removeprefix("--timeout is ")) from None
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Re-run the analysis and check it still produces the recorded results.
 
@@ -3184,9 +3194,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
     if args.receipt is not None:
-        return _receipt(project, args.receipt, args.only)
+        return _receipt(project, args.receipt, args.only, rscript=args.rscript,
+                        timeout=args.timeout)  # fmt: skip
     try:
-        result = verify(project, only=args.only)
+        result = verify(project, only=args.only, rscript=args.rscript, timeout=args.timeout)
     except VerifyError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -3205,7 +3216,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
-def _receipt(project, site: str, only: list[str] | None) -> int:
+def _receipt(project, site: str, only: list[str] | None, *, rscript: str | None = None,
+             timeout: int | None = None) -> int:  # fmt: skip
     """`verify --receipt SITE`, run where the data are: each harvest entry naming the site
     run in a copy, and the receipt written."""
     from manuscript_guard.harvest import HarvestError, make_receipt
@@ -3215,7 +3227,7 @@ def _receipt(project, site: str, only: list[str] | None) -> int:
               "--only", file=sys.stderr)  # fmt: skip
         return 2
     try:
-        path, written, warned = make_receipt(project, site)
+        path, written, warned = make_receipt(project, site, rscript=rscript, timeout=timeout)
     except HarvestError as exc:
         print(f"manuscript-guard: no receipt written: {exc}", file=sys.stderr)
         return 1
@@ -7360,6 +7372,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="at the site that holds the data: run each harvest entry naming SITE in a copy, "
         "and write receipts/SITE.receipt.json of what ran and what came out, by digest; "
         "refused where an output holds a count the custodian forbids",
+    )
+    verify.add_argument(
+        "--rscript",
+        metavar="PATH",
+        help="the Rscript to run R scripts with, for this run; MANUSCRIPT_GUARD_RSCRIPT names "
+        "it for the machine, and otherwise the first Rscript on PATH runs them. Each script is "
+        "said with the interpreter and version that ran it",
+    )
+    verify.add_argument(
+        "--timeout",
+        type=_seconds,
+        metavar="SECONDS",
+        help="how long one script may run before it is stopped, at most 604800 (7 days); "
+        "otherwise MANUSCRIPT_GUARD_VERIFY_TIMEOUT, then `verify: {timeout: SECONDS}` in "
+        "paper.yaml, then 1800",
     )
     verify.set_defaults(func=cmd_verify)
 

@@ -20129,6 +20129,19 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
   `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
   and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
+- **Which interpreter verify runs.** An R script runs with `--rscript`, else the Rscript
+  MANUSCRIPT_GUARD_RSCRIPT names, else the first on PATH; a Python script always with the
+  Python manuscript-guard runs in, and a Quarto document with the first `quarto` on PATH. The
+  analysis inherits the environment, so MANUSCRIPT_GUARD_RSCRIPT or
+  MANUSCRIPT_GUARD_VERIFY_TIMEOUT set for one run of `verify` only is one more way for it to
+  tell that run from an ordinary one; the flags are not seen. An R's version is what
+  `Rscript --version` prints, and renv.lock's R is held to it by major and minor version
+  alone, renv's library being kept by them. Accepted.
+- **What says a re-run was another R's.** `check` says that `verify` re-ran the analysis with
+  another R or Python than the results were written with, or another R than renv.lock pins;
+  the deposit record (`deposit/verification.py`) and the companion page
+  (`deposit/companion_parts.py`) say only whether the run passed, and name no other R.
+  Accepted.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is

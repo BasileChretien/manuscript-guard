@@ -8471,6 +8471,75 @@ def hidden_pages(draw: st.DrawFn) -> dict[str, Any]:
         "at": at}}  # fmt: skip
 
 
+# ------------------------------------------------------------------- saved journal pages
+
+#: How a saved page sets a paragraph: the blocks a browser lays out on a line of their own,
+#: hidden ones among them, and text ended by `<br>` or `</br>`.
+SAVED_BLOCKS = (
+    "<p>{}</p>", "<div>{}</div>", "<ul><li>{}</li></ul>", "<h2>{}</h2>", "<pre>{}</pre>",
+    "<table><tr><td>{}</td></tr></table>", "<dl><dd>{}</dd></dl>", "<center>{}</center>",
+    "<blockquote>{}</blockquote>", "<section><p>{}</p></section>", "<span>{}</span><br>",
+    "{}</br>", '<div hidden>{}</div>', '<div style="display:none">{}</div>',
+)  # fmt: skip
+#: The inline elements a saved page wraps words in: they join what is around them.
+SAVED_INLINE = (
+    "<a href='x'>{}</a>", "<b>{}</b>", "<em>{}</em>", "<span class='c'>{}</span>",
+    "<strong>{}</strong>", "<i>{}</i>", "<abbr title='t'>{}</abbr>", "<sup>{}</sup>",
+)  # fmt: skip
+#: What a browser does not show as the page: each holds words that must not be stored.
+SAVED_UNSHOWN = (
+    "<script>var t = '<p>{}</p>';</script>", "<style>/* {} */</style>", "<!-- {} -->",
+    "<noscript>{}</noscript>", "<template><p>{}</p></template>", "<title>{}</title>",
+)  # fmt: skip
+
+
+@st.composite
+def saved_pages(draw: st.DrawFn) -> dict[str, Any]:
+    """A journal's page as a browser saves it, for `readings.saved_journal_page`: paragraphs
+    of words of their own (`alpha3`), each set in a block of `SAVED_BLOCKS`, some of its words
+    in elements of `SAVED_INLINE`, and in every page one word split by an inline element
+    (`<b>al</b>pha3`), a navigation bar of two links set side by side, and two elements of
+    `SAVED_UNSHOWN`, each where it is drawn. `lines` is what the page shows, one line to a
+    paragraph; `unshown` the words it must not."""
+    made = [0]
+
+    def word() -> str:
+        made[0] += 1
+        return f"{TAGS[made[0] % len(TAGS)]}{made[0]}"
+
+    paragraphs = [[word() for _ in range(draw(st.integers(1, 5)))]
+                  for _ in range(draw(st.integers(1, 4)))]  # fmt: skip
+    split_in = draw(st.integers(0, len(paragraphs) - 1))
+    split_at = draw(st.integers(0, len(paragraphs[split_in]) - 1))
+    pieces = []
+    for n, words in enumerate(paragraphs):
+        marked = []
+        for m, one in enumerate(words):
+            if (n, m) == (split_in, split_at):
+                cut = draw(st.integers(1, len(one) - 1))
+                one = draw(st.sampled_from(SAVED_INLINE)).format(one[:cut]) + one[cut:]
+            elif draw(st.booleans()):
+                one = draw(st.sampled_from(SAVED_INLINE)).format(one)
+            marked.append(one)
+        pieces.append([draw(st.sampled_from(SAVED_BLOCKS)).format(" ".join(marked)),
+                       " ".join(words)])
+    links = [word(), word()]
+    at = draw(st.integers(0, len(pieces)))
+    pieces.insert(at, ["<nav>" + "".join(f"<a href='/{n}'>{one}</a>"
+                                          for n, one in enumerate(links)) + "</nav>",
+                       " ".join(links)])  # fmt: skip
+    unshown = []
+    for _ in range(2):
+        hidden = word()
+        unshown.append(hidden)
+        pieces.insert(draw(st.integers(0, len(pieces))),
+                      [draw(st.sampled_from(SAVED_UNSHOWN)).format(hidden), None])
+    body = "".join(html for html, _line in pieces)
+    return {"html": f"<!DOCTYPE html><html><body>{body}</body></html>",
+            "lines": [line for _html, line in pieces if line is not None],
+            "unshown": unshown}  # fmt: skip
+
+
 # ---------------------------------------------------------------------------- spellings
 
 #: Words one English writes and the other does not, with a name's capital, in capitals,
@@ -20533,6 +20602,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "blind names": texts(NAMED),
     "hidden content": hidden_documents(),
     "hidden page": hidden_pages(),
+    "saved journal page": saved_pages(),
     "quotation": st.tuples(
         quotations(),
         st.sampled_from(("as it stands", "typed", "typed", "misquoted")),

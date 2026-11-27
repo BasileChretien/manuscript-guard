@@ -20236,6 +20236,14 @@ Open, recorded as each change landed:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other. Accepted.
+- **A page `journal --store` keeps holds what its hidden elements say** (`gates/journal_quotes.py`,
+  `_Shown`). A saved page keeps the words of an element hidden by `hidden` or `display: none`,
+  so that a section folded in an accordion, opened to copy a quote from, is on the stored page.
+  So a cookie notice or a modal hidden on the page is stored with it, and a bot check's page
+  whose words sit only in hidden elements holds text and is stored as the journal's page; only
+  one whose words are in its title, a `<noscript>`, a script or a `<template>` is refused. The
+  skill says to read the stored text before filling the profile from it. Accepted. Pinned by
+  `tests/test_journal_saved_page.py::test_what_a_page_hides_is_stored_with_it`.
 - **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
   page for rules that are neither a field nor under `manual:`: which sentences of a page are
   rules is the reader's judgement, and a heuristic that guessed it would warn of every

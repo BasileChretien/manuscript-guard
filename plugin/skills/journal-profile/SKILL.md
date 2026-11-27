@@ -125,6 +125,13 @@ not a journal that forbids the statement, and the difference belongs in `notes`.
 from. That is the page every rule of the profile is held to. It is the author's copy, in
 their project: do not add a journal's page to anyone else's repository.
 
+**A page behind a bot check** ("Just a moment...", "Verify you are human") comes back as
+the check's page. Never try to get past it. Ask the author to save the page from their own
+browser, as a web page (HTML only) or printed to PDF, and to give you the file; then
+`manuscript-guard journal --store <file>` (with `--template <slug>` before the profile
+exists) writes its text where the profile reads it and prints the `page_sha256`. Read the
+stored text before filling the profile from it.
+
 ## 3. Fill the template
 
 ```bash
@@ -166,11 +173,12 @@ stored page's words as the page writes them, which `journal-quote-not-on-page` h
 copy it from the stored page rather than from the comment where the two differ.
 
 **A year on**, when `check` says the profile is old, save the journal's page as it now
-stands as text beside the stored one and run `manuscript-guard journal --reread <file>`. It
+stands beside the stored one (text, or the author's saved page), and run
+`manuscript-guard journal --reread <file>`. It
 shows what changed and names each rule whose quote the page no longer holds: read those
 again, correct their values and quotes, and look in the difference for rules the page added.
-Then save the new page over the stored one and record the digest it prints as
-`page_sha256`, with today's `retrieved_on`.
+Then store the new page over the old one with `manuscript-guard journal --store <file>
+--replace` and record the digest it prints as `page_sha256`, with today's `retrieved_on`.
 
 The shape it ends up as:
 

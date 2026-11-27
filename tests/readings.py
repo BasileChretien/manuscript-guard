@@ -3045,6 +3045,21 @@ def _hidden_page() -> Reading:
     return found
 
 
+@reading("saved journal page")
+def _saved_journal_page() -> Reading:
+    """The lines `journal --store` keeps of a page a browser saved (`page_text`), from a
+    generated page's `html`."""
+    from manuscript_guard.gates.journal_quotes import page_text
+
+    def found(described: dict[str, Any]) -> list[str]:
+        with tempfile.TemporaryDirectory() as folder:
+            saved = Path(folder) / "page.html"
+            saved.write_bytes(described["html"].encode("utf-8"))
+            return page_text(saved).splitlines()
+
+    return found
+
+
 # ------------------------------------------------------------------- titles and quotes
 
 

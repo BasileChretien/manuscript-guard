@@ -3,8 +3,8 @@
 Beyond the seven sections every plan has, a plan for a named design (`study_type` in
 `paper.yaml`) answers the questions below, one section each. G12 asks for a heading that
 names the section and something under it; whether the answers are sound is the author's and
-the panel's to judge. Each question cites the guideline item it comes from, read on its own
-page on 2026-10-15. Write the answer before the analysis exists, so that a change to it is a
+the panel's to judge. Each question cites the guideline item it comes from, read on its
+own page on the date its entry in `study_types.yaml` gives. Write the answer before the analysis exists, so that a change to it is a
 deviation. A study that is none of the designs below has `study_type: other`, and its plan
 the seven sections only.
 
@@ -74,6 +74,27 @@ a prevalence, an association, not which came first.
 - **Missing data.** (STROBE, 12c)
 - **Sensitivity analyses.** Which subgroups, interactions and sensitivity analyses?
   (STROBE, 12b and 12e)
+
+## diagnostic-accuracy
+
+The paper follows STARD 2015. The index test is the plan's exposure and the target
+condition its outcome: G12 reads a heading that is "Index test" or "Target condition"
+alone as such: plural, with "(s)" or a qualifier in brackets, and numbered "3.", "3.1",
+"3)", "A." or "III.". Any other heading, "10a. Index test" or "Index test: CT
+angiography", names the section exactly: `## 10a. Index test {#exposure}`.
+
+- **Sampling.** Where and how are potentially eligible participants identified, and are
+  they a consecutive, random or convenience series? (STARD 2015, 7 to 9)
+- **Reference standard.** Which, in enough detail to repeat it, and why that one?
+  (STARD 2015, 10b and 11)
+- **Thresholds.** The positivity cut-offs or result categories of both tests, and which
+  were set in advance. (STARD 2015, 12a and 12b)
+- **Blinding.** Do those who read each test know the other's result or the clinical
+  information? (STARD 2015, 13a and 13b)
+- **Indeterminate results.** How are results that cannot be read handled? (STARD 2015, 15)
+- **Missing data.** Missing results of either test. (STARD 2015, 16)
+- **Sample size.** How many, with how many having the condition, and how it was worked
+  out. (STARD 2015, 18)
 
 ## self-controlled
 

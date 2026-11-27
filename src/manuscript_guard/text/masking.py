@@ -113,10 +113,10 @@ def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
 @lru_cache(maxsize=256)
 def _composed(
     yaml_text: str,
-) -> tuple[bool, str, int, tuple[int, str] | None, tuple[int, str] | None]:
+) -> tuple[bool, str, int, tuple[int, str] | None, tuple[int, str] | None, object]:
     """Everything read from one composing of this YAML: whether pandoc keeps it as
-    metadata, why and where it cannot read it, and the abstract and the title it would
-    take from it (`_taken`).
+    metadata, why and where it cannot read it, the abstract and the title it would take
+    from it (`_taken`), and the mapping composed, None where it is none (`front_matter_said`).
 
     Composed once. The abstract used to be read from a second composing, under no `except`
     and a call further down the stack than the first, and the title was at first read from
@@ -139,28 +139,29 @@ def _composed(
     import yaml
 
     if _nesting(yaml_text) > _YAML_DEPTH:
-        return False, "", 0, None, None
+        return False, "", 0, None, None, None
     wrapped = "---\n" + yaml_text.expandtabs(4) + "...\n"
     try:
         documents = list(yaml.compose_all(wrapped, Loader=_loader()))
     except yaml.MarkedYAMLError as exc:
-        return (False, *_failed_at(exc, wrapped), None, None)
+        return (False, *_failed_at(exc, wrapped), None, None, None)
     except yaml.reader.ReaderError as exc:
         where = wrapped.count("\n", 0, exc.position) - 1
         # PyYAML keeps the character as its code point, an int.
         code = exc.character if isinstance(exc.character, int) else ord(exc.character)
         reason = f"unacceptable character #x{code:04x}: {exc.reason}"
-        return False, reason, max(where, 0), None, None
+        return False, reason, max(where, 0), None, None, None
     except RecursionError:
         # Too deep to compose, like the nesting refused above; see Known gaps.
-        return False, "", 0, None, None
+        return False, "", 0, None, None, None
     if not documents:
-        return True, "", 0, None, None
+        return True, "", 0, None, None, None
     first = documents[0]
     if isinstance(first, yaml.MappingNode):
-        return True, "", 0, _taken(first, "abstract", wrapped), _taken(first, "title", wrapped)
+        return (True, "", 0, _taken(first, "abstract", wrapped), _taken(first, "title", wrapped),
+                first)
     empty = isinstance(first, yaml.ScalarNode) and first.tag == "tag:yaml.org,2002:null"
-    return empty and len(documents) == 1, "", 0, None, None
+    return empty and len(documents) == 1, "", 0, None, None, None
 
 
 def _taken(root, name: str, wrapped: str) -> tuple[int, str] | None:
@@ -303,6 +304,33 @@ def _placed(text: str, which: int) -> tuple[int, str] | None:
         return None
     line, value = found
     return text.count("\n", 0, opening.start("yaml")) + 1 + line, value
+
+
+def front_matter_said(text: str, name: str) -> tuple[str, ...]:
+    """The strings the front matter that opens `text` holds under the key `name`, its own or
+    merged in with `<<` (`_entry`): the value where it is a string, each string in it where
+    it is a list, in order; none where there is no such key or no front matter pandoc keeps.
+    Composed as the abstract and the title are, never constructed."""
+    import yaml
+
+    opening = FRONTMATTER.match(text)
+    root = None if opening is None else _composed(opening.group("yaml"))[5]
+    found = None if root is None else _entry(root, name)
+    if found is None:
+        return ()
+    said: list[str] = []
+    seen: set[int] = set()
+    pending = [found[1]]
+    while pending:
+        node = pending.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, yaml.ScalarNode):
+            said.append(node.value)
+        elif isinstance(node, yaml.SequenceNode):
+            pending += reversed(node.value)
+    return tuple(said)
 
 
 _NULL = "tag:yaml.org,2002:null"

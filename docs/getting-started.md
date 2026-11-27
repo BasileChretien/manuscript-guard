@@ -92,9 +92,11 @@ manuscript-guard next
 `init` writes the project: `paper.yaml`, the authors, an analysis plan to fill in, the
 manuscript, the ledger of values quoted from the literature, and an `AGENTS.md` that gives
 any agent working there the rules on one page. `next` says what to do now, with the command to
-run. With the plugin in Claude Code or Codex ([agent tools](agent-tools.md)), ask the agent to
-work through the paper with you: the `guide` skill reads `next` and puts each choice to you as
-numbered options.
+run. With the plugin in Claude Code or Codex ([agent tools](agent-tools.md)), you need not run
+`init` yourself: tell the agent to use manuscript-guard for your paper, and it asks you each
+decision the project needs at its start and writes the project from your answers
+([starting a paper in conversation](setup.md)). Then ask it to work through the paper with
+you: the `guide` skill reads `next` and puts each choice to you as numbered options.
 
 A new project starts at the `design` stage, and `check` fails nothing on the project as `init`
 wrote it: what is not due yet is printed and counted. Each finding fails from the stage at

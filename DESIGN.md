@@ -2141,7 +2141,7 @@ The result is compiled and packed by the code above, and checked three times:
 - An encoding set in a file of ASCII is held to the files of its tree, not to a file nothing
   inputs, which TeX does not read (2026-10-23).
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
-  in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
+  in a definition's body is not, and G7 says that its key is cited nowhere (round 1 of
   step 5).
 - `sync-bib` and `lookup` refuse a LaTeX manuscript the reader refuses anywhere, since the
   keys after the refusal are not read (round 1 of step 5; `lookup` since round 1 of #626,
@@ -2740,7 +2740,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     is refused, and one LaTeX found in its distribution is left as it was. A `.bib` the document
     names (`references.bib` from `literature/`, as the build puts it beside the entry) is cut
     to the cited entries, those their `crossref` and `xdata` name, and every `@string` and
-    `@preamble`; `\nocite{*}` keeps every entry. The cited keys are the reader's and those
+    `@preamble`; a `\nocite{*}` the reader or the `.aux` records keeps every entry. The cited keys are the reader's and those
     the build's `.aux` holds, so that a citation a macro makes keeps its entry, and keys are
     matched without case, as BibTeX matches them; biblatex's `xref`, `related` and
     `entryset` are followed too (round 1). A file the folder holds under another name than
@@ -3064,6 +3064,39 @@ verified. The schemas of both files now refuse a blank or all-space field (`sour
 `locator` and `quote` in the ledger; `source`, `locator`, `statement` and `attested_by`
 in `attested.yaml`), and a value that reaches the gates without a source all the
 same is `literature-source-missing` and counted as failed.
+
+**An entry nothing cites is one note for its file, where only the cited works print.**
+BibTeX, biblatex and pandoc's citeproc print the works a citation names and no other, unless
+told to print them all, so an entry of `references.bib` nothing cites never reaches the paper.
+On the tuning corpus at `main-c94aa0bcf`, a warning for each was 3,365 of `check`'s loud
+findings in 31 reports, 1,982 of them in one LaTeX paper, and they buried the rest. Such
+entries are now one note, `bib-entries-uncited`, which counts them among the file's entries,
+says that the bibliography prints only the works cited, and lists their keys; its key names
+the file (`G7|bib-entries-uncited|references.bib|-`), so it stays one finding however the
+list grows (Basile, 2026-11-27, "One note per .bib"). Where the paper prints every entry,
+each one nothing cites reaches the printed list, and is a warning of its own as before
+(`gates/printed_entries.py`):
+
+- in LaTeX, a `\nocite` whose keys, parted at commas, hold `*`, outside a comment, in any
+  file the main text's or the supplement's document inputs. It is read in the file as typed,
+  so one the reader records nowhere counts too: in a hook (`\AtBeginDocument{\nocite{*}}`),
+  in a definition, or past a part the reader refuses. One the reader does record cites every
+  entry, so none is uncited.
+- in Markdown, a `nocite` whose text, or a string in whose list, holds `@*`, its own or
+  merged in with `<<`, as pandoc reads it: in the front matter of a file under
+  `manuscript/`, or in a YAML metadata block of its body (`masking.metadata_blocks`), which
+  the build passes to pandoc as it stands (round 1 of #835).
+
+A `\nocite{smith2019}`, or `nocite: '@smith2019'`, cites that key and asks for no other: the
+key is cited, and the note goes on listing the rest. An entry cited only as typed text keeps
+its own note, which says what `sync-bib` would do, and is not listed in the file's. The note
+counts and lists entries alone: an `@string`, an `@preamble` or an `@comment` names no work,
+and is neither in it nor warned of. In a LaTeX paper an entry two cited entries name in
+`crossref`, or in biblatex's `xref`, is printed by BibTeX and biblatex (`min-crossrefs`,
+`mincrossrefs` and `minxrefs`, 2 by default), keys matched without case, so where only the
+works cited print it is left out of the note and not warned of; one a single cited entry
+names stays in it. Where every entry prints, it is warned of like any other. Pandoc's
+citeproc prints no such entry, so a Markdown paper's note lists it (round 1 of #835).
 
 **A reference's identifiers are read offline.** Nothing read `references.bib` but for its
 keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345678", an
@@ -10085,6 +10118,76 @@ agent never reads the skill that says so. `rules_to_add` prints the same for a r
 whose own `AGENTS.md` lacks the rules, and `example/AGENTS.md` is the same file, byte for
 byte.
 
+## A paper started in conversation: `setup`
+
+An agent told to "use manuscript-guard" for a new paper had `init` and five `set` keys to
+work with, and the rest by hand: it asked what it remembered to ask, left out the
+registration or the data's folder, and wrote `authors.yaml` as it understood the names it was
+given. The author had to read commands to know what had been done. Starting a paper is now a
+conversation whose questions the package decides and whose answers the package writes
+(brief of 2026-11-27): the author makes every decision, in question boxes where the agent tool
+has them and as numbered questions where it does not, and never types or reads a command.
+
+**Basile's answers** (question boxes, 2026-11-27; each the recommendation but the fifth):
+
+| Question | Answer |
+|---|---|
+| 1. The deterministic part | a new command, `setup`: `questions` lists what is open for the folder, `apply` writes the project from the answers, blanks only |
+| 2. The skill that leads | project-setup, its guidance per question under `references/`; guide's `start` hands over to it |
+| 3. The answers | kept as `design/setup.yaml`, committed: a dated record nothing gates on, from which an interrupted conversation resumes |
+| 4. When they are written | all at once, after one read-back and one yes |
+| 5. The study's design, ten options for a box of four | the author describes the study, and the agent offers the three that fit best and "None of these" |
+| 6. The analysis language | recorded, and the machine checked for it; no starter script |
+| 7. Where the data are | each answer routed, and the data kept out of git where they may not be published |
+| 8. The journal | asked at setup, "later" allowed |
+| 9. The authors | names, affiliations and the corresponding author now; funding, interests, roles, statistician and ethics lead last, each skippable |
+| 10. Another language than English | allowed, with what holds said |
+| 11. A project under way | the same conversation, its blanks only |
+| 12. The repository | git, public or private, the workflow, each asked where it applies |
+
+**Questions.** `setup.ask(folder, answers)` is a pure function of what the folder holds
+(`setup.read_folder`: `paper.yaml`'s settings, whether `authors.yaml` is still the
+placeholder, the papers in the folder, the languages of `analysis/`, the repository, the
+profiles `set target_journal` takes) and of the answers so far. Each question is one decision,
+named by the place in `design/setup.yaml` its answer is written at (`language`, `data.where`),
+in a fixed order (`setup.questions.QUESTIONS`). It is open where neither settles it; it waits
+where it turns on another still open (the guidelines on the design, the roles on the authors,
+the data's folder on where the data are); it is known where the folder has decided it; and it
+is not asked where it does not apply. Its options are values that may be written there, each
+with what it changes, and an option is recommended only where the folder or a rule gives one:
+the one Word paper in the folder, the one guideline of a design, drafting for a paper written
+already. An answer is held to the schema (`setup.schema.json`) and then to what a schema
+cannot say (an ORCID iD's check digit, an author named for a role, a data folder inside the
+project and not one of the toolkit's own, a title `init` would refuse); one that fails keeps
+its question open with the reason.
+
+**Answers in a file.** The agent writes the answers with its file tools, so that no title, name
+or affiliation passes through a shell, whose quoting differs between PowerShell, `cmd.exe` and
+a POSIX shell; and the file is the record a later session resumes from.
+
+**Apply.** Nothing is written while a question is open. Then every edit of `paper.yaml` is run
+on the text it will be made from (the file as it is, or as `init` writes it,
+`scaffold.paper_text`) and read back, and `authors.yaml` is written as text and read back as the
+authors given and held to its schema, before anything touches the disk; one refused stops all
+of it with the files as they were, as do a Word paper with no pandoc to bring it in and a
+`paper.yaml` that `set` would refuse to replace (read-only, a link). Then, in order: `init`
+(or `init --from` a Word paper, whose authors' file is replaced by the answers', since it was
+made in the same run), so that a conversion refused writes nothing, then `git init`, the
+settings through `paper_edit` (`edit`, and `edit_child` and `edit_block`, which keep every
+comment as `set` does), the title in the manuscript's header where that is `init`'s own,
+`authors.yaml`, the journal's profile from the template, `.gitignore`,
+the workflow, and the date in the record. A setting held already is never replaced: it is kept
+and said, and a change is `set`'s, with its guard. `--dry-run` says the same list and writes
+nothing. Then the machine is asked for what the analysis language needs (`setup.tools`: R with
+`jsonlite`, `digest` and `manuscriptguard`, with a time limit), and the steps that follow are
+named with their skills (`setup.steps`), a step only a person may take (registering the vault)
+said to be theirs.
+
+**The skill.** project-setup runs the loop: `setup questions --json`, the questions put, the
+answers written, again until `ready`, the read-back from `apply --dry-run`, one yes, `apply`,
+then the steps handed on. guide hands a folder with no project to it rather than putting
+`next`'s `start` choice, whose options stay for an agent that has no skill.
+
 ## The commands are listed in six groups
 
 By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
@@ -10673,6 +10776,24 @@ other than the one run.
   - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.
+- **2026-11-27, the default model of `claude` on the machine (the report names none),
+  Claude Code 2.1.310, the plugin of #844 at 031cea1, its tree clean.** One case,
+  route-project-setup, once, with the plugin only (`--ablation none`): $0.32 at API prices,
+  run under a subscription (Basile's choice, once its description changed).
+  - Routing: the skill fired.
+  - The judged outcome failed, three votes of three. The case grants no shell and no way to
+    write a file, so the reply said it could not run `setup questions` or write the answers;
+    it listed every decision it would put, the study's design asked by a description and
+    three designs among them, chose none, and described the loop. The criterion asked for
+    the questions put, or the command named, and the reply named the tool's questions
+    without the command. The criterion now passes a reply that says it cannot run commands
+    and lists the decisions as the questions it will put, deciding none.
+  - Run again on the same day with that criterion, at ea8096e ($0.31): the skill fired and
+    the outcome passed, three votes of three. The reply said it could not run commands, put
+    the first four questions (the title, the study described in the author's words for three
+    designs to be offered, how the paper is written, the English), named
+    `manuscript-guard setup questions --json` for the author to run in the meantime, and chose
+    none of them.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
 finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of
@@ -10687,8 +10808,8 @@ refused. What the project is made of, its bindings and its emitter calls, still 
 toolkit in use to either arm, as any project made with it would, so the difference between
 the arms is what a skill adds to a model reading such a project. Four routing cases still
 start empty, and so do the near misses and the requests no skill is for:
-- project-setup starts a project, and may give the `init` command where it has no shell to
-  run it;
+- project-setup starts a project in conversation, and where it has no shell says so and
+  lists the questions it will put (since #844);
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt
   gives none;
 - analysis-plan is about the plan before any analysis code, and the example has both.
@@ -28056,18 +28177,22 @@ Open, recorded as each change landed:
   not hold is gone; the file's header says to import it into Zotero first. An entry no
   citation was made a key of is `reference-uncited` to G7: a note that `sync-bib` would drop
   it where the manuscript cites it as typed text in brackets, as exactly its names and year
-  (Basile, 2026-11-23 and 2026-11-24), and otherwise a warning, whose hint says to give a
-  citation in words its key, to delete the entry by hand only if the work really is not
-  cited, and not to use `sync-bib` for that. Accepted.
+  (Basile, 2026-11-23 and 2026-11-24). Otherwise it is cited nowhere: one of the entries the
+  file's one note `bib-entries-uncited` lists, where the bibliography prints only the works
+  cited, and a warning of its own where it prints every entry (Basile, 2026-11-27, "One note
+  per .bib"; "An entry nothing cites is one note for its file" above). Either hint says to
+  give a citation in words its key, to delete the entry by hand only if the work really is
+  not cited, and not to use `sync-bib` for that. Accepted.
 - **G7 counts a typed citation for an entry only in brackets, as exactly its names and
   year.** A citation in the sentence, "Smith (2020) showed", is not read at all (Basile,
   2026-11-24): what stands before the bracket cannot be told from a longer name ("Garcia
   Smith", "zur Smith"). In brackets, a part, the bracket's content or one `;`-separated piece
   of it where every piece is text, a comma and a year, counts where it is the entry's
   names as the import renders them, a comma and the year, with only a page or further years
-  after it. Every other citation leaves the entry a warning that nothing cites it, though a
-  reader sees that something does, and whose hint says to give such a citation its key,
-  since `sync-bib` would drop the entry: a piece beside one that is no citation ("*d* =
+  after it. Every other citation leaves the entry cited nowhere, though a reader sees that
+  something does: listed in the file's note, or a warning where the list prints every entry,
+  either with a hint that says to give such a citation its key, since `sync-bib` would drop
+  the entry: a piece beside one that is no citation ("*d* =
   0.17; Smith, 2020", "BDI; Smith, 2020"), words before the name
   ("e.g., Smith, 2020", "ABC, Smith, 2020", "A. Smith, 2020"), no comma before the year, the
   names in another order than the list's ("Smith, Lee & Jones" for Smith, Jones and Lee),
@@ -28816,6 +28941,47 @@ What papers converted from Word showed (see "What papers converted from Word sho
   to a skill, so a person-only code among them (an attestation that is thin, say) makes
   every warning of that skill `who: author`, those an agent may put right among them.
   Pinned by `tests/test_guide.py::test_one_person_only_warning_makes_its_group_the_authors`.
+
+- **That the answers in `design/setup.yaml` are the authors' is the skill's guidance, not a
+  check.** `setup` decides which questions are open and writes only what the file holds; that
+  an agent asked each one, rather than wrote what it guessed of a name or a design, nothing
+  can see. The read-back and the one yes before `apply` are the skill's too. Accepted.
+- **The three designs offered are the agent's pick.** `study_type` carries `shortlist: 3`
+  (Basile, 2026-11-27): the agent chooses which three of the designs to show from the author's
+  description of the study, and a poor reading shows three that do not fit. "None of these"
+  lists the rest, so the author can still choose any of them.
+  Pinned by `tests/test_setup.py::test_the_study_design_is_offered_whole_for_a_shortlist_of_three`.
+- **A blank is read narrowly.** A setting is blank where `paper.yaml` does not hold it or holds
+  `init`'s own value (no title or `Untitled manuscript`, `stage: design`, no guideline), and
+  `authors.yaml` where it is missing or still `init`'s placeholder as YAML reads it. An
+  `authors.yaml` a person began, one placeholder field left in it, is not blank and is not
+  asked. A title is written into a project under way only where the manuscript's header is
+  `init`'s own or there is none: one typed by hand keeps the placeholder in `paper.yaml`. An
+  answer that differs from a setting held is kept and said, never written.
+  Pinned by `tests/test_setup.py::test_a_project_under_way_has_only_its_blanks_filled`,
+  `tests/test_setup.py::test_filled_authors_are_kept_and_not_asked`
+  and `tests/test_setup.py::test_a_manuscript_with_a_title_of_its_own_keeps_the_placeholder_in_paper_yaml`.
+- **A failure part-way through `apply` leaves what was written before it.** The settings and
+  the authors' file are worked out and read back first, so a setting refused writes nothing;
+  but `init` itself, `git init` or a disk that fills stop it where they happen, and it says
+  what was written before. Accepted.
+- **R is looked for as `verify` looks for it.** `MANUSCRIPT_GUARD_RSCRIPT`, then the first
+  `Rscript` on PATH; an R installed elsewhere, as on Windows where the installer puts none on
+  PATH, is said to be missing.
+  Pinned by `tests/test_setup.py::test_no_rscript_is_said`.
+- **Another language is declared by declaring no English.** `language: other` writes no
+  `english_variant`, which `check` reads as a paper in an English not declared: G14 holds it to
+  the English its spellings show, and G6 reads it as English. `apply` says so; nothing turns
+  the writing checks off for it.
+  Pinned by `tests/test_setup.py::test_another_language_declares_no_english_and_says_what_holds`.
+- **A journal's profile is named by the journal's name, folded.** "BMJ Open" is `bmj-open`; a
+  letter outside ASCII is folded to the nearest ASCII one (`Thérapie` is `therapie`), a name
+  with none is refused, and two journals whose names fold alike share a profile unless the
+  answer gives a `slug`.
+  Pinned by `tests/test_setup.py::test_a_journal_s_profile_is_named_by_its_name_folded`.
+- **`setup` asks nothing of the keywords, a short title, the review panel's models or the AI
+  use.** They are settings of `paper.yaml` and `authors.yaml` too, asked by the skills that need
+  them at the stage they are needed (journal-profile, review-panel, submission-pack). Accepted.
 
 - **That the guide asks before it runs is the skill's guidance, not a check.** The skill
   and `AGENTS.md` tell an agent to show a command, to put a choice to the author and to wait
@@ -31357,6 +31523,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
   (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
   Pinned by
   `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
+
+- **G7 takes a `nocite` of every entry for what the build prints, as typed.** A front
+  matter's `nocite: '@*'` keeps a warning for each entry nothing cites, though the build
+  writes its own header from `paper.yaml` and strips each file's, so pandoc never reads that
+  key and the document still prints only the works cited. Pinned by
+  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`.
+  - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
+    inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
+    keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX
+    pack, which keeps the entries the reader and the build's `.aux` cite, keeps only the
+    cited ones. One in a hook TeX runs is in the `.aux`, and the pack keeps every entry, as
+    the warnings say. Pinned by
+    `tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings`
+    and `tests/test_latex_submit.py::test_the_pack_keeps_every_entry_where_tex_runs_a_nocite_of_every_entry`.
+  - The `crossref` rule counts the cited entries that name an entry directly: one named
+    only through a chain of `crossref`s, or by `xdata`, stays in the note, though BibTeX
+    or biblatex may print it. Accepted.
+  - The rule adds `crossref` and `xref` into one count, takes `xref` in a BibTeX paper too,
+    which BibTeX does not know, and takes 2 for the threshold whatever `min-crossrefs`,
+    `mincrossrefs` or `minxrefs` the paper sets. Where the paper's bibliography counts
+    otherwise, the note may leave out an entry nothing prints, or list one that prints, as
+    with `mincrossrefs=1` and one cited entry naming it (round 2 of #835). Accepted.
+  - A metadata block in the body counts though it stands in an HTML comment, which pandoc
+    reads as raw HTML and not as metadata, so such a paper keeps the warnings (round 2 of
+    #835). Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -37,12 +37,20 @@ from manuscript_guard.gates.cited_as_typed import typed_only
 from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
+from manuscript_guard.gates.printed_entries import prints_every_entry
 from manuscript_guard.zotero import Lookup, ZoteroUnavailable, available, lookup
 from manuscript_guard.zotero.citations import cited_as
 
 GATE = "G7"
 BIB_FILE = "references.bib"
 _BIB_KEY = re.compile(r"^@\w+\s*\{\s*([^,\s]+)", re.MULTILINE)
+#: The key of an entry, not of an `@string`, an `@preamble` or an `@comment`, which name no
+#: work: what the note on the entries nothing cites counts and lists.
+_ENTRY_KEY = re.compile(r"^@(?!(?i:string|preamble|comment)\b)\w+\s*\{\s*([^,\s]+)",
+                        re.MULTILINE)  # fmt: skip
+#: How many cited entries must name an entry in `crossref` (BibTeX's `min-crossrefs`), or in
+#: biblatex's `xref` (its `minxrefs`), for the list to print it uncited; 2 in both.
+MIN_CROSSREFS = 2
 
 
 def bib_keys(project: Project) -> frozenset[str]:
@@ -165,10 +173,28 @@ def check_citations(project: Project, literature: Literature) -> Report:
     stale = sorted(committed - seen) if committed else []
     typed = typed_only(project, stale)
     latex = manuscript_format(project.path("manuscript")) == LATEX
+    # Where the bibliography prints only the cited works, an entry nothing cites never
+    # reaches the paper: one note for the file, not a warning for each (Basile, 2026-11-27).
+    every = bool(stale) and prints_every_entry(project)
+    untyped = {key for key in stale if typed.get(key) is None}
+    # An `@string`, an `@preamble` or an `@comment` names no work: it is neither warned of
+    # nor in the note.
+    text = bib_path.read_text(encoding="utf-8", errors="replace") if untyped else ""
+    entries = set(_ENTRY_KEY.findall(text))
     for citekey in stale:
-        report = report.with_findings(
-            _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen), latex=latex)
-        )
+        if citekey not in untyped or every and citekey in entries:
+            report = report.with_findings(
+                _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen), latex=latex)
+            )
+    if untyped and not every:
+        # Of the rest, an entry two cited ones name in `crossref` or `xref` is printed by
+        # BibTeX and biblatex: it is not in the note, and not warned of.
+        printed = _printed_by_cited(bib_path, seen) if latex else frozenset()
+        nowhere = [key for key in stale if key in untyped and key in entries
+                   and key.casefold() not in printed]  # fmt: skip
+        if nowhere:
+            report = report.with_findings(_uncited_entries(nowhere, len(entries), bib_path,
+                                                           latex=latex))  # fmt: skip
 
     return report.with_counts(
         citations=len(uses),
@@ -191,6 +217,60 @@ def _uncited_hint(citekey: str, *, latex: bool) -> str:
     )
 
 
+def _printed_by_cited(path: Path, cited: set[str]) -> frozenset[str]:
+    """The entries, case folded, that `MIN_CROSSREFS` cited entries or more name in their
+    `crossref` field, or in biblatex's `xref`, which BibTeX and biblatex then print though
+    nothing cites them. Keys are matched without case, as BibTeX matches them. Pandoc's
+    citeproc prints no such entry, so a Markdown paper's are not read."""
+    from collections import Counter
+
+    from manuscript_guard.literature.bibfile import read_entries
+
+    wanted = {key.casefold() for key in cited}
+    named: Counter[str] = Counter()
+    for key, fields in read_entries(path).items():
+        if key.casefold() not in wanted:
+            continue
+        named.update({fields.get(field, "").strip().casefold()
+                      for field in ("crossref", "xref")} - {""})  # fmt: skip
+    return frozenset(key for key, count in named.items() if count >= MIN_CROSSREFS)
+
+
+#: The code of the one note for the entries of `references.bib` nothing cites, where the
+#: bibliography prints only the cited works.
+UNCITED_ENTRIES = "bib-entries-uncited"
+
+
+def _uncited_entries(keys: list[str], held: int, path: Path, *, latex: bool) -> Finding:
+    """The entries of `references.bib` nothing cites, not even as typed text, in one note,
+    where the bibliography prints only the works cited (`printed_entries`): none of them
+    reaches the paper, so it is housekeeping, not a fault (Basile, 2026-11-27, "One note
+    per .bib"). Its key names the file, so that it is one finding however many entries it
+    lists. A work the text cites in words is among them, which is what its hint says first."""
+    count = len(keys)
+    some = (f"{count} of the {held} entries of {BIB_FILE} are" if count > 1
+            else f"1 of the {held} entries of {BIB_FILE} is" if held > 1
+            else f"The one entry of {BIB_FILE} is")  # fmt: skip
+    them = "none of them reaches" if count > 1 else "it does not reach"
+    listed = ", ".join(f"@{key}" for key in keys)
+    cite = f"\\cite{{{keys[0]}}}" if latex else f"[@{keys[0]}]"
+    return Finding(
+        gate=GATE,
+        code=UNCITED_ENTRIES,
+        severity=INFO,
+        message=f"{some} cited nowhere, and the bibliography prints only the works cited, so "
+        f"{them} the paper: {listed}",
+        path=path,
+        hint=f'if the text cites one of these works in words, as in "Smith (2020) showed", '
+        f"write that citation with its key, as in {cite}, or the work is not printed. "
+        f"Otherwise nothing reaches the paper. To tidy {BIB_FILE}, delete the entries by "
+        "hand, and do not use `sync-bib` for this: when it writes the file, it keeps only the "
+        "entries a citation key points to, so it would also drop any work the text cites only "
+        "in words",
+        subject=BIB_FILE,
+    )
+
+
 def _typed_only_hint(citekey: str, *, latex: bool) -> str:
     """What to do of an entry cited only as typed text. Its own key is not enough before
     `sync_bib`, which would still drop any other work the text cites only in words."""
@@ -206,7 +286,8 @@ def _typed_only_hint(citekey: str, *, latex: bool) -> str:
 def _uncited(citekey: str, path: Path, typed: str | None, *, any_key: bool,
              latex: bool) -> Finding:  # fmt: skip
     """An entry of `references.bib` no citation key points to: a warning where nothing cites
-    it, a note where the manuscript cites it as typed text, `typed` (Basile, 2026-11-23). The
+    it and the bibliography prints every entry, a note where the manuscript cites it as typed
+    text, `typed` (Basile, 2026-11-23). The
     note keeps the warning's key, made from the warning's words, so that a verdict on the
     one is paired with the other. It says what `sync_bib` does: it writes the file from the
     manuscript's keys, and with `any_key` false, no key at all, it stops and writes nothing."""

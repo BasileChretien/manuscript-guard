@@ -5,7 +5,7 @@
 
 Everything manuscript-guard is meant to do, by the stage of a paper it belongs to:
 one entry for each thing it promises, what does it, and the tests that prove it.
-Of the 79 entries, 74 work, 3 work in part, and 2 are planned.
+Of the 80 entries, 75 work, 3 work in part, and 2 are planned.
 
 The source is [features.yaml](features.yaml), which an agent tool reads before it
 changes a feature. `python tools/feature_map.py` draws this page and its picture from
@@ -15,7 +15,7 @@ skill and hook is in an entry, and every test an entry names is there.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/features-dark.svg">
   <img src="img/features-light.svg" width="880"
-       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 74 work, 3 work in part and 2 are planned.">
+       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 75 work, 3 work in part and 2 are planned.">
 </picture>
 
 ## Start
@@ -25,6 +25,7 @@ Set up a paper project, and find out what to do next.
 | Feature | What it does | Status | Done by | Proved by |
 |---|---|---|---|---|
 | **[Start a project](getting-started.md)** | Writes a new paper project in Markdown or LaTeX, or brings in a paper already written in Word. | works | [`init`](commands.md#setup--guide), skill [`project-setup`](agent-tools.md) | [`test_scaffold.py`](../tests/test_scaffold.py)<br>[`test_from_word.py`](../tests/test_from_word.py) |
+| **[Start in conversation](setup.md)** | Puts to the authors, one question at a time, each decision a project needs at its start, then writes the project exactly as they answered, filling only what is blank. | works | [`setup`](commands.md#setup--guide), skill [`project-setup`](agent-tools.md) | [`test_setup.py`](../tests/test_setup.py) |
 | **[Say what to do now](next.md)** | Runs every check once and says what to do next, with the command to run and the skill that helps. | works | [`next`](commands.md#setup--guide), skill [`guide`](agent-tools.md) | [`test_guide.py`](../tests/test_guide.py) |
 | **[Change a setting](commands.md#setup--guide)** | Changes one setting of paper.yaml, such as the stage or the journal, and keeps every other line as it was. | works | [`set`](commands.md#setup--guide) | [`test_set.py`](../tests/test_set.py) |
 | **[Stages of a paper](stages.md)** | Says what each stage of a paper means, and from which stage each finding stops the paper. | works | [`stages`](commands.md#setup--guide) | [`test_policy.py`](../tests/test_policy.py) |
@@ -87,7 +88,7 @@ Cite the literature, and keep each citation true to its source.
 
 | Feature | What it does | Status | Done by | Proved by |
 |---|---|---|---|---|
-| **Citations that resolve** | Each citation leads to a reference with well-formed identifiers and the fields it needs, no work is cited under two keys, and an entry nothing cites is warned of, or noted where the paper cites it only as typed text in brackets. | works | [G7](gates.md) | [`test_corruption.py::test_a_malformed_identifier_fails_from_internal_review`](../tests/test_corruption.py)<br>[`test_corruption.py::test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do`](../tests/test_corruption.py)<br>[`test_corruption.py::test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning`](../tests/test_corruption.py)<br>[`test_zotero.py`](../tests/test_zotero.py) |
+| **Citations that resolve** | Each citation leads to a reference with well-formed identifiers and the fields it needs, and no work is cited under two keys. The entries nothing cites are one note for the file where the bibliography prints only the works cited, and a warning each where it prints every entry; an entry cited only as typed text in brackets is a note of its own. | works | [G7](gates.md) | [`test_corruption.py::test_a_malformed_identifier_fails_from_internal_review`](../tests/test_corruption.py)<br>[`test_corruption.py::test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do`](../tests/test_corruption.py)<br>[`test_corruption.py::test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning`](../tests/test_corruption.py)<br>[`test_corruption.py::test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print`](../tests/test_corruption.py)<br>[`test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`](../tests/test_corruption.py)<br>[`test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings`](../tests/test_corruption.py)<br>[`test_corruption.py::test_a_metadata_block_in_the_body_asks_for_every_entry`](../tests/test_corruption.py)<br>[`test_properties.py::test_a_nocite_of_every_entry_is_told_from_one_of_single_keys`](../tests/test_properties.py)<br>[`test_zotero.py`](../tests/test_zotero.py) |
 | **From the Zotero library** | Writes the bibliography from Zotero, and keeps a copy of each cited work's PDF or page in the project. | works | [`sync-bib`](commands.md#literature), [`sync-sources`](commands.md#literature) | [`test_zotero.py::test_lookup_asks_about_the_cited_keys_only`](../tests/test_zotero.py)<br>[`test_zotero.py::test_sync_bib_writes_zoteros_export_of_the_cited_keys`](../tests/test_zotero.py)<br>[`test_latex_cite.py::test_sync_bib_refuses_a_manuscript_its_reader_refuses`](../tests/test_latex_cite.py)<br>[`test_sync_sources.py`](../tests/test_sync_sources.py)<br>[`test_fetch_sources.py`](../tests/test_fetch_sources.py) |
 | **Registries asked** | Looks up each cited DOI and PMID once, searches PubMed, Crossref and OpenAlex by title for a reference with neither, and flags a retraction, a later version or authors who do not match. | works | [`lookup`](commands.md#literature), [G7](gates.md) | [`test_lookup.py`](../tests/test_lookup.py) |
 | **Numbers from other papers** | A number taken from a paper is kept with its sentence, quoted word for word, and the quote has to be in the stored copy of that paper. | works | [G7](gates.md), skill [`literature-verify`](agent-tools.md) | [`test_literature.py`](../tests/test_literature.py)<br>[`test_placement.py`](../tests/test_placement.py) |

@@ -475,6 +475,7 @@ features:
       - tests/test_corruption.py::test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print
       - tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each
       - tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings
+      - tests/test_corruption.py::test_a_metadata_block_in_the_body_asks_for_every_entry
       - tests/test_properties.py::test_a_nocite_of_every_entry_is_told_from_one_of_single_keys
       - tests/test_zotero.py
 

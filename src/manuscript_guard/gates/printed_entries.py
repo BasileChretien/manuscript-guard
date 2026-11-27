@@ -35,11 +35,14 @@ def every_entry_tex(text: str) -> bool:
 
 
 def every_entry_markdown(text: str) -> bool:
-    """Whether a Markdown file's front matter asks pandoc for every entry: a `nocite` whose
-    text, or a string in whose list, holds `@*`."""
-    from manuscript_guard.text.masking import front_matter_said
+    """Whether a Markdown file asks pandoc for every entry: a `nocite` whose text, or a
+    string in whose list, holds `@*`, in its front matter or in a YAML metadata block of its
+    body (`masking.metadata_blocks`), which the build passes to pandoc as it stands."""
+    from manuscript_guard.text.masking import front_matter_said, metadata_blocks
 
-    return any(_EVERY.search(said) for said in front_matter_said(text, "nocite"))
+    blocks = [text, *(text[start:end] for start, end in metadata_blocks(text))]
+    return any(_EVERY.search(said) for block in blocks
+               for said in front_matter_said(block, "nocite"))  # fmt: skip
 
 
 def every_entry_printed(texts: Iterable[str], *, latex: bool) -> bool:
@@ -50,9 +53,9 @@ def every_entry_printed(texts: Iterable[str], *, latex: bool) -> bool:
 
 def prints_every_entry(project) -> bool:
     """Whether the paper's bibliography prints every entry of `references.bib`: a LaTeX file
-    the main text's or the supplement's document inputs asks for them all, or the front
-    matter of a Markdown file under `manuscript/` does. A LaTeX file nothing inputs is not
-    read, since TeX does not read it."""
+    the main text's or the supplement's document inputs asks for them all, or the metadata
+    of a Markdown file under `manuscript/` does (`every_entry_markdown`). A LaTeX file
+    nothing inputs is not read, since TeX does not read it."""
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     folder = project.path("manuscript")

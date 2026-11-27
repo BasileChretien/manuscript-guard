@@ -14664,7 +14664,8 @@ def test_a_nocite_of_every_entry_is_told_from_one_of_single_keys(
     """The author's decision of 2026-11-27: the entries nothing cites are one note where the
     bibliography prints only the works cited, and a warning each where it prints them all.
     A LaTeX file asks for every entry by a `\\nocite` whose keys hold `*`, wherever it stands
-    but in a comment, and a Markdown file by a `nocite` of its front matter holding `@*`.
+    but in a comment, and a Markdown file by a `nocite` holding `@*` in its front matter or
+    in a metadata block of its body.
     Single keys, another command, an address, another key of the header or the body ask
     for none, and a set of files asks where one of them does."""
     tex, markdown = drawn
@@ -14701,6 +14702,12 @@ def _any_citation_in_nocite_asks_for_every_entry(patch: pytest.MonkeyPatch) -> N
 def _nocite_is_read_anywhere_in_the_file(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(printed_module, "every_entry_markdown",
                   lambda text: re.search(r"nocite:.*@\*", text, re.DOTALL) is not None)
+
+
+def _a_body_metadata_block_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "metadata_blocks", lambda text: [])
 
 
 def _a_merged_nocite_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -26568,6 +26575,10 @@ BROKEN = {
     ),
     "a nocite merged into the front matter is not read": (
         _a_merged_nocite_is_not_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite in a metadata block of the body is not read": (
+        _a_body_metadata_block_is_not_read,
         test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
     ),
     "registration numbers are read in the reference list too": (

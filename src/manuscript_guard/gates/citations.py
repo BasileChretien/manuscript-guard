@@ -44,6 +44,13 @@ from manuscript_guard.zotero.citations import cited_as
 GATE = "G7"
 BIB_FILE = "references.bib"
 _BIB_KEY = re.compile(r"^@\w+\s*\{\s*([^,\s]+)", re.MULTILINE)
+#: The key of an entry, not of an `@string`, an `@preamble` or an `@comment`, which name no
+#: work: what the note on the entries nothing cites counts and lists.
+_ENTRY_KEY = re.compile(r"^@(?!(?i:string|preamble|comment)\b)\w+\s*\{\s*([^,\s]+)",
+                        re.MULTILINE)  # fmt: skip
+#: How many cited entries must name an entry in `crossref` (BibTeX's `min-crossrefs`), or in
+#: biblatex's `xref` (its `minxrefs`), for the list to print it uncited; 2 in both.
+MIN_CROSSREFS = 2
 
 
 def bib_keys(project: Project) -> frozenset[str]:
@@ -169,15 +176,24 @@ def check_citations(project: Project, literature: Literature) -> Report:
     # Where the bibliography prints only the cited works, an entry nothing cites never
     # reaches the paper: one note for the file, not a warning for each (Basile, 2026-11-27).
     every = bool(stale) and prints_every_entry(project)
-    nowhere = [key for key in stale if typed.get(key) is None]
+    untyped = {key for key in stale if typed.get(key) is None}
     for citekey in stale:
-        if every or citekey not in nowhere:
+        if every or citekey not in untyped:
             report = report.with_findings(
                 _uncited(citekey, bib_path, typed.get(citekey), any_key=bool(seen), latex=latex)
             )
-    if nowhere and not every:
-        report = report.with_findings(_uncited_entries(nowhere, len(committed), bib_path,
-                                                       latex=latex))  # fmt: skip
+    if untyped and not every:
+        # Of the rest, an `@string`, an `@preamble` or an `@comment` names no work, and an
+        # entry two cited ones name in `crossref` or `xref` is printed by BibTeX and biblatex:
+        # neither is in the note, and neither is warned of.
+        text = bib_path.read_text(encoding="utf-8", errors="replace")
+        entries = set(_ENTRY_KEY.findall(text))
+        printed = _printed_by_cited(bib_path, seen) if latex else frozenset()
+        nowhere = [key for key in stale if key in untyped and key in entries
+                   and key.casefold() not in printed]  # fmt: skip
+        if nowhere:
+            report = report.with_findings(_uncited_entries(nowhere, len(entries), bib_path,
+                                                           latex=latex))  # fmt: skip
 
     return report.with_counts(
         citations=len(uses),
@@ -198,6 +214,25 @@ def _uncited_hint(citekey: str, *, latex: bool) -> str:
         "file, it keeps only the entries a citation key points to, so it would also drop any "
         "other work the text cites only in words"
     )
+
+
+def _printed_by_cited(path: Path, cited: set[str]) -> frozenset[str]:
+    """The entries, case folded, that `MIN_CROSSREFS` cited entries or more name in their
+    `crossref` field, or in biblatex's `xref`, which BibTeX and biblatex then print though
+    nothing cites them. Keys are matched without case, as BibTeX matches them. Pandoc's
+    citeproc prints no such entry, so a Markdown paper's are not read."""
+    from collections import Counter
+
+    from manuscript_guard.literature.bibfile import read_entries
+
+    wanted = {key.casefold() for key in cited}
+    named: Counter[str] = Counter()
+    for key, fields in read_entries(path).items():
+        if key.casefold() not in wanted:
+            continue
+        named.update({fields.get(field, "").strip().casefold()
+                      for field in ("crossref", "xref")} - {""})  # fmt: skip
+    return frozenset(key for key, count in named.items() if count >= MIN_CROSSREFS)
 
 
 #: The code of the one note for the entries of `references.bib` nothing cites, where the

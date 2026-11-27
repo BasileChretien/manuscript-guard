@@ -16454,6 +16454,12 @@ NOCITE_MARKDOWN = (
     ("---\nnote: {q}@*{q}\n---\n", False),
     ("---\ntitle: A study\n---\n\nnocite: '@*'\n", False),
     ("---\n\nnocite: '@*'\n---\n", False),
+    # A YAML metadata block of the body, which the build passes to pandoc as it stands
+    # (round 1 of #835); not one where no blank line comes before it, nor one in a fence.
+    ("---\ntitle: A study\n---\n\nText.\n\n---\nnocite: {q}@*{q}\n---\n", True),
+    ("Text.\n\n---\nnocite: [{q}{one}{q}, {q}@*{q}]\n...\n", True),
+    ("---\ntitle: A study\n---\n\nText.\n---\nnocite: {q}@*{q}\n---\n", False),
+    ("Text.\n\n```\n\n---\nnocite: {q}@*{q}\n---\n```\n", False),
 )
 
 

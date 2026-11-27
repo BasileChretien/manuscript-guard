@@ -2725,7 +2725,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     is refused, and one LaTeX found in its distribution is left as it was. A `.bib` the document
     names (`references.bib` from `literature/`, as the build puts it beside the entry) is cut
     to the cited entries, those their `crossref` and `xdata` name, and every `@string` and
-    `@preamble`; `\nocite{*}` keeps every entry. The cited keys are the reader's and those
+    `@preamble`; a `\nocite{*}` the reader or the `.aux` records keeps every entry. The cited keys are the reader's and those
     the build's `.aux` holds, so that a citation a macro makes keeps its entry, and keys are
     matched without case, as BibTeX matches them; biblatex's `xref`, `related` and
     `entryset` are followed too (round 1). A file the folder holds under another name than
@@ -3067,12 +3067,20 @@ each one nothing cites reaches the printed list, and is a warning of its own as 
   so one the reader records nowhere counts too: in a hook (`\AtBeginDocument{\nocite{*}}`),
   in a definition, or past a part the reader refuses. One the reader does record cites every
   entry, so none is uncited.
-- in Markdown, a `nocite` in the front matter of a file under `manuscript/` whose text, or a
-  string in whose list, holds `@*`, its own or merged in with `<<`, as pandoc reads it.
+- in Markdown, a `nocite` whose text, or a string in whose list, holds `@*`, its own or
+  merged in with `<<`, as pandoc reads it: in the front matter of a file under
+  `manuscript/`, or in a YAML metadata block of its body (`masking.metadata_blocks`), which
+  the build passes to pandoc as it stands (round 1 of #835).
 
 A `\nocite{smith2019}`, or `nocite: '@smith2019'`, cites that key and asks for no other: the
 key is cited, and the note goes on listing the rest. An entry cited only as typed text keeps
-its own note, which says what `sync-bib` would do, and is not listed in the file's.
+its own note, which says what `sync-bib` would do, and is not listed in the file's. The note
+counts and lists entries alone: an `@string`, an `@preamble` or an `@comment` names no work,
+and is neither in it nor warned of. In a LaTeX paper an entry two cited entries name in
+`crossref`, or in biblatex's `xref`, is printed by BibTeX and biblatex (`min-crossrefs`,
+`mincrossrefs` and `minxrefs`, 2 by default), keys matched without case, so it is left out
+of the note and not warned of either; one a single cited entry names stays in it. Pandoc's
+citeproc prints no such entry, so a Markdown paper's note lists it (round 1 of #835).
 
 **A reference's identifiers are read offline.** Nothing read `references.bib` but for its
 keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345678", an
@@ -31053,8 +31061,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`.
   - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
     inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
-    keeps the warnings too, though BibTeX is never asked for every entry. Pinned by
-    `tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings`.
+    keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX
+    pack, which keeps the entries the reader and the build's `.aux` cite, keeps only the
+    cited ones. One in a hook TeX runs is in the `.aux`, and the pack keeps every entry, as
+    the warnings say. Pinned by
+    `tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings`
+    and `tests/test_latex_submit.py::test_the_pack_keeps_every_entry_where_tex_runs_a_nocite_of_every_entry`.
+  - The `crossref` rule counts the cited entries that name an entry directly: one named
+    only through a chain of `crossref`s, or by `xdata`, stays in the note, though BibTeX
+    or biblatex may print it. Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

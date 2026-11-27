@@ -21679,25 +21679,27 @@ def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
     assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
-@pytest.mark.parametrize(("snippet", "printed"), [
-    ("\\nocite{*}", None),
-    ("\\AtBeginDocument{\\nocite{*}}", True),
-    ("\\newcommand{\\every}{\\nocite{alpha2002,*}}", True),
-    ("% \\nocite{*}", False),
-    ("\\nocite{zeta2001}", False),
+@pytest.mark.parametrize(("snippet", "where", "printed"), [
+    ("\\nocite{*}", "body", None),
+    ("\\AtBeginDocument{\\nocite{*}}", "preamble", True),
+    ("\\newcommand{\\every}{\\nocite{alpha2002,*}}", "preamble", True),
+    ("\\iffalse \\nocite{*} \\fi", "body", True),
+    ("\\begin{lstlisting}\n\\nocite{*}\n\\end{lstlisting}", "body", True),
+    ("% \\nocite{*}", "body", False),
+    ("\\nocite{zeta2001}", "body", False),
 ])  # fmt: skip
 def test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings(
-    project: Path, snippet: str, printed: bool | None
+    project: Path, snippet: str, where: str, printed: bool | None
 ) -> None:
     """`\\nocite{*}` the reader records cites every entry, so none is uncited. One it does
     not record, in a hook or a definition, still makes BibTeX print them all: a warning
-    each. In a comment, or of single keys, it asks for no other entry, and the rest are one
-    note, whose hint cites by command."""
+    each. So does one in an `\\iffalse` block or a listing, which TeX never runs (DESIGN.md,
+    Known gaps). In a comment, or of single keys, it asks for no other entry, and the rest
+    are one note, whose hint cites by command."""
     from manuscript_guard.findings import WARN
 
     entry = _twin(project)
-    if printed:
-        # In the preamble, where a hook or a definition stands.
+    if where == "preamble":
         text = entry.read_text(encoding="utf-8")
         entry.write_text(text.replace("\\begin{document}", snippet + "\n\\begin{document}", 1),
                          encoding="utf-8")  # fmt: skip
@@ -21717,6 +21719,87 @@ def test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings(
         assert note.code == "bib-entries-uncited", note
         assert "\\cite{" in note.hint and "[@" not in note.hint, note.hint
         assert ("@zeta2001" in note.message) == ("zeta2001" not in snippet), note.message
+
+
+@pytest.mark.parametrize(("typed", "printed"), [
+    ("\n---\nnocite: '@*'\n---\n", True),
+    ("\n---\ntitle: Kept\nnocite: [ '@*' ]\n...\n", True),
+    # Not a block: no blank line before it, or inside a fence.
+    ("Text.\n---\nnocite: '@*'\n---\n", False),
+    ("\n```\n\n---\nnocite: '@*'\n---\n```\n", False),
+])  # fmt: skip
+def test_a_metadata_block_in_the_body_asks_for_every_entry(
+    project: Path, typed: str, printed: bool
+) -> None:
+    """Round 1 of #835: the build strips the front matter, and passes a YAML metadata block
+    of the body to pandoc as it stands (`masking.metadata_blocks`). Its `nocite: '@*'` makes
+    citeproc print every entry, so each entry nothing cites is a warning; text that is no
+    such block asks for nothing."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, typed=typed)
+    found = _one_note(project)
+    if printed:
+        assert sorted((f.code, f.severity) for f in found) == [
+            ("reference-uncited", WARN), ("reference-uncited", WARN)], found  # fmt: skip
+    else:
+        assert [f.code for f in found] == ["bib-entries-uncited"], found
+
+
+def test_the_note_counts_and_lists_the_entries_alone(project: Path) -> None:
+    """Round 1 of #835: an `@string`, an `@preamble` and an `@comment` name no work, so the
+    note neither counts nor lists them, and nothing warns of them."""
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 1
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@STRING{lancet = "Lancet"}\n'
+                           '@preamble{"\\newcommand{\\noop}[1]{}"}\n'
+                           "@comment{jabref-meta: databaseType:bibtex;}\n"
+                           + _one_entry("zeta2001", "Zeta, Zoe"))  # fmt: skip
+    (note,) = _one_note(project)
+    assert note.message == (f"1 of the {held} entries of references.bib is cited nowhere, and "
+                            "the bibliography prints only the works cited, so it does not "
+                            "reach the paper: @zeta2001"), note.message  # fmt: skip
+
+
+_CROSSREF_BIB = """
+@inproceedings{a2019,
+  author = {Ant, Ann}, title = {A}, year = {2019}, crossref = {proc2019},
+}
+@inproceedings{b2019,
+  author = {Bee, Bo}, title = {B}, year = {2019}, crossref = {Proc2019},
+}
+@inproceedings{c2020,
+  author = {Cee, Cy}, title = {C}, year = {2020}, xref = {proc2020},
+}
+@proceedings{proc2019,
+  title = {Proceedings 2019}, year = {2019},
+}
+@proceedings{proc2020,
+  title = {Proceedings 2020}, year = {2020},
+}
+"""
+
+
+@pytest.mark.parametrize("latex", [True, False])
+def test_an_entry_two_cited_entries_crossref_is_printed_in_latex(
+    project: Path, latex: bool
+) -> None:
+    """Round 1 of #835: BibTeX and biblatex print an entry that two cited entries name in
+    `crossref` (`min-crossrefs`, biblatex's `mincrossrefs` and `minxrefs`, 2 by default), so
+    a LaTeX paper's note leaves it out, without warning of it, keys matched without case. An
+    entry one cited entry names is not printed, and stays in the note. Pandoc's citeproc
+    prints neither, so a Markdown paper's note lists both."""
+    if latex:
+        entry = _twin(project)
+        _into_results(entry, "A claim \\cite{a2019, b2019, c2020}.")
+        path = project / "literature" / "references.bib"
+        path.write_text(path.read_text(encoding="utf-8") + _CROSSREF_BIB, encoding="utf-8")
+    else:
+        _with_entries(project, _CROSSREF_BIB, typed="A claim [@a2019; @b2019; @c2020].")
+    (note,) = _one_note(project)
+    listed = "@proc2020" if latex else "@proc2019, @proc2020"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:

@@ -53,8 +53,8 @@ stage: design
 # Set once you have chosen a journal; enables the journal gate.
 # target_journal: journal-of-examples
 
-# The study's design: the analysis plan is then asked for the sections it needs, each from
-# its guideline item. One of cohort, case-control, cross-sectional, diagnostic-accuracy,
+# The study's design: the plan is asked for its sections, each from its guideline item.
+# One of cohort, case-control, cross-sectional, diagnostic-accuracy, case-report,
 # self-controlled, disproportionality, trial, systematic-review, prediction-model or other.
 # study_type: cohort
 

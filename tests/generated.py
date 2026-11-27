@@ -7600,7 +7600,8 @@ _NAMING = ("{{#{0}}}", "{{.unnumbered #{0}}}", "{{#{1}}}")
 PLAN_HEADINGS = {
     "question": ("Research question", "Objectives", "Aims"),
     "design": ("Study design", "Questionnaire design"),
-    "population": ("Participants", "Population and data source", "Data sources"),
+    "population": ("Participants", "Population and data source", "Data sources",
+                   "Patient information", "Patient consent"),
     "exposure": ("Intervention", "Predictor", "Exposures", "Index test"),
     "outcome": ("Endpoint", "Primary outcomes", "Outcome measures", "Target condition"),
     "analysis": ("Statistical methods", "Statistical analysis", "Analyses"),
@@ -7646,30 +7647,50 @@ PLAN_HEADINGS = {
     "model development": ("Tuning", "Internal validation"),
     "performance": ("Calibration", "Discrimination", "External validation"),
     "fairness": ("Equity",),
+    "de-identification": ("Anonymisation", "Confidentiality", "Identification of the patient"),
+    "timeline": ("Time line", "Chronology of events", "Follow-up time"),
+    "diagnostic assessment": ("Diagnosis", "Differential diagnosis", "Work-up"),
+    "patient perspective": ("The patient's perspective", "Patient’s view",
+                            "Clinical perspective"),
+    "informed consent": ("Consent for publication", "Patient consent", "Ethics approval"),
 }  # fmt: skip
 #: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
 _SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
 #: Headings of no section, between the plan's own.
-_PLAN_OTHER = ("Background", "Timeline", "Ethics", "References")
+#: Not "Timeline", which heads a case report's timeline.
+_PLAN_OTHER = ("Background", "Glossary", "Ethics", "References")
 #: How a plan is laid out: its title, then the level of its sections' headings.
 _PLAN_LAYOUTS = (("# Analysis plan\n\n", 2), ("", 2), ("", 1))
 
 
 @st.composite
-def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, str]]]:
+def sectioned_plans(
+    draw: st.DrawFn, setting_aside: bool = False
+) -> tuple[dict[str, str], list[tuple[str, str]]]:
     """A plan and the `paper.yaml` naming its design, as the reading "plan sections asked" takes
     them, and each section of the design with how it stands in the plan.
 
-    The design is drawn from the table, `other` or none. Every section of every plan and of
+    The design is drawn from the table, `other` or none; with `setting_aside`, from the
+    designs that set aside a section of the seven (`not_asked`), which is drawn all the same.
+    Every section of every plan and of
     the design is given a kind of `PLAN_KINDS` by its place in a drawn order, so each kind
     stands in every example; then the sections are written in another drawn order, with a
     heading of no section among them. A section is said in a sentence, in a list, or under a
     subsection; one with nothing to say holds one of `_SAYS_NOTHING`, or empty subsections."""
     from manuscript_guard.gates.design import REQUIRED, UNNAMED, study_types
 
-    design = draw(st.sampled_from((None, "other", *sorted(study_types()))))
-    ids = [name for name, _pattern, _says in REQUIRED] + [
-        section["id"] for section in study_types().get(design or "", {}).get("sections", ())]
+    designs = (sorted(name for name, entry in study_types().items() if entry.get("not_asked"))
+               if setting_aside else (None, "other", *sorted(study_types())))  # fmt: skip
+    every = [name for name, _pattern, _says in REQUIRED]
+    own = {name: [section["id"] for section in entry["sections"]]
+           for name, entry in study_types().items()}  # fmt: skip
+    # The order of every section of every design is drawn first, and the design after it:
+    # drawn first, the design was what Hypothesis varied least, and under some seeds three of
+    # the twelve were never drawn in 120 plans, the case report among them.
+    drawn_order = draw(st.permutations(
+        every + sorted({name for ids in own.values() for name in ids} - set(every))))
+    design = draw(st.sampled_from(designs))
+    ids = every + own.get(design or "", [])
     title, level = draw(st.sampled_from(_PLAN_LAYOUTS))
     mark, under = "#" * level, "#" * (level + 1)
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=8).map(
@@ -7684,8 +7705,8 @@ def sectioned_plans(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[str, st
         return draw(st.sampled_from((*PLAN_HEADINGS[name], f"3. {named}", named.upper(),
                                      f"{named}:")))  # fmt: skip
 
-    order = draw(st.permutations(range(len(ids))))
-    kinds = {ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    order = [ids.index(name) for name in drawn_order if name in ids]
+    kinds ={ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
     # A section no heading may name (the Deviations, `UNNAMED`) trades its kind with another's,
     # so the plan still names one exactly and holds every kind.
     for unnamed in UNNAMED & set(kinds):

@@ -128,16 +128,23 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def not_asked(study_type: str | None) -> frozenset[str]:
+    """The sections of the seven a design has no use for, which its plan is not asked for:
+    a case report's analysis and deviations (the table's `not_asked`)."""
+    return frozenset(study_types().get(study_type or "", {}).get("not_asked", ()))
+
+
 def required_for(study_type: str | None) -> tuple[tuple[str, str, str], ...]:
-    """The sections a plan for this design is asked for: the seven, and the design's own,
-    each with where it comes from in its hint."""
+    """The sections a plan for this design is asked for: the seven but those it sets aside,
+    and the design's own, each with where it comes from in its hint."""
     if study_type is None or study_type not in study_types():
         return _required()
+    aside = not_asked(study_type)
     own = tuple(
         (section["id"], section["heading"], f"{section['says']} ({section['source']})")
         for section in study_types()[study_type]["sections"]
     )
-    return _required() + own
+    return tuple(section for section in _required() if section[0] not in aside) + own
 
 
 #: The sections no heading may name by its identifier. Every reader of the plan's Deviations

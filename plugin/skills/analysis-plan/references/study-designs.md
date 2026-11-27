@@ -96,6 +96,26 @@ angiography", names the section exactly: `## 10a. Index test {#exposure}`.
 - **Sample size.** How many, with how many having the condition, and how it was worked
   out. (STARD 2015, 18)
 
+## case-report
+
+The paper follows CARE (2013). A case report describes one patient's care after it was
+given, so its plan is not asked for an analysis or for deviations (`not_asked` in
+`study_types.yaml`): what it settles before the writing is what the report will say of
+the patient, and what it must not. The patient is the population, read under a heading
+that is "Patient information", "The patient" or "Patient" whole; the treatment is the
+exposure ("Therapeutic intervention"), and the follow-up and its outcomes the outcome.
+
+- **De-identification.** Which details of the patient the report gives, and which it
+  leaves out or blurs so that no one can recognise them. (CARE, 5)
+- **Timeline.** The important dates and events of the case, in order, as a table or a
+  figure. (CARE, 7)
+- **Diagnostic assessment.** How the diagnosis was reached: the tests, the difficulties,
+  the other diagnoses considered and, where it applies, the prognosis. (CARE, 8)
+- **Patient perspective.** Whether the patient gives their own account of what they went
+  through and of their care. (CARE, 12)
+- **Informed consent.** That the patient, or whoever may decide for them, agreed to the
+  publication, and how that is recorded. (CARE, 13)
+
 ## self-controlled
 
 No reporting guideline is written for self-controlled designs; the paper follows STROBE.

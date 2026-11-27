@@ -17558,7 +17558,8 @@ which guideline it answers to is read before its entry is written.
 
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
-#801. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+#801, and case reports since 2026-11-27, their plans not asked for an analysis or
+deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17595,8 +17596,10 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of CARE, SRQR and COREQ, and which guideline a case series
-  answers to. STROBE's checklist for cross-sectional studies was read on its own page on
+- The pages, items and licences of SRQR and COREQ, and which guideline a case series
+  answers to. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
+  site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
+  2013 article that publishes it CC BY-NC-ND 3.0 at Europe PMC (PMC3833570). STROBE's checklist for cross-sectional studies was read on its own page on
   2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
 - A published classification of study designs to take a series of questions from, should the
   sentences beside the options not be enough (answer 5).
@@ -19652,13 +19655,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Nine designs are named, a diagnostic accuracy study the last added; a design outside
-  them (a narrative review, a descriptive case series or a case report, a qualitative study,
+  not. Ten designs are named, a case report the last added; a design outside
+  them (a narrative review, a descriptive case series, a qualitative study,
   a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case reports, case series and qualitative
+  from a draft" (above) plans case series and qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19670,7 +19673,12 @@ Added by the adversarial review, verified and **not** fixed:
   2026-11-26). By the same rule a diagnostic accuracy plan's exposure and outcome are
   found under STARD's words only where the heading is "Index test" or "Target condition"
   whole, plural, bracketed or numbered "3.", "3)", "A." or "III.": "10a. Index test" and
-  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
+  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). So too a
+  case report's population under CARE's words: a heading that is "Patient information", "The
+  patient" or "Patient" whole, in a plan of any design, so that a trial plan's "Patient
+  information", on what its participants are told, is taken for a population. A case
+  report's plan is not asked for its analysis or its deviations (`not_asked`), since it
+  describes one patient's care, which followed no protocol (Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19685,6 +19693,11 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
   `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
   `tests/test_corruption.py::test_the_index_test_and_the_target_condition_are_their_heading_whole`,
+  `tests/test_corruption.py::test_the_patient_is_the_population_where_the_heading_is_the_patient_whole`,
+  `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
+  `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
+  `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
   `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,

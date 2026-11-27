@@ -6425,6 +6425,35 @@ def test_a_plan_section_named_on_its_heading_is_found_whatever_its_words(
         assert f"the plan says nothing about {name}" not in missing, given["plan"]
 
 
+@holds(30, sectioned_plans(setting_aside=True))
+def test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds(
+    drawn: tuple[dict[str, str], list[tuple[str, str]]],
+) -> None:
+    """A case report has no analysis to plan and no plan to depart from (Basile,
+    2026-11-27): a section of the seven that the design sets aside (`not_asked` in
+    `data/study_types.yaml`) is never said to be missing or empty, whether the plan holds
+    it, words it otherwise, leaves it empty or leaves it out, and G12 expects the other
+    sections alone."""
+    from manuscript_guard.gates.design import study_types
+
+    given, kinds = drawn
+    design = re.search(r"(?m)^study_type: (\S+)$", given["paper"]).group(1)
+    aside = set(study_types()[design]["not_asked"])
+    said = READINGS["plan sections asked"]()(given)
+    told = {f["message"] for f in said["findings"]
+            if f["code"] in ("plan-section-missing", "plan-section-empty")}  # fmt: skip
+    for name in aside:
+        assert f"the plan says nothing about {name}" not in told, given["plan"]
+        assert f"the plan's {name} section is a heading with nothing under it" not in told
+    assert said["counts"]["design_expected"] == len(kinds) - len(aside), said["counts"]
+
+
+def _a_design_s_set_aside_sections_are_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "not_asked", lambda study_type: frozenset())
+
+
 def _a_section_s_name_on_its_heading_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import design
 
@@ -28797,6 +28826,10 @@ BROKEN = {
     "a section's name on its heading is not read": (
         _a_section_s_name_on_its_heading_is_not_read,
         test_a_plan_section_named_on_its_heading_is_found_whatever_its_words,
+    ),
+    "a design's set-aside sections are asked": (
+        _a_design_s_set_aside_sections_are_asked,
+        test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds,
     ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,

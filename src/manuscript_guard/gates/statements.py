@@ -422,7 +422,7 @@ def stated(text: str, *, abstract: str | None = None, data_heading: str | None =
                 for named in KINDS:
                     if _words_of(named, words):
                         found(named, STATED)
-            elif _says(_own(section.enclosed, kind)):
+            elif _says(_own(_one_blank_line(section.enclosed), kind)):
                 found(kind, STATED)
             elif section.line in empty:
                 found(kind, HEADED_EMPTY)

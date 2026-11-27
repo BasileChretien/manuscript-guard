@@ -226,6 +226,15 @@ def test_a_label_after_more_than_one_blank_line_is_a_label() -> None:
     assert missing(stated(text), FIVE) == ["funding", "interests"]
 
 
+@pytest.mark.parametrize("blank_lines", [1, 2, 3, 4])
+def test_a_label_after_blank_lines_ends_the_heading_above_it(blank_lines: int) -> None:
+    """Round 6 of #819: under a heading holding only a comment, a label of another kind
+    after an even number of blank lines was read as the heading's own statement."""
+    text = ("# Introduction\n\nWords.\n\n# Competing interests\n\n<!-- to write -->\n"
+            + "\n" * blank_lines + "**Funding:** Grant ANR-12.\n")
+    assert missing(stated(text), ["interests", "funding"]) == ["interests"]
+
+
 def test_a_label_s_own_paragraph_never_ends_it() -> None:
     """Round 2 of #819: words after a label that look like a label of the same kind are its
     statement."""

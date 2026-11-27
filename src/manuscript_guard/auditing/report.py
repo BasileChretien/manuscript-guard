@@ -355,7 +355,8 @@ def _displays(report, show) -> list[str]:
     if not lines and displays_counted(report):
         lines.append("  Each table and figure counted from its legends is cited, in the order of "
                      "its number, and nothing points at one the legends do not number.")
-    return lines + [f"  {item.message}" for item in said if item.severity == INFO]
+    return lines + [f"  {show(item.path)}: {item.message}" if item.path is not None
+                    else f"  {item.message}" for item in said if item.severity == INFO]
 
 
 def _title_items(report) -> list[Item]:

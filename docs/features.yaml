@@ -903,10 +903,10 @@ features:
       - tests/test_audit_displays.py::test_the_audit_reports_them_in_their_section_and_in_its_summary
     docs: docs/audit.md
     limits: >-
-      A kind whose legends do not number it 1 to n once each, or that has none, is not
-      checked; a legend missed by its form makes the one past it read as a pointer to
-      nothing; a PDF is read only where its lines were rebuilt into paragraphs (DESIGN.md,
-      Known gaps).
+      A kind whose legends do not number it 1 to n once each, that has none, or that the
+      file holds more tables or pictures of than its legends number, is not checked; a
+      legend missed by its form makes the one past it read as a pointer to nothing; a PDF is
+      read only where its lines were rebuilt into paragraphs (DESIGN.md, Known gaps).
 
   - id: audit-page
     stage: others

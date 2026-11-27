@@ -43,14 +43,19 @@ from manuscript_guard.findings import INFO, WARN, Finding
 GATE = "G2"
 #: What `audit` says of a kind it did not count, and of a PDF it did not read for this.
 NOT_COUNTED = "displays-not-counted"
-#: A legend's line, as the paper sets it: its pointer opens the line, after the marks of
-#: emphasis or the `![` of a picture, and is set off from its title (see the module's text).
+#: A legend's line, as the paper sets it: its pointer opens the line, after a Word
+#: bookmark, the `![` of a picture or the `[` of a link, and the marks of emphasis, and is
+#: set off from its title (see the module's text). Any space but a line's end, Word's
+#: no-break space among them, stands where a space does.
 _LEGEND = re.compile(
-    r"[ \t]*(?:!\[)?[ \t]*(?:\*\*\*|\*\*|__|\*|_)?[ \t]*"
-    r"(?i:(?:supplementary|supplemental)[ \t]+|e|s)?"
-    r"(?i:tables?|figures?|figs?\.?)[ \t]*S?\d+[A-Za-z]?(?:\*\*\*|\*\*|__|\*|_)?"
-    "(?:[ \\t]*[.:|\N{EN DASH}\N{EM DASH}-]|[ \\t]+(?=[A-Z])|[ \\t]*\\]|[ \\t]*$)"
+    r"[^\S\n]*(?:\[\]\{[^}\n]*\}[^\S\n]*)*(?:!?\[)?(?:\[\]\{[^}\n]*\}[^\S\n]*)*(?:\*\*\*|\*\*|__|\*|_)?[^\S\n]*"
+    r"(?i:(?:supplementary|supplemental)[^\S\n]+|e|s)?"
+    r"(?i:tables?|figures?|figs?\.?)[^\S\n]*S?\d+[A-Za-z]?(?:\*\*\*|\*\*|__|\*|_)?"
+    "(?:[^\\S\\n]*[.:|\N{EN DASH}\N{EM DASH}-]|[^\\S\\n]+(?=[A-Z])"
+    "|[^\\S\\n]*\\]|[^\\S\\n]*$)"
 )
+#: A picture, as pandoc writes one: what a figure the file holds may be.
+_PICTURE = re.compile(r"!\[[^\]\n]*\]\(")
 #: A PDF whose lines could not be rebuilt into paragraphs.
 UNREBUILT = ("its lines were not rebuilt into paragraphs, so a table's or a figure's legend "
              "cannot be told from a line of prose, and its tables and figures were not "
@@ -90,10 +95,11 @@ def of_files(files: dict[str, str], folder: Path) -> Displays:
     counted = 0
     for name, text in files.items():
         legends, cited = _read(text, folder / name)
+        held = _held(text)
         for kind in ("table", "figure"):
             main = [p for p in legends if p.kind == kind and not p.supplementary]
             pointed = [p for p in cited if p.kind == kind and not p.supplementary]
-            got, said = _counted(kind, main, pointed, folder / name)
+            got, said = _counted(kind, main, pointed, folder / name, held[kind])
             found += got
             notes += said
             counted += bool(main) and not said
@@ -121,7 +127,7 @@ def of_latex(project) -> Displays:
 def unread_pdf(path: Path) -> Displays:
     """A PDF whose lines were not rebuilt into paragraphs: its note, and nothing checked."""
     return Displays(notes=(Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
-                                   message=f"{path.name}: {UNREBUILT}",
+                                   message=UNREBUILT,
                                    subject="tables and figures"),))  # fmt: skip
 
 
@@ -191,22 +197,41 @@ def _a_legend(lines: list[str], line: int) -> bool:
     return line == 1 or not lines[line - 2].strip()
 
 
-def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer],
-             path: Path) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
-    """The findings on one kind of a file's main text, and the note where it is not counted."""
+def _held(text: str) -> dict[str, int]:
+    """How many tables a text holds, those pandoc writes as pipe and grid tables
+    (`text.captioned`), and how many pictures, either of which may be a figure."""
+    from manuscript_guard.text.captioned import markdown_captioned
+
+    return {"table": len(markdown_captioned(text)), "figure": len(_PICTURE.findall(text))}
+
+
+def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Path,
+             held: int = 0) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
+    """The findings on one kind of a file's main text, and the note where it is not counted:
+    where its legends do not number it 1 to n once each, or where the file holds more of the
+    kind than they number, as where a legend stands in a layout table or in a picture the
+    check does not read (the corpus run of ea3fc52), and its citations would point at
+    nothing."""
     numbers = sorted(p.number for p in legends)
     if not numbers:
         if not cited:
             return [], []
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
                             subject=f"{kind}s",
-                            message=f"{path.name}: {kind}s are pointed at and no legend numbers "
+                            message=f"{kind}s are pointed at and no legend numbers "
                             f"one, so its {kind}s were not counted")]  # fmt: skip
     count = len(numbers)
+    if numbers == list(range(1, count + 1)) and held > count:
+        what = "tables" if kind == "table" else "pictures"
+        return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
+                            line=legends[0].line, subject=f"{kind}s",
+                            message=f"it holds {held} {what}, and its legends "
+                            f"number {count} {kind}{'s' if count != 1 else ''}, so its {kind}s "
+                            "were not counted")]  # fmt: skip
     if numbers != list(range(1, count + 1)):
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
                             line=legends[0].line, subject=f"{kind}s",
-                            message=f"{path.name}: its {kind} legends read {_listing(numbers)}, "
+                            message=f"its {kind} legends read {_listing(numbers)}, "
                             f"not 1 to {count} once each, so its {kind}s were not counted")]
     found: list[Finding] = []
     first: dict[int, _Pointer] = {}

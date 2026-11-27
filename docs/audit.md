@@ -384,15 +384,18 @@ paragraph, set off from its title by a stop, a colon, a dash or the end of its b
 1.** Baseline", "Table 1: Baseline"), by a space and a capital as BMC and Springer set one
 ("Table 1 Baseline characteristics"), alone on its line, or opening a picture's caption as
 pandoc writes one from Word, its alternative text opening `![Figure 1. Flow`, "Fig. 1." as
-well as "Figure 1."; every other pointer is a citation. Counted, the main text's tables and
-figures are each held to being cited (`display-not-cited`), to their first citations coming
+well as "Figure 1.", after a bookmark Word keeps or a link to one, and with Word's no-break
+space between the word and its number; every other pointer is a citation. Counted, the main
+text's tables and figures are each held to being cited (`display-not-cited`), to their first citations coming
 in the order of their numbers (`cited-out-of-order`, the first that does not), and to no
 pointer past the last legend (`pointer-to-nothing`). A pointer to the supplement, "Table
 S1", "Supplementary Figure 2", "eTable 3", is held to the supplement's legends, read in every
 paper given, the main text's file among them, and only where some are. Legends that number a
 kind otherwise, "Table 1", "Table 3", or "Table 1 (continued)" beside "Table 1", leave the kind
 uncounted, and so does a kind pointed at with no legend, as when the figures go to the journal
-as files of their own: a note says so, and nothing else is said of it. A LaTeX paper numbers
+as files of their own, and a kind a file holds more of, in tables or in pictures, than its
+legends number, as where a legend stands inside a layout table or in a picture: a note says
+so, and nothing else is said of it. A LaTeX paper numbers
 its floats itself, and is held by G2's own reader of one, as `check` holds a LaTeX project. A
 PDF is read where its lines were rebuilt into paragraphs, each display a block opening with its
 legend; one whose lines were not is said not checked. Each finding is a warning until the

@@ -3884,11 +3884,11 @@ def _a_legend_without(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
 
 
 def _a_bmc_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
-    _a_legend_without(patch, r"|[ \t]+(?=[A-Z])", "")
+    _a_legend_without(patch, r"|[^\S\n]+(?=[A-Z])", "")
 
 
 def _a_picture_s_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
-    _a_legend_without(patch, r"(?:!\[)?", "")
+    _a_legend_without(patch, r"(?:!?\[)?", "")
 
 
 def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:

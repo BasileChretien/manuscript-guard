@@ -31,6 +31,33 @@ def test_a_legend_in_each_form_a_paper_sets_one_counts_its_table(legend: str) ->
 
 
 @pytest.mark.parametrize("legend", [
+    # The corpus run of ea3fc52: Word sets a no-break space between the word and its number,
+    # and pandoc writes a legend Word keeps a bookmark at, or links to, with its anchor.
+    "Table\N{NO-BREAK SPACE}1", "[]{#_Ref82435516 .anchor}Table 1",
+    "[[]{#_Ref89712232 .anchor}Table 1](#_Ref89712232)",
+])  # fmt: skip
+def test_a_legend_as_word_writes_one_counts_its_table(legend: str) -> None:
+    read = said(f"Patients are in Table 1.\n\n{legend}\n")
+    assert read.findings == () and read.notes == () and read.counted == 1, read
+
+
+@pytest.mark.parametrize(("body", "kind"), [
+    ("| a |\n|---|\n| 1 |\n\n| b |\n|---|\n| 2 |\n", "tables"),
+    ("![](media/image1.png)\n\n![](media/image2.png)\n", "figures"),
+])  # fmt: skip
+def test_a_file_that_holds_more_of_a_kind_than_its_legends_number_leaves_it_uncounted(
+    body: str, kind: str
+) -> None:
+    """The corpus run of ea3fc52: a legend the check does not read, in a layout table or in
+    a picture, leaves the legends one short of the tables or pictures the file holds, and its
+    citations would point at nothing. Such a kind is not counted."""
+    word = "Table" if kind == "tables" else "Figure"
+    read = said(f"In {word} 1 and {word} 2.\n\n{word} 1. A\n\n{body}")
+    assert read.findings == () and read.counted == 0, read
+    assert len(read.notes) == 1 and f"its legends number 1 {kind[:-1]}" in read.notes[0].message
+
+
+@pytest.mark.parametrize("legend", [
     "![Figure 1. Flow of patients](media/image1.png)", "Fig. 1. Flow", "Figure 1: Flow",
 ])  # fmt: skip
 def test_a_figure_s_legend_as_a_picture_or_with_fig_counts_its_figure(legend: str) -> None:
@@ -115,7 +142,7 @@ def test_a_legend_g2_cannot_see_makes_its_citation_point_at_nothing() -> None:
 def test_a_pdf_whose_lines_were_not_rebuilt_is_said_not_checked() -> None:
     read = displays.unread_pdf(Path("paper.pdf"))
     assert read.findings == () and read.counted == 0
-    assert read.notes[0].message == f"paper.pdf: {displays.UNREBUILT}"
+    assert read.notes[0].message == displays.UNREBUILT and read.notes[0].path == Path("paper.pdf")
 
 
 def test_the_audit_reports_them_in_their_section_and_in_its_summary(

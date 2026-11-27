@@ -137,6 +137,9 @@ def test_a_title_that_holds_its_record_s_and_more_is_held_to_it(
     registries.records["10.5555/given.1"] = ("COVID-19: lessons learned", "")
     given = "COVID-19: lessons learned: a review of hospital outcomes in five countries"
     assert _differs(tmp_path, capsys, _paper(given)) == []
+    # The same, its subtitle kept apart, as Crossref keeps it (round 4).
+    registries.records["10.5555/given.1"] = ("COVID-19", "lessons learned")
+    assert _differs(tmp_path, capsys, _paper(given)) == []
 
 
 @pytest.mark.parametrize("journal", ["Sci. China Life Sci.", "Proc. Natl Acad Sci."])

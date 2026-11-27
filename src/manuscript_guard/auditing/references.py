@@ -986,7 +986,9 @@ def _title_differs(
     whole = [_TAG.sub(" ", ": ".join(str(t) for t in (record.get("title"), record.get("subtitle"))
                                       if t)) for record in records]  # fmt: skip
     titles = [_TAG.sub(" ", str(record["title"])) for record in records]
-    if _gives_record_title(text, said.title, whole) or _with_subtitle(said.title, titles):
+    # The title alone and with its subtitle: Crossref keeps "COVID-19" and "lessons learned"
+    # apart (round 4 of #846).
+    if _gives_record_title(text, said.title, whole) or _with_subtitle(said.title, titles + whole):
         return []
     # Each record alone, so that the title the finding quotes is the one its words were
     # counted in (round 1 of #846: counted in both, one quoted, the count was not its own).

@@ -245,13 +245,17 @@ def test_the_worker_hands_the_audit_the_journal_the_page_offers() -> None:
     assert beside["args"] == ["audit", "paper.docx", "--against", "journals"]
 
 
-def test_the_page_reads_one_thing_of_its_address_and_writes_nothing_to_it() -> None:
-    """A link may choose a journal, ?journal=<slug>, and the page reads nothing else of its
-    address, writes nothing to it, and sets what a host gives as text, never as markup."""
+def test_the_page_reads_two_things_of_its_address_and_writes_nothing_to_it() -> None:
+    """A link may choose a journal, ?journal=<slug>, and carry a journal's rules after
+    "#rules=" (web/rules.js); the page reads nothing else of its address, writes nothing to
+    it, and sets what a host gives as text, never as markup."""
     app = (WEB / "app.js").read_text(encoding="utf-8")
     assert app.count("location.search") == 1
     assert 'new URLSearchParams(location.search).get("journal")' in app
-    for never in ("location.hash", "history.", "location.href =", "location.assign",
+    assert app.count("location.hash") == 2
+    assert ("location.hash.startsWith(RULES) ? location.hash.slice(RULES.length) : null"
+            in app)  # fmt: skip
+    for never in ("history.", "location.href =", "location.hash =", "location.assign",
                   "location.replace", "innerHTML", "outerHTML", "insertAdjacentHTML"):
         assert never not in app, never
 

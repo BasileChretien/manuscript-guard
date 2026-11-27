@@ -154,6 +154,7 @@ from generated import (
     latex_skipped_blocks,
     latex_straight_quotes,
     latex_table_rows,
+    latex_text_in_displays,
     latex_texts,
     latex_trees,
     latex_words,
@@ -1981,6 +1982,101 @@ def _no_latex_citation_is_narrative(patch: pytest.MonkeyPatch) -> None:
 def _a_multi_citation_reads_its_first_group_only(patch: pytest.MonkeyPatch) -> None:
     for name in ("parencites", "Parencites"):
         patch.setitem(latex_mask.COMMANDS, name, ("(b)", "(b)", "[p]", "[p]", "{b}"))
+
+
+@holds(100, latex_text_in_displays())
+def test_inline_maths_in_a_text_argument_of_display_maths_balances_as_in_text(
+    drawn: dict[str, Any],
+) -> None:
+    """Inline maths in a text argument of display maths, `\\tag{\\(1\\)}` or
+    `\\text{if $x$}`, is a formula of its own inside the display, and the file is read to
+    its end: nothing is refused, every key cited after a display is cited, and the last line
+    is read (Basile, 2026-11-27)."""
+    text = drawn["text"]
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    assert [cited.key for cited in reading.cited] == drawn["keys"], text
+    maths = set(reading.maths)
+    for start, end in drawn["displays"]:
+        assert (start, end, True) in maths, (text[start:end], text)
+    for start, end in drawn["inlines"]:
+        assert (start, end, False) in maths, (text[start:end], text)
+    assert "The last line is read." in reading.masked, text
+
+
+@holds(100, latex_text_in_displays())
+def test_inline_maths_in_display_maths_itself_is_refused_where_latex_stops(
+    drawn: dict[str, Any],
+) -> None:
+    """Inline maths in a display's own maths, `\\[ V = \\(y\\) \\]` or `\\[ V = $y$ \\]`, is
+    still refused as unbalanced, once, at the `\\)` that closes no maths or the `$` that
+    opens maths in maths (LaTeX stops on the `\\(`, on the same line), whichever delimiter and
+    display, wherever it stands among displays whose text arguments hold inline maths; and
+    only what stands before it is read (Basile, 2026-11-27; round 1 of #836)."""
+    for refused in drawn["refused"]:
+        text = refused["text"]
+        reading = latex_mask.read(text)
+        assert [(r.code, r.offset) for r in reading.refusals] == [
+            ("tex-unbalanced", refused["offset"])
+        ], (reading.refusals, text)
+        assert [cited.key for cited in reading.cited] == refused["keys"], text
+
+
+def _inline_maths_in_display_maths_is_never_refused(patch: pytest.MonkeyPatch) -> None:
+    dollar, symbol = latex_mask._Reader._dollar, latex_mask._Reader._symbol
+
+    def closes(self, sign: str) -> bool:
+        top = self.stack[-1] if self.stack else None
+        return top is not None and top.kind == "maths" and top.closer == sign
+
+    def in_maths(self) -> bool:
+        return self._role() == latex_mask.MATHS_READ
+
+    def broken_dollar(self, at: int) -> None:
+        sign = "$$" if self.text.startswith("$$", at) else "$"
+        if in_maths(self) and not closes(self, sign) and not closes(self, "$"):
+            self._blank(at, at + 1)
+            self.pos = at + 1
+            return
+        dollar(self, at)
+
+    def broken_symbol(self, name: str, at: int) -> None:
+        if name in ")]" and in_maths(self) and not closes(self, "\\" + name):
+            self._blank(at, at + 2)
+            self.pos = at + 2
+            return
+        symbol(self, name, at)
+
+    patch.setattr(latex_mask._Reader, "_dollar", broken_dollar)
+    patch.setattr(latex_mask._Reader, "_symbol", broken_symbol)
+
+
+def _a_tag_is_read_as_maths(patch: pytest.MonkeyPatch) -> None:
+    for name in ("tag", "shortintertext"):
+        patch.delitem(latex_mask.COMMANDS, name)
+
+
+def _inline_maths_in_a_display_is_maths_inside_maths(patch: pytest.MonkeyPatch) -> None:
+    dollar, symbol = latex_mask._Reader._dollar, latex_mask._Reader._symbol
+
+    def inside(self) -> bool:
+        maths = any(frame.role == latex_mask.MATHS_READ for frame in self.stack)
+        return maths and self._role() == latex_mask.PROSE
+
+    def broken_dollar(self, at: int) -> None:
+        if inside(self):
+            self._refuse("tex-unbalanced", at, "maths is opened inside maths")
+            return
+        dollar(self, at)
+
+    def broken_symbol(self, name: str, at: int) -> None:
+        if name in "([" and inside(self):
+            self._refuse("tex-unbalanced", at, "maths is opened inside maths")
+            return
+        symbol(self, name, at)
+
+    patch.setattr(latex_mask._Reader, "_dollar", broken_dollar)
+    patch.setattr(latex_mask._Reader, "_symbol", broken_symbol)
 
 
 @holds(100, latex_printed())
@@ -29387,6 +29483,18 @@ BROKEN = {
     "in LaTeX, a line break before a binding's brace makes it malformed": (
         _a_line_break_before_a_bindings_brace_makes_it_malformed,
         test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a tag is read as maths": (
+        _a_tag_is_read_as_maths,
+        test_inline_maths_in_a_text_argument_of_display_maths_balances_as_in_text,
+    ),
+    "in LaTeX, inline maths in a text argument of a display is maths inside maths": (
+        _inline_maths_in_a_display_is_maths_inside_maths,
+        test_inline_maths_in_a_text_argument_of_display_maths_balances_as_in_text,
+    ),
+    "in LaTeX, inline maths in a display's own maths is never refused": (
+        _inline_maths_in_display_maths_is_never_refused,
+        test_inline_maths_in_display_maths_itself_is_refused_where_latex_stops,
     ),
     "in LaTeX, a citation's keys are not split at its commas": (
         _a_citations_keys_are_not_split,

@@ -924,7 +924,7 @@ features:
     title: Audit in a web browser
     says: >-
       Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not
-      uploaded anywhere.
+      uploaded anywhere. A journal's rules typed once can be sent as a link that fills them in.
     status: works
     tests: [tests/test_web.py]
     docs: docs/audit-page.md

@@ -30,6 +30,7 @@ from manuscript_guard.text.latex import pictures
 from manuscript_guard.text.latex.commands import (
     ABSTRACT_COMMANDS,
     AMSMATH,
+    AUTHORS_IF_DEFINED,
     CATEGORY,
     CITATIONS,
     CITEPROC,
@@ -299,8 +300,10 @@ _PLACE_OPTIONS = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\[[^\]]{0,300}\]")
 #: so was `\Abstract`, which the template that takes it defines in its class and prints as it
 #: is given (decision 17: SelfArx.cls's `\newcommand{\Abstract}[1]{\def\@Abstract{#1}}`); a
 #: class's front matter, `\keywords` among it, is passed over however it is defined; and
-#: pandoc's citeproc commands, which its template defines; and a table's rules and colours.
-_REDEFINABLE = ABSTRACT_COMMANDS | FRONT_MATTER_COMMANDS | CITEPROC | TABLE_COMMANDS
+#: pandoc's citeproc commands, which its template defines; a table's rules and colours; and
+#: `\tag` and `\shortintertext`, the author's once defined (`AUTHORS_IF_DEFINED`).
+_REDEFINABLE = (ABSTRACT_COMMANDS | FRONT_MATTER_COMMANDS | CITEPROC | TABLE_COMMANDS
+                | AUTHORS_IF_DEFINED)
 _PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
@@ -1943,7 +1946,7 @@ class _Reader:
         if not self._provides_nothing(name):
             self._takes_back(name)
         unloaded = name in PACKAGE_COMMANDS and not self._loaded(PACKAGE_COMMANDS[name])
-        if name in FRONT_MATTER_COMMANDS or unloaded:
+        if name in FRONT_MATTER_COMMANDS or name in AUTHORS_IF_DEFINED or unloaded:
             # Told of it by the tree or not, the file that defines it says so (round 2). A
             # package's command where no package gives it is the author's too (2026-10-23).
             self.own.add(name)

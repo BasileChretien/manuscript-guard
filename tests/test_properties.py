@@ -26455,6 +26455,60 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+from generated import registration_papers  # noqa: E402
+
+
+@holds(40, registration_papers())
+def test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """`audit --lookup` asks a registry about each registration number the paper's text
+    names, at the line it stands on: not one in a comment, and not one its reference list
+    cites, which is another study's (`auditing.registration`, Basile, 2026-11-26)."""
+    text, named = drawn
+    read = READINGS["audit registration numbers"]()
+    assert {(number, line) for number, line in read(text)} == named, text
+
+
+def _registration_numbers_read_in_the_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+    from manuscript_guard.auditing import registration
+
+    found = registration.named_in
+
+    def whole(path: Path, hidden: str, text: str) -> list:
+        raw = Path(path).read_bytes().decode("utf-8").replace("\r\n", "\n")
+        return found(path, audit._masked(raw, printed_as_typed=False), raw)
+
+    patch.setattr(registration, "named_in", whole)
+
+
+def _a_registration_number_in_a_comment_is_taken(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import registration
+
+    found = registration.named_in
+    patch.setattr(registration, "named_in", lambda path, hidden, text: found(path, text, text))
+
+
+def _a_registration_number_s_line_counted_in_the_masked_text(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #827: the mask turns a comment's line breaks into no break at all."""
+    from manuscript_guard.auditing import registration
+    from manuscript_guard.registrations import NAMED_IN_TEXT, identify
+
+    def counted(path: Path, hidden: str, text: str) -> list:
+        lines, found = text.split("\n"), []
+        for match in NAMED_IN_TEXT.finditer(hidden):
+            registry, identifier = identify(match.group(0))
+            if registry is None or identifier is None:
+                continue
+            line = hidden.count("\n", 0, match.start()) + 1
+            found.append(registration.Named(identifier, registry, path, line,
+                                            lines[line - 1].strip()[:200]))  # fmt: skip
+        return found
+
+    patch.setattr(registration, "named_in", counted)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -26469,6 +26523,18 @@ BROKEN = {
     "an audited paper's legend opened by Fig. is read as a citation": (
         _a_fig_legend_is_a_citation,
         test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "registration numbers are read in the reference list too": (
+        _registration_numbers_read_in_the_reference_list,
+        test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
+    ),
+    "a registration number in a comment is taken": (
+        _a_registration_number_in_a_comment_is_taken,
+        test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
+    ),
+    "a registration number's line is counted in the masked text": (
+        _a_registration_number_s_line_counted_in_the_masked_text,
+        test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
     ),
     "a PDF's blocks are read in poppler's flow order": (
         _poppler_s_flow_order,

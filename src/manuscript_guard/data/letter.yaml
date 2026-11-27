@@ -40,6 +40,15 @@ kinds:
     Please send a copy without them, or tell us what they are for.
   package-differs: >-
     The reproducibility package and its manifest do not agree. Please check the package.
+  registration-record: >-
+    We read the trial's record in its registry. Please make sure the primary outcome and the
+    dates the paper gives are those registered, or say in the paper what changed and why.
+  registration-late: >-
+    The registry gives the trial's registration date as after its start. Please say in the
+    paper that it was registered retrospectively, and why.
+  registration-unknown: >-
+    The registry does not know a registration number the paper gives. Please check the
+    number.
   # ------------------------------------------------------------ ask the authors
   skewed: >-
     A mean is less than twice its standard deviation for a measure that cannot be negative,

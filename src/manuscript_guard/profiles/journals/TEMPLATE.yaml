@@ -254,6 +254,11 @@ references:
   # true for numbered citations [1], false for author-date (Smith 2019).
   numbered: true
 
+  # The heading the build puts over the reference list, where the page names it other than
+  # "References" ("Literature cited"). Leave it out otherwise: the build writes "References",
+  # and adds no heading where the manuscript has its own just before the list.
+  # heading: "Literature cited"
+
 # ── Reporting guidelines ─────────────────────────────────────────────────────────────────
 #
 # Checklists the journal requires, by the names manuscript-guard knows:

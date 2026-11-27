@@ -30045,10 +30045,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     the page to the command line's code, not to a reader's `pdftotext`. A PDF whose text
     needs poppler-data's character maps (a CJK font with no map of its own to Unicode) gives
     no text for it on the page, where a poppler with poppler-data installed reads it. And a
-    PDF whose reading needs more than the 2 GiB of memory the build can take stops it: the
-    page says pdftotext, or pdfinfo, failed on it, exit 1 with the WebAssembly's error, or,
-    where it had already run past its timeout, that it did not answer in time (below), where
-    a `pdftotext` on a computer may read it. Which build the page runs is held by
+    PDF whose reading needs more than the 2 GiB of memory the build can take stops the
+    program on the page, where one on a computer may go on, and the page says it as the
+    command line says a program that failed, or one that ran past its timeout (below).
+    Which build the page runs is held by
     `tests/test_web.py::test_the_pages_pdftotext_is_the_build_the_lock_pins_with_its_source`;
     what it reads otherwise is not. Accepted.
   - *A program on the page is not stopped at its timeout.* The page cannot stop pdftotext

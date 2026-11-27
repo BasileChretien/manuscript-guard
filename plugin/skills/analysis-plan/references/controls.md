@@ -49,5 +49,6 @@ since that run dated no real result. No design requires a control. Some to consi
 | cohort, case-control, cross-sectional | a negative control outcome the exposure could not cause, or a negative control exposure that shares the biases and has no effect |
 | self-controlled | a negative control outcome, with the same risk windows |
 | disproportionality | drug-event pairs with no known association; a known adverse reaction of a drug in the database as a positive control |
+| diagnostic-accuracy | data simulated with a known condition and known test results, through the analysis code |
 | trial, systematic-review | data simulated with a known effect, through the analysis code |
 | prediction-model | data simulated with a known structure, and the held-out data of [held-out.md](held-out.md) |

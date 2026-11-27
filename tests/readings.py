@@ -1475,6 +1475,24 @@ def _registration_identifiers() -> Reading:
     return NAMED_IN_TEXT.findall
 
 
+@reading("audit registration numbers")
+def _audit_registration_numbers() -> Reading:
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.registration import Named
+
+    def read(text: str) -> list[list[Any]]:
+        """Each registration number a Markdown paper names as `audit` takes it to ask its
+        registry under `--lookup`, with its line: outside the reference list, comments out
+        (`auditing.registration.named_in`)."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "paper.md"
+            path.write_bytes(text.encode("utf-8"))
+            named: list[Named] = audit([path], None).registered
+            return [[one.identifier, one.line] for one in named]
+
+    return read
+
+
 @reading("rrids typed")
 def _rrids_typed() -> Reading:
     from types import SimpleNamespace
@@ -2232,6 +2250,41 @@ def _pdf_headings() -> Reading:
                 # Newer than the reading: a base without it reads none.
                 "run in": sorted(getattr(pdf, "run_in", ())),
                 "placed": None if placed is None else [list(one) for one in placed]}  # fmt: skip
+
+    return read
+
+
+@reading("pdf paragraphs")
+def _pdf_paragraphs() -> Reading:
+    """A PDF laid out (`proof_pdf.laid_out`) read for G6 and G14 (`auditing.pdf_layout`,
+    `auditing.gates._staged_pdf`): its lines rebuilt into paragraphs from where each word is
+    set, each line's place `(page, line, printed)`, its paragraph and the display it is of,
+    and the Markdown G14 and G6 read, with each display's lines. Needs poppler's
+    pdftotext."""
+    import tempfile
+
+    from proof_pdf import knows_word_places, laid_out
+
+    from manuscript_guard.auditing import gates
+    from manuscript_guard.auditing import pdf as pdf_module
+
+    if not knows_word_places():
+        raise Unavailable("the pdftotext found gives no word's place (poppler's does)")
+
+    def read(given: dict[str, Any]) -> dict[str, Any]:
+        data, _places = laid_out(given["pages"], head=given["head"], line_numbers=True)
+        pdf_module._REBUILT.clear()
+        with tempfile.TemporaryDirectory(prefix="mg-reading-") as folder:
+            paper = Path(folder) / "paper.pdf"
+            paper.write_bytes(data)
+            staged = gates._staged_pdf(paper, True)
+        text = staged.placer
+        return {"lines": [[place.page, place.line, place.printed, line, paragraph, display]
+                          for place, line, paragraph, display in zip(
+                              text.places, text.text.split("\n"), text.paragraphs,
+                              text.of_display, strict=True)],
+                "g14": staged.files["main.md"], "g6": staged.cited["main.md"],
+                "displays": [list(span) for span in staged.displays["main.md"]]}  # fmt: skip
 
     return read
 

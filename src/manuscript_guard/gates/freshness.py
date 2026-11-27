@@ -15,6 +15,7 @@ gate off.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
@@ -310,6 +311,7 @@ def _check_built_document(project: Project) -> Report:
                 )
             )
             continue
+        report = report.merge(_citations_not_live(document))
         # Capped: a digest line is 80 bytes, and this is read by a command documented as
         # safe to run on a manuscript someone sent you. An 8 MB sidecar was read whole.
         with stamp.open("rb") as handle:
@@ -329,6 +331,56 @@ def _check_built_document(project: Project) -> Report:
             )
         )
     return report
+
+
+#: A reference list citeproc formatted, as pandoc writes it: the list's bookmark, `refs`,
+#: and straight after it its first entry's, `ref-<key>`. A bookmark `ref-...` alone is no
+#: list: pandoc bookmarks a heading by its id, "Ref-seq results" as `ref-seq-results`
+#: (round 1 of #811).
+_FORMATTED_REFERENCE = re.compile(
+    rb'w:name="refs"[^>]*/>\s*<w:bookmarkStart\b[^>]*\bw:name="ref-[^"]'
+)
+
+
+def _citations_not_live(document: Path) -> Report:
+    """A note where a built document's citations are text rather than Zotero fields.
+
+    Read from the document, never from Zotero: what its build recorded of how its citations
+    were made (`roundtrip.cited_of`), and a reference list formatted as text in it, so that a
+    document citing nothing is noted of nothing. A note at every stage: an offline build is
+    what CI and a co-author without Zotero make, and a journal may want the text; the author
+    who wanted Word's Zotero plugin to keep working learns here that it has nothing to work
+    on (the bisphosphonates paper, 2026-11-25)."""
+    from manuscript_guard.roundtrip import LIVE_CITATIONS, RoundTripError, cited_of
+    from manuscript_guard.safexml import UnsafeDocument, open_archive, read_member
+
+    # Opened with the size caps every document from elsewhere gets: `check` is run on
+    # projects someone sent.
+    try:
+        with open_archive(document) as archive:
+            body = read_member(archive, "word/document.xml")
+        if cited_of(document) == LIVE_CITATIONS:
+            return Report()
+    except (RoundTripError, UnsafeDocument, UnicodeDecodeError):
+        # Properties that are not UTF-8 are not a record this can read (round 1 of #811).
+        return Report()
+    if not _FORMATTED_REFERENCE.search(body):
+        return Report()
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="citations-not-live",
+                severity=INFO,
+                message=f"{document.name} was built --offline: its citations and reference "
+                "list are formatted text, not Zotero fields, so Word's Zotero plugin cannot "
+                "refresh, restyle or add to them",
+                path=document,
+                hint="for Zotero fields, open Zotero with Better BibTeX and run `manuscript-guard "
+                "build` without --offline; the build says what stops a live one",
+            ),
+        )
+    )
 
 
 def _check_digest(path: Path) -> Report:

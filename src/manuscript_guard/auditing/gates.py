@@ -106,11 +106,14 @@ class GateRun:
     #: Whether the lines are lines of a converted text, not of the paper itself.
     converted: bool = False
     #: For a converted .docx, where each line of the converted text stands in the document,
-    #: "Methods, paragraph 3" (`auditing.paragraphs`).
+    #: "Methods, paragraph 3" (`auditing.paragraphs`); for a PDF whose lines were rebuilt
+    #: into paragraphs, those lines (`auditing.pdf.PdfText`), each a page and a line.
     places: object = None
     #: For a .docx whose copy in Track Changes is asked for (`--tracked`), each correction
     #: G14 is sure of; empty otherwise.
     corrections: list[Tracked] = field(default_factory=list)
+    #: For a PDF, what G6 and G14 read of it (`_staged_pdf`), a note of the report's.
+    read: str = ""
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,19 @@ class _Staged:
     #: the top or the foot of its pages (`auditing.pdf.PdfText.repeated`), where G14 asks no
     #: definition of a short form.
     running: dict[str, frozenset[int]] = field(default_factory=dict)
+    #: For a PDF whose lines were rebuilt into paragraphs (`auditing.pdf.read_paragraphs`), by
+    #: the staged file's name, where each display runs in it, `(first, last)` lines from 1,
+    #: which G14 reads as a Word paper's tables and legends (`gates.language._file`); and the
+    #: files as G6 reads them, each superscript citation bracketed, "shown[2-4]". Empty
+    #: otherwise.
+    displays: dict[str, tuple[tuple[int, int], ...]] = field(default_factory=dict)
+    cited: dict[str, str] = field(default_factory=dict)
+    #: For a PDF, what G6 and G14 read of it, said once in the report: its lines rebuilt into
+    #: paragraphs, or not and why; "" where it was not asked.
+    read: str = ""
+    #: For a PDF whose lines were rebuilt, the text that places their findings
+    #: (`auditing.pdf.PdfText`), which is not the one the rest of the audit reads.
+    placer: object = None
 
     @property
     def from_pdf(self) -> frozenset[str]:
@@ -141,18 +157,40 @@ class _Staged:
                          if source.suffix.lower() == ".pdf")  # fmt: skip
 
 
-def _staged_pdf(paper: Path) -> _Staged:
+#: What G6 and G14 are said to have read of a PDF whose lines were rebuilt into paragraphs,
+#: and of one whose lines were not, with why (`_staged_pdf`).
+REBUILT = ("{name}: G6 and G14 read its lines rebuilt into paragraphs from where each word "
+           "is set ({reader}), its tables and legends as displays, as a Word paper's; their "
+           "findings' places count the lines down each page in reading order, left column "
+           "first")
+NOT_REBUILT = ("{name}: G6 and G14 read its lines as pdftotext gives them, not rebuilt into "
+               "paragraphs, its tables and legends as its text: {why}")
+
+
+def _staged_pdf(paper: Path, paragraphs: bool = False) -> _Staged:
     """A PDF's text as the Markdown G4, G6 and G14 read: each line of it a line, and each line
     that holds a section's name alone (`auditing.pdf.heading_title`) a heading, a blank line
     before and after it, a structured abstract's a heading under the Abstract's where it can
     be placed (`PdfText.placed`), with the line of the text each line of the Markdown is. A
     run-in label's heading has the rest of its line under it; the keywords' rest is a
     paragraph of its own, the list of the paper's keywords G14 reads in the Abstract's
-    scope, and the lines after it the main text's (`gates.language._keywords_lists`)."""
-    from manuscript_guard.auditing.pdf import UnreadablePdf, after_label, read_pdf
+    scope, and the lines after it the main text's (`gates.language._keywords_lists`).
+
+    With `paragraphs`, for G6 and G14 alone, the lines are those rebuilt from where each word
+    is set (`auditing.pdf.read_paragraphs`, `_staged_paragraphs`). Where they cannot be
+    rebuilt, Xpdf's pdftotext being the one found among the reasons, the lines are staged as
+    without it, and `read` says why (the author, 2026-11-26, answer 1)."""
+    from manuscript_guard.auditing.pdf import UnreadablePdf, after_label, read_paragraphs, read_pdf
+    from manuscript_guard.auditing.pdf_layout import NotRebuilt
     from manuscript_guard.text.section_names import names_keywords
 
+    note = ""
     try:
+        if paragraphs:
+            try:
+                return _staged_paragraphs(paper, read_paragraphs(paper))
+            except NotRebuilt as exc:
+                note = NOT_REBUILT.format(name=paper.name, why=exc)
         pdf = read_pdf(paper)
     except UnreadablePdf as exc:
         raise ValueError(str(exc)) from None
@@ -178,19 +216,106 @@ def _staged_pdf(paper: Path) -> _Staged:
         lines += [at] * len(said)
     return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),
                    unplaced=placed is None, said=pdf.said,
-                   running={"main.md": frozenset(running)})  # fmt: skip
+                   running={"main.md": frozenset(running)}, read=note)  # fmt: skip
 
 
-def _stage(paper: Path, tree=None) -> _Staged:
-    """What the manuscript folder holds for `paper`, by path, and where each file came from.
-    Raises ValueError with what to say where it cannot be staged."""
+def _staged_paragraphs(paper: Path, pdf) -> _Staged:
+    """A PDF's lines rebuilt into paragraphs (`auditing.pdf.read_paragraphs`) staged as
+    `_staged_pdf` stages its lines, with a blank line between two paragraphs, each display
+    one block that opens with its legend, whose lines G14 is given (`_Staged.displays`); a
+    short form broken at a line's end, "RE-" then "AIM", joined on its first line
+    (`_joined`); and G6's copy of the text with each superscript citation bracketed. Each
+    staged line is still one line of the text, and the text places their findings."""
+    from manuscript_guard.auditing.pdf import after_label
+    from manuscript_guard.text.section_names import names_keywords
+
+    placed = pdf.placed
+    levels = ({line: (title, level) for line, title, level in placed} if placed is not None
+              else {line: (title, 1) for line, title in pdf.headings})  # fmt: skip
+    texts, cited = _joined(pdf.text.split("\n"), list(pdf.cited), pdf.paragraphs, levels)
+    staged: list[str] = []
+    marked: list[str] = []
+    lines: list[int] = []
+    repeated = pdf.repeated
+    running: list[int] = []
+    displays: dict[int, list[int]] = {}
+    previous = None
+    for at, text in enumerate(texts, 1):
+        if at in levels:
+            said = ["", f"{'#' * levels[at][1]} {levels[at][0]}", ""]
+            if at in pdf.run_in:
+                said.append(after_label(text))
+                if names_keywords(levels[at][0]):
+                    said.append("")
+            staged += said
+            marked += said
+            lines += [at] * len(said)
+            previous = None
+            continue
+        if not text:
+            # The rest of a short form joined on the line before it.
+            continue
+        gap = [""] if previous is not None and pdf.paragraphs[at - 1] != previous else []
+        previous = pdf.paragraphs[at - 1]
+        if at in repeated:
+            running.append(len(staged) + len(gap) + 1)
+        display = pdf.of_display[at - 1]
+        if display is not None:
+            displays.setdefault(display, []).append(len(staged) + len(gap) + 1)
+        staged += [*gap, text]
+        marked += [*gap, cited[at - 1]]
+        lines += [at] * (len(gap) + 1)
+    return _Staged({"main.md": "\n".join(staged) + "\n"}, {"main.md": paper}, lines=tuple(lines),
+                   unplaced=placed is None, said=pdf.said,
+                   running={"main.md": frozenset(running)},
+                   displays={"main.md": tuple((min(at), max(at)) for at in displays.values())},
+                   cited={"main.md": "\n".join(marked) + "\n"},
+                   read=REBUILT.format(name=paper.name, reader=pdf.reader.split(",")[0]),
+                   placer=pdf)  # fmt: skip
+
+
+#: A short form broken at a line's end: its first part, ending on a capital or a digit,
+#: and the hyphen; and its rest at the next line's start, a capital or a digit first.
+_BROKEN_FORM = re.compile(r"(\S*[A-Z0-9])-$")
+_FORM_REST = re.compile(r"[A-Z0-9][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*(?=[^\w-]|$)")
+
+
+def _joined(texts: list[str], cited: list[str], paragraphs: tuple[int, ...],
+            headings: dict) -> tuple[list[str], list[str]]:  # fmt: skip
+    """The lines, and G6's copy of them, with each short form broken at a line's end, "RE-"
+    then "AIM", joined on the first of two lines of one paragraph, where its two parts hold
+    two capitals or more between them and neither line is a heading (`headings`, by line
+    from 1). A long form keeps G14's way of being joined (`gates.language._rejoined`, #784).
+    The second line keeps the rest of its words; it is empty where it held the rest alone."""
+    texts, cited = list(texts), list(cited)
+    for at in range(len(texts) - 1):
+        if paragraphs[at] != paragraphs[at + 1] or at + 1 in headings or at + 2 in headings:
+            continue
+        first, rest = _BROKEN_FORM.search(texts[at]), _FORM_REST.match(texts[at + 1])
+        if first is None or rest is None:
+            continue
+        if sum(char.isupper() for char in first.group(1) + rest.group()) < 2:
+            continue
+        word = rest.group()
+        texts[at] += word
+        texts[at + 1] = texts[at + 1][rest.end():].lstrip()
+        if cited[at].endswith("-") and cited[at + 1].startswith(word):
+            cited[at] += word
+            cited[at + 1] = cited[at + 1][len(word):].lstrip()
+    return texts, cited
+
+
+def _stage(paper: Path, tree=None, paragraphs: bool = False) -> _Staged:
+    """What the manuscript folder holds for `paper`, by path, and where each file came from,
+    a PDF's lines rebuilt into paragraphs where `paragraphs` (`_staged_pdf`). Raises
+    ValueError with what to say where it cannot be staged."""
     from manuscript_guard.audit import read_text
     from manuscript_guard.contracts._schema import ContractError
     from manuscript_guard.text.latex.encodings import CODECS, as_utf8
 
     suffix = paper.suffix.lower()
     if suffix == ".pdf":
-        return _staged_pdf(paper)
+        return _staged_pdf(paper, paragraphs)
     if suffix == ".docx":
         from manuscript_guard import from_word
         from manuscript_guard.build.document import BuildError, pandoc
@@ -265,25 +390,33 @@ def run_gates(
     residue: bool = False,
     known: tuple[str, ...] = (),
     corrected: bool = False,
+    paragraphs: bool = False,
 ) -> GateRun:
     """G6 and G14 on `paper`, its LaTeX tree given where it is one; and, `corrected`, G14's
     corrections of a .docx for the copy `--tracked` writes, which are worked out only where
-    that copy is asked for (Basile, 2026-11-12: "only when asked")."""
+    that copy is asked for (Basile, 2026-11-12: "only when asked"). With `paragraphs`, a
+    PDF's lines are rebuilt into paragraphs where they can be (`_staged_pdf`), as `audit`
+    reads one; `compare` reads its lines as before (the author, 2026-11-26, answer 4)."""
     from manuscript_guard.gates.language import check_language
     from manuscript_guard.gates.writing import check_writing
 
     try:
-        staged = _stage(paper, tree)
+        staged = _stage(paper, tree, paragraphs)
     except ValueError as exc:
         return GateRun(paper, note=f"G6 and G14 were not run on {paper.name}: {exc}")
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
-        project = audit_project(root, staged, english, known)
+        # G6 reads the copy with each superscript citation bracketed, G14 the text as set.
+        project = audit_project(root, replace(staged, files={**staged.files, **staged.cited}),
+                                english, known)  # fmt: skip
         put_back = _putting_back(root / "manuscript", staged.back, staged.lines, staged.said,
                                  word=staged.converted)  # fmt: skip
         try:
             writing = check_writing(project, submission=residue)
-            language = check_language(project, running=staged.running, pdf=staged.from_pdf)
+            if staged.cited:
+                project = audit_project(root, staged, english, known)
+            language = check_language(project, running=staged.running, pdf=staged.from_pdf,
+                                      displays=staged.displays)  # fmt: skip
         except Exception as exc:  # noqa: BLE001 - a gate that raised is said, not hidden
             from manuscript_guard.diagnostics import crashes
 
@@ -313,8 +446,10 @@ def run_gates(
             language=list(Report(tuple(measured(f, read_from=read_from)
                                        for f in said)).sorted().findings),
             converted=staged.converted,
-            places=staged.places,
+            # A PDF's rebuilt lines place the findings G6 and G14 gave on them.
+            places=staged.placer if staged.placer is not None else staged.places,
             corrections=corrections,
+            read=staged.read,
         )
 
 

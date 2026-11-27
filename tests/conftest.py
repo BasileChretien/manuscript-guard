@@ -44,6 +44,13 @@ REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
 #: unless latexmk is on PATH and pdfLaTeX is that TeX Live (step 9).
 REQUIRE_LATEX = "MANUSCRIPT_GUARD_REQUIRE_LATEX"
 
+#: Set by CI to the poppler it installs, as `pdftotext -v` names its version ("24.04.0").
+#: The tests that rebuild a PDF's paragraphs from where each word is set skip where the
+#: pdftotext found (`auditing.pdf_layout.program`: the one `MANUSCRIPT_GUARD_POPPLER` names,
+#: else the one on PATH) is not poppler's; with this set, the suite refuses to start unless
+#: it is that poppler's.
+REQUIRE_POPPLER = "MANUSCRIPT_GUARD_REQUIRE_POPPLER"
+
 #: The version on the line that names the program, wherever that line falls in the output.
 #: pandoc 3.8 and later print "pandoc"; earlier releases print the name they were started
 #: by, which on Windows ends in ".exe", in whatever case `shutil.which` gave the path.
@@ -72,6 +79,11 @@ os.environ["MANUSCRIPT_GUARD_REPORTS"] = str(_FOR_THIS_RUN / "reports")
 #: tests/test_generated_sessions.py took an import that raised for one that wrote nothing.
 #: The tests of the sentence and the record lift it.
 os.environ["MANUSCRIPT_GUARD_DEBUG"] = "1"
+#: And no test asks the Zotero of the machine it runs on, in this process or in one it
+#: starts: with Zotero open, G7's ping and lookup in every `check` and the probe of every
+#: build read the real library (round 2 of #811). A test marked `real_zotero` is let
+#: through (`zotero_kept_away`), and a test that fakes the transport lifts it in the test.
+os.environ["MANUSCRIPT_GUARD_NO_ZOTERO"] = "1"
 
 #: `communicate publish --post` and `communicate orcid` send nothing while this is set: a test
 #: that forgot to give its own transport fails rather than posting under somebody's name. A
@@ -93,6 +105,8 @@ _TERMINAL: int | None = None
 
 #: The mark of a test that reads a clock. See `pytest_collection_modifyitems`.
 TIMING = "timing"
+#: The mark of a test that asks the Zotero running on this machine. See `zotero_kept_away`.
+REAL_ZOTERO = "real_zotero"
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -100,11 +114,13 @@ def pytest_configure(config: pytest.Config) -> None:
     needs it. Unset, a missing pandoc still skips them."""
     global _TERMINAL
     config.addinivalue_line("markers", f"{TIMING}: reads a clock; CI runs it apart, in one process")
+    config.addinivalue_line("markers", f"{REAL_ZOTERO}: asks the Zotero running on this machine")
     try:
         _TERMINAL = os.dup(sys.stderr.fileno())
     except (AttributeError, OSError, ValueError):
         _TERMINAL = None
     _require_latex()
+    _require_poppler()
     wanted = os.environ.get(REQUIRE_PANDOC, "").strip()
     if not wanted:
         return
@@ -129,6 +145,24 @@ def pytest_configure(config: pytest.Config) -> None:
         raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
 
 
+@pytest.fixture(autouse=True)
+def zotero_kept_away(request: pytest.FixtureRequest):
+    """No test asks the Zotero of the machine it runs on (MANUSCRIPT_GUARD_NO_ZOTERO, set
+    above), unless the test is marked `real_zotero`: for it the switch is lifted. A test that
+    wants Zotero to answer otherwise patches it in its own way.
+
+    With a patch of its own, not the `monkeypatch` fixture: an autouse fixture that asks for
+    `monkeypatch` sets it up before every other fixture of every test, so it is undone after
+    them, and a test's own patch of `os.open` was still in place while `tmp_path` was removed
+    (`shutil.rmtree` calls `os.open(..., dir_fd=...)` on Linux; CI of #811)."""
+    if request.node.get_closest_marker(REAL_ZOTERO) is None:
+        yield
+        return
+    with pytest.MonkeyPatch.context() as patch:
+        patch.delenv("MANUSCRIPT_GUARD_NO_ZOTERO", raising=False)
+        yield
+
+
 def _require_latex() -> None:
     """Where LaTeX is required, refuse to start without the TeX Live named."""
     wanted = os.environ.get(REQUIRE_LATEX, "").strip()
@@ -144,6 +178,32 @@ def _require_latex() -> None:
     first = printed.splitlines()[0] if printed else "nothing"
     if wanted not in first:
         raise pytest.UsageError(f"{REQUIRE_LATEX}={wanted}, but pdflatex on PATH is {first}")
+
+
+def _require_poppler() -> None:
+    """Where poppler is required, refuse to start unless the pdftotext the audit rebuilds a
+    PDF's paragraphs with is that poppler's."""
+    wanted = os.environ.get(REQUIRE_POPPLER, "").strip()
+    if not wanted:
+        return
+    from manuscript_guard.auditing.pdf_layout import POPPLER, program
+
+    found = program()
+    if found is None:
+        raise pytest.UsageError(f"{REQUIRE_POPPLER}={wanted}, but no pdftotext is on PATH "
+                                f"and {POPPLER} names none")  # fmt: skip
+    try:
+        done = subprocess.run([found, "-v"], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=60, check=False)  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise pytest.UsageError(f"{REQUIRE_POPPLER}={wanted}, but {found} did not run: {exc}") \
+            from exc
+    said = f"{done.stdout}\n{done.stderr}"
+    version = re.search(r"pdftotext version (\S+)", said)
+    found_version = version.group(1) if version else "unreadable"
+    if "Poppler" not in said or found_version != wanted:
+        raise pytest.UsageError(f"{REQUIRE_POPPLER}={wanted}, but {found} is pdftotext "
+                                f"{found_version}{'' if 'Poppler' in said else ', not poppler'}")
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

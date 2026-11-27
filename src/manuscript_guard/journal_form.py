@@ -95,7 +95,10 @@ STATEMENTS: dict[str, Statement] = {
         "The registry and the trial's number in it.",
     ),
     "use-of-ai": Statement(
-        "Use of AI", "Declaration of generative AI",
+        # Elsevier's heading in full, as a heading is matched whole, and the shorter ones
+        # other journals print.
+        "Use of AI", "Declaration of generative AI and AI-assisted technologies in the "
+        "writing process or Declaration of generative AI or Use of AI",
         "Whether and how AI tools were used in the work or the writing.",
     ),
 }

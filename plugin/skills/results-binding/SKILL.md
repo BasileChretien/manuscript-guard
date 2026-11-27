@@ -64,7 +64,8 @@ What the emitter holds you to:
 - Keys are lower case, dotted: `cohort.n_reports`. Table keys take no dots. A bad key is
   not caught when emitting; the whole fragment then fails the schema at `check`, and none of
   its values load.
-- One namespace covers all scripts. A key published by two scripts is `duplicate-key`.
+- One namespace covers all scripts. A key two publish is `duplicate-key`; one
+  `software()` version is not.
 - Inputs are declared, and their digests recorded. Change the data and G1 says which
   results are stale.
 - Data that are not the real data are declared so: `em.add_input("data/simulated.csv",

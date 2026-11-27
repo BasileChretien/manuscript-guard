@@ -34,7 +34,7 @@ from manuscript_guard.build import (
     build_document,
 )
 from manuscript_guard.build.assemble import check_shapes
-from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.document import ZoteroNotReady, abbreviations
 from manuscript_guard.build.latex_check import check_latex
 from manuscript_guard.build.latex_values import check_values
 from manuscript_guard.build.tex_check import check_tex
@@ -2959,15 +2959,23 @@ def _audit(args: argparse.Namespace, package) -> int:
         # G14's corrections only for the paper `--tracked` copies (Basile, 2026-11-12).
         *(run_gates(path, english=english, residue=args.submission_residue, known=known,
                     corrected=(args.tracked is not None or CORRECTED)
-                    and Path(path).resolve() == args.paper[0].resolve())
+                    and Path(path).resolve() == args.paper[0].resolve(), paragraphs=True)
           for path in papers if path.suffix.lower() != ".tex" and path in read),
         *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue,
                     known=known)
           for tree in report.trees),
     ]  # fmt: skip
+    # What G6 and G14 read of a PDF, its lines rebuilt into paragraphs or not and why.
+    report.not_audited += [Notice(run.read, f"{Path(run.paper).name} paragraphs")
+                           for run in report.gates if run.read]  # fmt: skip
     if args.lookup:
         report.lookups, report.titles = look_up_all(report.references, dry_run=args.dry_run,
                                                     cache=args.lookup_cache)  # fmt: skip
+        if report.registered:
+            from manuscript_guard.auditing.registration import look_up as registration
+
+            report.registration = registration(report.registered, dry_run=args.dry_run,
+                                               cache=args.lookup_cache)  # fmt: skip
     if reader is not None:
         _read_as_reader(report, reader, args.paper[0], papers, english)
         if reader.authors is not None or args.lookup:
@@ -3170,6 +3178,16 @@ def cmd_journal(args: argparse.Namespace) -> int:
     return 0
 
 
+def _seconds(given: str) -> int:
+    """`--timeout`'s value: a whole number of seconds, from 1 to seven days."""
+    from manuscript_guard.verify import VerifyError, seconds
+
+    try:
+        return seconds(given, "--timeout")
+    except VerifyError as exc:
+        raise argparse.ArgumentTypeError(str(exc).removeprefix("--timeout is ")) from None
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Re-run the analysis and check it still produces the recorded results.
 
@@ -3183,9 +3201,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
     if args.receipt is not None:
-        return _receipt(project, args.receipt, args.only)
+        return _receipt(project, args.receipt, args.only, rscript=args.rscript,
+                        timeout=args.timeout)  # fmt: skip
     try:
-        result = verify(project, only=args.only)
+        result = verify(project, only=args.only, rscript=args.rscript, timeout=args.timeout)
     except VerifyError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -3204,7 +3223,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
-def _receipt(project, site: str, only: list[str] | None) -> int:
+def _receipt(project, site: str, only: list[str] | None, *, rscript: str | None = None,
+             timeout: int | None = None) -> int:  # fmt: skip
     """`verify --receipt SITE`, run where the data are: each harvest entry naming the site
     run in a copy, and the receipt written."""
     from manuscript_guard.harvest import HarvestError, make_receipt
@@ -3214,7 +3234,7 @@ def _receipt(project, site: str, only: list[str] | None) -> int:
               "--only", file=sys.stderr)  # fmt: skip
         return 2
     try:
-        path, written, warned = make_receipt(project, site)
+        path, written, warned = make_receipt(project, site, rscript=rscript, timeout=timeout)
     except HarvestError as exc:
         print(f"manuscript-guard: no receipt written: {exc}", file=sys.stderr)
         return 1
@@ -4820,13 +4840,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         try:
             return _build_annotated(project, namespace, results, assembled, args)
         except BuildError as exc:
-            print(f"manuscript-guard: {exc}", file=sys.stderr)
-            if not args.offline:
-                print(
-                    "  If Zotero is not running, `--offline` formats citations from "
-                    "references.bib instead.",
-                    file=sys.stderr,
-                )
+            _said_build_error(exc, args.offline)
             return 2
 
     mode = OFFLINE if args.offline else LIVE
@@ -4846,13 +4860,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 1
     except BuildError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        if not args.offline:
-            print(
-                "  If Zotero is not running, `--offline` formats citations from "
-                "references.bib instead.",
-                file=sys.stderr,
-            )
+        _said_build_error(exc, args.offline)
         return 2
 
     print(f"built {result.output} ({result.mode})")
@@ -4878,6 +4886,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
+    if mode == OFFLINE:
+        _said_offline_citations(project, result, supplement)
     # Built, and said, but not to be sent: the journal's review is blind and the document
     # names an author. The supplement's findings were printed as it was built.
     from manuscript_guard.build.blinding import CODE, check_blinded
@@ -4927,6 +4937,52 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("The document names an author, or could not be read for their names, and the "
               "journal's review is blind: do not send it.")  # fmt: skip
     return 1 if named or hidden else 0
+
+
+def _said_build_error(exc: BuildError, offline: bool) -> None:
+    """A build that could not run, said. A live build Zotero could not have made says its
+    own reason (`ZoteroNotReady`); any other names `--offline` in case Zotero was the cause."""
+    print(f"manuscript-guard: {exc}", file=sys.stderr)
+    if not offline and not isinstance(exc, ZoteroNotReady):
+        print(
+            "  If Zotero is not running, `--offline` formats citations from "
+            "references.bib instead.",
+            file=sys.stderr,
+        )
+
+
+def _said_offline_citations(project, result, supplement: Path | None) -> None:
+    """What an offline build's citations are, and whether a live build would work now.
+
+    The document built `--offline` holds its citations as text, and nothing said so: the
+    author found out in Word, where the Zotero plugin had nothing to refresh. Said only of a
+    document that cites something; Zotero is asked, read-only, what a live build would meet
+    (`zotero.readiness`)."""
+    from manuscript_guard.build.document import outside_code, zotero_not_ready
+    from manuscript_guard.zotero import BUSY, client, find_citations
+
+    keys = set(result.citations)
+    if supplement is not None:
+        source = project.path("build") / f"{supplement.stem}.md"
+        with contextlib.suppress(OSError):
+            text = outside_code(source.read_text(encoding="utf-8"))
+            keys |= {use.citekey for use in find_citations(text, source)}
+    if not keys:
+        return
+    print("  The citations are formatted text from literature/references.bib, not Zotero "
+          "fields: Word's Zotero plugin cannot refresh, restyle or add to them.")  # fmt: skip
+    found = client.readiness(tuple(sorted(keys)))
+    if found.ready:
+        print("  A live build would work now: Zotero and Better BibTeX answer and hold every "
+              "cited key. Build without --offline for Zotero fields.")  # fmt: skip
+        return
+    if found.state == BUSY:
+        print("  Whether a live build would work now is not known: Zotero is running and "
+              "Better BibTeX did not answer in time. Build without --offline to try.")  # fmt: skip
+        return
+    why, what = zotero_not_ready(found)
+    print(f"  A live build would not work now: {why}. For Zotero fields, {what}, then build "
+          "without --offline.")  # fmt: skip
 
 
 def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Path | None:
@@ -7094,8 +7150,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="ask Crossref and OpenAlex about each DOI of the reference list, DataCite and "
         "then doi.org about one Crossref has no record of, and PubMed about each PMID, "
         "whether the work was retracted, withdrawn or put under concern, or is not "
-        "registered, and with --cited Europe PMC about each cited work's abstract; nothing "
-        "is sent without it",
+        "registered, Crossref about the title of an entry with neither, ClinicalTrials.gov "
+        "or ISRCTN about each of their numbers the paper names outside its reference list, "
+        "and with --cited "
+        "Europe PMC about each cited work's abstract; nothing is sent without it",
     )
     audit.add_argument(
         "--dry-run",
@@ -7357,6 +7415,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="at the site that holds the data: run each harvest entry naming SITE in a copy, "
         "and write receipts/SITE.receipt.json of what ran and what came out, by digest; "
         "refused where an output holds a count the custodian forbids",
+    )
+    verify.add_argument(
+        "--rscript",
+        metavar="PATH",
+        help="the Rscript to run R scripts with, for this run; MANUSCRIPT_GUARD_RSCRIPT names "
+        "it for the machine, and otherwise the first Rscript on PATH runs them. Each script is "
+        "said with the interpreter and version that ran it",
+    )
+    verify.add_argument(
+        "--timeout",
+        type=_seconds,
+        metavar="SECONDS",
+        help="how long one script may run before it is stopped, at most 604800 (7 days); "
+        "otherwise MANUSCRIPT_GUARD_VERIFY_TIMEOUT, then `verify: {timeout: SECONDS}` in "
+        "paper.yaml, then 1800",
     )
     verify.set_defaults(func=cmd_verify)
 

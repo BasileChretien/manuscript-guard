@@ -20,19 +20,27 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 REQUIRE = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
+REQUIRE_POPPLER = "MANUSCRIPT_GUARD_REQUIRE_POPPLER"
+POPPLER = "MANUSCRIPT_GUARD_POPPLER"
 PANDOC = shutil.which("pandoc")
 needs_pandoc = pytest.mark.skipif(PANDOC is None, reason="pandoc is not installed")
 
 
-def collect(required: str | None, *, path: Path | None = None) -> tuple[int, str]:
+def collect(required: str | None, *, path: Path | None = None,
+            poppler: str | None = None) -> tuple[int, str]:  # fmt: skip
     """Start a session that only collects this file, and say how it ended. With `path`,
-    that is the whole PATH."""
-    env = {key: value for key, value in os.environ.items() if key != REQUIRE}
+    that is the whole PATH; with `poppler`, the poppler required. CI's own requirement of
+    poppler, and the pdftotext it names, are not passed on: with PATH emptied, the session
+    would refuse to start for want of them before reading pandoc's."""
+    env = {key: value for key, value in os.environ.items()
+           if key not in (REQUIRE, REQUIRE_POPPLER, POPPLER)}  # fmt: skip
     # Only this repository's conftest is under test, and third-party plugins found on a
     # crowded machine took most of a start of 20 seconds.
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     if required is not None:
         env[REQUIRE] = required
+    if poppler is not None:
+        env[REQUIRE_POPPLER] = poppler
     if path is not None:
         env["PATH"] = str(path)
     finished = subprocess.run(
@@ -136,3 +144,48 @@ def test_without_the_requirement_a_missing_pandoc_only_skips(tmp_path: Path) -> 
     """A contributor without pandoc still gets a run: the tests that need it skip."""
     code, output = collect(None, path=tmp_path)
     assert code == pytest.ExitCode.OK, output
+
+
+def fake_pdftotext(folder: Path, *lines: str) -> Path:
+    """A pdftotext that prints `lines` whatever it is asked, as `-v` prints its version."""
+    if os.name == "nt":
+        target = folder / "pdftotext.cmd"
+        body = "@echo off\r\n" + "".join(f"echo {line}\r\n" for line in lines)
+    else:
+        target = folder / "pdftotext"
+        body = "#!/bin/sh\n" + "".join(f"echo '{line}'\n" for line in lines)
+    target.write_bytes(body.encode("utf-8"))
+    target.chmod(0o755)
+    return folder
+
+
+def test_a_required_poppler_that_is_missing_stops_the_run(tmp_path: Path) -> None:
+    """CI installs poppler for the tests that rebuild a PDF's paragraphs, which skip
+    without it; with no pdftotext found the session does not start."""
+    code, output = collect(None, path=tmp_path, poppler="24.04.0")
+    assert code == pytest.ExitCode.USAGE_ERROR, output
+    assert "no pdftotext is on PATH" in output
+
+
+def test_a_required_poppler_that_is_xpdf_stops_the_run(tmp_path: Path) -> None:
+    """Git for Windows' pdftotext is Xpdf's, which gives no word's place."""
+    folder = fake_pdftotext(tmp_path, "pdftotext version 4.04",
+                            "Copyright 1996-2022 Glyph & Cog, LLC")  # fmt: skip
+    code, output = collect(None, path=folder, poppler="24.04.0")
+    assert code == pytest.ExitCode.USAGE_ERROR, output
+    assert "not poppler" in output
+
+
+def test_the_required_poppler_starts_the_run(tmp_path: Path) -> None:
+    folder = fake_pdftotext(tmp_path, "pdftotext version 24.04.0",
+                            "Copyright 2005-2024 The Poppler Developers")  # fmt: skip
+    code, output = collect(None, path=folder, poppler="24.04.0")
+    assert code == pytest.ExitCode.OK, output
+
+
+def test_another_poppler_than_the_one_required_stops_the_run(tmp_path: Path) -> None:
+    folder = fake_pdftotext(tmp_path, "pdftotext version 25.01.0",
+                            "Copyright 2005-2025 The Poppler Developers")  # fmt: skip
+    code, output = collect(None, path=folder, poppler="24.04.0")
+    assert code == pytest.ExitCode.USAGE_ERROR, output
+    assert "pdftotext 25.01.0" in output

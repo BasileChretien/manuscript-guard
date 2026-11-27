@@ -145,6 +145,29 @@ const DESIGNS = ["observational", "trial"];
 const labels = (typed) => typed.map((label) => label.trim())
   .filter((label) => label && !label.startsWith("-"));
 
+// A paper's project as an archive: a .zip, as Overleaf downloads one, or a .tar.gz, as
+// arXiv gives a paper's source (`unpack.ARCHIVES`).
+const ARCHIVE = /\.(zip|tar\.gz|tgz)$/i;
+
+// The archive written outside the folder the audit reads, unpacked into a folder of it named
+// after the archive with the checks a package's .zip is held to (`web.unpack_paper`), and
+// the archive itself removed: the folder's name, or the refusal, which says why.
+function unpacked(paper, paperName) {
+  const archive = "/upload/" + paperName;
+  py.FS.writeFile(archive, new Uint8Array(paper.data));
+  py.globals.set("ARCHIVE", archive);
+  const said = JSON.parse(py.runPython(`import json, os
+from manuscript_guard import web
+try:
+    said = json.dumps(web.unpack_paper(ARCHIVE, "/work"))
+finally:
+    if os.path.exists(ARCHIVE): os.remove(ARCHIVE)
+said`));
+  py.globals.delete("ARCHIVE");
+  if (said.error) throw new Error(said.error);
+  return said.folder;
+}
+
 // The names the page gives the files its journal form makes, which no file chosen may have.
 const FORM_FILES = { profile: "journal.yaml", authors: "authors.yaml" };
 
@@ -160,33 +183,59 @@ function formFiles(journal, authors, chosen) {
       + `${clash[0] === "profile" ? "journal's profile" : "authors' names"} it makes: rename it`);
   }
   if (!journal && !authors) return {};
-  py.globals.set("JOURNAL", journal ? py.toPy(journal) : null);
-  py.globals.set("AUTHORS", authors ? py.toPy(authors) : null);
+  // Only what the form gives is set, and what it does not is None in the call itself: a
+  // JavaScript null reaches Python as JsNull, which is not None, and a profile was then made
+  // of nothing (round 1 of #791, the authors' boxes beside a profile not the form's).
+  const given = Object.entries({ JOURNAL: journal, AUTHORS: authors }).filter(([, value]) => value);
+  for (const [name, value] of given) py.globals.set(name, py.toPy(value));
   const said = JSON.parse(py.runPython(`import json
 from manuscript_guard import web
-json.dumps(web.journal_files(JOURNAL, AUTHORS))`));
-  py.globals.delete("JOURNAL");
-  py.globals.delete("AUTHORS");
+json.dumps(web.journal_files(${journal ? "JOURNAL" : "None"}, ${authors ? "AUTHORS" : "None"}))`));
+  for (const [name] of given) py.globals.delete(name);
   if (said.error) throw new Error(`the journal's form: ${said.error}`);
   return Object.fromEntries(Object.keys(FORM_FILES).filter((kind) => said[kind] !== undefined)
     .map((kind) => [FORM_FILES[kind], said[kind]]));
 }
 
+// A journal the page's host offers (web/build.py --host): its profile, as the host gave it,
+// written under journals/ as the host's own folder holds it, where the command line is given
+// it as `--journal journals/<slug>.yaml`.
+const OFFERED = /^journals\/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.yaml$/;
+const OFFERED_FOLDER = "journals";
+
 function run({ paper, against, lookup, details, english = "", known = [], noAbstract = false,
   noResults = false, results = "", tracked = false, design = "", wholeNumbers = [],
   binary = [], nonNegative = [], minimumCellCount = "", journal = null, journalFile = null,
-  authors = null, authorsFile = null }) {
+  offered = null, authors = null, authorsFile = null }) {
+  if (offered && !OFFERED.test(offered.file)) {
+    throw new Error(`the page offers no journal's profile named ${offered.file}`);
+  }
   const own = [journalFile, authorsFile].filter(Boolean);
   const chosen = names([paper, ...against, ...own]);
   const [paperName, ...outputNames] = chosen.slice(0, 1 + against.length);
-  const made = formFiles(journalFile ? null : journal, authorsFile ? null : authors, chosen);
+  const made = formFiles(journalFile || offered ? null : journal, authorsFile ? null : authors,
+    chosen);
+  // A LaTeX project as a .zip or a .tar.gz is unpacked into a folder named after it, and the
+  // audit is given the folder, as the command line is given the one the reader unpacks.
+  const archived = ARCHIVE.test(paperName);
+  if (archived && chosen.includes(paperName.replace(ARCHIVE, ""))) {
+    throw new Error(`a file chosen is named ${paperName.replace(ARCHIVE, "")}, the name of the `
+      + `folder ${paperName} is unpacked into: rename it`);
+  }
+  if (offered && (chosen.includes(OFFERED_FOLDER)
+      || (archived && paperName.replace(ARCHIVE, "") === OFFERED_FOLDER))) {
+    throw new Error(`a file chosen is named ${OFFERED_FOLDER}, the folder the page puts the `
+      + "journal's profile in: rename it");
+  }
   py.runPython(`import os, shutil
 os.chdir("/")
 shutil.rmtree("/work", ignore_errors=True)
 os.makedirs("/work", exist_ok=True)
+os.makedirs("/upload", exist_ok=True)
 os.chdir("/work")`);
-  py.FS.writeFile("/work/" + paperName, new Uint8Array(paper.data));
-  const args = ["audit", argument(paperName)];
+  const given = archived ? unpacked(paper, paperName) : paperName;
+  if (!archived) py.FS.writeFile("/work/" + paperName, new Uint8Array(paper.data));
+  const args = ["audit", argument(given)];
   if (against.length) {
     args.push("--against");
     against.forEach((file, at) => {
@@ -196,8 +245,15 @@ os.chdir("/work")`);
   }
   for (const file of own) py.FS.writeFile("/work/" + file.name, new Uint8Array(file.data));
   for (const [name, text] of Object.entries(made)) py.FS.writeFile("/work/" + name, text);
-  // The journal's rules and the authors' names, a file of the reader's or the form's.
-  const profileName = journalFile ? journalFile.name : made[FORM_FILES.profile] && FORM_FILES.profile;
+  if (offered) {
+    py.runPython(`import os
+os.makedirs("/work/${OFFERED_FOLDER}", exist_ok=True)`);
+    py.FS.writeFile("/work/" + offered.file, new Uint8Array(offered.data));
+  }
+  // The journal's rules and the authors' names: the journal the page offers that was chosen
+  // (app.js then sends no profile of the reader's), a file of the reader's, or the form's.
+  const profileName = offered ? offered.file : journalFile ? journalFile.name
+    : made[FORM_FILES.profile] && FORM_FILES.profile;
   const authorsName = authorsFile ? authorsFile.name : made[FORM_FILES.authors] && FORM_FILES.authors;
   if (profileName) args.push("--journal", argument(profileName));
   if (authorsName) args.push("--authors", argument(authorsName));

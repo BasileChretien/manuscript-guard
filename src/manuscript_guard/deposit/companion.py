@@ -463,10 +463,10 @@ def companion_html(project: Project, results: Results, entries: list[Entry],
     from .companion_evidence import evidence
     from .companion_parts import displays_section, limitations, methods, verification
 
-    results = _ordered(results)
     entries = sorted(entries, key=lambda entry: entry.path)
     inputs = sorted(inputs, key=lambda found: found.path)
     held = {entry.path for entry in entries}
+    results = held_first(project, _ordered(results), frozenset(held))
     shown = frozenset(page_rel for f in results.fragments
                       if (page_rel := _rel(project, f.path)) in held)  # fmt: skip
     printed = dict(displays(project))
@@ -511,6 +511,22 @@ def _rel(project: Project, path: Path | None) -> str:
         return path.relative_to(project.root).as_posix()
     except ValueError:
         return path.name
+
+
+def held_first(project: Project, results: Results, held: frozenset[str]) -> Results:
+    """The results, each software record more fragments write the same (`Results.shared`)
+    read from one the package holds where it withholds the first, which `check` keeps it by:
+    the page then shows the version a held fragment declares, and `[withheld]` only where it
+    holds none of them (round 1 of #821)."""
+    values = dict(results.values)
+    for key, others in results.shared.items():
+        value = values.get(key)
+        if value is None or _rel(project, value.source) in held:
+            continue
+        kept = next((path for path in others if _rel(project, path) in held), None)
+        if kept is not None:
+            values[key] = replace(value, source=kept)
+    return replace(results, values=values)
 
 
 def _ordered(results: Results) -> Results:

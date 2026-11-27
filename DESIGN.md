@@ -9919,8 +9919,8 @@ findings (`auditing.gates.run_gates`, which both run), where the audit says what
 a PDF's reference list and which numbers of the Abstract it found nowhere the paper reports,
 and where `compare` says a sentence's claim changed; `check` never reads it. Measured on main
 at d056f71, the next two rows at 0949b4b, once the two judges had read the findings no
-verdict covered (`docs/corpus.md`, "Judging"), the last at 77abd45db, and `model-artefact`'s
-again at 27b5cfb:
+verdict covered (`docs/corpus.md`, "Judging"), the last at 77abd45db and again at f1bd2fad5,
+and `model-artefact`'s again at 27b5cfb:
 
 | Code | Read from | Judged | True | False ones from | In `audit` and `compare` | In `check` |
 |---|---|---|---|---|---|---|
@@ -9929,7 +9929,7 @@ again at 27b5cfb:
 | `entries-not-told-apart` (G7) | any format | 13 | 13 | none | warning | not given |
 | `abstract-not-found` (audit) | any format | 21 | 8 | 5 papers | INFO | not given (G4's of that name warns) |
 | `claim-negation` (compare) | any format | 17 | 1 | 4 papers | INFO, in `compare` (`audit` gives none) | not given |
-| `abbreviation-used-before-defined` (G14) | PDF only | 81 | 35 | 17 papers | INFO from a PDF; a warning from Word, LaTeX or Markdown | warns |
+| `abbreviation-used-before-defined` (G14) | PDF only | 85 | 49 | 16 papers | INFO from a PDF; a warning from Word, LaTeX or Markdown | warns |
 
 An entry can hold for one format, and the last row is the first that does (Basile,
 2026-11-23, "INFO on PDFs now"). G14 reads a PDF's text with its paragraphs gone, so a table's
@@ -9942,7 +9942,10 @@ PDF the code was right 111 times of 166 (0.669). What
 decides is what a finding was read from, which is the file audited: a LaTeX or Word paper's
 own PDF, audited as a PDF, is text read from a PDF, and its source keeps the warning.
 Rebuilding a PDF's paragraphs is another piece of work, and the code stays a note there until
-a fix measures 0.75.
+a fix measures 0.75. #802 rebuilt them for G6 and G14, and the row is that fix's measure, at
+f1bd2fad5: 49 true of the 85 judged findings present on text read from a PDF (0.576), the
+false ones from 16 papers. Short of 0.75, the code stays a note there (Basile, 2026-11-26,
+"Keep INFO, the 0.75 rule").
 
 The Abstract's numbers found nowhere were false where the paper gives the number another
 way: written out as a word, as a proportion where the Abstract gives a share, inside a name
@@ -11258,8 +11261,9 @@ and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each 
 the package has two places for a page and no more: `from_word.runner`, which runs pandoc
 another way where it is set, and `lookup.http.default_transport`, which sends one
 XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
-page's own origin, so that its Content-Security-Policy names no host but its own and the five
-registries `--lookup` asks, and a test holds that list to `lookup.run.Services`.
+page's own origin, so that its Content-Security-Policy names no host but its own and the seven
+registries `--lookup` asks, and a test holds that list to `lookup.run.Services` and
+`auditing.registration.asked_at`.
 
 The page is held to the command line, not trusted to match it: CI builds it as the Pages
 workflow does and requires each report on the worked example to be the command line's word for
@@ -17735,11 +17739,14 @@ to fix is pinned until the fix lands, and the fix changes its test.
     between, or across one paragraph where it holds its number alone, APA's title. A legend
     with any other paragraph between it and its table is a display of its own, and the
     table another. Accepted.
-  - A PDF's text holds no table that G14 can find, so a PDF's tables, captions and notes
-    are read as the text's, as before. Its lines come with no blank line but around a
-    heading, so a legend's line found by its shape made the whole section under the heading
-    a display (window C of the real-paper corpus, row 6): a file `audit` staged from a PDF
-    is read with no display. Accepted. Pinned by
+  - A PDF's lines as `pdftotext` reads them hold no table that G14 can find, so where they
+    are not rebuilt into paragraphs (Xpdf's `pdftotext`, "A PDF's paragraphs are rebuilt
+    from where each word is set", below) a PDF's tables, captions and notes are read as the
+    text's, as before. Those lines come with no blank line but around a heading, so a
+    legend's line found by its shape made the whole section under the heading a display
+    (window C of the real-paper corpus, row 6): a file `audit` staged from them is read with
+    no display. Where the lines are rebuilt, the displays are found by where their words
+    are set and handed to G14, never by their shape in the text. Accepted. Pinned by
     `tests/test_tables_stand_alone.py::test_a_pdf_s_text_holds_no_display_and_all_of_it_is_the_text_s`.
   - In LaTeX a note typed after a `tabular` that stands in no float is the text's. Accepted.
   - Where the text defines a form nowhere, a display's definition counts for a use outside
@@ -19761,13 +19768,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Eight designs are named, a cross-sectional study the last added; a design outside
+  not. Nine designs are named, a diagnostic accuracy study the last added; a design outside
   them (a narrative review, a descriptive case series or a case report, a qualitative study,
-  a diagnostic accuracy study, a target trial emulation as a design of its own) takes
+  a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case reports, case series, diagnostic accuracy and qualitative
+  from a draft" (above) plans case reports, case series and qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19776,14 +19783,26 @@ Added by the adversarial review, verified and **not** fixed:
   assessment, and missing survey wordings. So a heading of their own in other words, "Study
   sample", "Measures", "Covariate assessment" or "Probability weights", is refused and the
   plan told it lacks the section, a false alarm chosen over a false pass (Basile,
-  2026-11-26); a heading that names its section exactly is planned. The self-controlled
-  designs have no reporting guideline, and
+  2026-11-26). By the same rule a diagnostic accuracy plan's exposure and outcome are
+  found under STARD's words only where the heading is "Index test" or "Target condition"
+  whole, plural, bracketed or numbered "3.", "3)", "A." or "III.": "10a. Index test" and
+  "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
+  the Deviations, by naming the section on the heading: its attribute block's identifier,
+  the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
+  the section's whatever its words, and the warning says which identifier. G12's check of the plan's
+  sections, its check that the Population names the chosen data source, and the brief read
+  the identifier. The Deviations cannot be so named: every other reader of it finds it by
+  its words, and one named under other words would be read by none of them. The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
   Pinned by `tests/test_corruption.py::test_a_design_s_section_is_found_by_a_word_of_any_heading`,
   `tests/test_corruption.py::test_the_table_s_designs_are_named_and_another_is_other`,
   `tests/test_corruption.py::test_a_cross_sectional_section_is_found_by_the_headings_a_survey_uses`,
+  `tests/test_corruption.py::test_a_heading_names_its_section_exactly_whatever_its_words`,
+  `tests/test_corruption.py::test_the_index_test_and_the_target_condition_are_their_heading_whole`,
+  `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
+  `tests/test_properties.py::test_a_plan_section_named_on_its_heading_is_found_whatever_its_words`,
   `tests/test_guide.py::test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice`,
   `tests/test_corruption.py::test_a_design_none_of_the_table_s_is_still_asked_for_the_seven`,
   `tests/test_corruption.py::test_a_paper_whose_design_has_none_of_its_guidelines_is_told`
@@ -20190,6 +20209,14 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_emit.py::test_one_file_spelt_in_two_cases_is_two_inputs_on_windows`,
   `tests/test_input_digests.py::test_a_path_recorded_in_another_case_names_no_file_on_linux`
   and `tests/test_input_digests.py::test_a_txt_input_checked_out_with_crlf_reads_as_changed`.
+- **An infinity in a results file.** A fragment holding an infinite value, an open end
+  printed as a comparator, carries a bare `Infinity`, as the Python emitter's always did and
+  the R emitter's now does: `check` reads it, and a strict JSON reader (R's
+  `jsonlite::fromJSON`, a browser's `JSON.parse`) refuses the file. Accepted.
+- **A plain display for an infinite value.** A fragment or a ledger entry whose value is
+  infinite and whose display is a plain number ("7.02"), taken at `main` before #812, is
+  G0 `no-display` at check time: an infinite value takes only a comparator on its side, or
+  "100+" above. Accepted.
 - **The Python emitter blames `paper.yaml` for any project it cannot load.** Where the
   project root holds a `paper.yaml`, `Emitter._classifier` reports whatever `load_project`
   raises as "paper.yaml could not be read, so its terms and conventions were not applied",
@@ -20218,6 +20245,19 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `tests/test_assurance.py::test_panel_rounds_are_counted_without_their_panel_and_never_said_stale`,
   `tests/test_verify.py::test_verify_raises_after_its_report_where_it_cannot_record_the_run`
   and `tests/test_verify.py::test_a_fragment_whose_values_are_a_list_raises_after_the_report`.
+- **Which interpreter verify runs.** An R script runs with `--rscript`, else the Rscript
+  MANUSCRIPT_GUARD_RSCRIPT names, else the first on PATH; a Python script always with the
+  Python manuscript-guard runs in, and a Quarto document with the first `quarto` on PATH. The
+  analysis inherits the environment, so MANUSCRIPT_GUARD_RSCRIPT or
+  MANUSCRIPT_GUARD_VERIFY_TIMEOUT set for one run of `verify` only is one more way for it to
+  tell that run from an ordinary one; the flags are not seen. An R's version is what
+  `Rscript --version` prints, and renv.lock's R is held to it by major and minor version
+  alone, renv's library being kept by them. Accepted.
+- **What says a re-run was another R's.** `check` says that `verify` re-ran the analysis with
+  another R or Python than the results were written with, or another R than renv.lock pins;
+  the deposit record (`deposit/verification.py`) and the companion page
+  (`deposit/companion_parts.py`) say only whether the run passed, and name no other R.
+  Accepted.
 - **The plugin's own tests.** A code-shaped string in a skill's text counts as a code it
   names, a description's list of codes is read by shape, `--yes` is looked for in one
   fragment, only `pip install` counts as an install, `venv/` is not skipped and `build/` is
@@ -29239,6 +29279,133 @@ What papers converted from Word showed (see "What papers converted from Word sho
     counts, a changed surname does not, nor does an author a registry lists in another script
     or with no given name. The journal's titles match by folded name only (the profile holds
     no ISSN), so an abbreviated container or a renamed journal does not count. Accepted.
+- **A PDF's paragraphs are rebuilt from where each word is set, for G6 and G14 alone**
+  (`auditing/pdf_layout.py`; the design of 2026-11-26 and the author's answers to it). Each
+  step is a rule of position with its constant named, and where a page is laid out otherwise
+  than the rules expect, its lines are read in another order or another paragraph. Accepted.
+  - Only poppler's `pdftotext` gives each word's place. With Xpdf's, the one Git for Windows
+    puts on `PATH`, and no other named by `MANUSCRIPT_GUARD_POPPLER`, G6 and G14 read the
+    PDF's lines as before, and the report says so and why.
+    Pinned by `tests/test_audit_pdf.py::test_a_pdf_whose_lines_cannot_be_rebuilt_is_read_by_g6_and_g14_as_before`
+    and `tests/test_audit_pdf.py::test_xpdf_s_pdftotext_found_leaves_a_pdf_s_lines_as_they_were`.
+  - Every other reader of a PDF's text keeps the lines `pdftotext` reads: its numbers, the
+    Abstract against the Results, the reference list, the cited sentences, the causal words,
+    G4 with a journal's profile, and `compare`, G6 and G14 in it included (answer 4).
+    Pinned by `tests/test_audit_pdf.py::test_only_g6_and_g14_of_an_audit_read_a_pdf_s_rebuilt_lines`.
+  - Poppler's own grouping of words into lines and blocks is the rebuild's first step, and it
+    may differ between poppler's releases: the suite is held to 24.04.0
+    (`MANUSCRIPT_GUARD_REQUIRE_POPPLER` in CI), and the corpus was measured with it.
+    Accepted.
+  - A display is found only by the label its legend opens on, "Figure 2.", "Fig. 2",
+    "Table 1:", at the start of its block. A legend without one, a table without a legend,
+    and a figure's words with no legend under them are read as the text's. Accepted.
+  - A label with no stop after it opens a legend where the title after it opens on a
+    capital and another letter, a bracket or panels' letters before it or not, "Fig. 2 Three
+    classes", "Fig. 3 (a) Schematic", or where its block is set smaller than the text; a
+    paragraph of the text that goes on in lower case, "Figure 2 (A) shows", "Table 1 (n =
+    300) gives", is the text's, and so is a legend set at the text's size whose title opens
+    on a lower-case word or a number. A dash before a capital after the label, "Figure
+    1—Title", "Figure 1 – Title", opens one as a stop does. A label opens a legend only
+    where its block opens a paragraph: a block that opens on one at the size and the left of
+    an open sentence's last line, and no further below it than 1.25 times the space that
+    paragraph's lines stand one below the other, is that sentence's line, as a double-spaced
+    manuscript sets "Table 1. Patients with"; a legend a line's space or more below it is
+    the display's.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_opening_on_a_display_s_name_is_the_text_s`,
+    `tests/test_corruption.py::test_a_legend_set_at_the_text_s_size_whose_title_opens_on_a_capital_is_a_legend`,
+    `tests/test_corruption.py::test_a_legend_whose_label_a_dash_follows_is_a_legend`,
+    `tests/test_corruption.py::test_a_label_opening_a_line_of_an_open_sentence_is_the_text_s`
+    and `tests/test_corruption.py::test_a_legend_set_apart_under_an_open_sentence_is_a_legend`.
+  - A sentence of the text set as a block of its own that opens on a label and a verb with a
+    capital, "Figure 2 Shows", "Table 1 Summarises", is read as a legend. Accepted.
+  - Front matter, a side box, a publisher's licence or how-to-cite line, a CME quiz and the
+    reference list are read as prose, as before (answer 9). Accepted.
+  - A statement of the back matter that the reference list's entries stand on both sides of
+    in reading order, as Frontiers sets them, is read before the list's heading: its heading
+    and every line under it up to the next heading or the list's next entry, an entry being a
+    line that opens on an entry's number and a capital, "5. Olveda RM", or a line, or the
+    lines of its paragraph after it, of the shape the audit reads an entry by
+    (`audit.looks_like_reference`). A statement that ends with no stop, "online at:" and an
+    address, keeps no entry the rebuild read on with it. A statement with entries on one side
+    of it only, the list wholly before it or after it, is read where it stands, under its
+    own heading; an entry of a shape the audit does not read, and a statement under a title
+    none of the statements' names, are read as they stand, inside the list.
+    Pinned by `tests/test_corruption.py::test_a_reference_list_the_statements_stand_inside_is_one_list`,
+    `tests/test_corruption.py::test_a_statement_s_every_paragraph_goes_with_it_and_only_inside_the_list`,
+    `tests/test_corruption.py::test_a_statement_inside_the_list_takes_no_entry_with_it`
+    and `tests/test_corruption.py::test_a_numbered_entry_after_a_statement_inside_the_list_stays_in_the_list`.
+  - Inside a band of a page, two columns are read left then right, each block by its centre:
+    a page of three columns, or a block set across one column and part of the next, is read
+    in that order. Accepted.
+  - On a page set in two columns (a block of three lines or more wholly on each side of the
+    middle), two lines on one baseline that the page's middle parts are never made one,
+    however narrow the gutter: a table's row set across the middle is read as two rows'
+    cells.
+    Pinned by `tests/test_corruption.py::test_a_right_column_line_on_a_left_column_line_s_baseline_keeps_the_columns`.
+  - A margin's numbers are taken out, and given to the line on their baseline as its printed
+    number, where they stand alone outside the text's left or right edge (read from the
+    lines of three words or more), or just before a column's line, in the gutter, where three
+    stand so on the page. A number in the gutter on a page with fewer is read as the text's.
+    A number at either end of a line's words is the margin's only where an em parts it from
+    them, so a page that sets its margin's numbers closer keeps them in its lines. A line of
+    a block of one line, as a double-spaced manuscript sets each, ends its paragraph only
+    where it ends short of the lines beside it on a stop.
+    Pinned by `tests/test_corruption.py::test_a_double_spaced_manuscript_s_numbered_lines_are_its_paragraphs`
+    and `tests/test_corruption.py::test_a_number_ending_a_ragged_line_is_the_text_s`.
+  - A narrow short block, a paragraph's last line set apart, goes on with the paragraph left
+    open where it is set at that paragraph's lines' height and not at a display's size under
+    it; otherwise it is a figure's words, a display's or a paragraph of its own.
+    Pinned by `tests/test_corruption.py::test_a_double_spaced_paragraph_s_short_last_line_is_its_own`
+    and `tests/test_corruption.py::test_a_one_line_remnant_at_a_column_s_top_goes_on_with_its_paragraph`.
+  - A line that ends short on a stop ends its paragraph, an abbreviation's stop among them,
+    "et al.", "vs.", so a paragraph that a line of that shape breaks is read as two, as main
+    read every line as its own. A number after a stop is a superscript citation only after a
+    letter or a bracket, so a decimal, "was 2.5", ends nothing. Accepted.
+  - A line that ends on an abbreviation's stop and a number, "shown in Fig. 2", "No. 3",
+    "vs. 12", is read as ending on a citation after a stop: a column whose last line ends so
+    ends its paragraph there, and the paragraph is not followed into the next column.
+    Accepted.
+  - A figure set across both columns at a page's foot has its own words in the band above its
+    legend. Read between the left column and the right, they are paragraphs of the text, and
+    a paragraph that crosses from one column to the other is split around them, a definition
+    broken at the column's foot with it (against answer 3; main read the page no better).
+    Accepted.
+  - Two words poppler sets apart are read as one where the gap between them is under 0.03
+    of the line's height, as `pdftotext`'s text reading joins them, or under 0.1 where they
+    are set at two sizes, a tenth of the larger apart or more: small capitals, "R" and
+    "EFERENCES". Two words set touching that are two, a typesetter's tight pair, are read as
+    one, and so are two of two sizes a thin space apart. A thin space between two words of
+    one size is a space.
+    Pinned by `tests/test_corruption.py::test_a_word_a_pdf_kerns_in_two_is_one_word`,
+    `tests/test_corruption.py::test_a_thin_space_a_pdf_sets_stays_a_space`
+    and `tests/test_corruption.py::test_a_heading_set_in_small_capitals_is_one_word`.
+  - A paragraph left open at the text's size at a column's or a page's foot goes on into no
+    block whose words are set more than a tenth smaller than the text's lines: the journal's
+    editorial history set smaller at the next page's head is a paragraph of its own, and so
+    is a paragraph of the text a break carries into a box set smaller. A paragraph set
+    smaller, or larger, goes on as before into whatever block follows, and so does a
+    paragraph of the text into a block set at the text's size or larger.
+    Pinned by `tests/test_corruption.py::test_a_paragraph_open_at_a_page_s_foot_does_not_go_on_into_smaller_type`.
+  - A display reaches only as far as its blocks stand one under the other, or beside, over
+    some of its width, on its page: a table whose rows a page break cuts is two, the
+    second read as the text's where it has no legend of its own. Accepted.
+  - A line drawn twice is read once only where it repeats word for word, at the same place.
+    Pinned by `tests/test_corruption.py::test_a_line_a_pdf_draws_twice_is_read_once`.
+  - A short form broken at a line's end is joined only where its two parts hold two capitals
+    or more, "RE-" then "AIM", "SARS-" then "CoV-2" with its own hyphens; a bracket after
+    it stays on the next line; a long form broken so keeps G14's way of being compared
+    (#784).
+    Pinned by `tests/test_corruption.py::test_a_short_form_a_pdf_breaks_at_a_line_s_end_is_one`
+    and `tests/test_corruption.py::test_a_hyphenated_short_form_a_pdf_breaks_at_a_line_s_end_is_one`.
+  - A superscript is a citation for G6 only where it holds numbers, commas and dashes and
+    follows a word of three letters or more or a stop: a footnote's letter is not one, nor a
+    raised number after a unit, "m 2". G14 reads the number as it is set.
+    Pinned by `tests/test_corruption.py::test_a_superscript_citation_in_a_pdf_is_a_citation`.
+  - A display met while a paragraph goes on across a break is read after the paragraph, so a
+    G14 finding's "first defined at" may name a later line than one above it on the page.
+    Places stay a page and a line counted down the page in reading order, left column first.
+    Pinned by `tests/test_audit_pdf.py::test_g6_and_g14_s_findings_on_a_rebuilt_pdf_are_placed_by_its_rebuilt_lines`.
+
 - **A PDF manuscript (`audit paper.pdf`, `compare`) is read as `pdftotext` sets out its text.**
   Accepted.
   - Layout order, hyphenation and running heads can misplace or split a number: a number
@@ -29842,10 +30009,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper and outputs beside it, and a journal's
-    profile and the authors' names, from its form or from a file. PDFs (`pdftotext`), LaTeX
-    projects, figures, packages, `--cited` and `--report-draft` are the command line's.
-    Accepted.
+  - *What it reads.* A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a
+    `.tar.gz`, outputs beside it, and a journal's profile and the authors' names, from its
+    form or from a file. PDFs (`pdftotext`), figures, packages, `--cited` and `--report-draft`
+    are the command line's. Accepted.
+  - *An archive is unpacked into the browser's memory*, so it is refused past 1 GiB
+    unpacked (`web.PAGE_MAX_BYTES`), where a package's `.zip` is taken up to 16 GiB; a
+    browser may run out of memory below that, and then says so as its own error. Pinned by
+    `tests/test_paper_archive.py::test_an_archive_past_the_limits_is_refused`.
   - *The journal form's statements* are found under the heading the reader gives for each,
     or its usual one: a heading, or the label a paragraph opens with, whose whole title is
     that heading, its case, number and marks aside (`journal_form.pattern`). A paper that
@@ -29857,12 +30028,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
     that start with "-", the `.docx` against two outputs whose names the page once made
     one, with a referee's options, in American English with the copy with tracked changes,
-    and held to a journal's rules from the form with a double-blind review), in Node and in
-    two browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    held to a journal's rules from the form with a double-blind review, and a LaTeX project
+    as a `.zip` and as a `.tar.gz` held to the folder they hold), in Node and in two
+    browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
-    no case ticks the box. That the five registries answer a page (CORS) was tested by hand
-    on 2026-11-05; one that stops would be refused by the browser, and every lookup to it
+    no case ticks the box. That the seven registries answer a page (CORS) was tested by hand,
+    the reference list's five on 2026-11-05 and ClinicalTrials.gov and ISRCTN on 2026-11-26; one that stops would be refused by the browser, and every lookup to it
     said to have had no connection, with nothing in CI to notice. Accepted.
   - *pandoc.wasm's exit status is not read.* A failure is judged by nothing printed with
     something on stderr, where the command line reads pandoc's exit code. A failure that says
@@ -29880,6 +30052,47 @@ What papers converted from Word showed (see "What papers converted from Word sho
     version under `v:refname`; this project tags none (round 2 of #527;
     `test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names`).
     Pinned by `tests/test_web.py::test_the_pages_workflow_deploys_the_newest_tag_a_limit_known_gaps_names`.
+
+- **The audit page a journal's host builds (`web/build.py --host`,
+  docs/hosting-the-audit-page.md): what it does not hold.** The host's name, logo, accent,
+  contact line and journals go in as data, and every code file is byte for byte the page's
+  built from the same wheel without a host, which CI holds (`web/test/check.py --hosted`).
+  Accepted.
+  - *The host keeps the code as built.* Nothing stops a host from changing a file after the
+    build. A reader can compare its `files.sha256` with that of the same release's page,
+    and turning off the network still shows that the paper is not sent. Accepted.
+  - *The page's own host is the host's server*, which `connect-src 'self'` lets the page send
+    to. It sends nothing once loaded, and the network test covers it, as on GitHub Pages.
+    Accepted.
+  - *A link's `?journal=<slug>` reaches the host's server logs*, as any address does. The page
+    reads nothing else of its address and writes nothing to it. Pinned by
+    `tests/test_web_host.py::test_the_page_reads_one_thing_of_its_address_and_writes_nothing_to_it`.
+  - *Every journal's profile is fetched before the page says Ready*, so that the page works
+    with the network off; a host with hundreds of journals makes the start that many requests
+    longer. Accepted.
+  - *An accent is held at 4.5:1 to the page's paper, its cards and a button's text*, light and
+    dark. The soft tint made from it, and the logo, are not read for contrast. Pinned by
+    `tests/test_web_host.py::test_an_accent_is_read_against_the_page_s_own_colours_which_pass_it`.
+  - *A logo is known by its first bytes*, an SVG by `<svg` in its first 4 KB. The page shows
+    it as a picture, which runs no script; opened alone at its address, a script an SVG
+    carried would run on the host's site, as any file of the host's would. Accepted.
+  - *The word-for-word check is on invented journals* (`web/test/host`). A host's own
+    profiles are held to the command line where the host runs check.py on its build. Accepted.
+  - *The code is compared as `files.sha256` lists it.* check.py reads the digests each build
+    wrote, not the files on disk, and passes any file under `host/`, the accent's style sheet
+    among them, which the build writes from colours it checked (round 1 of #791). Accepted.
+  - *"None" in the list is none of the journals offered*, so the form for another journal, or
+    a profile of the reader's chosen before, still holds the paper where it is filled, as on
+    the project's page (round 1 of #791). Accepted.
+  - *A profile saved with a byte-order mark* is shown without it, as a browser decodes text,
+    and browser.mjs, which reads the file with it, would report its rules as differing; the
+    audit is given the profile's bytes as they are (round 1 of #791). Accepted.
+  - *`--out` is told from the host folder by its resolved path, case and all.* On a disk that
+    ignores case, as macOS's usually does, an `--out` typed in another case than the host
+    folder is not seen to be it, and is emptied (fix round of #791). Accepted.
+  - *A folder in `journals/` is passed over*, so that a profile's stored pages in `sources/`
+    stop nothing; profiles put in a folder of their own there are not offered, and the build
+    says only how many journals it offers (fix round of #791). Accepted.
 
 - **`.zenodo.json` names one affiliation per creator.** Zenodo's field is one string, so the
   author's two institutions go in as one, matched to no organisation (ROR), as CITATION.cff's
@@ -30904,6 +31117,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `2012. `, is two sentences, and every key placed in it moves; a re-wrap at any other space
   moves none. Pinned by
   `tests/test_finding_keys.py::test_a_rewrap_that_begins_a_line_with_a_block_sign_cuts_its_sentence`.
+- **What says a citation is not a Zotero field reads the source and the document.** A live
+  build counts the citations in its source (each group in brackets, and each narrative
+  citation outside one, leaving out comments, listings and inline code) and warns where the
+  document, its footnotes and its endnotes hold fewer Zotero fields; a citation pandoc reads
+  that this count does not, or the reverse, moves the count. `check` notes a built document
+  (`citations-not-live`) only where the document records no live build and holds a reference
+  list as pandoc bookmarks one (`refs`, then its first entry's `ref-<key>`), so one built
+  offline in a style that prints no reference list is not noted, nor one whose properties are
+  not UTF-8. Pinned by
+  `tests/test_cli.py::test_only_a_document_holding_a_reference_list_as_text_is_noted`.
 - **The editor's report parts each finding by its code.** `audit --editor` puts a finding in
   one of its four parts by the table in `auditing/editor.py` (the author's, 2026-11-25), and
   by what the finding holds for three codes alone: `over-header-n` by its severity, G6's
@@ -30926,6 +31149,25 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `tests/test_audit_letter.py::test_a_finding_no_kind_names_is_asked_in_the_sentence_for_any`.
   - The letter is written in English, whatever the language of the paper or of the journal.
     Accepted.
+- **The audit asks about every registration number the text names, whoever's it is.** Under
+  `--lookup`, a trial the Introduction or the Discussion cites by its NCT or ISRCTN number is
+  looked up and shown, and a late registration of it said, as though it were the paper's own;
+  only a number in the reference list is passed over. Each finding gives the place the number
+  stands, which tells the reader whose it is. On 100 openly licensed papers (2026-11-26), 8
+  named a number, each only one, and none another trial's. Accepted.
+  - A reference list the audit does not find, under a heading it does not know and read as
+    text, is not passed over: its NCT and ISRCTN numbers are asked about as the text's are
+    (round 1 of #827). Accepted.
+  - EU PAS and PROSPERO are not asked: their note gives the page to read the record on, as a
+    project's `lookup --registrations` reads PROSPERO by hand. Accepted.
+  - Only the registry's dates are judged, never the paper's: a paper whose primary outcome
+    is not the one registered is shown beside the record and said nowhere, and a start
+    ClinicalTrials.gov gives as expected, not actual, never makes a registration late. Pinned
+    by `tests/test_audit_registration.py::test_a_registration_not_shown_late_by_the_registry_s_own_dates_is_not_flagged`.
+  - ISRCTN's dates are shown and never judged: it gives a recruitment start without saying
+    whether it happened or was planned, and a registration after a start that was only
+    planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
+    by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

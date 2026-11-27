@@ -660,10 +660,19 @@ def check_disclosures(project: Project, stage: str | None = None) -> Report:
         return Report()
     from manuscript_guard.gates.ai_use import supplement_text
     from manuscript_guard.gates.journal import abstract_title, main_text
+    from manuscript_guard.gates.statements import asked_for
 
-    return judge(authors, main_text(project), supplement_text(project),
-                 submission=stage == SUBMISSION, path=project.root / AUTHORS_FILE,
-                 abstract=abstract_title(project))  # fmt: skip
+    report = judge(authors, main_text(project), supplement_text(project),
+                   submission=stage == SUBMISSION, path=project.root / AUTHORS_FILE,
+                   abstract=abstract_title(project))  # fmt: skip
+    # One gap, one finding: where `declaration-missing` asks for the statement, with what the
+    # record holds in its hint, the note that says the same is not raised (round 1 of #819).
+    if not any(f.code in (FUNDING_NOT_STATED, INTERESTS_NOT_STATED) for f in report.findings):
+        return report
+    asked = asked_for(project)
+    said_there = {FUNDING_NOT_STATED: FUNDING, INTERESTS_NOT_STATED: INTERESTS}
+    return Report(tuple(finding for finding in report.findings
+                        if said_there.get(finding.code) not in asked), report.counts)  # fmt: skip
 
 
 __all__ = [

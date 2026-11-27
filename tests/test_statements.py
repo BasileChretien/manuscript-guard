@@ -1,0 +1,562 @@
+"""G4's check of the statements every paper makes and of empty headings
+(`gates/statements.py`)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from manuscript_guard.contracts.project import Project
+from manuscript_guard.findings import FAIL, INFO, WARN
+from manuscript_guard.gates.statements import (
+    AI_USE,
+    EMPTY,
+    KINDS,
+    MISSING,
+    check_statements,
+    empty_headings,
+    missing,
+    severity_at,
+    stated,
+)
+
+#: The kinds asked for where no AI use is on record.
+FIVE = tuple(kind for kind in KINDS if kind != AI_USE)
+#: Each of the five statements asked for when no AI use is on record, written plainly.
+WHOLE = (
+    "# Introduction\n\nWords of the paper.\n\n"
+    "# Data availability\n\nThe data are held by the agency.\n\n"
+    "# Ethics\n\nThe committee approved the study (CPP 2021-12).\n\n"
+    "# Author contributions\n\nAE designed the study.\n\n"
+    "# Funding\n\nThis work received no funding.\n\n"
+    "# Competing interests\n\nNone declared.\n"
+)
+
+
+def _project(root: Path, main: str, *, supplement: str | None = None,
+             paper: dict | None = None, authors: dict | None = None,
+             extra: dict[str, str] | None = None) -> Project:  # fmt: skip
+    folder = root / "manuscript"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "main.md").write_text(main, encoding="utf-8")
+    if supplement is not None:
+        (folder / "supplementary").mkdir(exist_ok=True)
+        (folder / "supplementary" / "S1.md").write_text(supplement, encoding="utf-8")
+    for name, text in (extra or {}).items():
+        (folder / name).write_text(text, encoding="utf-8")
+    return Project(root, {"schema": "manuscript-guard/paper/1", **(paper or {})}, authors)
+
+
+def _said(project: Project, stage: str | None = "drafting") -> list[tuple[str, str, str]]:
+    return [(f.code, f.severity, f.subject or "")
+            for f in check_statements(project, stage).findings]  # fmt: skip
+
+
+# ------------------------------------------------------------------------ empty headings
+
+
+def test_a_heading_over_a_comment_alone_is_empty_at_its_line_in_its_file(
+    tmp_path: Path,
+) -> None:
+    text = ("---\ntitle: A\n---\n\n" + WHOLE.replace(
+        "# Data availability\n\nThe data are held by the agency.\n",
+        "# Data availability statement\n\n<!-- TO CONFIRM: held by the agency. -->\n"))
+    project = _project(tmp_path, text)
+    [finding] = check_statements(project, "drafting").findings
+    assert (finding.code, finding.severity) == (EMPTY, WARN)
+    assert finding.path == tmp_path / "manuscript" / "main.md"
+    assert text.splitlines()[finding.line - 1] == "# Data availability statement"
+    assert "has nothing under it, so the manuscript has no data availability statement" in (
+        finding.message)
+
+
+def test_a_heading_whose_subsections_say_something_is_not_empty_and_an_empty_one_is() -> None:
+    text = ("# Methods\n\n## Design\n\nA cohort.\n\n## Outcome\n\n<!-- to write -->\n\n"
+            "# Results\n\nR.\n")
+    assert [heading.title for heading in empty_headings(text)] == ["Outcome"]
+    nested = "# Methods\n\n## Design\n\n<!-- -->\n\n## Outcome\n\n# Results\n\nR.\n"
+    assert [heading.title for heading in empty_headings(nested)] == ["Design", "Outcome"]
+
+
+def test_a_heading_empty_only_through_its_empty_subsections_is_no_gap_of_its_own() -> None:
+    """One gap, one finding (round 1 of #819): the subsections are said, the heading over them
+    is not; a heading over nothing but a heading with no title is a gap."""
+    text = "# Declarations\n\n## Funding\n\n<!-- -->\n\n## Competing interests\n\n# End\n\nE.\n"
+    assert [heading.title for heading in empty_headings(text)] == ["Funding",
+                                                                   "Competing interests"]
+    assert [heading.title for heading in empty_headings(
+        "# Appendix\n\n### {#a}\n\n# End\n\nE.\n")] == ["Appendix"]
+
+
+def test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_no_heading(
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): anything printed is something, a placeholder G6 fails among
+    it, "TBD"."""
+    text = ("# Code\n\n```r\n# Not a heading\nx <- 1\n```\n\n# Table\n\n{{table.main}}\n\n"
+            "# Figure\n\n![Forest plot](figures/forest.png)\n\n# Limitations\n\nTBD\n")
+    assert empty_headings(text) == []
+
+
+def _g6_fails(word: str) -> bool:
+    from manuscript_guard.gates.writing import judge_texts
+
+    said, _totals = judge_texts([(Path("manuscript/main.md"),
+                                  f"# Intro\n\nWords.\n\n# Funding\n\n{word}\n")])
+    return "model-artefact" in {finding.code for finding in said.findings}
+
+
+def test_a_placeholder_g6_fails_is_g6_s_and_one_g6_passes_is_empty() -> None:
+    """One gap, one finding (rounds 1 and 2 of #819): a heading over a placeholder G6 fails as
+    `model-artefact` ("TBD", "XXX", "[Placeholder]", "[TO BE COMPLETED]") has something under
+    it, and the gap is G6's alone; one over a placeholder G6 passes is empty."""
+    for word in ("TBD", "TODO: ask the authors", "XXX", "[Placeholder]", "[TO BE COMPLETED]"):
+        assert _g6_fails(word), word
+        assert empty_headings(f"# Funding\n\n{word}\n") == [], word
+    for word in ("TO CONFIRM WITH THE AUTHORS.", "To be completed.", "*Pending*"):
+        assert not _g6_fails(word), word
+        assert [h.title for h in empty_headings(f"# Funding\n\n{word}\n")] == ["Funding"], word
+    assert missing(stated(WHOLE.replace("# Funding\n\nThis work received no funding.\n",
+                                        "**Funding:** To be confirmed by the authors.\n")),
+                   FIVE) == ["funding"]
+
+
+def test_a_label_is_what_g4_takes_for_one_and_a_longer_sentence_is_a_statement() -> None:
+    """Round 4 of #819 (Basile, 2026-11-27: strict, as G4 reads it): a paragraph is a label
+    wherever G4's own `_LABEL` takes it for one, words before a colon or a short paragraph
+    wholly in emphasis, with or without a stop; its kind is read from its words as G4 reads
+    them. A sentence in emphasis too long to be a label alone is a sentence of the
+    Declarations section."""
+    for interests, funding in (
+        ("**Competing interests:** None.", "*No funding was received for this work.*"),
+        ("Competing interests: none declared.", "__The authors received no funding for it.__"),
+    ):
+        text = WHOLE.split("# Funding")[0] + f"# Declarations\n\n{interests}\n\n{funding}\n"
+        assert missing(stated(text), FIVE) == [], (interests, funding)
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n**Funding**\n\n<!-- -->\n\nCompeting interests: <!-- -->\n")
+    assert missing(stated(text), FIVE) == ["funding", "interests"]
+
+
+def test_a_label_alone_ending_in_a_stop_is_a_label() -> None:
+    """Rounds 3 and 4 of #819: a short paragraph wholly in emphasis is a label, as G4 reads
+    it, whatever its title ("**Funding.**", "*Study funding.*", "**Compliance with ethical
+    standards.**", "**Funding**.", "*Data availability.*"), and over a comment or a
+    placeholder it states nothing."""
+    text = WHOLE.split("# Funding")[0].replace(
+        "# Data availability\n\nThe data are held by the agency.\n\n", "").replace(
+        "# Ethics\n\nThe committee approved the study (CPP 2021-12).\n\n", "") + (
+        "# Declarations\n\n*Study funding.*\n\n<!-- TO CONFIRM -->\n\n*Competing interests.*\n\n"
+        "To be completed.\n\n**Compliance with ethical standards.**\n\n<!-- -->\n\n"
+        "*Data availability.*\n\n<!-- -->\n")
+    assert missing(stated(text), FIVE) == ["data", "ethics", "funding", "interests"]
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n**Funding.**\n\nThe work was paid for by the department.\n\n"
+        "*Competing interests.* None declared.\n")
+    assert missing(stated(text), FIVE) == []
+
+
+def test_a_short_sentence_wholly_in_emphasis_reads_as_a_label(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): Basile chose, 2026-11-27, to read a label strictly as G4
+    reads it. "*The authors declare no competing interests.*" standing alone is a label of
+    the competing interests statement with nothing after it, so the statement is missing,
+    and the finding says to write it in plain text or after its label."""
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n*The authors declare no competing interests.*\n\n"
+        "**Funding:** ANR-20-CE17-0001.\n")
+    assert missing(stated(text), FIVE) == ["interests"]
+    [finding] = check_statements(_project(tmp_path, text)).findings
+    assert (finding.code, finding.subject) == (MISSING, "interests")
+    assert "plain text" in finding.hint and "after its label" in finding.hint
+    # An ethics denial is read wherever it stands, whatever its emphasis (round 5 of #819).
+    text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                         "# Declarations\n\n*Ethical approval was not required.*\n")
+    assert missing(stated(text), FIVE) == []
+
+
+def test_a_label_over_a_comment_or_a_placeholder_is_told_what_to_write_after_it(
+    tmp_path: Path,
+) -> None:
+    """Round 5 of #819: the hint says a short paragraph wholly in emphasis reads as a label only
+    where the label is one; a label over a comment or a placeholder is told to have its
+    statement written after it."""
+    for written in ("Funding: <!-- TO CONFIRM -->", "**Funding:** TO CONFIRM"):
+        text = WHOLE.split("# Funding")[0] + (
+            f"# Declarations\n\n{written}\n\n**Competing interests:** None.\n")
+        root = tmp_path / str(len(written))
+        [finding] = check_statements(_project(root, text)).findings
+        assert (finding.code, finding.subject) == (MISSING, "funding"), written
+        assert "emphasis" not in finding.hint and "after its label" in finding.hint, written
+
+
+def test_an_empty_heading_outranks_a_label_with_nothing_after_it(tmp_path: Path) -> None:
+    """Round 5 of #819: an empty Funding heading of the supplement and a Funding label over a
+    comment in the main text are one gap, one finding: the heading's."""
+    project = _project(tmp_path, WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n**Funding:** <!-- -->\n\n**Competing interests:** None.\n"),
+        supplement="# Funding\n\n<!-- -->\n")
+    [finding] = check_statements(project).findings
+    assert finding.code == EMPTY and finding.message.endswith("has no funding statement")
+
+
+def test_a_latex_label_over_a_comment_keeps_its_explanation(tmp_path: Path) -> None:
+    """Round 5 of #819: in LaTeX, whose headings are not said to be empty, a kind under an
+    empty heading and after a label over a comment is missing with the label's hint; and the
+    label's own word, read after the printed view's blank lines, states nothing."""
+    (tmp_path / "manuscript").mkdir()
+    (tmp_path / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\nWords.\n"
+        "\\section{Funding}\n% to write\n\\section{Declarations}\n"
+        "\\textbf{Funding:} % to confirm\n\n\\textbf{Competing interests:} None declared.\n"
+        "\\end{document}\n", encoding="utf-8")
+    project = Project(tmp_path, {"schema": "manuscript-guard/paper/1"}, None)
+    findings = {f.subject: f for f in check_statements(project).findings}
+    assert set(findings) == {"data", "ethics", "funding", "contributions"}
+    assert "after its label" in findings["funding"].hint
+
+
+def test_a_label_after_more_than_one_blank_line_is_a_label() -> None:
+    """Round 5 of #819: G4's reading of a label does not see one after two blank lines, and its
+    word was read as the statement."""
+    text = WHOLE.split("# Funding")[0] + (
+        "# Declarations\n\n\n**Funding:** <!-- -->\n\n\n\nCompeting interests:\n\n\n"
+        "<!-- -->\n")
+    assert missing(stated(text), FIVE) == ["funding", "interests"]
+
+
+@pytest.mark.parametrize("blank_lines", [1, 2, 3, 4])
+def test_a_label_after_blank_lines_ends_the_heading_above_it(blank_lines: int) -> None:
+    """Round 6 of #819: under a heading holding only a comment, a label of another kind
+    after an even number of blank lines was read as the heading's own statement."""
+    text = ("# Introduction\n\nWords.\n\n# Competing interests\n\n<!-- to write -->\n"
+            + "\n" * blank_lines + "**Funding:** Grant ANR-12.\n")
+    assert missing(stated(text), ["interests", "funding"]) == ["interests"]
+
+
+def test_a_label_s_own_paragraph_never_ends_it() -> None:
+    """Round 2 of #819: words after a label that look like a label of the same kind are its
+    statement."""
+    for written in ("**Ethics approval and consent to participate:** Ethics committee: CPP "
+                    "Sud-Est (2021-12).",
+                    "Ethical approval:\n\nEthics committee: CPP Sud-Est (2021-12)."):
+        text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                             f"# Further statements\n\n{written}\n")
+        assert missing(stated(text), FIVE) == [], written
+
+
+def test_availability_of_code_alone_is_no_data_statement() -> None:
+    """Round 2 of #819: a title is a data statement only where it names data."""
+    text = WHOLE.replace("# Data availability\n\nThe data are held by the agency.\n",
+                         "# Availability of code\n\nThe code is on GitHub.\n")
+    assert missing(stated(text), FIVE) == ["data"]
+
+
+def test_only_the_last_heading_ending_in_references_holds_the_bibliography() -> None:
+    """Pandoc prints the bibliography at the end, or at a `#refs` div (round 2 of #819): an
+    empty "Key references" in the middle of a document is empty; at its end it is not."""
+    text = "# Introduction\n\nI.\n\n# Key references\n\n# Discussion\n\nD.\n"
+    assert [heading.title for heading in empty_headings(text)] == ["Key references"]
+    assert empty_headings("# Introduction\n\nI.\n\n# Key references\n") == []
+
+
+def test_g4_s_data_policy_reads_only_its_own_data_headings() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): a statement under a heading this check reads and
+    `data_statement.HEADING` does not is a data statement here, and G4's check of the
+    profile's data policy does not find it, so the policy is not applied to it."""
+    from manuscript_guard.gates.data_statement import statement_text
+
+    text = WHOLE.replace("# Data availability\n\nThe data are held by the agency.\n",
+                         "# Data accessibility\n\nThe data are held by the agency.\n")
+    assert missing(stated(text), FIVE) == []
+    assert statement_text(text) is None
+
+
+def test_a_label_over_a_placeholder_is_said_by_g4_s_other_checks_too(tmp_path: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): only the notes that say a statement is not stated give way
+    to this check's finding. A label over a placeholder with a grant on record is also
+    `funding-grant-missing`, and a heading over one with a model on record also
+    `ai-use-model-unnamed`."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "paper"
+    init_project(root, title="A study")
+    (root / "manuscript" / "main.md").write_text(
+        WHOLE.split("# Funding")[0] + "**Funding:** TO CONFIRM WITH THE AUTHORS.\n\n"
+        "# Competing interests\n\nNone declared.\n\n# Use of AI\n\nTO CONFIRM.\n",
+        encoding="utf-8")
+    (root / "authors.yaml").write_text(
+        "schema: manuscript-guard/authors/1\nauthors:\n"
+        "  - given: Ada\n    family: Example\n    funding: ['Agence (ANR-20-CE17-0001)']\n"
+        "    competing_interests: None declared.\n"
+        "ai_use:\n  declared_by: Ada Example\n  declared_on: 2026-11-26\n  uses:\n"
+        "    - tool: Claude Opus 5\n      purpose: editing\n", encoding="utf-8")
+    report, *_ = _run_gates(root, stage="drafting")
+    codes = {finding.code for finding in report.findings}
+    assert {"funding-grant-missing", MISSING, "ai-use-model-unnamed", EMPTY} <= codes, codes
+
+
+def test_markdown_s_comment_idiom_prints_nothing() -> None:
+    text = "# Funding\n\n[//]: # (ask the funder's name)\n\n# Data sharing\n\n[note]: <>\n"
+    assert [heading.title for heading in empty_headings(text)] == ["Funding", "Data sharing"]
+    assert stated(text) == {"funding": "empty", "data": "empty"}
+    # A footnote's definition prints.
+    assert empty_headings("# Notes\n\n[^1]: The first note.\n") == []
+
+
+def test_the_reference_list_s_heading_and_a_heading_with_no_title_are_passed_over() -> None:
+    assert empty_headings("# Discussion\n\nD.\n\n### {#inclusion}\n\n# References\n") == []
+    assert empty_headings("# Discussion\n\nD.\n\n# Bibliography\n\n::: {#refs}\n:::\n") == []
+
+
+@pytest.mark.parametrize("title", ["Supplementary references", "Additional references",
+                                   "Supplementary bibliography", "S4. References cited"])
+def test_a_heading_the_bibliography_is_printed_under_is_not_empty(title: str) -> None:
+    """Pandoc prints the bibliography at the end, under the supplement's own reference list
+    (round 1 of #819); and a heading over it is not empty either."""
+    assert empty_headings(f"# Sensitivity analyses\n\nS.\n\n# {title}\n") == []
+    assert empty_headings(f"# Back matter\n\n## {title}\n") == []
+
+
+def test_a_section_carried_on_into_the_next_file_is_not_empty(tmp_path: Path) -> None:
+    project = _project(tmp_path, WHOLE + "\n# Appendix\n",
+                       extra={"zz_appendix.md": "The appendix's own words.\n"})
+    assert _said(project) == []
+
+
+def test_an_empty_heading_of_the_supplement_is_said_in_its_file(tmp_path: Path) -> None:
+    project = _project(tmp_path, WHOLE, supplement="# Sensitivity analyses\n\n<!-- -->\n")
+    [finding] = check_statements(project).findings
+    assert finding.code == EMPTY
+    assert finding.path == tmp_path / "manuscript" / "supplementary" / "S1.md"
+    assert finding.line == 1
+
+
+# -------------------------------------------------------------------------- statements
+
+
+def test_a_paper_with_no_statement_lacks_the_five_and_ai_use_only_where_used(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path, "# Introduction\n\nWords.\n")
+    assert [subject for _code, _severity, subject in _said(project)] == [
+        "data", "ethics", "funding", "interests", "contributions"]
+    used = {"ai_use": {"declared_by": "A", "declared_on": "2026-11-26",
+                       "uses": [{"tool": "Claude Opus 5", "purpose": "editing"}]}}
+    project = _project(tmp_path, "# Introduction\n\nWords.\n", authors=used)
+    assert "ai_use" in [subject for _code, _severity, subject in _said(project)]
+
+
+@pytest.mark.parametrize("written", [
+    "**Data availability:** The data are held by the agency.",
+    "Data availability statement:\n\nThe data are held by the agency.",
+    "# Declarations\n\nData availability: the data are held by the agency.",
+    "# Statements and declarations\n\nThe data sharing agreement forbids sharing the data.",
+])  # fmt: skip
+def test_a_statement_is_a_heading_a_label_or_a_declarations_section_s_words(
+    written: str,
+) -> None:
+    text = WHOLE.replace("# Data availability\n\nThe data are held by the agency.\n",
+                         written + "\n")
+    assert missing(stated(text), FIVE) == []
+
+
+@pytest.mark.parametrize("written", [
+    "# Methods\n\n## Setting\n\nThe ethics committee of the hospital approved the study.",
+    "# Data availability\n\nThe data are public, and no ethical approval was required.",
+])  # fmt: skip
+def test_an_ethics_statement_may_be_in_the_methods_or_a_denial_anywhere(written: str) -> None:
+    text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                         written + "\n")
+    assert missing(stated(text), FIVE) == []
+
+
+@pytest.mark.parametrize("title", [
+    "Code and data availability", "Data, Materials, and Software Availability",
+    "Data accessibility", "Data and software availability", "Software and data availability",
+    "Availability of data and materials", "Data sharing statement",
+])  # fmt: skip
+def test_a_data_statement_is_known_by_each_heading_journals_ask_for(title: str) -> None:
+    """Copernicus's, PNAS's and others' headings (round 1 of #819), as a heading, numbered or
+    not, and as a label."""
+    for written in (f"# {title}\n\nThe data are held by the agency.\n",
+                    f"# 6. {title}\n\nThe data are held by the agency.\n",
+                    f"**{title}:** The data are held by the agency.\n"):
+        text = WHOLE.replace("# Data availability\n\nThe data are held by the agency.\n",
+                             written)
+        assert missing(stated(text), FIVE) == [], written
+
+
+def test_a_label_over_a_comment_states_nothing_in_a_declarations_section() -> None:
+    """Springer's layout: a Declarations heading, each statement a label (round 1 of #819).
+    The labels print, so the heading is not empty; each statement is missing."""
+    text = ("# Introduction\n\nWords.\n\n# Declarations\n\n"
+            "**Funding:** <!-- TO CONFIRM -->\n\n**Competing interests:** <!-- -->\n\n"
+            "**Ethics approval:** <!-- -->\n\n"
+            "**Availability of data and materials:** <!-- -->\n\n"
+            "**Author contributions:** <!-- -->\n")
+    assert empty_headings(text) == []
+    assert missing(stated(text), FIVE) == list(FIVE)
+    # A label over a comment heads nothing, the Data availability label after it included;
+    # a PLOS statement whose roles come first is a statement, its roles no labels of their own.
+    text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                         "# Declarations\n\n**Ethics approval:** <!-- -->\n\n"
+                         "**Data sharing:** The data are held by the agency.\n")
+    assert missing(stated(text), FIVE) == ["ethics"]
+    text = WHOLE.replace("# Author contributions\n\nAE designed the study.\n\n",
+                         "**Author contributions**\n\nFunding acquisition: AE.\n\n"
+                         "Supervision: BS.\n\n")
+    assert missing(stated(text), FIVE) == []
+
+
+def test_a_credit_role_states_no_funding() -> None:
+    """"Funding acquisition" is a role of the contributions statement, under a label or as a
+    sentence of a Declarations section; an item of the ICMJE form is none either."""
+    for declared in ("Author contributions: AE: Conceptualization, Funding acquisition.",
+                     "AE did the Conceptualization and the Funding acquisition.",
+                     "Grants or contracts from any entity: none."):
+        text = WHOLE.replace("# Funding\n\nThis work received no funding.\n",
+                             f"# Declarations\n\n{declared}\n")
+        assert "funding" in missing(stated(text), FIVE), declared
+
+
+def test_an_empty_methods_subsection_on_ethics_states_no_ethics() -> None:
+    text = WHOLE.replace("# Ethics\n\nThe committee approved the study (CPP 2021-12).\n",
+                         "# Methods\n\nA cohort.\n\n## Ethical approval\n\n<!-- to ask -->\n")
+    assert stated(text)["ethics"] == "empty"
+
+
+def test_a_statement_under_a_heading_in_another_language_is_not_read() -> None:
+    """A known gap (DESIGN.md, Known gaps, "The statements every paper makes are found by
+    their headings and labels."): English only."""
+    text = WHOLE.replace("# Funding\n\nThis work received no funding.\n",
+                         "# Financement\n\nAucun financement.\n")
+    assert missing(stated(text), FIVE) == ["funding"]
+
+
+def test_a_heading_of_another_kind_inside_one_is_not_its_statement() -> None:
+    text = WHOLE.replace("# Funding\n\nThis work received no funding.\n\n"
+                         "# Competing interests\n\nNone declared.\n",
+                         "# Funding\n\n## Competing interests\n\nNone declared.\n")
+    assert missing(stated(text), FIVE) == ["funding"]
+
+
+def test_one_empty_heading_of_three_kinds_is_one_finding(tmp_path: Path) -> None:
+    text = WHOLE.split("# Author contributions")[0] + (
+        "# Contributors, funding and competing interests\n\n<!-- TO FILL BY THE AUTHORS -->\n")
+    [finding] = check_statements(_project(tmp_path, text), "internal-review").findings
+    assert (finding.code, finding.severity) == (EMPTY, FAIL)
+    assert ("the manuscript has no funding statement, competing interests statement or author "
+            "contributions statement") in finding.message
+
+
+def test_a_kind_stated_elsewhere_is_not_said_to_be_missing_under_its_empty_heading(
+    tmp_path: Path,
+) -> None:
+    text = WHOLE + "\n# Funding sources\n\n<!-- -->\n"
+    [finding] = check_statements(_project(tmp_path, text)).findings
+    assert finding.code == EMPTY and finding.message.endswith("has nothing under it")
+
+
+def test_a_profile_that_lists_the_journal_s_statements_asks_for_them_and_this_asks_none(
+    tmp_path: Path,
+) -> None:
+    profiles = tmp_path / "profiles" / "journals"
+    profiles.mkdir(parents=True)
+    (profiles / "j.yaml").write_text(
+        "schema: manuscript-guard/journal/1\nname: J\nretrieved_on: 2026-11-26\n"
+        "source_url: https://example.org/j\nrequired_statements:\n"
+        "  - id: funding\n    pattern: '(?im)^#+\\s*funding'\n", encoding="utf-8")
+    text = "# Introduction\n\nWords.\n\n# Discussion\n\n<!-- -->\n"
+    project = _project(tmp_path, text, paper={"target_journal": "j"})
+    assert _said(project) == [(EMPTY, WARN, "Discussion")]
+
+
+@pytest.mark.parametrize(("stage", "severity"), [
+    ("design", INFO), ("analysis", INFO), ("drafting", WARN), (None, WARN),
+    ("internal-review", FAIL), ("submission", FAIL),
+])  # fmt: skip
+def test_each_finding_is_a_note_then_a_warning_then_a_failure(stage, severity) -> None:
+    assert severity_at(stage) == severity
+
+
+def test_a_latex_manuscript_s_statements_are_read_and_its_headings_are_not(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "manuscript").mkdir()
+    (tmp_path / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\nWords.\n"
+        "\\section{Funding}\n% to write\n\\section{Competing interests}\nNone declared.\n"
+        "\\end{document}\n", encoding="utf-8")
+    project = Project(tmp_path, {"schema": "manuscript-guard/paper/1"}, None)
+    said = _said(project)
+    assert {code for code, _severity, _subject in said} == {MISSING}
+    assert {subject for _code, _severity, subject in said} == {
+        "data", "ethics", "funding", "contributions"}
+
+
+def test_a_statement_in_the_supplement_is_read(tmp_path: Path) -> None:
+    """As G4 reads the declarations and the AI-use statement (round 1 of #819)."""
+    used = {"ai_use": {"declared_by": "A", "declared_on": "2026-11-26",
+                       "uses": [{"tool": "Claude Opus 5", "purpose": "editing"}]}}
+    project = _project(tmp_path, WHOLE, authors=used,
+                       supplement="# Use of AI\n\nClaude Opus 5 edited the English.\n")
+    assert _said(project) == []
+    project = _project(tmp_path, WHOLE, authors=used, supplement="# Use of AI\n\n<!-- -->\n")
+    [finding] = check_statements(project).findings
+    assert finding.code == EMPTY and finding.message.endswith("has no AI-use statement")
+
+
+# ------------------------------------------------------------------------------- the run
+
+
+def _gate_codes(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return sorted((f.code, f.subject or "") for f in report.findings if f.code in (
+        MISSING, "funding-not-stated", "interests-not-stated", "ai-use-not-stated"))
+
+
+def test_one_gap_is_one_finding_with_the_notes_of_g4_s_other_checks(tmp_path: Path) -> None:
+    """Where `declaration-missing` asks for the funding, competing interests or AI-use
+    statement, the note that says the same is not raised, and what it said of the records is
+    in the hint (round 1 of #819)."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "paper"
+    init_project(root, title="A study")
+    (root / "manuscript" / "main.md").write_text(
+        WHOLE.split("# Funding")[0], encoding="utf-8")
+    authors = (root / "authors.yaml").read_text(encoding="utf-8")
+    (root / "authors.yaml").write_text(
+        "schema: manuscript-guard/authors/1\nauthors:\n"
+        "  - given: Ada\n    family: Example\n    funding: ['Agence (ANR-20-CE17-0001)']\n"
+        "    competing_interests: Consulting fees from Pharma X.\n"
+        "ai_use:\n  declared_by: Ada Example\n  declared_on: 2026-11-26\n  uses:\n"
+        "    - tool: Claude Opus 5\n      purpose: editing\n", encoding="utf-8")
+    assert authors  # init wrote one, replaced here
+    assert _gate_codes(root) == [(MISSING, "ai_use"), (MISSING, "funding"),
+                                 (MISSING, "interests")]
+    report, *_ = _run_gates(root, stage="drafting")
+    hints = {f.subject: f.hint for f in report.findings if f.code == MISSING}
+    assert "ANR-20-CE17-0001" in hints["funding"]
+    assert "Consulting fees from Pharma X." in hints["interests"]
+    assert "Claude Opus 5" in hints["ai_use"]
+
+
+def test_a_new_project_is_warned_while_drafting_and_told_before(tmp_path: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "fresh"
+    init_project(root, title="Something new")
+    for stage, severity in (("design", INFO), ("drafting", WARN)):
+        report, *_ = _run_gates(root, stage=stage)
+        ours = {(f.code, f.severity) for f in report.findings if f.code in (EMPTY, MISSING)}
+        assert ours == {(EMPTY, severity), (MISSING, severity)}, ours

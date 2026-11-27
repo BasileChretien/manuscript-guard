@@ -464,13 +464,16 @@ def ask(folder: Folder, answers: dict) -> Asked:
     from manuscript_guard.setup.steps import after
 
     wrong = problems(answers, folder)
+    # A question that turns on another reads only answers that can be taken: a design given
+    # as a list is no design to offer guidelines for (round 1 of #844).
+    usable = _without(answers, wrong)
     questions: list[Question] = []
     waiting: list[tuple[str, tuple[str, ...]]] = []
     known: list[Known] = []
     for place, build in QUESTIONS:
         if _given(answers, place) is not MISSING and place not in wrong:
             continue
-        made = build(folder, answers)
+        made = build(folder, usable)
         if isinstance(made, Known):
             known.append(made)
         elif isinstance(made, _Wait):
@@ -487,6 +490,20 @@ def ask(folder: Folder, answers: dict) -> Asked:
     ready = not questions and not waiting
     steps = after(folder, answers) if ready else ()
     return Asked(folder, answers, tuple(questions), tuple(waiting), tuple(known), steps)
+
+
+def _without(answers: dict, places) -> dict:
+    """`answers` less the answers at `places`, the ones that cannot be taken."""
+    import copy
+
+    kept = copy.deepcopy(answers)
+    for place in places:
+        first, _, rest = place.partition(".")
+        if rest and isinstance(kept.get(first), dict):
+            kept[first].pop(rest, None)
+        else:
+            kept.pop(first, None)
+    return kept
 
 
 def _with_problem(question: Question, problem: str | None) -> Question:

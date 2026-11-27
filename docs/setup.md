@@ -46,7 +46,7 @@ asks it when it is due.
 | Id | Asks | Writes |
 |---|---|---|
 | `start` | Markdown, LaTeX, or a Word paper in the folder | the project, as `init`, `init --latex` or `init --from` makes it |
-| `title` | the working title | `title` in paper.yaml |
+| `title` | the working title | `title` in paper.yaml and, in a project under way, the manuscript's header where it is `init`'s own |
 | `language` | British English, American English, another language | `english_variant`; none for another language, whose writing checks do not apply |
 | `study_type` | the design: you describe the study, and three designs that fit are offered | `study_type` |
 | `reporting_guideline` | the guidelines of that design, or another | `reporting_guideline` |
@@ -100,9 +100,10 @@ data folder that is one of the toolkit's own, a title `init` would refuse.
 
 Nothing is written while a question is open. Then every change is worked out and read back
 first, so that a setting `paper.yaml` would refuse stops all of it, with the files as they
-were. `apply` writes, in order: the git repository, the project (`init`), the settings of
-`paper.yaml`, `authors.yaml`, the journal's profile, `.gitignore`, the workflow, and last the
-date it did so, as `applied_on` in `design/setup.yaml`.
+were; so does a Word paper where no pandoc is found to bring it in. `apply` writes, in
+order: the project (`init`), the git repository, the settings of `paper.yaml`, the title in
+the manuscript's header, `authors.yaml`, the journal's profile, `.gitignore`, the workflow,
+and last the date it did so, as `applied_on` in `design/setup.yaml`.
 
 - It fills only what is blank. A setting `paper.yaml` holds already is kept and said; a
   change is `manuscript-guard set`'s, whose guard asks before a stage moves back, a guideline
@@ -112,8 +113,8 @@ date it did so, as `applied_on` in `design/setup.yaml`.
   data can be read, with `vault init` ([the vault](vault.md)).
 - It fills no journal profile. The profile it starts is the annotated template, which the
   journal-profile skill fills from the journal's own instructions page.
-- It sends nothing anywhere, and runs no program but `git init` and, for an R analysis,
-  `Rscript`, to ask which packages it has; each with a time limit.
+- It sends nothing anywhere, and runs no program but `git init`, pandoc to bring a Word paper
+  in, and for an R analysis `Rscript`, to ask which packages it has; each with a time limit.
 
 `design/setup.yaml` stays in the project as the record of what was chosen at the start.
 `paper.yaml` and `authors.yaml` hold the settings, and every check reads them; nothing is

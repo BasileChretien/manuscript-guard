@@ -649,16 +649,33 @@ def edit_block(text: str, key: str, new: list) -> Edited:
     wrong = next(iter(Draft202012Validator(schema).iter_errors(new)), None)
     if wrong is not None:
         raise Refused(f"`{key}` cannot be {new!r}: {wrong.message}")
-    _root, before = _checked_text(text)
+    root, before = _checked_text(text)
+    end = _line_break(text)
     if key in before:
         if before[key] == new:
             return Edited(text, "unchanged", before[key])
-        raise Refused(f"`{key}` is set already, and `setup` replaces no setting")
-    end = _line_break(text)
-    body = text if not text or text.endswith(("\n", "\r")) else text + end
-    candidate = body + end.join([f"{key}:", *_block(new, "  ", end)]) + end
+        if before[key] != []:
+            raise Refused(f"`{key}` is set already, and `setup` replaces no setting")
+        candidate = _empty_list_filled(text, root, key, _block(new, "  ", end), end)
+        how = "replaced"
+    else:
+        body = text if not text or text.endswith(("\n", "\r")) else text + end
+        candidate = body + end.join([f"{key}:", *_block(new, "  ", end)]) + end
+        how = "appended"
     _read_back(candidate, before, {**before, key: new}, key)
-    return Edited(candidate, "appended", None)
+    return Edited(candidate, how, before.get(key))
+
+
+def _empty_list_filled(text: str, root: yaml.Node, key: str, lines: list[str], end: str) -> str:
+    """The text with `key: []`, an empty list on one line, followed by `lines` in its place."""
+    _name, value = next((name, value) for name, value in root.value
+                       if isinstance(name, yaml.ScalarNode) and name.value == key)  # fmt: skip
+    if not (isinstance(value, yaml.SequenceNode) and value.flow_style
+            and value.start_mark.line == value.end_mark.line):  # fmt: skip
+        raise Refused(f"`{key}` is an empty list over several lines; write it as `{key}: []`")
+    after = _line_end(text, value.end_mark.index)
+    kept = text[: value.start_mark.index].rstrip(" \t") + text[value.end_mark.index : after]
+    return kept + end + end.join(lines) + text[after:]
 
 
 __all__ = [

@@ -8,6 +8,7 @@ whole of it, with the files as they were, where any part cannot be written.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -476,3 +477,221 @@ def test_no_rscript_is_said() -> None:
     (tool,) = prerequisites("r", which=lambda name: None, env={})
     assert not tool.found and "MANUSCRIPT_GUARD_RSCRIPT" in tool.said
     assert prerequisites("undecided") == ()
+
+
+# ---------------------------------------------------------------------------- round 1 of #844
+
+
+@pytest.mark.parametrize(("place", "value"), [
+    ("study_type", ["cohort", "case-control"]),
+    ("start", ["markdown"]),
+    ("title", ["A title"]),
+    ("journal", ["bmj-open"]),
+    ("authors", "Ada Byron"),
+    ("statistician", ["Byron"]),
+    ("data", {"where": ["project"]}),
+    ("data", "project"),
+    ("repository", {"visibility": ["private"]}),
+])  # fmt: skip
+def test_an_answer_of_the_wrong_kind_keeps_its_question_open_and_crashes_nothing(
+    tmp_path: Path, place, value
+) -> None:
+    """Round 1 of #844: a list where a name goes reached `study_types().get` and raised.
+    The guideline is left unanswered, so that the question that reads the design is put."""
+    root = no_git(tmp_path / "paper")
+    left = {key: held for key, held in ANSWERS.items() if key != "reporting_guideline"}
+    answered(root, {**left, place: value})
+    found = asked(root)
+    assert not found.ready and any(q.problem for q in found.questions)
+    before = files(root)
+    done = apply_answers(root)
+    assert not done.ok and files(root) == before
+
+
+@pytest.mark.parametrize(("folder", "line"), [
+    ("./data", "data/"), ("data/raw/", "data/raw/"), ("data" + chr(92) + "raw", "data/raw/"),
+])  # fmt: skip
+def test_a_data_folder_is_written_into_gitignore_as_git_reads_it(tmp_path: Path, folder,
+                                                                 line) -> None:  # fmt: skip
+    """Round 1 of #844: `./data` was accepted and written as `./data/`, by which git ignores
+    nothing."""
+    root = no_git(tmp_path / "paper")
+    answered(root, {**ANSWERS, "data": {"where": "project", "folder": folder,
+                                        "publishable": False}})  # fmt: skip
+    assert apply_answers(root).ok
+    lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert line in lines and not any(entry.startswith("./") for entry in lines)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_git_ignores_the_data_folder_written(tmp_path: Path) -> None:
+    root = tmp_path / "paper"
+    root.mkdir()
+    if read_folder(root).repository is not None:
+        pytest.skip("the temporary folder is inside a git repository")
+    answered(root, {**ANSWERS, "data": {"where": "project", "folder": "./data",
+                                        "publishable": False},
+                    "repository": {"git": True, "visibility": "none"}})  # fmt: skip
+    assert apply_answers(root).ok
+    (root / "data").mkdir()
+    (root / "data" / "x.csv").write_text("a\n", encoding="utf-8")
+    done = subprocess.run(["git", "check-ignore", "-q", "data/x.csv"], cwd=root,
+                          timeout=60, check=False)  # fmt: skip
+    assert done.returncode == 0
+
+
+def test_the_page_names_every_program_apply_runs() -> None:
+    """Round 1 of #844: the page said apply runs only git and Rscript; a Word paper is
+    converted by pandoc."""
+    page = " ".join((Path(__file__).parents[1] / "docs" / "setup.md").read_text(
+        encoding="utf-8").split())  # fmt: skip
+    said = page[page.index("It sends nothing anywhere"):].split(".")[0]
+    assert all(program in said for program in ("git init", "pandoc", "Rscript")), said
+
+
+def test_a_word_paper_without_pandoc_is_refused_before_anything_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from manuscript_guard.build import document
+
+    def missing():
+        raise document.BuildError("pandoc is not installed")
+
+    monkeypatch.setattr(document, "pandoc", missing)
+    root = no_git(tmp_path / "paper")
+    (root / "paper.docx").write_bytes(b"")
+    answered(root, {**ANSWERS, "start": "paper.docx", "title": "", "stage": "drafting"})
+    before = files(root)
+    dry, done = apply_answers(root, dry_run=True), apply_answers(root)
+    assert not dry.ok and not done.ok and "pandoc" in done.refused
+    assert files(root) == before
+
+
+def _under_way(root: Path, extra: str = "") -> Path:
+    assert main(["init", str(root)]) == 0
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + extra, encoding="utf-8")
+    return root
+
+
+def test_the_sources_line_stays_where_they_are_not_to_be_committed(tmp_path: Path) -> None:
+    root = _under_way(no_git(tmp_path / "paper"), "literature:\n  sources_in_git: false\n")
+    answered(root, {**ANSWERS, "repository": {"visibility": "private", "sources_in_git": True,
+                                              "github_actions": False}})  # fmt: skip
+    done = apply_answers(root)
+    assert done.ok
+    assert "literature/sources/*" in (root / ".gitignore").read_text(encoding="utf-8")
+    assert settings(root)["literature"] == {"sources_in_git": False}
+    public = no_git(tmp_path / "public")
+    answered(public, {**ANSWERS, "repository": {"visibility": "public", "sources_in_git": True,
+                                                "github_actions": False}})  # fmt: skip
+    assert apply_answers(public).ok
+    assert "literature/sources/*" in (public / ".gitignore").read_text(encoding="utf-8")
+    assert "literature" not in settings(public)
+
+
+@pytest.mark.skipif(os.name != "nt" and os.geteuid() == 0, reason="root writes anything")
+def test_a_read_only_paper_yaml_is_refused_and_left(tmp_path: Path) -> None:
+    import stat
+
+    root = _under_way(no_git(tmp_path / "paper"))
+    answered(root, ANSWERS)
+    paper = root / "paper.yaml"
+    paper.chmod(stat.S_IREAD)
+    try:
+        before = files(root)
+        done = apply_answers(root)
+        assert not done.ok and "read-only" in done.refused
+        assert files(root) == before
+    finally:
+        paper.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+
+@pytest.mark.parametrize("latex", [False, True])
+def test_a_placeholder_title_is_replaced_in_paper_yaml_and_the_manuscript(
+    tmp_path: Path, capsys, latex: bool
+) -> None:
+    """Round 1 of #844: the title went into paper.yaml only, and the header kept "Untitled
+    manuscript"."""
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root), *(["--latex"] if latex else [])]) == 0
+    answered(root, {**ANSWERS, "start": "latex" if latex else "markdown",
+                    "title": "Statins & the liver"})  # fmt: skip
+    assert apply_answers(root).ok
+    assert settings(root)["title"] == "Statins & the liver"
+    text = (root / "manuscript" / ("main.tex" if latex else "main.md")).read_text("utf-8")
+    assert "Untitled manuscript" not in text
+    assert ("Statins " + chr(92) + "& the liver" if latex else "Statins & the liver") in text
+    capsys.readouterr()
+    main(["check", str(root), "--json"])
+    codes = {f["code"] for f in json.loads(capsys.readouterr().out)["findings"]}
+    assert not {code for code in codes if "title" in code}, codes
+
+
+def test_a_manuscript_with_a_title_of_its_own_keeps_the_placeholder_in_paper_yaml(
+    tmp_path: Path,
+) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    main_md = root / "manuscript" / "main.md"
+    main_md.write_text('---\ntitle: "Typed by hand"\n---\n\n# Introduction\n', "utf-8")
+    answered(root, {**ANSWERS, "title": "Another"})
+    done = apply_answers(root)
+    assert done.ok
+    assert settings(root)["title"] == "Untitled manuscript"
+    assert any("title" in change.what for change in done.kept)
+
+
+def test_an_answers_file_written_as_one_mapping_is_read_after_apply(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    (root / "design").mkdir()
+    (root / ANSWERS_FILE).write_text(json.dumps(ANSWERS, ensure_ascii=False), "utf-8")
+    assert apply_answers(root, today="2026-11-27").ok
+    assert load_answers(root)["applied_on"] == "2026-11-27"
+    assert asked(root).ready
+
+
+def test_a_gitignore_not_in_utf8_is_refused_with_a_sentence(tmp_path: Path) -> None:
+    root = _under_way(no_git(tmp_path / "paper"))
+    (root / ".gitignore").write_text("build/\n", encoding="utf-16")
+    answered(root, ANSWERS)
+    before = files(root)
+    done = apply_answers(root)
+    assert not done.ok and "UTF-8" in done.refused
+    assert files(root) == before
+
+
+def test_an_empty_list_of_registrations_is_filled(tmp_path: Path) -> None:
+    root = _under_way(no_git(tmp_path / "paper"), "registration: []\n")
+    answered(root, ANSWERS)
+    done = apply_answers(root)
+    assert done.ok, done.refused
+    assert settings(root)["registration"] == [{"id": "NCT01234567"}]
+
+
+def test_a_role_is_named_by_e_mail_or_by_a_name_only_one_author_has(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    byrons = [ADA, {**CHARLES, "family": "Byron", "given": "Lord"}]
+    for named, ok in (("ada@example.org", True), ("Byron", False), ("Ada Byron", True)):
+        answered(root, {"schema": "manuscript-guard/setup/1", "authors": byrons,
+                        "statistician": named})  # fmt: skip
+        problem = next((q.problem for q in asked(root).questions if q.id == "statistician"),
+                       None)  # fmt: skip
+        assert (problem is None) is ok, (named, problem)
+
+
+def test_a_journal_kept_starts_no_profile_and_no_step(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    from manuscript_guard.paths import SHIPPED_JOURNALS
+
+    profile = root / "profiles" / "journals" / "kept-journal.yaml"
+    profile.parent.mkdir(parents=True)
+    profile.write_bytes((SHIPPED_JOURNALS / "TEMPLATE.yaml").read_bytes())
+    assert main(["set", "target_journal", "kept-journal", "--path", str(root)]) == 0
+    answered(root, ANSWERS)
+    done = apply_answers(root)
+    assert done.ok
+    assert not (root / "profiles" / "journals" / "bmj-open.yaml").exists()
+    assert not any(step.skill == "journal-profile" for step in done.after)
+    assert settings(root)["target_journal"] == "kept-journal"

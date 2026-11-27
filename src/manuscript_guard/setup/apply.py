@@ -3,9 +3,10 @@
 Nothing is written while a question is open. Then every change is worked out and read back
 in memory first, so that a setting `paper.yaml` would refuse, or an `authors.yaml` that
 would not read back as the authors given, stops the whole of it with the files as they were.
-Only then is anything written, in the order the files need: the git repository, `init`, the
-settings, the authors, the journal's profile, `.gitignore`, the workflow, and last the date
-in the record. A value already there is never replaced: it is kept and said, and a change is
+Only then is anything written, in the order the files need: `init`, so that a Word paper
+refused writes nothing, the git repository, the settings, the title in the manuscript's
+header, the authors, the journal's profile, `.gitignore`, the workflow, and last the date in
+the record. A value already there is never replaced: it is kept and said, and a change is
 `set`'s, with its guard.
 """
 
@@ -18,7 +19,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from manuscript_guard.setup.answers import ANSWERS_FILE, LATER, answer, journal_slug
+import yaml
+
+from manuscript_guard.setup.answers import (
+    ANSWERS_FILE,
+    LATER,
+    answer,
+    folder_parts,
+    journal_slug,
+)
 from manuscript_guard.setup.folder import Folder, read_folder
 from manuscript_guard.setup.questions import Step, ask
 from manuscript_guard.setup.tools import Tool, prerequisites
@@ -120,8 +129,8 @@ def _paper_edits(folder: Folder, answers: dict) -> _Paper:
     paper = _Paper()
     title = answer(answers, "title")
     if folder.is_project and isinstance(title, str) and title.strip():
-        _fill(paper, folder, "title", title, "the document's title",
-              blank=lambda held: held in (None, "", UNTITLED))
+        _fill(paper, folder, "title", title, "the document's title, in paper.yaml and the "
+              "manuscript's header", blank=lambda held: held in (None, "", UNTITLED))  # fmt: skip
     english = _english(answers)
     if folder.is_project and english:
         _fill(paper, folder, "english_variant", english,
@@ -151,7 +160,9 @@ def _paper_edits(folder: Folder, answers: dict) -> _Paper:
     if isinstance(count, int):
         _fill(paper, folder, "custodian.minimum_cell_count", count, f"a count below {count} "
               "that the manuscript binds fails G2 from internal review", kind="child")  # fmt: skip
-    if answer(answers, "repository.sources_in_git") is True:
+    # Asked only of a private repository, and written only for one (round 1 of #844).
+    private = answer(answers, "repository.visibility") == "private"
+    if private and answer(answers, "repository.sources_in_git") is True:
         _fill(paper, folder, "literature.sources_in_git", True, "the stored copies are "
               "committed, and CI holds every quote to its copy", kind="child")  # fmt: skip
     return paper
@@ -161,7 +172,13 @@ def _paper_edits(folder: Folder, answers: dict) -> _Paper:
 
 
 def _lines(path: Path) -> list[str]:
-    return path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    if not path.is_file():
+        return []
+    try:
+        return path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise _Refused(f"{path.name} is not UTF-8, which setup writes it in; save it as UTF-8 "
+                       "first") from exc  # fmt: skip
 
 
 def _ignored_now(folder: Folder) -> list[str]:
@@ -183,19 +200,20 @@ def _shown(value: Any) -> str:
     return written(value)
 
 
-def _gitignore(folder: Folder, answers: dict, lines: list[str]) -> tuple[list[str], list[Change]]:
-    """`.gitignore`'s lines with the data's folder added and, where the stored sources are to
-    be committed, their line taken out; and what changed."""
+def _gitignore(folder: Folder, answers: dict, lines: list[str], *,
+               commit_sources: bool) -> tuple[list[str], list[Change]]:  # fmt: skip
+    """`.gitignore`'s lines with the data's folder added and, where `commit_sources` (the stored
+    copies are committed, as paper.yaml is to say), their line taken out; and what changed."""
     changes = []
     data_folder = answer(answers, "data.folder")
     keep_out = (answer(answers, "data.where") == "project"
                 and answer(answers, "data.publishable") is False)
     if keep_out and isinstance(data_folder, str):
-        line = data_folder.strip("/") + "/"
+        line = "/".join(folder_parts(data_folder)) + "/"
         if not {line, line.rstrip("/"), "/" + line} & {entry.strip() for entry in lines}:
             lines = [*lines, "", "# The data, which may not be published (setup).", line]
             changes.append(Change(".gitignore", line, "no commit holds the data"))
-    if answer(answers, "repository.sources_in_git") is True and GITIGNORE_SOURCES in lines:
+    if commit_sources and GITIGNORE_SOURCES in lines:
         lines = [entry for entry in lines if entry != GITIGNORE_SOURCES]
         changes.append(Change(".gitignore", f"{GITIGNORE_SOURCES} taken out", "the stored "
                               "copies of the cited works are committed"))  # fmt: skip
@@ -203,9 +221,22 @@ def _gitignore(folder: Folder, answers: dict, lines: list[str]) -> tuple[list[st
 
 
 def _recorded(text: str, today: str) -> str:
-    """`design/setup.yaml` with the day the project was written from it."""
+    """`design/setup.yaml` with the day the project was written from it: a line added at its
+    end, or, where its answers are not one to a line (a mapping between braces), the file
+    written again with that line."""
+    from manuscript_guard.contracts._schema import _plain
+
+    before = _plain(yaml.safe_load(text)) or {}
     kept = [line for line in text.splitlines() if not line.startswith("applied_on:")]
-    return "\n".join([*kept, f"applied_on: {today}"]) + "\n"
+    candidate = "\n".join([*kept, f"applied_on: {today}"]) + "\n"
+    try:
+        after = _plain(yaml.safe_load(candidate))
+    except yaml.YAMLError:
+        after = None
+    wanted = {**before, "applied_on": today}
+    if after == wanted:
+        return candidate
+    return yaml.safe_dump(wanted, allow_unicode=True, sort_keys=False)
 
 
 def _git_init(root: Path, run: Callable) -> None:
@@ -224,10 +255,78 @@ class _Plan:
     base: str | None  # paper.yaml as it is, or as init would write it
     authors: str | None
     profile: str | None
-    ignore: list[str]
     changes: list[Change]
     git: bool
     workflow: bool
+    commit_sources: bool
+    header: tuple[Path, str] | None  # the manuscript, with the title answered in its header
+
+
+def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | bool:
+    """The manuscript of a project under way with `title` in its header where the header is
+    `init`'s own, None where it has no header to hold one, and False where it holds a title
+    of its own, which setup does not write over."""
+    from manuscript_guard.build.latex_values import escaped
+    from manuscript_guard.scaffold import UNTITLED, _header
+
+    paths = folder.setting("paths")
+    named = paths.get("manuscript", "manuscript") if isinstance(paths, dict) else "manuscript"
+    markdown, latex = folder.root / named / "main.md", folder.root / named / "main.tex"
+    if markdown.is_file():
+        text = markdown.read_text(encoding="utf-8")
+        if text.startswith(_header(UNTITLED)):
+            return markdown, _header(title) + text[len(_header(UNTITLED)):]
+        return None if not text.startswith("---") else False
+    if latex.is_file():
+        text = latex.read_text(encoding="utf-8")
+        line = chr(92) + "title{" + escaped(UNTITLED, "title") + "}"
+        if text.count(line) == 1:
+            ours = chr(92) + "title{" + escaped(title, "title") + "}"
+            return latex, text.replace(line, ours, 1)
+        return None if (chr(92) + "title{") not in text else False
+    return None
+
+
+def _title_kept(paper: _Paper, folder: Folder) -> tuple[Path, str] | None:
+    """The manuscript's header with the title answered, or the title taken out of the edits
+    and kept where the header holds a title of its own."""
+    edit = next((e for e in paper.edits if e[1] == "title"), None)
+    if edit is None or not folder.is_project:
+        return None
+    header = _header_with(folder, edit[2])
+    if header is False:
+        paper.edits.remove(edit)
+        paper.kept.append(Change("paper.yaml", f"title: {folder.setting('title')}", "the "
+                                 "manuscript's header holds a title of its own; change the two "
+                                 "together by hand"))  # fmt: skip
+        return None
+    return header if isinstance(header, tuple) else None
+
+
+def _writable(folder: Folder, paper: _Paper) -> None:
+    """`set`'s refusals of a paper.yaml it would replace: read-only, a link, or linked."""
+    from manuscript_guard import paper_edit
+
+    if not (folder.is_project and paper.edits):
+        return
+    try:
+        paper_edit._writable(folder.root / "paper.yaml")  # noqa: SLF001 - set's own guards
+        paper_edit._one_file(folder.root / "paper.yaml")  # noqa: SLF001
+    except paper_edit.Refused as exc:
+        raise _Refused(f"paper.yaml is as it was, since {exc}") from exc
+
+
+def _pandoc_for(start: object) -> None:
+    """A Word paper is brought in by pandoc: refused now, before anything is written, where
+    there is none."""
+    if not (isinstance(start, str) and start.lower().endswith(".docx")):
+        return
+    from manuscript_guard.build import document
+
+    try:
+        document.pandoc()
+    except document.BuildError as exc:
+        raise _Refused(f"{exc}; it brings {start} in") from exc
 
 
 def _plan(folder: Folder, answers: dict) -> _Plan:
@@ -250,8 +349,11 @@ def _plan(folder: Folder, answers: dict) -> _Plan:
         if _english(answers):
             changes.append(Change("paper.yaml", f"english_variant: {_english(answers)}",
                                   "G14 holds the spelling to it"))
+    _pandoc_for(start)
     paper = _paper_edits(folder, answers)
+    header = _title_kept(paper, folder)
     paper.run(base)  # refused here, before anything is written
+    _writable(folder, paper)
     changes += [Change("paper.yaml", f"{key}: {_shown(value)}", why)
                 for _kind, key, value, why in paper.edits]
     authors = None
@@ -264,13 +366,19 @@ def _plan(folder: Folder, answers: dict) -> _Plan:
         changes.append(Change("authors.yaml", f"{len(data['authors'])} author(s), "
                               f"{len(data['affiliations'])} affiliation(s)", "the title page "
                               "and the declarations are built from it"))  # fmt: skip
-    profile = _journal(answers)
+    # A template only for the journal paper.yaml is to name, and only where it has none.
+    planned = any(key == "target_journal" for _kind, key, _value, _why in paper.edits)
+    profile = _journal(answers) if planned else None
     if profile and profile in folder.profiles:
         profile = None
     if profile:
         changes.append(Change(f"profiles/journals/{profile}.yaml", "the annotated template",
                               "to be filled from the journal's own instructions page"))
-    lines, ignored = _gitignore(folder, answers, _ignored_now(folder))
+    commit_sources = answer(answers, "repository.visibility") == "private" and (
+        any(key == "literature.sources_in_git" for _kind, key, _value, _why in paper.edits)
+        or (folder.setting("literature") or {}).get("sources_in_git") is True)
+    _lines_, ignored = _gitignore(folder, answers, _ignored_now(folder),
+                                  commit_sources=commit_sources)  # fmt: skip
     changes += ignored
     git = answer(answers, "repository.git") is True and folder.repository is None
     if git:
@@ -280,7 +388,7 @@ def _plan(folder: Folder, answers: dict) -> _Plan:
     if workflow:
         changes.append(Change(".github/workflows/manuscript-guard.yml", "the workflow",
                               "check runs on each push and pull request"))
-    return _Plan(paper, base, authors, profile, lines if ignored else [], changes, git, workflow)
+    return _Plan(paper, base, authors, profile, changes, git, workflow, commit_sources, header)
 
 
 def _notes(answers: dict) -> list[str]:
@@ -306,9 +414,6 @@ def _write(folder: Folder, answers: dict, plan: _Plan, today: str, run: Callable
     from manuscript_guard.scaffold import UNTITLED, init_project
 
     root, notes = folder.root, []
-    if plan.git:
-        _git_init(root, run)
-        done.append("the git repository")
     start, title = answer(answers, "start"), answer(answers, "title")
     given = title if isinstance(title, str) and title.strip() else None
     if not folder.is_project and isinstance(start, str) and start.lower().endswith(".docx"):
@@ -322,12 +427,19 @@ def _write(folder: Folder, answers: dict, plan: _Plan, today: str, run: Callable
         init_project(root, title=given or UNTITLED, latex=start == "latex",
                      english=_english(answers))  # fmt: skip
         done.append("the project")
+    if plan.git:
+        _git_init(root, run)
+        done.append("the git repository")
     path = root / "paper.yaml"
     mark, text = paper_edit.read(path)
     edited = plan.paper.run(text)
     if edited != text:
         paper_edit.write(path, mark + edited)
         done.append("paper.yaml")
+    if plan.header is not None:
+        manuscript, text = plan.header
+        manuscript.write_text(text, encoding="utf-8", newline="\n")
+        done.append(manuscript.relative_to(root).as_posix())
     if plan.authors is not None:
         (root / "authors.yaml").write_text(plan.authors, encoding="utf-8", newline="\n")
         done.append("authors.yaml")
@@ -339,7 +451,8 @@ def _write(folder: Folder, answers: dict, plan: _Plan, today: str, run: Callable
             target.write_text(source, encoding="utf-8", newline="\n")
             done.append(f"profiles/journals/{plan.profile}.yaml")
     ignore = root / ".gitignore"
-    lines, ignored = _gitignore(folder, answers, _lines(ignore))
+    lines, ignored = _gitignore(folder, answers, _lines(ignore),
+                                commit_sources=plan.commit_sources)  # fmt: skip
     if ignored:
         ignore.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         done.append(".gitignore")

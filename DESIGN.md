@@ -10099,10 +10099,13 @@ a POSIX shell; and the file is the record a later session resumes from.
 on the text it will be made from (the file as it is, or as `init` writes it,
 `scaffold.paper_text`) and read back, and `authors.yaml` is written as text and read back as the
 authors given and held to its schema, before anything touches the disk; one refused stops all
-of it with the files as they were. Then, in order: `git init`, `init` (or `init --from` a Word
-paper, whose authors' file is replaced by the answers', since it was made in the same run),
-the settings through `paper_edit` (`edit`, and `edit_child` and `edit_block`, which keep every
-comment as `set` does), `authors.yaml`, the journal's profile from the template, `.gitignore`,
+of it with the files as they were, as do a Word paper with no pandoc to bring it in and a
+`paper.yaml` that `set` would refuse to replace (read-only, a link). Then, in order: `init`
+(or `init --from` a Word paper, whose authors' file is replaced by the answers', since it was
+made in the same run), so that a conversion refused writes nothing, then `git init`, the
+settings through `paper_edit` (`edit`, and `edit_child` and `edit_block`, which keep every
+comment as `set` does), the title in the manuscript's header where that is `init`'s own,
+`authors.yaml`, the journal's profile from the template, `.gitignore`,
 the workflow, and the date in the record. A setting held already is never replaced: it is kept
 and said, and a change is `set`'s, with its guard. `--dry-run` says the same list and writes
 nothing. Then the machine is asked for what the analysis language needs (`setup.tools`: R with
@@ -28828,12 +28831,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `init`'s own value (no title or `Untitled manuscript`, `stage: design`, no guideline), and
   `authors.yaml` where it is missing or still `init`'s placeholder as YAML reads it. An
   `authors.yaml` a person began, one placeholder field left in it, is not blank and is not
-  asked. An answer that differs from a setting held is kept and said, never written.
-  Pinned by `tests/test_setup.py::test_a_project_under_way_has_only_its_blanks_filled`
-  and `tests/test_setup.py::test_filled_authors_are_kept_and_not_asked`.
+  asked. A title is written into a project under way only where the manuscript's header is
+  `init`'s own or there is none: one typed by hand keeps the placeholder in `paper.yaml`. An
+  answer that differs from a setting held is kept and said, never written.
+  Pinned by `tests/test_setup.py::test_a_project_under_way_has_only_its_blanks_filled`,
+  `tests/test_setup.py::test_filled_authors_are_kept_and_not_asked`
+  and `tests/test_setup.py::test_a_manuscript_with_a_title_of_its_own_keeps_the_placeholder_in_paper_yaml`.
 - **A failure part-way through `apply` leaves what was written before it.** The settings and
   the authors' file are worked out and read back first, so a setting refused writes nothing;
-  but `git init`, `init` itself or a disk that fills stop it where they happen, and it says
+  but `init` itself, `git init` or a disk that fills stop it where they happen, and it says
   what was written before. Accepted.
 - **R is looked for as `verify` looks for it.** `MANUSCRIPT_GUARD_RSCRIPT`, then the first
   `Rscript` on PATH; an R installed elsewhere, as on Windows where the installer puts none on

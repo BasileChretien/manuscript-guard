@@ -15,9 +15,15 @@ from manuscript_guard.setup.questions import AUTHOR, Step
 
 
 def _journal_step(folder: Folder, answers: dict) -> Step | None:
+    """A profile to fill where `apply` starts one, or a journal to choose; nothing where
+    paper.yaml names a journal already, which `apply` keeps."""
     journal = answer(answers, "journal")
+    if folder.setting("target_journal"):
+        return None
     if isinstance(journal, dict):
         slug = journal.get("slug") or journal_slug(journal["name"])
+        if slug in folder.profiles:
+            return None
         return Step("journal-profile", f"Fill the profile of {journal['name']}",
                     f"profiles/journals/{slug}.yaml is the annotated template until its "
                     "limits, sections and statements are read from the journal's own "

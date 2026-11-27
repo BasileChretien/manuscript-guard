@@ -31,6 +31,8 @@ GROUPS = ("data", "repository")
 RESERVED = frozenset({"analysis", "results", "build", "manuscript", "literature", "design",
                       "figures", "review", "profiles", "approvals", "checks", "receipts",
                       ".git", ".github", ".manuscript-guard"})  # fmt: skip
+#: A slash or a backslash, either of which may stand between a folder's names.
+_SEPARATORS = re.compile("[/" + re.escape(chr(92)) + "]+")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+\Z")
 _VALIDATOR = Draft202012Validator(load_schema("setup"))
 MISSING = object()
@@ -103,18 +105,33 @@ def journal_slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
 
 
-def names_an_author(said: str, authors: list) -> bool:
-    """`said` names one of `authors`, as `approve --as` and `sign --as` name one: by ORCID iD,
-    family name or full name."""
+def authors_named(said: str, authors: list) -> int:
+    """How many of `authors` `said` names, as `approve --as` and `sign --as` name one: by
+    ORCID iD, e-mail address, family name or full name."""
     said = " ".join(said.split()).casefold()
+    named = 0
     for author in authors:
         if not isinstance(author, dict):
             continue
         given, family = str(author.get("given", "")), str(author.get("family", ""))
-        if said in {family.casefold(), f"{given} {family}".casefold(),
-                    str(author.get("orcid", "")).casefold()}:  # fmt: skip
-            return True
-    return False
+        ways = {family.casefold(), f"{given} {family}".casefold(),
+                str(author.get("orcid", "")).casefold(), str(author.get("email", "")).casefold()}
+        named += said in ways - {""}
+    return named
+
+
+def names_an_author(said: str, authors: list) -> bool:
+    """`said` names exactly one of `authors`."""
+    return authors_named(said, authors) == 1
+
+
+def _role_problem(said: str, authors: list, other: str) -> str | None:
+    named = authors_named(said, authors)
+    if named == 1:
+        return None
+    if named > 1:
+        return f"{said!r} names {named} authors; give the full name, the e-mail or the ORCID iD"
+    return f"{said!r} names no author{other}"
 
 
 def _author_problem(authors: list) -> str | None:
@@ -130,14 +147,21 @@ def _author_problem(authors: list) -> str | None:
     return None
 
 
+def folder_parts(name: str) -> tuple[str, ...]:
+    """The data's folder as its names, a slash or a backslash between them and `.` left out:
+    `./data`, `data/` and `data` are one folder, which `.gitignore` names `data/`."""
+    return tuple(part for part in _SEPARATORS.split(name.strip()) if part not in ("", "."))
+
+
 def _folder_problem(folder_name: str, root: Path) -> str | None:
-    relative = Path(folder_name)
-    if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+    parts = folder_parts(folder_name)
+    outside = Path(folder_name).is_absolute() or re.match(r"[A-Za-z]:", folder_name.strip())
+    if outside or ".." in parts or not parts:
         return (f"{folder_name!r} is not a folder inside the project; data held elsewhere are "
                 "`vault` or `site`")  # fmt: skip
-    if relative.parts[0] in RESERVED:
-        return f"{relative.parts[0]}/ is the toolkit's own folder; the data need one of theirs"
-    if (root / relative).is_file():
+    if parts[0] in RESERVED:
+        return f"{parts[0]}/ is the toolkit's own folder; the data need one of theirs"
+    if root.joinpath(*parts).is_file():
         return f"{folder_name} is a file, not a folder"
     return None
 
@@ -180,16 +204,16 @@ def _authors_of(answers: dict) -> list:
 
 
 def _statistician_problem(said: Any, answers: dict, folder: Folder) -> str | None:
-    if not isinstance(said, str) or said == LATER or names_an_author(said, _authors_of(answers)):
+    if not isinstance(said, str) or said == LATER:
         return None
-    return (f"{said!r} names no author; for someone who is not one, write "
-            "`statistician: {name: <their name>}`")  # fmt: skip
+    return _role_problem(said, _authors_of(answers), "; for someone who is not one, write "
+                         "`statistician: {name: <their name>}`")  # fmt: skip
 
 
 def _lead_problem(lead: Any, answers: dict, folder: Folder) -> str | None:
-    if not isinstance(lead, dict) or names_an_author(lead["author"], _authors_of(answers)):
+    if not isinstance(lead, dict):
         return None
-    return f"{lead['author']!r} names no author"
+    return _role_problem(lead["author"], _authors_of(answers), "")
 
 
 def _authors_problem(authors: Any, answers: dict, folder: Folder) -> str | None:

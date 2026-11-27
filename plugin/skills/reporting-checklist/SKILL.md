@@ -170,6 +170,7 @@ that names none: choose the guideline that fits it with the author.
 | cohort | STROBE, RECORD, TARGET (a target trial emulated) | |
 | case-control | STROBE, RECORD | |
 | cross-sectional | STROBE, RECORD | |
+| diagnostic-accuracy | STARD | |
 | self-controlled | STROBE, RECORD (no guideline is written for the design) | |
 | disproportionality | READUS-PV | |
 | systematic-review | PRISMA | PRISMA-P |

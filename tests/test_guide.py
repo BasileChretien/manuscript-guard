@@ -217,7 +217,7 @@ def test_each_design_is_offered_with_what_makes_a_study_that_design(project: Pat
 
 
 def test_none_of_the_designs_is_offered_to_the_agent(tmp_path: Path) -> None:
-    """Known gaps (round 1 of #502): "None of these" is offered as the seven designs are, for
+    """Known gaps (round 1 of #502): "None of these" is offered as the table's designs are, for
     the agent to choose, though settling that a study fits none of them may be the author's
     to say."""
     from manuscript_guard.guide.model import AGENT

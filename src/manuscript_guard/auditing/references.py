@@ -943,14 +943,14 @@ def _gives_record_title(text: str, title: str, records: list[str]) -> bool:
 def _with_subtitle(title: str, records: list[str]) -> bool:
     """Whether the title read is a record's whole title, a colon and a subtitle the record
     does not hold: "Statin therapy and fracture risk: a cohort of older women", whose record
-    is "Statin therapy and fracture risk" (round 2 of #846). A record's title of too few words
-    to tell a work by is never taken for it."""
+    is "Statin therapy and fracture risk" (round 2 of #846). Each colon is tried, for a
+    record whose own title holds one, "COVID-19: lessons learned" (round 3). A record's title
+    of too few words to tell a work by is never taken for it."""
     from manuscript_guard.gates.searched import folded_words
 
-    main, colon, _subtitle = title.partition(":")
-    return bool(colon) and any(len(_worded(record)) >= TITLE_WORDS
-                               and folded_words(main) == folded_words(record)
-                               for record in records)  # fmt: skip
+    mains = [folded_words(title[:at]) for at, sign in enumerate(title) if sign == ":"]
+    return any(len(_worded(record)) >= TITLE_WORDS and folded_words(record) in mains
+               for record in records)  # fmt: skip
 
 
 def _title_differs(

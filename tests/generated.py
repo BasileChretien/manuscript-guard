@@ -8056,7 +8056,8 @@ _DOTTED_JOURNALS = ("Sci. China Life Sci.", "Proc. Natl Acad Sci.", "Eur. Heart 
 #: How an entry says its title is a translation (`auditing.references._TRANSLATED`), and
 #: languages it names.
 _TRANSLATION_MARKERS = ("[Article in {}]", "(in {})", "(in {} with English abstract)",
-                        "[article in {}]")  # fmt: skip
+                        "[article in {}]", "[Article in English, {}]",
+                        "(in {} and English)")  # fmt: skip
 _LANGUAGES = ("Spanish", "Portuguese", "Japanese", "Chinese", "French", "German", "Turkish")
 
 
@@ -8079,7 +8080,9 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
     another work's and whose OpenAlex record is its own. And one whose two records each hold
     under half its words and both together half or more. An entry whose title is its
     record's whole title, a colon and a subtitle the record does not hold, as long as the
-    title and more. Each is (entry, Crossref's title,
+    title and more; one whose title is another work's main title, a colon and its own words;
+    and one that says it is in English, held to another work's title. Each is (entry,
+    Crossref's title,
     its subtitle, OpenAlex's title or "", whether it is said). Every example holds one of
     each, so a rule broken for one kind is seen whatever the seed."""
     words = draw(st.permutations(_TITLED))[:draw(st.integers(6, 9))]
@@ -8101,6 +8104,8 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
     extended = " ".join([*words[:3], *other[:4]]).capitalize()
     short = f"{words[0].capitalize()} {words[1]} 184:1845-56"
     subtitled = f"{' '.join(words[:3]).capitalize()}: {' '.join([*words[3:], *other[:3]])}"
+    # Another work's main title before the colon: held to the record like any other.
+    colon = f"{' '.join(other[:3]).capitalize()}: {' '.join(words[3:])}"
     # Two records, each under half and both together half or more: ceil(n / 4) words each.
     part = (n + 3) // 4
     return [
@@ -8120,6 +8125,8 @@ def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
         (entry, " ".join([*words[:part], *other[:3]]), "",
          " ".join([*words[part:2 * part], *other[3:6]]), True),
         (entry.replace(title, subtitled), " ".join(words[:3]), "", "", False),
+        (entry.replace(title, colon), " ".join(words[:3]), "", "", True),
+        (entry.replace(f"{title}.", f"{title} (in English)."), " ".join(other[:n]), "", "", True),
     ]
 
 
@@ -20614,7 +20621,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
     ),
-    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 14)).map(
+    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 16)).map(
         lambda drawn: dict(zip(("entry", "title", "subtitle", "openalex"),
                                drawn[0][drawn[1]][:4], strict=True))
     ),

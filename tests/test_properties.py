@@ -26604,6 +26604,22 @@ def _a_subtitle_the_record_lacks_is_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(references, "_with_subtitle", lambda title, records: False)
 
 
+def _any_title_with_a_colon_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_with_subtitle", lambda title, records: ":" in title)
+
+
+def _a_title_in_english_is_taken_for_a_translation(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    either = references._OR_ENGLISH
+    patch.setattr(references, "_TRANSLATED", re.compile(
+        rf"(?i)[\[(](?:article |text )?in {either}(?:{references._JOINED}{either})*[\])]"))
+
+
 def _a_title_of_one_word_is_compared(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import references
 
@@ -26771,6 +26787,14 @@ BROKEN = {
     ),
     "a DOI's title with a subtitle its record lacks is held to it": (
         _a_subtitle_the_record_lacks_is_compared,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title with a colon is passed over whatever its main part": (
+        _any_title_with_a_colon_is_passed_over,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title said to be in English is taken for a translation": (
+        _a_title_in_english_is_taken_for_a_translation,
         test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
     ),
     "a DOI's title of one word is held to its record": (

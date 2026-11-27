@@ -757,6 +757,138 @@ def test_the_page_makes_the_journal_files_or_says_why_not() -> None:
         "error": "the date the instructions were read on is no date: 'soon'"}
 
 
+# ------------------------------------------------------ a link with the journal's rules
+
+
+def _deflated(text: str) -> str:
+    """`text` as web/rules.js `packed` writes a form: raw deflate, then base64url, unpadded."""
+    import base64
+    import zlib
+
+    squeezer = zlib.compressobj(9, zlib.DEFLATED, -15)
+    data = squeezer.compress(text.encode("utf-8")) + squeezer.flush()
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _rules(cases: list[dict]) -> list[dict]:
+    done = subprocess.run([NODE, str(WEB / "test" / "rules.mjs")], input=json.dumps(cases),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_link_carries_the_form_s_rules_and_nothing_else() -> None:
+    """The form's values packed into the link after "#rules=" (web/rules.js; Basile,
+    2026-11-26, "A link with the rules") come back as they were, as plain raw deflate in
+    base64url, so that the link is read the same anywhere; and the page that opens it fills
+    the form only from what the form has a box for."""
+    import base64
+    import zlib
+
+    form = {"name": "Journal of Tests", "url": "https://example.org/authors",
+            "date": "2026-11-27", "limits": {"abstract_words": "250", "figures": ""},
+            "sections": ["Introduction", "Méthodes"], "abstract_headings": [],
+            "statements": ["funding"], "headings": {"funding": "Funding or Financement"},
+            "blinding": "double"}  # fmt: skip
+    (packed,) = _rules([{"pack": form}])
+    text = packed["text"]
+    assert set(text) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+    raw = base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+    assert json.loads(zlib.decompress(raw, -15)) == form
+    (back, made_here) = _rules([{"unpack": text}, {"unpack": _deflated(json.dumps(form))}])
+    assert back == made_here == {"form": form}
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_link_this_page_did_not_make_is_refused_with_why() -> None:
+    """A link cut short, typed over, longer than any journal's rules, or unpacking to more
+    than any form holds (a small link that unpacks to megabytes), fills nothing."""
+    from_page = "it is not a link this page made"
+    huge = _deflated(json.dumps({"name": " " * 70000}))
+    assert len(huge) < 1000
+    said = _rules([{"unpack": ""}, {"unpack": "abc$"}, {"unpack": "A"},
+                   {"unpack": "AAAA" * 5000}, {"unpack": "eyJuYW1lIjoiYSJ9"},
+                   {"unpack": _deflated("not json")}, {"unpack": huge}])
+    assert said[:6] == [{"error": from_page}] * 6
+    assert said[6] == {"error": "it holds more than any journal's rules"}
+    # A form the page could fill packs short and unpacks to too much, which is why the button
+    # holds a link to both (round 4 of #847).
+    from manuscript_guard.journal_form import BLINDINGS, LIMITS, STATEMENTS
+
+    long = {"date": "2026-11-27", "sections": ["a" * 2000] * 100}
+    offered = {"limits": list(LIMITS), "statements": list(STATEMENTS),
+               "blindings": list(BLINDINGS)}  # fmt: skip
+    (packed, shape) = _rules([{"pack": long}, {"shape": long, "offered": offered}])
+    assert shape == {"wrong": ""}, "the form's shape takes it, so only the byte count refuses it"
+    assert len(packed["text"]) <= 16000 < 65536 < len(json.dumps(long).encode("utf-8"))
+    assert _rules([{"unpack": packed["text"]}]) == [
+        {"error": "it holds more than any journal's rules"}]
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_link_s_rules_are_held_to_the_form_s_shape() -> None:
+    """Only the boxes the form has, each holding what its box can hold, and the limits,
+    statements and reviews it offers; the profile's schema is then the checker's to apply
+    (`web.journal_files`, as for a profile the reader chooses)."""
+    from manuscript_guard.journal_form import BLINDINGS, LIMITS, STATEMENTS
+
+    offered = {"limits": list(LIMITS), "statements": list(STATEMENTS),
+               "blindings": list(BLINDINGS)}  # fmt: skip
+    good = {"name": "J", "date": "2026-11-27", "statements": ["funding"],
+            "headings": {"funding": "Funding"}, "limits": {"tables": "4"}, "blinding": "open"}
+    cases = [good, [], "text", {**good, "authors": [{"family": "Example"}]},
+             {**good, "name": 7}, {**good, "sections": "Introduction"},
+             {**good, "sections": ["x"] * 101}, {**good, "limits": {"pages": "10"}},
+             {**good, "limits": {"tables": 4}}, {**good, "statements": ["secrets"]},
+             {**good, "headings": {"ethics": "Ethics"}}, {**good, "blinding": "secret"},
+             {**good, "name": "x" * 2001},
+             # What a box would hold otherwise than given (round 1 of #847).
+             {**good, "name": "A\nB"}, {**good, "limits": {"tables": " 4"}},
+             {**good, "sections": ["Intro\nMethods"]}]
+    said = [one["wrong"] for one in _rules([{"shape": case, "offered": offered}
+                                            for case in cases])]  # fmt: skip
+    assert said[0] == ""
+    assert said[1] == said[2] == "it holds no journal's rules"
+    assert said[3] == 'it holds "authors", which the form has no box for'
+    assert said[4] == said[12] == said[13] == "its name is not a text the form can hold"
+    assert said[5] == said[6] == said[15] == "its sections are not lines the form can hold"
+    assert said[7] == 'it gives a limit on "pages", which the form has no box for'
+    assert said[8] == said[14] == "a limit it gives is not a number the form can hold"
+    assert said[9] == 'it asks for a statement "secrets", which the form has no box for'
+    assert said[10] == 'it gives a heading for "ethics", a statement it does not ask for'
+    assert said[11] == 'its review is "secret", which the form does not offer'
+
+
+def test_the_page_offers_the_limits_and_reviews_the_profile_takes() -> None:
+    """The boxes a link's rules are held to are the ones `journal_form` reads (app.js
+    `LIMIT_BOXES`, the review's choices in index.html)."""
+    from manuscript_guard.journal_form import BLINDINGS, LIMITS
+
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    boxes = re.search(r"const LIMIT_BOXES = \{([^}]*)\}", app)
+    assert boxes is not None
+    assert re.findall(r"(\w+): \"", boxes.group(1)) == list(LIMITS)
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    chosen = re.search(r'<select id="jblinding"[^>]*>(.*?)</select>', page, re.DOTALL)
+    assert chosen is not None
+    assert re.findall(r'<option value="(\w+)">', chosen.group(1)) == list(BLINDINGS)
+
+
+def test_the_page_reads_its_address_for_the_rules_and_never_writes_it() -> None:
+    """app.js reads "#rules=" from its own address and sets no part of it: no assignment to
+    `location`, no `history` call, nothing kept in storage (docs/audit-page.md: the page's
+    code does not set its address, and keeps nothing between visits)."""
+    code = "\n".join((WEB / name).read_text(encoding="utf-8")
+                     for name in ("app.js", "rules.js", "worker.js"))  # fmt: skip
+    assert "location.hash" in code
+    for written in (r"\blocation(\.\w+)?\s*=[^=]", r"\bhistory\.", r"localStorage",
+                    r"sessionStorage", r"indexedDB", r"document\.cookie",
+                    r"location\.(assign|replace)"):
+        assert not re.search(written, code), written
+
+
 # --------------------------------------------------------------------- a command, printed
 
 

@@ -286,7 +286,7 @@ def test_the_schema_is_asked_of_the_value_and_of_the_file() -> None:
 
 
 def test_a_design_none_of_the_table_s_may_be_set(paper: Path) -> None:
-    """A narrative review or a case report is none of the designs: `other` is taken."""
+    """A narrative review or a qualitative study is none of the designs: `other` is taken."""
     paper.write_bytes(b"schema: manuscript-guard/paper/1\ntitle: A\n")
     assert _set(paper, "study_type", "other") == 0
     assert yaml.safe_load(paper.read_bytes())["study_type"] == "other"

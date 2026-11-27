@@ -183,8 +183,8 @@ def test_an_undeclared_design_offers_each_design(tmp_path: Path) -> None:
 def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     tmp_path: Path,
 ) -> None:
-    """A narrative review, a survey or a case report is none of the designs the table holds,
-    and the choice was asked of it at every run, since nothing it could set answered it."""
+    """A narrative review or a qualitative study is none of the designs the table holds, and
+    the choice was asked of it at every run, since nothing it could set answered it."""
     (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
     other = action.choice.options[-1]
     assert other.id == "other" and other.label.startswith("None of these (")

@@ -19676,9 +19676,14 @@ Added by the adversarial review, verified and **not** fixed:
   "Index test: CT angiography" are refused (round 3 of #830; Basile, 2026-11-27). So too a
   case report's population under CARE's words: a heading that is "Patient information", "The
   patient" or "Patient" whole, in a plan of any design, so that a trial plan's "Patient
-  information", on what its participants are told, is taken for a population. A case
-  report's plan is not asked for its analysis or its deviations (`not_asked`), since it
-  describes one patient's care, which followed no protocol (Basile, 2026-11-27). The author answers such a false alarm, for any design and any section but
+  information", on what its participants are told, is taken for a population, by G12, by
+  the check that the Population names the chosen data source and by the brief, which takes
+  it where it comes before the trial's own population heading; and a case report's "Case
+  presentation" or "Patient history" is no population until named so. A case report's
+  plan is not asked for its analysis or its deviations (`not_asked`), since it describes
+  one patient's care, which followed no protocol (Basile, 2026-11-27); a plan of one changed
+  after its first results is still told to say so under Deviations, which it may then
+  hold (round 1 of #840). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's

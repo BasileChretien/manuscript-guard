@@ -24680,6 +24680,12 @@ def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> N
     plan.write_bytes(text.replace("## Population and data source", "## Cohort {#population}")
                      .encode())  # fmt: skip
     assert _sources_said(project) == [("plan-source-unnamed", "warn")]
+    # Headed as a case report heads its patient, "Patients" or "Patient information" whole,
+    # it is the Population G12 counts, and this check reads it as such (round 1 of #840:
+    # neither G12 nor this check said anything of it).
+    for heading in ("## Patients", "## Patient information", "## The patient"):
+        plan.write_bytes(text.replace("## Population and data source", heading).encode())
+        assert _sources_said(project) == [("plan-source-unnamed", "warn")], heading
 
 
 def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:

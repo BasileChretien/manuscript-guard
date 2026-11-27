@@ -7705,8 +7705,15 @@ def sectioned_plans(
         return draw(st.sampled_from((*PLAN_HEADINGS[name], f"3. {named}", named.upper(),
                                      f"{named}:")))  # fmt: skip
 
-    order = [ids.index(name) for name in drawn_order if name in ids]
-    kinds ={ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    # A section the design sets aside (`not_asked`) takes a kind of its own, outside the
+    # order, so that each kind stands among the sections the plan is asked for (round 1 of
+    # #840: "missing" could fall on a case report's analysis and deviations alone).
+    aside = sorted(study_types().get(design or "", {}).get("not_asked", ()))
+    order = [ids.index(name) for name in drawn_order if name in ids and name not in aside]
+    kinds = {ids[index]: PLAN_KINDS[place % len(PLAN_KINDS)] for place, index in enumerate(order)}
+    for name in aside:
+        kinds[name] = draw(st.sampled_from(
+            [kind for kind in PLAN_KINDS if kind != "named exactly" or name not in UNNAMED]))
     # A section no heading may name (the Deviations, `UNNAMED`) trades its kind with another's,
     # so the plan still names one exactly and holds every kind.
     for unnamed in UNNAMED & set(kinds):

@@ -109,6 +109,16 @@ def test_a_design_round_asks_what_the_declared_study_design_needs(
     assert "what the guidelines of that design ask a plan to settle" in text
     for section in ("time zero and follow-up", "confounding", "missing data"):
         assert f"- {section}: " in text, section
+    # A case report's plan is not asked for its analysis or its deviations, and the round
+    # is told so, or it asks the plan for them (round 1 of #840).
+    paper.write_text(paper.read_text(encoding="utf-8").replace(
+        "study_type: cohort", "study_type: case-report"), encoding="utf-8")
+    assert design_run(planned, "--dry-run") == 0
+    capsys.readouterr()
+    text = (folder / "as-text.txt").read_text(encoding="utf-8")
+    assert "- informed consent: " in text
+    assert "Not asked of this design: analysis, since a case report describes one" in text
+    assert "Not asked of this design: deviations, since " in text
 
 
 def test_a_table_the_plan_binds_is_sent_as_written(planned: Path, capsys) -> None:

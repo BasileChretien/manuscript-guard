@@ -104,6 +104,8 @@ given, so its plan is not asked for an analysis or for deviations (`not_asked` i
 the patient, and what it must not. The patient is the population, read under a heading
 that is "Patient information", "The patient" or "Patient" whole; the treatment is the
 exposure ("Therapeutic intervention"), and the follow-up and its outcomes the outcome.
+Under any other heading, "Case presentation" or "Patient history", name the population
+exactly: `## Case presentation {#population}`.
 
 - **De-identification.** Which details of the patient the report gives, and which it
   leaves out or blurs so that no one can recognise them. (CARE, 5)

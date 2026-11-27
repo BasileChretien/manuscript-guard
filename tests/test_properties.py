@@ -154,10 +154,12 @@ from generated import (
     latex_skipped_blocks,
     latex_straight_quotes,
     latex_table_rows,
+    latex_text_in_displays,
     latex_texts,
     latex_trees,
     latex_words,
     latex_writing,
+    legend_displays,
     lines,
     linked_lines,
     margin_tables,
@@ -1982,6 +1984,101 @@ def _no_latex_citation_is_narrative(patch: pytest.MonkeyPatch) -> None:
 def _a_multi_citation_reads_its_first_group_only(patch: pytest.MonkeyPatch) -> None:
     for name in ("parencites", "Parencites"):
         patch.setitem(latex_mask.COMMANDS, name, ("(b)", "(b)", "[p]", "[p]", "{b}"))
+
+
+@holds(100, latex_text_in_displays())
+def test_inline_maths_in_a_text_argument_of_display_maths_balances_as_in_text(
+    drawn: dict[str, Any],
+) -> None:
+    """Inline maths in a text argument of display maths, `\\tag{\\(1\\)}` or
+    `\\text{if $x$}`, is a formula of its own inside the display, and the file is read to
+    its end: nothing is refused, every key cited after a display is cited, and the last line
+    is read (Basile, 2026-11-27)."""
+    text = drawn["text"]
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    assert [cited.key for cited in reading.cited] == drawn["keys"], text
+    maths = set(reading.maths)
+    for start, end in drawn["displays"]:
+        assert (start, end, True) in maths, (text[start:end], text)
+    for start, end in drawn["inlines"]:
+        assert (start, end, False) in maths, (text[start:end], text)
+    assert "The last line is read." in reading.masked, text
+
+
+@holds(100, latex_text_in_displays())
+def test_inline_maths_in_display_maths_itself_is_refused_where_latex_stops(
+    drawn: dict[str, Any],
+) -> None:
+    """Inline maths in a display's own maths, `\\[ V = \\(y\\) \\]` or `\\[ V = $y$ \\]`, is
+    still refused as unbalanced, once, at the `\\)` that closes no maths or the `$` that
+    opens maths in maths (LaTeX stops on the `\\(`, on the same line), whichever delimiter and
+    display, wherever it stands among displays whose text arguments hold inline maths; and
+    only what stands before it is read (Basile, 2026-11-27; round 1 of #836)."""
+    for refused in drawn["refused"]:
+        text = refused["text"]
+        reading = latex_mask.read(text)
+        assert [(r.code, r.offset) for r in reading.refusals] == [
+            ("tex-unbalanced", refused["offset"])
+        ], (reading.refusals, text)
+        assert [cited.key for cited in reading.cited] == refused["keys"], text
+
+
+def _inline_maths_in_display_maths_is_never_refused(patch: pytest.MonkeyPatch) -> None:
+    dollar, symbol = latex_mask._Reader._dollar, latex_mask._Reader._symbol
+
+    def closes(self, sign: str) -> bool:
+        top = self.stack[-1] if self.stack else None
+        return top is not None and top.kind == "maths" and top.closer == sign
+
+    def in_maths(self) -> bool:
+        return self._role() == latex_mask.MATHS_READ
+
+    def broken_dollar(self, at: int) -> None:
+        sign = "$$" if self.text.startswith("$$", at) else "$"
+        if in_maths(self) and not closes(self, sign) and not closes(self, "$"):
+            self._blank(at, at + 1)
+            self.pos = at + 1
+            return
+        dollar(self, at)
+
+    def broken_symbol(self, name: str, at: int) -> None:
+        if name in ")]" and in_maths(self) and not closes(self, "\\" + name):
+            self._blank(at, at + 2)
+            self.pos = at + 2
+            return
+        symbol(self, name, at)
+
+    patch.setattr(latex_mask._Reader, "_dollar", broken_dollar)
+    patch.setattr(latex_mask._Reader, "_symbol", broken_symbol)
+
+
+def _a_tag_is_read_as_maths(patch: pytest.MonkeyPatch) -> None:
+    for name in ("tag", "shortintertext"):
+        patch.delitem(latex_mask.COMMANDS, name)
+
+
+def _inline_maths_in_a_display_is_maths_inside_maths(patch: pytest.MonkeyPatch) -> None:
+    dollar, symbol = latex_mask._Reader._dollar, latex_mask._Reader._symbol
+
+    def inside(self) -> bool:
+        maths = any(frame.role == latex_mask.MATHS_READ for frame in self.stack)
+        return maths and self._role() == latex_mask.PROSE
+
+    def broken_dollar(self, at: int) -> None:
+        if inside(self):
+            self._refuse("tex-unbalanced", at, "maths is opened inside maths")
+            return
+        dollar(self, at)
+
+    def broken_symbol(self, name: str, at: int) -> None:
+        if name in "([" and inside(self):
+            self._refuse("tex-unbalanced", at, "maths is opened inside maths")
+            return
+        symbol(self, name, at)
+
+    patch.setattr(latex_mask._Reader, "_dollar", broken_dollar)
+    patch.setattr(latex_mask._Reader, "_symbol", broken_symbol)
 
 
 @holds(100, latex_printed())
@@ -3878,6 +3975,68 @@ def test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset(drawn: dict[str, 
     assert not [f for f in writing if f.code == "vague-attribution"], writing
 
 
+def _a_legend_without(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    from manuscript_guard.auditing import displays
+
+    assert old in displays._LEGEND.pattern
+    patch.setattr(displays, "_LEGEND", re.compile(displays._LEGEND.pattern.replace(old, new)))
+
+
+def _a_bmc_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|[^\S\n]+(?=[A-Z])", "")
+
+
+def _a_picture_s_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:!?\[)?", "")
+
+
+def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|figs?\.?)", ")")
+
+
+def _a_sentence_opening_with_a_pointer_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?=[A-Z])", "")
+
+
+def _a_link_opening_a_sentence_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #837: a link's end, whatever follows it, read as a legend's.
+    _a_legend_without(patch, r"(?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?", r".*)?")
+
+
+def _a_range_s_dash_sets_off_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", "")
+
+
+def _a_range_of_links_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837: only a number after the dash read as a range's.
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", r"(?![^\S\n]*\d)")
+
+
+def _a_file_s_displays_are_not_held_against_its_legends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import displays
+
+    patch.setattr(displays, "_held", lambda text: {"table": 0, "figure": 0})
+
+
+def _a_kind_holding_more_is_left_uncounted(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837's guard: a kind its file holds more of than its legends number is not
+    # held to anything.
+    from manuscript_guard.auditing import displays
+
+    counted = displays._counted
+
+    def broken(kind, legends, cited, path, held=0):
+        found, notes, checked = counted(kind, legends, cited, path, held)
+        return ([], notes, False) if checked and held > len(legends) else (found, notes, checked)
+
+    patch.setattr(displays, "_counted", broken)
+
+
+def _a_range_from_a_panel_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?",
+                      "[A-Za-z]?")
+
+
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.auditing import pdf_layout
 
@@ -5474,6 +5633,202 @@ def _the_other_authors_say_none_for_all(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(disclosures, "_data", lambda: data)
 
 
+# ------------------------------------------------- the statements every paper makes
+
+from generated import DECLARED_PLANTED, statement_papers  # noqa: E402
+
+
+@holds(100, statement_papers())
+def test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said(
+    drawn: tuple[str, list[tuple[str, str]], list[tuple[str, str, str]], list[str]],
+) -> None:
+    """G4 finds each statement every paper makes under a heading, numbered or not, after a
+    label of any of four shapes, as a sentence of a Declarations section, and an ethics
+    statement in each of its forms, the Methods and a denial among them, and a Data
+    availability statement under each heading journals ask for; a heading with only a
+    comment, Markdown's comment idiom or a placeholder under it is empty, one whose words are
+    all in its subsection is not, nor one the bibliography is printed under, and one over an
+    empty subsection alone is no gap of its own. Each statement taken out is the one
+    missing, its label left over a comment or a placeholder heading nothing, the label after
+    it a Data availability or an AI-use one, a CRediT role stating no funding; and each
+    emptied under its heading is said by that heading alone (`gates/statements.py`)."""
+    from manuscript_guard.gates.statements import empty_headings, missing, stated
+
+    planted = list(DECLARED_PLANTED)
+    paper, removed, emptied, restated = drawn
+    for text in (paper, *restated):
+        shown = sorted(heading.title for heading in empty_headings(text))
+        assert shown == sorted(planted), (shown, text)
+        assert missing(stated(text)) == [], (stated(text), text)
+    for kind, changed in removed:
+        assert missing(stated(changed)) == [kind], (kind, stated(changed), changed)
+    for kind, title, changed in emptied:
+        said = stated(changed)
+        assert said.get(kind) == "empty" and missing(said) == [], (kind, said, changed)
+        shown = sorted(heading.title for heading in empty_headings(changed))
+        assert shown == sorted([title, *planted]), (title, shown, changed)
+
+
+def _a_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+    from manuscript_guard.text.masking import blank, front_matter_end, metadata_blocks
+
+    patch.setattr(statements, "_shown", lambda text: blank(
+        text, [(0, front_matter_end(text)), *metadata_blocks(text)]))
+
+
+def _a_heading_s_subsections_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_printed",
+                  lambda headings, bodies: [bool(body.strip()) for body in bodies])
+
+
+def _the_reference_list_s_heading_can_be_empty(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_bibliography", lambda title, last: False)
+
+
+def _only_the_reference_list_s_own_heading_holds_the_bibliography(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_bibliography", lambda title, last: statements.Section(
+        title=title, level=1, body="", line=0).is_references)
+
+
+def _a_heading_over_empty_subsections_is_a_gap_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_gaps", lambda headings, printed: [
+        index for index, (heading, shown) in enumerate(zip(headings, printed, strict=True))
+        if not shown and heading.title.strip()])
+
+
+def _a_placeholder_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_placeholder", lambda text: False)
+
+
+def _a_link_s_reference_definition_prints(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_unprinted", lambda text: text)
+
+
+def _a_label_s_words_are_a_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_said_words", lambda text: text)
+
+
+def _a_credit_role_states_funding(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_without_roles", lambda folded: folded)
+
+
+def _only_g4_s_data_headings_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+    from manuscript_guard.gates.data_statement import HEADING
+
+    patch.setattr(statements, "_DATA_HEADING", re.compile(HEADING))
+
+
+def _a_label_runs_on_past_a_data_or_ai_use_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_cut", lambda rest, data_heading: rest)
+
+
+def _any_heading_ending_in_references_holds_the_bibliography(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    held = statements._bibliography
+    patch.setattr(statements, "_bibliography", lambda title, last: held(title, True))
+
+
+def _a_label_with_nothing_after_it_outranks_an_empty_heading(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_RANK", {statements.STATED: 0, statements.LABELLED: 1,
+                                        statements.EMPHASISED: 1, statements.HEADED_EMPTY: 2})
+
+
+def _a_label_after_two_blank_lines_is_none(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_one_blank_line", lambda text: text)
+
+
+def _a_label_alone_with_a_stop_is_no_label(patch: pytest.MonkeyPatch) -> None:
+    """A paragraph wholly in emphasis that ends in a stop read as a sentence, where G4's own
+    reading of the declarations takes it for a label alone (Basile, 2026-11-27: strict)."""
+    from manuscript_guard.gates import disclosures
+
+    label = disclosures._label
+
+    def unless_stopped(paragraph: str) -> tuple[str, str] | None:
+        text = paragraph.strip()
+        emphasised = text[:1] in "*_" and text.rstrip(".").endswith(("*", "_"))
+        stopped = text.rstrip("*_").endswith(".") or text.endswith(".")
+        return None if emphasised and stopped else label(paragraph)
+
+    patch.setattr(disclosures, "_label", unless_stopped)
+
+
+def _a_label_s_own_paragraph_is_cut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_held",
+                  lambda own, rest, data_heading: statements._cut(rest, data_heading))
+
+
+def _a_placeholder_g6_fails_is_nothing_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_g6_fails", lambda text: False)
+
+
+def _availability_of_code_is_a_data_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    title = statements._DATA_TITLE + "|availability of (?:the )?code"
+    patch.setattr(statements, "_DATA_HEADING", re.compile(rf"^[\W\d]*(?:{title})\b", re.I))
+
+
+def _a_label_opens_no_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    patch.setattr(disclosures, "_labelled", lambda printed: iter(()))
+
+
+def _the_methods_are_not_read_for_ethics(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "methods_sections", lambda sections, abstract=None: [])
+
+
+def _a_denial_is_no_ethics_statement(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import disclosures
+
+    data = {**disclosures._data(), "no_approval": []}
+    patch.setattr(disclosures, "_data", lambda: data)
+
+
+def _a_declarations_section_s_words_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import statements
+
+    patch.setattr(statements, "_words_of", lambda kind, text: False)
+
+
 # ------------------------------------------------- the head over a fetched PDF's title
 
 from generated import PDF_WORK, pdf_first_pages  # noqa: E402
@@ -6426,6 +6781,35 @@ def test_a_plan_section_named_on_its_heading_is_found_whatever_its_words(
     assert named, kinds
     for name in named:
         assert f"the plan says nothing about {name}" not in missing, given["plan"]
+
+
+@holds(30, sectioned_plans(setting_aside=True))
+def test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds(
+    drawn: tuple[dict[str, str], list[tuple[str, str]]],
+) -> None:
+    """A case report has no analysis to plan and no plan to depart from (Basile,
+    2026-11-27): a section of the seven that the design sets aside (`not_asked` in
+    `data/study_types.yaml`) is never said to be missing or empty, whether the plan holds
+    it, words it otherwise, leaves it empty or leaves it out, and G12 expects the other
+    sections alone."""
+    from manuscript_guard.gates.design import study_types
+
+    given, kinds = drawn
+    design = re.search(r"(?m)^study_type: (\S+)$", given["paper"]).group(1)
+    aside = set(study_types()[design]["not_asked"])
+    said = READINGS["plan sections asked"]()(given)
+    told = {f["message"] for f in said["findings"]
+            if f["code"] in ("plan-section-missing", "plan-section-empty")}  # fmt: skip
+    for name in aside:
+        assert f"the plan says nothing about {name}" not in told, given["plan"]
+        assert f"the plan's {name} section is a heading with nothing under it" not in told
+    assert said["counts"]["design_expected"] == len(kinds) - len(aside), said["counts"]
+
+
+def _a_design_s_set_aside_sections_are_asked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "not_asked", lambda study_type: frozenset())
 
 
 def _a_section_s_name_on_its_heading_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -12101,6 +12485,38 @@ def test_a_ref_prints_the_number_its_display_has_or_is_said(
     assert found == planted, (files, findings)
 
 
+@holds(100, legend_displays())
+def test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper written outside manuscript-guard, its tables and figures told by their legends
+    in every form a paper sets one, is held as G2 holds a project (`auditing.displays`): the
+    first citation out of order, the display cited nowhere and the pointer past the last
+    legend are said, at their lines, for each kind, and nothing else. Each kind is counted, and
+    no note says otherwise."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert said["notes"] == [] and said["counted"] == 2, (text, said)
+
+
+@holds(100, legend_displays(unread=True))
+def test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper whose file holds a table and a picture its legends do not number may hold a
+    legend the check does not read, and a pointer past its legends may be to one of them: it
+    is said not checked, in one note for each kind, and the kind is held to the rest, the
+    order of its first citations and each one cited, as before (the fix-only round on
+    f0bd603 of #837)."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert [("past its table legends" in note, "past its figure legends" in note)
+            for note in said["notes"]] == [(True, False), (False, True)], (text, said)
+    assert said["counted"] == 2, (text, said)
+
+
 # --------------------------------------------------------------------------------- bindings
 
 
@@ -14754,6 +15170,78 @@ def _the_last_author_named_is_the_first(patch: pytest.MonkeyPatch) -> None:
 
 def _a_month_is_a_name(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(typed_module, "_MONTHS", frozenset())
+
+
+# ------------------------------------------- a bibliography that prints every entry, G7
+
+from generated import nocite_files  # noqa: E402
+
+from manuscript_guard.gates import printed_entries as printed_module  # noqa: E402
+
+
+@holds(40, nocite_files())
+def test_a_nocite_of_every_entry_is_told_from_one_of_single_keys(
+    drawn: tuple[list[tuple[str, bool]], list[tuple[str, bool]]],
+) -> None:
+    """The author's decision of 2026-11-27: the entries nothing cites are one note where the
+    bibliography prints only the works cited, and a warning each where it prints them all.
+    A LaTeX file asks for every entry by a `\\nocite` whose keys hold `*`, wherever it stands
+    but in a comment, and a Markdown file by a `nocite` holding `@*` in its front matter or
+    in a metadata block of its body.
+    Single keys, another command, an address, another key of the header or the body ask
+    for none, and a set of files asks where one of them does."""
+    tex, markdown = drawn
+    read = READINGS["every entry printed"]()
+    for files, latex in ((tex, True), (markdown, False)):
+        said = [read({"text": text, "latex": latex}) for text, _asks in files]
+        assert said == [asks for _text, asks in files], [
+            (text, asks) for (text, asks), one in zip(files, said, strict=True) if one != asks]
+        assert printed_module.every_entry_printed(
+            [text for text, asks in files if not asks], latex=latex) is False
+        assert printed_module.every_entry_printed([text for text, _ in files], latex=latex)
+
+
+def _a_tex_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_COMMENT", re.compile(r"(?!)()"))
+
+
+def _an_escaped_percent_opens_a_comment_before_nocite(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_COMMENT", re.compile(r"()%[^\n]*"))
+
+
+def _only_a_lone_star_asks_for_every_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_NOCITE", re.compile(r"\\nocite\s*\{(\*)\}"))
+
+
+def _any_command_ending_in_nocite_asks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_NOCITE", re.compile(r"\\nocite\w*\s*\{([^{}]*)\}"))
+
+
+def _any_citation_in_nocite_asks_for_every_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "_EVERY", re.compile(r"@"))
+
+
+def _nocite_is_read_anywhere_in_the_file(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(printed_module, "every_entry_markdown",
+                  lambda text: re.search(r"nocite:.*@\*", text, re.DOTALL) is not None)
+
+
+def _a_body_metadata_block_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "metadata_blocks", lambda text: [])
+
+
+def _a_merged_nocite_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    said = masking.front_matter_said
+
+    def own(text: str, name: str) -> tuple[str, ...]:
+        found = masking.FRONTMATTER.match(text)
+        return said(text, name) if found and f"\n{name}:" in "\n" + found.group("yaml") else ()
+
+    patch.setattr(masking, "front_matter_said", own)
 
 
 # ------------------------------------------- an entry cited only as typed text, G7
@@ -26707,6 +27195,368 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+from generated import doi_title_records  # noqa: E402
+
+
+@holds(40, doi_title_records())
+def test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title(
+    drawn: list[tuple[str, str, str, str, bool]],
+) -> None:
+    """Item 7b (Basile, 2026-11-26): a DOI's record is another work's where its title, with
+    its subtitle, folded, holds under half the searched words of the title the entry gives,
+    each record counted alone, Crossref's and OpenAlex's; never where a record's title is
+    the entry's; never for a title of under three words with a letter in them;
+    never where it is that title in other case, accents or punctuation, split into a title
+    and a subtitle, half its words in another order, or its words joined by a registry's
+    tags; never for an entry whose "title" is a citation's tail read wrong, a link or a
+    volume and pages; never for one that holds the record's title word for word, where a
+    journal's name was read as its title, though for one whose title holds the record's and
+    more; never for the record's whole title with a subtitle it lacks; and never for one that
+    says its title is a translation
+    (`auditing.references._title_differs`)."""
+    read = READINGS["doi title differs"]()
+    for entry, title, subtitle, openalex, differs in drawn:
+        said = read({"entry": entry, "title": title, "subtitle": subtitle, "openalex": openalex})
+        assert bool(said) == differs, (entry, title, subtitle, openalex, said)
+
+
+def _a_title_is_said_to_differ_at_half_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "TITLE_SHARE", 1.01)
+
+
+def _a_record_s_subtitle_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def untitled(entry, answers, path, style):  # noqa: ANN001, ANN202
+        bare = {name: {**answer, "subtitle": None} if isinstance(answer, dict) else answer
+                for name, answer in answers.items()}  # fmt: skip
+        return compared(entry, bare, path, style)
+
+    patch.setattr(references, "_title_differs", untitled)
+
+
+def _a_citation_s_tail_is_compared_as_a_title(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_NO_TITLE", re.compile(r"(?!)"))
+
+
+def _a_registry_s_tags_are_taken_out_with_no_space(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_TAG", re.compile(r"(?!)"))
+
+
+def _a_title_s_words_are_not_folded(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "search_words", lambda title: title.split())
+
+
+def _a_record_s_title_is_not_looked_for_in_the_entry(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_gives_record_title", lambda text, title, records: False)
+
+
+def _a_record_s_title_is_looked_for_inside_the_title_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    kept = references._gives_record_title
+    patch.setattr(references, "_gives_record_title",
+                  lambda text, title, records: kept(text, "", records))  # fmt: skip
+
+
+def _a_subtitle_the_record_lacks_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_with_subtitle", lambda title, records: False)
+
+
+def _any_title_with_a_colon_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_with_subtitle", lambda title, records: ":" in title)
+
+
+def _a_title_in_english_is_taken_for_a_translation(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    either = references._OR_ENGLISH
+    patch.setattr(references, "_TRANSLATED", re.compile(
+        rf"(?i)[\[(](?:article |text )?in {either}(?:{references._JOINED}{either})*[\])]"))
+
+
+def _a_record_s_subtitle_is_not_tried_before_a_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    kept = references._with_subtitle
+    patch.setattr(references, "_with_subtitle", lambda title, records: kept(
+        title, [record for record in records if ": " not in record]))
+
+
+def _a_title_of_one_word_is_compared(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "TITLE_WORDS", 1)
+
+
+def _a_title_s_numbers_count_as_its_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+    from manuscript_guard.gates.searched import search_words
+
+    patch.setattr(references, "_worded", search_words)
+
+
+def _only_crossref_s_record_is_held_to_the_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def crossref_only(entry, answers, path, style):  # noqa: ANN001, ANN202
+        return compared(entry, {"crossref": answers.get("crossref")}, path, style)
+
+    patch.setattr(references, "_title_differs", crossref_only)
+
+
+def _both_records_are_counted_together(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    compared = references._title_differs
+
+    def together(entry, answers, path, style):  # noqa: ANN001, ANN202
+        found = [answer for answer in answers.values() if isinstance(answer, dict)
+                 and answer.get("title")]  # fmt: skip
+        merged = {"status": "found",
+                  "title": " ".join(str(one["title"]) for one in found),
+                  "subtitle": " ".join(str(one.get("subtitle") or "") for one in found)}
+        return compared(entry, {"crossref": merged}, path, style)
+
+    patch.setattr(references, "_title_differs", together)
+
+
+def _a_translation_s_marker_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    import re
+
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_TRANSLATED", re.compile(r"(?!)"))
+
+
+# ------------------------------------------------------- what a figure script names by number
+
+from generated import _SCRIPT_NAMES, figure_scripts, svg_figures  # noqa: E402
+
+
+def test_a_generated_script_s_names_are_nobody_s_in_the_plotting_vocabulary() -> None:
+    """A name the plotting vocabulary knows makes its line's numbers layout, whatever else the
+    line holds: `parts` was one, by the pattern `^par`, and a list `parts = [1]` was passed."""
+    from manuscript_guard.gates.figure_source import load_vocabulary
+
+    vocabulary = load_vocabulary()
+    for name in _SCRIPT_NAMES:
+        for names in ((name,), (f"{name}_one",)):
+            assert vocabulary.presentation(names) is None, names
+            assert vocabulary.data_constructor(names) is None, names
+            assert not vocabulary.machinery(names) and not vocabulary.tick_label(names), names
+
+
+@holds(40, figure_scripts())
+def test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else(
+    drawn: list[tuple[str, str, list[str]]],
+) -> None:
+    """A figure script in R and one in Python, with a line of each kind: a colour named with
+    digits (`"grey50"`, `"steelblue4"`, `"C0"`), a number that is a whole subscript
+    (`edges[1]`) and a zero compared with an exit status (`if (status != 0) stop()`), none of
+    them a number the figure draws or data typed into it (the bisphosphonates paper,
+    2026-11-26), a status assigned in braces or straight after a block's colon (`try:`) and an
+    index of a field named by a keyword (`d$class[1]`) or of `type` among them; and beside
+    each what only looks like it, which G3 reports as before: a name R has no
+    colour by, R's names in Python, a subscript with arithmetic in it or two numbers, a list
+    of one number, after a keyword too (`in [3]`, `return [3]`), a zero compared
+    with another name, a status compared with another number, a status assigned as a call's
+    argument, and a column called status (round 1 of #817). G3 reports the second kind's
+    numbers, in the order of the lines, and no other."""
+    read = READINGS["figure script numbers"]()
+    for suffix, text, said in drawn:
+        found = read({"suffix": suffix, "text": text})["findings"]
+        reported = [f["message"].split("'")[1] for f in found
+                    if f["code"].startswith("figure-source-")]  # fmt: skip
+        assert reported == said, (suffix, text, found)
+
+
+@holds(40, svg_figures())
+def test_g3_reads_the_text_an_svg_draws_and_nothing_else(drawn: tuple[str, list[str]]) -> None:
+    """An SVG with a part of each kind: a `<text>`, one in a group, a stylesheet (svglite's
+    `stroke: #000000; stroke-miterlimit: 10.00`, the bisphosphonates paper, 2026-11-26), a
+    script, a title and an element whose attributes hold numbers. G3 reads the text the
+    figure draws, in document order, and nothing of the others."""
+    svg, said = drawn
+    assert READINGS["figure svg text"]()(svg).split("\n") == said, svg
+
+
+def _any_word_with_digits_is_a_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.figure_source import PlotVocabulary
+
+    patch.setattr(PlotVocabulary, "colour", lambda self, string, language: bool(
+        string and re.fullmatch(r"[A-Za-z]+[0-9]+", string)))  # fmt: skip
+
+
+def _r_s_colours_are_python_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates.figure_source import PlotVocabulary
+
+    kept = PlotVocabulary.colour
+    patch.setattr(PlotVocabulary, "colour", lambda self, string, language: kept(
+        self, string, "r") or kept(self, string, language))  # fmt: skip
+
+
+def _a_number_after_a_bracket_is_an_index(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_whole_subscript", lambda tokens, index: code._text(
+        tokens, index - 1) == "[")  # fmt: skip
+
+
+def _any_zero_compared_is_a_status(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_compared_with_a_status", lambda tokens, index, statuses: tokens[
+        index].text in code._ZERO and "=" in (code._text(tokens, index - 1),
+                                              code._text(tokens, index + 2)))  # fmt: skip
+
+
+def _statuses_assigned(code: Any, tokens: list[Any], *, where: Callable[[list[str]], bool],
+                       name: Callable[[list[Any], int], str | None]) -> Any:  # fmt: skip
+    """`_exit_statuses` with the brackets it reads in, and the name each assignment assigns
+    to, decided by `where` and `name`: what a broken rule of its puts in their place."""
+    names: set[str] = set()
+    runs: set[str] = set()
+    brackets: list[str] = []
+    for at in range(len(tokens) - 1):
+        text = code._text(tokens, at)
+        if text in ("(", "[", "{"):
+            brackets.append(text)
+        elif text in (")", "]", "}"):
+            if brackets:
+                brackets.pop()
+        elif code._assigns(tokens, at) and where(brackets) and name(tokens, at) is not None:
+            held = code._Statuses(frozenset(names), frozenset(runs))
+            if code._starts_a_status(tokens, at + 1, held):
+                names.add(name(tokens, at))
+            elif code._starts_a_run(tokens, at + 1):
+                runs.add(name(tokens, at))
+    return code._Statuses(frozenset(names), frozenset(runs))
+
+
+def _a_status_in_a_call_is_the_script_s(patch: pytest.MonkeyPatch) -> None:
+    """The bracket rule of `_exit_statuses` taken out: a name assigned a status anywhere."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_exit_statuses", lambda tokens: _statuses_assigned(
+        code, tokens, where=lambda brackets: True, name=code._assigned))  # fmt: skip
+
+
+def _a_status_is_assigned_at_the_top_level_only(patch: pytest.MonkeyPatch) -> None:
+    """A status assigned in braces, a function's body, not read (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_exit_statuses", lambda tokens: _statuses_assigned(
+        code, tokens, where=lambda brackets: not brackets, name=code._assigned))  # fmt: skip
+
+
+def _the_word_before_a_colon_is_assigned(patch: pytest.MonkeyPatch) -> None:
+    """Round 1's reading of an annotated assignment, which round 2 of #817 took out: the
+    name before a colon taken for the one assigned, so `try:` then `rc = ...` records `try`."""
+    from manuscript_guard.text import code
+
+    def annotated(tokens: list[Any], index: int) -> str | None:
+        if index < 1 or code._identifier(tokens[index - 1]) is None:
+            return None
+        if code._text(tokens, index - 2) == ":" and index > 2 and code._identifier(
+                tokens[index - 3]):  # fmt: skip
+            return tokens[index - 3].text
+        return tokens[index - 1].text
+
+    patch.setattr(code, "_assigned", annotated)
+
+
+def _any_dollar_status_is_a_status(patch: pytest.MonkeyPatch) -> None:
+    """Every `$status` taken for an exit status, a data frame's column too (round 1 of
+    #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_status_field", lambda tokens, index, statuses: (
+        code._text(tokens, index) or "").endswith(".returncode") or (
+        code._text(tokens, index) == "status" and code._text(tokens, index - 1) == "$"))
+
+
+def _type_is_a_keyword(patch: pytest.MonkeyPatch) -> None:
+    """`type` put back among the keywords, as round 1 of #817 had it: `type[1]` read."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_KEYWORDS", code._KEYWORDS | {"type"})
+
+
+def _a_field_named_by_a_keyword_is_a_keyword(patch: pytest.MonkeyPatch) -> None:
+    """The `$` and `@` test of `_whole_subscript` taken out: `d$class[1]` read (round 3 of
+    #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_FIELD", ())
+
+
+def _keywords_open_subscripts(patch: pytest.MonkeyPatch) -> None:
+    """The keyword test of `_whole_subscript` taken out: `x in [3]` and `return [3]` read as
+    indices (round 1 of #817)."""
+    from manuscript_guard.text import code
+
+    patch.setattr(code, "_KEYWORDS", frozenset())
+
+
+def _a_stylesheet_is_drawn(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_NOT_DRAWN", set())
+
+
+def _a_stylesheet_ends_the_figure(patch: pytest.MonkeyPatch) -> None:
+    """What follows a stylesheet taken for part of it: the walk stops at the first one."""
+    from manuscript_guard.gates import figures
+
+    def walk(root: Any, *, drawn_only: bool = True) -> Any:
+        for node in root:
+            if node.tag in figures._NOT_DRAWN:
+                return
+            if node.tag in figures._METADATA_TAGS:
+                continue
+            yield node
+            yield from walk(node, drawn_only=drawn_only)
+
+    patch.setattr(figures, "_svg_content_nodes", walk)
+
+
+def _attributes_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    kept = figures._svg_content_nodes
+
+    def walk(root: Any, *, drawn_only: bool = True) -> Any:
+        for node in kept(root, drawn_only=drawn_only):
+            if node.attrib and not (node.text or "").strip():
+                node.text = " ".join(node.attrib.values())
+            yield node
+
+    patch.setattr(figures, "_svg_content_nodes", walk)
 
 
 @holds(40, saved_pages())
@@ -26794,6 +27644,142 @@ def _a_registration_number_s_line_counted_in_the_masked_text(patch: pytest.Monke
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a DOI's title is said to differ at half its words or more": (
+        _a_title_is_said_to_differ_at_half_its_words,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's subtitle is not read with its title": (
+        _a_record_s_subtitle_is_not_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a citation's tail read as an entry's title is compared": (
+        _a_citation_s_tail_is_compared_as_a_title,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's tags are taken out with no space": (
+        _a_registry_s_tags_are_taken_out_with_no_space,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title is compared in words not folded": (
+        _a_title_s_words_are_not_folded,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's title is not looked for in the entry": (
+        _a_record_s_title_is_not_looked_for_in_the_entry,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a translated title is compared with its record's": (
+        _a_translation_s_marker_is_not_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's title is looked for inside the title read": (
+        _a_record_s_title_is_looked_for_inside_the_title_read,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title with a subtitle its record lacks is held to it": (
+        _a_subtitle_the_record_lacks_is_compared,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title with a colon is passed over whatever its main part": (
+        _any_title_with_a_colon_is_passed_over,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title said to be in English is taken for a translation": (
+        _a_title_in_english_is_taken_for_a_translation,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI record's subtitle is not tried before a colon": (
+        _a_record_s_subtitle_is_not_tried_before_a_colon,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title of one word is held to its record": (
+        _a_title_of_one_word_is_compared,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's title's numbers count as its words": (
+        _a_title_s_numbers_count_as_its_words,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "only Crossref's record of a DOI is held to its title": (
+        _only_crossref_s_record_is_held_to_the_title,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a DOI's two records are counted together": (
+        _both_records_are_counted_together,
+        test_a_doi_is_said_to_be_another_work_s_only_where_its_record_holds_under_half_the_title,
+    ),
+    "a TeX comment is read for a \\nocite of every entry": (
+        _a_tex_comment_is_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "an escaped percent opens a TeX comment": (
+        _an_escaped_percent_opens_a_comment_before_nocite,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "only a lone star in \\nocite asks for every entry": (
+        _only_a_lone_star_asks_for_every_entry,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "any command whose name begins with nocite asks for every entry": (
+        _any_command_ending_in_nocite_asks,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite of single keys asks pandoc for every entry": (
+        _any_citation_in_nocite_asks_for_every_entry,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite is read anywhere in a Markdown file": (
+        _nocite_is_read_anywhere_in_the_file,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite merged into the front matter is not read": (
+        _a_merged_nocite_is_not_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "a nocite in a metadata block of the body is not read": (
+        _a_body_metadata_block_is_not_read,
+        test_a_nocite_of_every_entry_is_told_from_one_of_single_keys,
+    ),
+    "an audited paper's legend set as BMC sets it is read as a citation": (
+        _a_bmc_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's picture's legend is read as a citation": (
+        _a_picture_s_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's legend opened by Fig. is read as a citation": (
+        _a_fig_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's sentence opening with a pointer is read as a legend": (
+        _a_sentence_opening_with_a_pointer_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's cross-reference link opening a sentence is read as a legend": (
+        _a_link_opening_a_sentence_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range opening a sentence is read as a legend": (
+        _a_range_s_dash_sets_off_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range of two links opening a sentence is read as a legend": (
+        _a_range_of_links_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range from a panel opening a sentence is read as a legend": (
+        _a_range_from_a_panel_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's tables and pictures are not held against its legends": (
+        _a_file_s_displays_are_not_held_against_its_legends,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
+    "an audited paper's kind its file holds more of than its legends is left uncounted": (
+        _a_kind_holding_more_is_left_uncounted,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
     "registration numbers are read in the reference list too": (
         _registration_numbers_read_in_the_reference_list,
         test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,
@@ -29139,6 +30125,18 @@ BROKEN = {
         _a_line_break_before_a_bindings_brace_makes_it_malformed,
         test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
     ),
+    "in LaTeX, a tag is read as maths": (
+        _a_tag_is_read_as_maths,
+        test_inline_maths_in_a_text_argument_of_display_maths_balances_as_in_text,
+    ),
+    "in LaTeX, inline maths in a text argument of a display is maths inside maths": (
+        _inline_maths_in_a_display_is_maths_inside_maths,
+        test_inline_maths_in_a_text_argument_of_display_maths_balances_as_in_text,
+    ),
+    "in LaTeX, inline maths in a display's own maths is never refused": (
+        _inline_maths_in_display_maths_is_never_refused,
+        test_inline_maths_in_display_maths_itself_is_refused_where_latex_stops,
+    ),
     "in LaTeX, a citation's keys are not split at its commas": (
         _a_citations_keys_are_not_split,
         test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
@@ -29230,6 +30228,10 @@ BROKEN = {
     "a section's name on its heading is not read": (
         _a_section_s_name_on_its_heading_is_not_read,
         test_a_plan_section_named_on_its_heading_is_found_whatever_its_words,
+    ),
+    "a design's set-aside sections are asked": (
+        _a_design_s_set_aside_sections_are_asked,
+        test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds,
     ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
@@ -34484,6 +35486,150 @@ BROKEN = {
     "an ordinal counts across the paper": (
         _an_ordinal_counts_across_the_paper,
         test_the_ordinal_of_a_key_counts_in_its_sentence_only,
+    ),
+    "any word with digits names a colour": (
+        _any_word_with_digits_is_a_colour,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "R's colour names are Python's": (
+        _r_s_colours_are_python_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a number after a bracket is an index": (
+        _a_number_after_a_bracket_is_an_index,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "any zero compared is an exit status": (
+        _any_zero_compared_is_a_status,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a status assigned in a call is the script's": (
+        _a_status_in_a_call_is_the_script_s,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a status is assigned at the top level only": (
+        _a_status_is_assigned_at_the_top_level_only,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "the word before a colon is the name assigned": (
+        _the_word_before_a_colon_is_assigned,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "any $status is an exit status": (
+        _any_dollar_status_is_a_status,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a keyword before a bracket opens a subscript": (
+        _keywords_open_subscripts,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "type is a keyword": (
+        _type_is_a_keyword,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "a field named by a keyword is a keyword": (
+        _a_field_named_by_a_keyword_is_a_keyword,
+        test_g3_reads_a_figure_script_s_colours_indices_and_statuses_and_nothing_else,
+    ),
+    "an SVG's stylesheet is drawn text": (
+        _a_stylesheet_is_drawn,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "an SVG's stylesheet ends what is read of it": (
+        _a_stylesheet_ends_the_figure,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "an SVG's attributes are read as its text": (
+        _attributes_are_read,
+        test_g3_reads_the_text_an_svg_draws_and_nothing_else,
+    ),
+    "a comment under a heading is printed": (
+        _a_comment_is_printed,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a heading's subsections are not read": (
+        _a_heading_s_subsections_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "the reference list's heading can be empty": (
+        _the_reference_list_s_heading_can_be_empty,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label opens no statement": (
+        _a_label_opens_no_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "the Methods are not read for an ethics statement": (
+        _the_methods_are_not_read_for_ethics,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a denial of approval is no ethics statement": (
+        _a_denial_is_no_ethics_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a Declarations section's words are not read": (
+        _a_declarations_section_s_words_are_not_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "only the reference list's own heading holds the bibliography": (
+        _only_the_reference_list_s_own_heading_holds_the_bibliography,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a heading over empty subsections is a gap of its own": (
+        _a_heading_over_empty_subsections_is_a_gap_of_its_own,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a placeholder is a statement": (
+        _a_placeholder_is_a_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a link's reference definition prints": (
+        _a_link_s_reference_definition_prints,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label's words are a sentence": (
+        _a_label_s_words_are_a_sentence,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a CRediT role states funding": (
+        _a_credit_role_states_funding,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "only G4's own data headings are read": (
+        _only_g4_s_data_headings_are_read,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label runs on past a Data availability or an AI-use label": (
+        _a_label_runs_on_past_a_data_or_ai_use_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "any heading ending in references holds the bibliography": (
+        _any_heading_ending_in_references_holds_the_bibliography,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label as G4 reads it, alone and ending in a stop, is no label": (
+        _a_label_alone_with_a_stop_is_no_label,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label with nothing after it outranks an empty heading": (
+        _a_label_with_nothing_after_it_outranks_an_empty_heading,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label after two blank lines is none": (
+        _a_label_after_two_blank_lines_is_none,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a label's own paragraph is cut": (
+        _a_label_s_own_paragraph_is_cut,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a placeholder G6 fails is nothing printed": (
+        _a_placeholder_g6_fails_is_nothing_printed,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "Availability of code is a data statement": (
+        _availability_of_code_is_a_data_statement,
+        test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
     ),
     "a tag in a saved page is a space": (
         _a_tag_in_a_saved_page_is_a_space,

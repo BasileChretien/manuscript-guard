@@ -33,7 +33,9 @@ of that kind:
 - the arithmetic, the Abstract against the Results, and the small cells a total gives away;
 - the words, by G6 and G14, through pandoc's WebAssembly build of the version CI tests with;
 - the reference list (G7), and with the box ticked, whether a cited work was retracted or is
-  in no registry.
+  in no registry;
+- the tables and figures (G2), counted by their legends, each cited and numbered in the order
+  of its first citation ([audit.md](audit.md)).
 
 The page shows the report as the PDF `audit --pdf` writes, from the same audit, inside the
 page, in the browser's own viewer: its summary in colour, every section and every place of
@@ -96,6 +98,24 @@ and family names, ORCID iD and e-mail address, and the affiliations one a line, 
 then has its Journal section, the Document section of what a .docx holds besides its text,
 and, for a blind review, each place an author is named. Nothing of the form is kept between
 visits.
+
+Once the journal's rules are typed, *Copy a link with these rules* makes a link to the page
+that carries them, compressed after `#rules=` (Basile, 2026-11-26): an editorial office
+types its journal's rules once and sends the link to its editors, and each opens the page
+with the rules in the form. The link carries the journal's rules alone, never the authors'
+names and nothing of the paper. A browser sends no part of an address after `#` to the
+server it asks for the page, so the rules reach whoever opens the link, and not the page's
+host. Opened, the page holds the link's rules to the form's boxes and, in the checker, to
+the profile's schema, as it holds a profile the reader chooses, and only then fills the
+form, keeping the date the rules were read on until a box of them is changed; a link it did
+not make, or one cut short, fills nothing and says why above the form. A link pasted into
+the page already open is read the same way. On a page a journal's host built, the rules a
+link carries take the place of the journal chosen, and the page says so. The button makes
+a link only of rules a page opened at it takes (the profile's schema, the form's boxes and a
+link's length, packed and unpacked), and says why where it does not, so that no link is sent that every
+editor would find refused. Where the browser does not let
+the page copy, the link is shown to copy by hand. The page reads its address and never writes
+it, and keeps nothing: the link is the reader's to keep and to send.
 
 A LaTeX project comes as the archive Overleaf downloads (`.zip`) or arXiv gives a paper's
 source in (`.tar.gz` or `.tgz`, and arXiv's one gzipped `.tex`). The page unpacks it in the

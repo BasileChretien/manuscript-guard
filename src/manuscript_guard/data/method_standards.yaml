@@ -219,6 +219,19 @@ standards:
       - Target condition
       - Analysis
 
+  murad-2018:
+    name: Tool for evaluating the methodological quality of case reports and case series
+    citation: Murad MH et al. BMJ Evid Based Med 2018;23:60-63
+    doi: 10.1136/bmjebm-2017-110853
+    url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6234235/fullTextXML
+    read_on: 2026-11-27
+    applies_to: [case-report, case-series]
+    domains:
+      - Selection
+      - Ascertainment
+      - Causality
+      - Reporting
+
   robis:
     name: ROBIS (risk of bias in systematic reviews)
     citation: Whiting P et al. J Clin Epidemiol 2016;69:225-234

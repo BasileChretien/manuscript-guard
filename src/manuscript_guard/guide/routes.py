@@ -58,7 +58,7 @@ def _all(skill: str | None, argv: tuple[str, ...] | None, *keys: str, who: str =
 
 #: The codes no command answers and whose finding's hint says what to do, which `next` then
 #: gives with the action.
-HINT_IS_THE_STEP = frozenset({"reference-uncited"})
+HINT_IS_THE_STEP = frozenset({"reference-uncited", "bib-entries-uncited"})
 
 _VERIFY = ("verify",)
 _BIND = ("bind",)
@@ -163,9 +163,10 @@ ROUTES: dict[str, Route] = {
            "pmid-", "preprint-", "pages-placeholder", "identifier-malformed"),
     # None is answered by asking the registries. An entry no key points to may be a work the
     # text cites in words, which `sync-bib` would drop, so no command is offered and its hint
-    # is the step (`HINT_IS_THE_STEP`); the other two are put right in Zotero.
-    **_all("literature-verify", None, "reference-uncited", "reference-duplicate",
-           "reference-title-duplicate"),
+    # is the step (`HINT_IS_THE_STEP`), for one entry or in one note for a file's; the other
+    # two are put right in Zotero.
+    **_all("literature-verify", None, "reference-uncited", "bib-entries-uncited",
+           "reference-duplicate", "reference-title-duplicate"),
     # A later version, a correction, a number quoted from a review: what the registries said
     # is read, and the citation or the quote is put right in Zotero and the ledger.
     **_all("literature-verify", None, "reference-updated", "reference-corrected",
@@ -240,6 +241,10 @@ ROUTES: dict[str, Route] = {
     # right, each author's own entries asked of them, as the setup skill has the author fill
     # authors.yaml. No command fixes either.
     **_all("project-setup", None, "funding-", "interests-", "ethics-approval-", "credit-"),
+    # A statement every paper makes, missing: drafted from authors.yaml, what it lacks asked of
+    # the authors; and a heading with nothing under it, written or taken out.
+    **_all("submission-pack", None, "declaration-missing"),
+    **_all("manuscript-writing", ("check",), "section-empty"),
     # -- what is said of the paper outside it ---------------------------------------------
     # `communicate check` says these, never `check`: the text, the brief or the graphical
     # abstract is put right and the check run again, as the research-communication skill
@@ -300,6 +305,10 @@ NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        # What `audit` passed over for its list of journals' style guides
                        # (`auditing.undefined`): a note in its own report, never `check`'s.
                        "abbreviations-passed-over",
+                       # A kind of an audited paper's tables or figures its legends do not
+                       # number (`auditing.displays`): a note in the audit's own report, which
+                       # a project's bindings never give.
+                       "displays-not-counted",
                        # What `compare` says of two versions of someone else's paper, to its
                        # editor or referee: facts in its own report, which `check` and `next`
                        # never see and the author has nothing to do about.

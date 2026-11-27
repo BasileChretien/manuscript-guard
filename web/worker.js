@@ -407,7 +407,9 @@ async function probe() {
 
 self.onmessage = async ({ data: { id, type, payload } }) => {
   try {
-    const value = type === "boot" ? await boot() : type === "run" ? run(payload) : await probe();
+    // "rules": a link's rules, held to the profile's schema as the form's are (app.js).
+    const value = type === "boot" ? await boot() : type === "run" ? run(payload)
+      : type === "rules" ? formFiles(payload, null, []) : await probe();
     self.postMessage({ id, value });
   } catch (error) {
     self.postMessage({ id, error: String((error && error.message) || error) });

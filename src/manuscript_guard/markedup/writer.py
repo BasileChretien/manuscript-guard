@@ -19,6 +19,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from xml.etree import ElementTree as ET
 
+from manuscript_guard.docxtext import built_heading
 from manuscript_guard.markedup import align
 from manuscript_guard.markedup.atoms import CONTAINERS, MARKS, MATHS, Atom, Read, look, read
 from manuscript_guard.markedup.atoms import signature as atom_signature
@@ -221,9 +222,16 @@ class Writer:
         cell: bool = False,
     ) -> list[ET.Element]:
         """The children of a story, `new_children` with every change from `old_children`
-        written in. In a table's `cell`, paragraphs are paired in order whatever they say."""
+        written in. In a table's `cell`, paragraphs are paired in order whatever they say.
+
+        The heading the build puts over the reference list is the build's, never the author's,
+        and a document built before it has none (`docxtext.built_heading`): the revision's is
+        kept as it is, untracked, and the one the document sent holds is not compared, as
+        `docxtext.blocks` reads neither."""
+        old_children = [c for c in old_children if not built_heading(c)]
         old = [self._unit(c, self.before, part) for c in old_children if c.tag in _UNITS]
-        new = [self._unit(c, self.after, part) for c in new_children if c.tag in _UNITS]
+        new = [self._unit(c, self.after, part) for c in new_children
+               if c.tag in _UNITS and not built_heading(c)]  # fmt: skip
         steps = align.steps(old, new, lambda u: u.same, self._score(old, new, cell=cell))
         at_new = {j: k for k, (_tag, _i, j) in enumerate(steps) if j is not None}
         out: list[ET.Element] = []
@@ -237,7 +245,7 @@ class Writer:
 
         j = 0
         for child in new_children:
-            if child.tag in _UNITS:
+            if child.tag in _UNITS and not built_heading(child):
                 through(at_new[j])
                 j += 1
             elif child.tag in _FIXED_LAST:

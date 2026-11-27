@@ -141,13 +141,16 @@ def test_the_json_gives_each_finding_its_part_and_kind(tmp_path, capsys) -> None
 # ------------------------------------------------------------------ the table
 
 
-def test_a_record_is_shown_only_where_ten_or_more_were_judged() -> None:
+def test_a_record_is_shown_as_a_rate_only_where_ten_or_more_were_judged() -> None:
+    """Under ten judged, a record is shown as too few to rate (Basile, 2026-11-27): item 7b's
+    1 of 6 on 100 PMC papers."""
     for kind in editor.KINDS:
         if kind.record is not None:
             true, judged = kind.record
-            assert judged >= editor.SHOWN_FROM and 0 <= true <= judged, kind.name
-            assert editor.record_said(kind) == (f"Right in {true} of {judged} judged on "
-                                                "published papers.")  # fmt: skip
+            assert 0 <= true <= judged and judged > 0, kind.name
+            rate = f"Right in {true} of {judged} judged on published papers"
+            assert editor.record_said(kind) == (
+                f"{rate}." if judged >= editor.SHOWN_FROM else f"{rate}: too few to rate it.")
         else:
             assert editor.record_said(kind) == "Not yet measured on published papers."
         assert kind.part != editor.READ or kind.record is None, kind.name

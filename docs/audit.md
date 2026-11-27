@@ -374,6 +374,36 @@ table's or a legend's words read as prose. Of the 81 such findings judged on rea
 from PDF papers and from LaTeX papers' own PDFs, 35 were right. From Word, LaTeX or Markdown
 it is still a warning.
 
+**The tables and figures.** G2 holds a project's tables and figures to the order ICMJE asks
+for ("Number tables consecutively in the order of their first citation in the text"), and the
+audit holds a paper's the same way, in "Tables and figures (G2)", which `--strict` does not
+count. A project's are counted by the bindings that place them; a paper's are counted by their
+legends alone (the author, 2026-11-27): where the legends of a kind read "Table 1" to "Table
+n", each once, the paper has n tables. A legend is the first pointer of a line that opens its
+paragraph, set off from its title by a stop, a colon, a dash no number follows or the end of
+its bold ("**Table 1.** Baseline", "Table 1: Baseline", "Figure 1 - Flow"), by a space and a
+capital as BMC and Springer set one ("Table 1 Baseline characteristics"), alone on its line,
+or opening a picture's caption as pandoc writes one from Word, its alternative text opening
+`![Figure 1. Flow`, "Fig. 1." as well as "Figure 1.", after a bookmark Word keeps or inside a
+link to one, and with Word's no-break space between the word and its number. Every other
+pointer is a citation, "Figures 1-3 show", "Figures 1A-C show" and a cross-reference's link
+opening a sentence among them. Counted, the main text's tables and figures are each held to being cited
+(`display-not-cited`), to their first citations coming in the order of their numbers
+(`cited-out-of-order`, the first that does not, among the numbers cited), and to no pointer
+past the last legend (`pointer-to-nothing`). A pointer to the supplement, "Table S1",
+"Supplementary Figure 2", "eTable 3", is held to the supplement's legends, read in every paper
+given, the main text's file among them, and only where some are. Legends that number a kind
+otherwise, "Table 1", "Table 3", or "Table 1 (continued)" beside "Table 1", leave the kind
+uncounted, and so does a kind pointed at with no legend, as when the figures go to the journal
+as files of their own: a note says so, and nothing else is said of it. Where a file holds more
+tables, or more pictures, than its legends number, as where a legend stands inside a layout
+table or in a picture, a pointer past the legends is said not checked rather than pointing at
+nothing, and the rest is held as before. A LaTeX paper numbers its floats itself, and is held by G2's own reader of one, as `check` holds a LaTeX project, with the
+audit's notes and hints. A PDF is read where its lines were rebuilt into paragraphs, each
+display a block opening with its legend; one whose lines were not is said not checked. Each
+finding is a warning until the corpus measures its code, and its severity then follows how
+often it was right.
+
 **The references.** The list cut from the text is counted: its entries, and the DOIs and
 PMIDs typed in them. Where the entries carry their numbers, "1." or "[1]", each bracketed
 citation of numbers in the text, `[3]`, `[3, 5]` or `[3-5]`, is held to the list: a number
@@ -392,6 +422,21 @@ published since, a DOI or a PMID no registry has, and a registry that did not an
 does in a project. Only where no registry reported anything of any entry does it say how many
 entries were asked and how many a registry knew; an entry answered from the records kept
 counts as asked.
+Each entry's DOI is held to its title too (Basile, 2026-11-26): where the record Crossref or
+OpenAlex holds for the DOI is of a work whose title, with its subtitle, holds under half the
+searched words of the title the entry gives, the DOI is said to be another work's
+(`reference-title-differs`), with both titles. A real DOI with an invented title is the
+commonest fabricated citation, and its DOI alone looks right. It is a note, never a warning:
+on 100 published papers (2026-11-27), 1 of the 6 such notes two readers judged was right,
+and most of the others gave in English the title of a work written in Portuguese or
+Spanish, which no count of shared words tells from another work's. A title of fewer than
+three searched words is not compared, nor one the entry's reader took from the citation's
+tail (a link, a DOI, a year in brackets with a volume and pages), nor an entry that holds its
+record's title word for word outside the title read, nor one that says its title is a
+translation ("[Article in Spanish]"). Each registry's record is counted alone, and the
+finding quotes the one counted. An entry whose title its reader does not find, as often in a
+list that gives the title between commas, is not compared.
+The editor's report asks it of the authors, with its record (Basile, 2026-11-27).
 An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
 journal article, a book or a chapter; a web page or a legal or official text, listed as "no
 DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
@@ -856,9 +901,10 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   `sync-bib` would drop. A citation in the sentence, "Smith (2020) showed", is not read, and
   nor is any citation in a bracket with a piece not read, even where that piece is a real
   citation: "(Smith, 2020; Jones, in press)", "(Smith, 2020; Lee, 2017a,b)", "(Smith, 2020;
-  Jones 2020)". An entry cited only that way stays a warning that nothing cites it: give it
-  its key, and delete by hand an entry that really is not cited, since `sync-bib` would drop
-  them all.
+  Jones 2020)". An entry cited only that way is one `check` says nothing cites: listed in
+  the one note on `references.bib`, since the bibliography prints only the works cited, or a
+  warning of its own where the paper prints every entry. Give it its key, and delete by hand
+  an entry that really is not cited, since `sync-bib` would drop them all.
 
 Where the title page stays in the text, as when the document opens on its title in a
 heading style, G14 still does not read it for abbreviations: its authors' names, units and

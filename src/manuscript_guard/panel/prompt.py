@@ -650,10 +650,14 @@ def _design_needs(project: Project) -> tuple[str, Sent] | None:
         return None
     sections = known["sections"]
     listed = "\n".join(f"- {s['id']}: {s['says']} ({s['source']})" for s in sections)
+    # The sections of the seven the design sets aside, or the round asks for them (round 1
+    # of #840): a case report's analysis and deviations.
+    unasked = "".join(f"\nNot asked of this design: {name}, since {why}."
+                      for name, why in known.get("not_asked", {}).items())  # fmt: skip
     text = _block(
         f"study type: {design}",
         f"The plan is for a {known['label']}. What the guidelines of this design ask a plan "
-        f"to settle:\n{listed}",
+        f"to settle:\n{listed}{unasked}",
     )
     return text, Sent(f"study type: {design}", f"what a plan for a {known['label']} settles, "
                       f"{len(sections)} items, each with its source")  # fmt: skip

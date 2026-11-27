@@ -35,6 +35,8 @@ BY_STUDY_TYPE = {
     "case-control": "observational",
     "cross-sectional": "observational",
     "diagnostic-accuracy": "observational",
+    "case-report": "observational",
+    "case-series": "observational",
     "self-controlled": "observational",
     "disproportionality": "observational",
     "systematic-review": "systematic-review",

@@ -209,6 +209,36 @@ def test_a_profile_is_built_from_the_paper_s_table(tmp_path: Path) -> None:
     assert validate(profile, "reporting", path).ok
 
 
+#: A table laid out as CARE 2013's is: labelled "Table" with no number, its head in <thead>, and
+#: an item's points set as a list in one cell.
+LISTED = """<?xml version="1.0" encoding="UTF-8"?><article xml:lang="en"><body>
+<table-wrap id="T1"><label>Table</label><caption><p>The imaginary guidelines</p></caption>
+<table><thead><tr><th>Name</th><th>No.</th><th>Description</th></tr></thead><tbody>
+<tr><td><bold>Title</bold></td><td>1</td><td>Say what the report is about</td></tr>
+<tr><td><bold>History</bold></td><td>2</td><td><list list-type="simple">
+<list-item><p>Age and occupation</p></list-item><list-item><p>Main complaints</p></list-item>
+</list></td></tr></tbody></table></table-wrap></body></article>
+"""
+
+
+def test_a_table_with_no_number_is_named_by_its_id_and_a_listed_item_read_whole(
+    tmp_path: Path,
+) -> None:
+    """The label gives no number to find the table by, so its id does. An item whose points
+    are a list in its cell is one item, its points in order with a space between each, as the
+    article's text has them, so it is verified."""
+    _article(tmp_path, LISTED)
+    with pytest.raises(RecipeError, match="no table named 'Table 1'"):
+        table_rows(tmp_path / "paper.xml", "Table 1")
+    path, count, unverified = build_profile(_recipe(tmp_path, table="T1"), tmp_path, tmp_path)
+    assert (count, unverified) == (2, [])
+    items = yaml.safe_load(path.read_text(encoding="utf-8"))["items"]
+    assert [(item["id"], item["topic"], item["text"]) for item in items] == [
+        ("1", "Title", "Say what the report is about"),
+        ("2", "History", "Age and occupation Main complaints"),
+    ]
+
+
 def test_a_changed_table_stops_the_transcription_and_a_reformatted_one_does_not(
     tmp_path: Path,
 ) -> None:

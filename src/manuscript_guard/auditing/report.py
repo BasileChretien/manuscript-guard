@@ -76,6 +76,7 @@ LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
 JOURNAL = "Journal (G4)"
 DOCUMENT = "Document"
+DISPLAYS = "Tables and figures (G2)"
 CAUSAL = "Causal words"
 CITED = "Cited sentences"
 SELF_CITATION = "Self-citation"
@@ -288,11 +289,12 @@ def items(report) -> list[Item]:
                                                      if looked.came == "kept" else ""),
                                 INFO, False, where, entry.line), entry.label))  # fmt: skip
         found += [
-            about(Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line),
-                  p.subject)
+            about(Item(REFERENCES, "G7", p.code, p.message, p.severity, False, p.path, p.line,
+                       hint=p.hint), p.subject)
             for p in looked.problems
         ]  # fmt: skip
     found += _title_items(report)
+    found += display_items(report)
     if getattr(report, "registration", None) is not None:
         from manuscript_guard.auditing.registration import findings as registration
 
@@ -318,6 +320,51 @@ def _arithmetic_questions(report) -> list[Item]:
     return [of_number(question(ARITHMETIC, d.code, d.message, d.source, d.line, d.context,
                                d.refereed), d)
             for d in getattr(report, "arithmetic_asked", [])]  # fmt: skip
+
+
+def display_items(report) -> list[Item]:
+    """What G2 says of each paper's tables and figures (`auditing.displays`), and of the
+    pointers to the supplement, held to the legends of every paper given: each at its place."""
+    from manuscript_guard.auditing.displays import supplement_findings
+
+    runs = [run for run in report.gates if getattr(run, "displays", None) is not None]
+    found = [_from_finding(DISPLAYS, finding, run.places) for run in runs
+             for finding in (*run.displays.findings, *run.displays.notes)]  # fmt: skip
+    places = {Path(run.paper).resolve(): run.places for run in runs}
+    more, notes = supplement_findings([run.displays for run in runs])
+    return found + [_from_finding(DISPLAYS, finding,
+                                  places.get(Path(finding.path).resolve()) if finding.path
+                                  else None) for finding in (*more, *notes)]  # fmt: skip
+
+
+def displays_counted(report) -> int:
+    """How many kinds of the papers' main texts G2 counted from their legends."""
+    return sum(run.displays.counted for run in report.gates
+               if getattr(run, "displays", None) is not None)  # fmt: skip
+
+
+def _displays(report, show) -> list[str]:
+    """The section on the tables and figures: each finding at its place, then the notes."""
+    said = display_items(report)
+    lines: list[str] = []
+    for item in (one for one in said if one.severity != INFO):
+        where = (show.within(item.path, item.placer).located(item.path, item.line)
+                 if item.path is not None else "-")  # fmt: skip
+        lines += [f"  [{item.severity.upper():4}] {item.gate} {where}",
+                  f"         {item.message}"]  # fmt: skip
+        if item.context:
+            lines.append(f"         > {item.context}")
+        if item.hint:
+            lines.append(f"         hint: {item.hint}")
+    if not lines and displays_counted(report):
+        # A pointer past the legends is said only where none was left unchecked (the fix-only
+        # round on f0bd603 of #837).
+        unchecked = any(item.severity == INFO for item in said)
+        lines.append("  Each table and figure counted from its legends is cited, in the order of "
+                     "its number" + ("." if unchecked else
+                                     ", and nothing points at one the legends do not number."))
+    return lines + [f"  {show(item.path)}: {item.message}" if item.path is not None
+                    else f"  {item.message}" for item in said if item.severity == INFO]
 
 
 def _title_items(report) -> list[Item]:
@@ -1006,6 +1053,9 @@ def _sections(
     words = _gates(report, root, show) if details else _grouped_gates(report, show)
     if report.gates and words:
         out.append((WORDS, words))
+    shown = _displays(report, show) if report.gates else []
+    if shown and (details or display_items(report)):
+        out.append((f"{DISPLAYS} (not counted by --strict)", shown))
     if report.references and (details or _anything_in_references(report)):
         out.append((f"{REFERENCES} (not counted by --strict)", _references(report, show)))
     if getattr(report, "registration", None) is not None:
@@ -1606,8 +1656,12 @@ def _looked(looked: list, paper: Path, show) -> list[str]:
     lines = [f"    looked up {len(looked)} entr{'y' if len(looked) == 1 else 'ies'}"
              + (f", {kept} from the records kept" if kept else "")]  # fmt: skip
     said = [problem for one in looked for problem in one.problems]
-    lines += [f"    {_at(p.path, p.line, paper, show)}{p.message}" for p in said]
-    if not said:
+    for p in said:
+        lines.append(f"    {_at(p.path, p.line, paper, show)}{p.message}")
+        if p.hint:
+            lines.append(f"      {p.hint}")
+    # A note of a title is no word on a work's standing (round 1 of #846).
+    if not [p for p in said if p.severity != INFO]:
         known = sum(1 for one in looked if one.known)
         lines.append(f"    no registry said a work was retracted, withdrawn or under concern: "
                      f"{len(looked)} asked, {known} known to a registry that answered")  # fmt: skip

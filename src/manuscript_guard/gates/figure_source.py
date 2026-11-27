@@ -31,7 +31,9 @@ import yaml
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.text.code import (
+    PYTHON,
     CodeNumber,
+    R,
     language_of,
     language_of_tag,
     numbers_in,
@@ -64,6 +66,21 @@ class PlotVocabulary:
     data_constructors: frozenset[str]
     machinery_parameters: frozenset[str]
     tick_label_functions: frozenset[str]
+    #: R's colour names with digits in them, `grey0` to `steelblue4`, in lower case.
+    r_colours: frozenset[str] = frozenset()
+    #: matplotlib's colours of its cycle, `C0`, `C1`, ...
+    python_colours: re.Pattern[str] | None = None
+
+    def colour(self, string: str | None, language: str | None) -> bool:
+        """Whether a string literal is, whole, a colour's name with digits in it, in the
+        script's language: R's in R (in any case, as R reads them), matplotlib's in Python."""
+        if string is None:
+            return False
+        if language == R:
+            return string.lower() in self.r_colours
+        if language == PYTHON and self.python_colours is not None:
+            return self.python_colours.fullmatch(string) is not None
+        return False
 
     def machinery(self, names: tuple[str, ...]) -> bool:
         return any(name in self.machinery_parameters for name in names)
@@ -93,12 +110,17 @@ class PlotVocabulary:
 @lru_cache(maxsize=1)
 def load_vocabulary() -> PlotVocabulary:
     document = yaml.safe_load((DATA_DIR / "plot_params.yaml").read_text(encoding="utf-8"))
+    colours = document["colour_names"]
+    r_colours = {f"{grey}{level}" for grey in colours["r_grey"] for level in range(101)}
+    r_colours |= {f"{name}{shade}" for name in colours["r_numbered"] for shade in range(1, 5)}
     return PlotVocabulary(
         parameters=frozenset(document["parameters"]),
         function_patterns=tuple(re.compile(p) for p in document["function_patterns"]),
         data_constructors=frozenset(document["data_constructors"]),
         machinery_parameters=frozenset(document["machinery_parameters"]),
         tick_label_functions=frozenset(document["tick_label_functions"]),
+        r_colours=frozenset(r_colours),
+        python_colours=re.compile(colours["python_cycle"]),
     )
 
 
@@ -215,7 +237,9 @@ def check_figure_source(script: Path, classifier: Classifier) -> Report:
             continue
 
         if number.in_string:
-            if vocabulary.machinery(number.names) or vocabulary.tick_label(number.names):
+            # A colour named with digits, `colour = "grey50"`, names the colour it draws in.
+            if (vocabulary.machinery(number.names) or vocabulary.tick_label(number.names)
+                    or vocabulary.colour(number.string, language)):  # fmt: skip
                 counts["string_ok"] += 1
                 continue
             verdict = _judge_string_number(number, classifier)
@@ -234,6 +258,11 @@ def check_figure_source(script: Path, classifier: Classifier) -> Report:
                     "label, so the figure cannot disagree with the manuscript",
                 )
             )
+            continue
+
+        # An index into what the script read (`edges[1]`), and the zero a process's exit
+        # status is compared with (`if (status != 0) stop()`), are neither drawn nor data.
+        if number.subscript or number.exit_status:
             continue
 
         constructor = vocabulary.data_constructor(number.names)

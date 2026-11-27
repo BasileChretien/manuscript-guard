@@ -793,6 +793,46 @@ def test_a_minus_sign_in_a_figure_is_the_hyphen_of_its_sidecar(
     assert _unbound_in_the_figure(project) == ["\N{MINUS SIGN}0.7"]
 
 
+def test_a_number_typed_beside_a_colour_an_index_or_a_status_is_caught(project: Path) -> None:
+    """G3 lets through the digits of a colour's name, a number that is a whole subscript and
+    the zero an exit status is compared with (the bisphosphonates paper, 2026-11-26). A result
+    typed beside each, on the same line, is still a number the script draws or holds."""
+    script = project / "figures" / "forest.py"
+    text = script.read_text(encoding="utf-8")
+    planted = (
+        '    ax.set_title("ROR 3.84", color="C0")\n'
+        "    scaled = [estimate][0] * 3.85\n"
+        "    status = subprocess.call(['true'])\n"
+        "    if status != 0 and estimate > 3.86:\n"
+        "        raise SystemExit(status)\n"
+    )
+    opening = "    fig, ax = plt.subplots("
+    changed = text.replace(opening, planted + opening, 1)
+    assert changed != text, "the fixture's figure call changed; update this test"
+    script.write_text(changed, encoding="utf-8")
+    projekt, _ = load_project(project)
+    found = sorted(f.message.split("'")[1] for f in check_figures(projekt, load_namespace(
+        projekt)[1]).findings if f.code.startswith("figure-source-"))  # fmt: skip
+    assert found == ["3.84", "3.85", "3.86"]
+
+
+def test_a_number_drawn_in_an_svg_with_a_stylesheet_is_caught(project: Path) -> None:
+    """An SVG's `<style>` is not read for numbers any more, so svglite's `stroke-miterlimit:
+    10.00` is no number the figure draws. A number edited into a label of the same figure is
+    still one, and so is one in a `<text>` written after the stylesheet."""
+    svg = project / "figures" / "forest.svg"
+    text = svg.read_text(encoding="utf-8")
+    text = text.replace(
+        '<style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>',
+        '<style type="text/css">*{stroke: #000000; stroke-miterlimit: 10.00; width: 7.77}'
+        "</style>\n  <text>6.66</text>",
+        1,
+    )
+    text = re.sub(r">(\d+\.\d+) \(", ">7.70 (", text, count=1)
+    svg.write_text(text, encoding="utf-8")
+    assert _unbound_in_the_figure(project) == ["6.66", "7.70"]
+
+
 def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     script = project / "figures" / "forest.py"
     text = script.read_text(encoding="utf-8")
@@ -15615,6 +15655,18 @@ def test_a_cross_sectional_study_registered_as_interventional_differs(project: P
     assert _registration(project) == {"registration-design-differs": "warn"}
 
 
+def test_a_case_series_is_registered_as_either_kind_of_study(project: Path) -> None:
+    """Round 1 of #849: a case series was held to an observational registration, but a
+    prospective series of an intervention given by protocol is registered as an
+    interventional study (ClinicalTrials.gov's single group), so a correct paper was told
+    to correct its design. Like a diagnostic accuracy study, it is held to neither."""
+    _paper_field(project, "study_type", "case-series")
+    _register(project)
+    assert _registration(project) == {}
+    _register(project, record=_ctgov_record(study_type="interventional"))
+    assert _registration(project) == {}
+
+
 def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates))
@@ -17564,6 +17616,9 @@ _READS_LATEX = (
     "check_ai_use",
     # The declarations held to authors.yaml: read in the same two views.
     "check_disclosures",
+    # The statements every paper makes, read in G4's `main_text`; a LaTeX manuscript's
+    # headings are not held to having something under them (DESIGN.md, Known gaps).
+    "check_statements",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",
@@ -17664,6 +17719,217 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     warned = [f for f in report.findings if f.code == "tex-not-input"]
     assert [f.path.name for f in warned] == ["notes.tex"]
     assert "tex-not-input" not in codes(report)
+
+
+
+# ------------------------------------------ inline maths in a text argument of display maths
+# amsmath sets `\tag`'s argument as text, so `\(1\)` in it is inline maths that LaTeX
+# balances: the reader refused the file there as unbalanced, read nothing past it, and G7
+# said each work cited further on was cited nowhere (Basile, 2026-11-27). A display of each
+# kind holds one, each text argument with each delimiter of inline maths in it.
+
+_TEXT_IN_DISPLAYS = {
+    "a tag of brackets": "![!label{value}!tag{!(1!)} V(x) = !max_a u(x, a)!]",
+    "a starred tag with dollars": "![!tag*{$1$} V(x) = 1!]",
+    "a tag in an equation": "!begin{equation}!tag{!(A!)} y = x!end{equation}",
+    "a tag in an align": "!begin{align}!tag{$2$} a &= 1 !end{align}",
+    "a short intertext": "!begin{align} a &= 1 !shortintertext{and !(b!)} b &= 2 !end{align}",
+    "an intertext": "!begin{align*} a &= 1 !intertext{where !(b > 0!)} b &= 2 !end{align*}",
+    "a text": "![V = 1 !text{if !(x > 0!)}!]",
+    "an mbox": "!begin{equation*} V = 1 !mbox{if $x > 0$}!end{equation*}",
+}
+
+
+def _latex_with_display(display: str) -> str:
+    """A LaTeX paper that cites one work before `display`, one after it, and ends in a
+    sentence of its own: `!` stands for a backslash."""
+    return (
+        "!documentclass{article}\n!usepackage{amsmath}\n!begin{document}\n"
+        "!section{Methods}\nAs before !cite{fictionalHepaticCohort2021}, the value is\n"
+        f"{display}\n"
+        "and it was used again !cite{fictionalClassSignal2019}.\nThe last line is read.\n"
+        "!end{document}\n"
+    ).replace("!", chr(92))
+
+
+@pytest.mark.parametrize("display", list(_TEXT_IN_DISPLAYS.values()), ids=list(_TEXT_IN_DISPLAYS))
+def test_inline_maths_in_a_text_argument_of_display_maths_is_read_to_the_end(
+    project: Path, display: str
+) -> None:
+    """The whole file is read, nothing is refused as unbalanced, and G7 sees the work cited
+    after the display as cited."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.latex.mask import read
+
+    text = _latex_with_display(display)
+    reading = read(text)
+    assert reading.refusals == (), reading.refusals
+    assert "The last line is read." in reading.masked
+    assert [c.key for c in reading.cited] == ["fictionalHepaticCohort2021",
+                                              "fictionalClassSignal2019"]  # fmt: skip
+    _as_latex(project).write_text(text, encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    refused = [f for f in report.findings if f.gate == "BUILD" and f.code.startswith("tex-")]
+    assert refused == [], report.render(project)
+    uncited = [f for f in _g7(project).findings if f.code == "reference-uncited"]
+    assert uncited == [], uncited
+
+
+@pytest.mark.parametrize("display", list(_TEXT_IN_DISPLAYS.values()), ids=list(_TEXT_IN_DISPLAYS))
+def test_an_audited_paper_with_inline_maths_in_a_display_text_argument_is_read(
+    tmp_path: Path, display: str
+) -> None:
+    """`audit` reads such a paper, and holds the entry cited after the display as cited."""
+    from manuscript_guard.audit import audit
+
+    text = _latex_with_display(display).replace(
+        "The last line is read.\n",
+        "The last line is read.\n!begin{thebibliography}{9}\n"
+        "!bibitem{fictionalHepaticCohort2021} Hepatic A. J Ex. 2021;1:1-2.\n"
+        "!bibitem{fictionalClassSignal2019} Signal B. J Ex. 2019;2:3-4.\n"
+        "!end{thebibliography}\n".replace("!", chr(92)),
+    )
+    paper = tmp_path / "paper.tex"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], None)
+    assert report.unreadable == [], report.unreadable
+    assert [p.code for c in report.references for p in c.problems] == []
+
+
+_UNBALANCED_IN_DISPLAYS = {
+    "a tag's inline maths left open": ("![!tag{!(1} V = 1!]", "closes nothing"),
+    "a tag's inline maths never opened": ("![!tag{1!)} V = 1!]", "closes no maths"),
+    "inline maths in the display itself": ("![V = !(x!) + 1!]", "closes no maths"),
+    "dollars in the display itself": ("![V = $x$ + 1!]", "maths is opened inside maths"),
+    "a text's inline maths left open": ("![V = 1 !text{if !(x}!]", "closes nothing"),
+}
+
+
+@pytest.mark.parametrize(("display", "said"), list(_UNBALANCED_IN_DISPLAYS.values()),
+                         ids=list(_UNBALANCED_IN_DISPLAYS))  # fmt: skip
+def test_inline_maths_left_unbalanced_in_display_maths_is_still_refused(
+    project: Path, display: str, said: str
+) -> None:
+    """A `\\(` a text argument does not close, a `\\)` that closes nothing, and inline maths
+    in the display's own maths, where LaTeX stops on it, fail BUILD at the display's line."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.text.latex.mask import read
+
+    text = _latex_with_display(display)
+    [refusal] = read(text).refusals
+    assert refusal.code == "tex-unbalanced" and said in refusal.message, refusal
+    _as_latex(project).write_text(text, encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    found = [(f.code, f.line) for f in report.failures if f.gate == "BUILD"]
+    assert ("tex-unbalanced", 6) in found, report.render(project)
+
+
+#: An author's own `\tag` or `\shortintertext`, defined in the preamble as a paper that does
+#: not load mathtools may define `\shortintertext`: each is then the author's command, read as
+#: an unknown command is, as the reader read both before it knew them (round 1 of #836). `!`
+#: stands for a backslash and `NAME` for the command.
+_OWN_DEFINITIONS = {
+    "newcommand": "!newcommand{!NAME}[1]{!intertext{#1}}",
+    "renewcommand": "!renewcommand{!NAME}[1]{!intertext{#1}}",
+    "let": "!let!NAME!relax",
+    "def": "!def!NAME#1{!intertext{#1}}",
+}
+_OWN_USES = {
+    "tag": "!begin{equation} y = x !tag{1} !end{equation}",
+    "shortintertext": "!begin{align} a &= 1 !shortintertext{and b} b &= 2 !end{align}",
+}
+
+
+def _with_own_definition(name: str, definer: str) -> tuple[str, str]:
+    """A preamble that defines `name` with `definer`, and a body that uses it in a display
+    between two citations: the preamble alone, and the body after it."""
+    preamble = ("!documentclass{article}\n!usepackage{amsmath}\n"
+                + _OWN_DEFINITIONS[definer].replace("NAME", name) + "\n")  # fmt: skip
+    body = ("!begin{document}\nAs before !cite{j}, the value is\n"
+            f"{_OWN_USES[name]}\nSee !cite{{k}}.\nThe last line is read.\n!end{{document}}\n")
+    return preamble.replace("!", chr(92)), body.replace("!", chr(92))
+
+
+@pytest.mark.parametrize("definer", list(_OWN_DEFINITIONS))
+@pytest.mark.parametrize("name", list(_OWN_USES))
+def test_an_authors_own_tag_or_short_intertext_is_read_as_an_unknown_command(
+    name: str, definer: str
+) -> None:
+    """The use is read, nothing is refused, and the citation after it is cited."""
+    from manuscript_guard.text.latex.mask import read
+
+    preamble, body = _with_own_definition(name, definer)
+    reading = read(preamble + body)
+    assert reading.refusals == (), reading.refusals
+    assert [c.key for c in reading.cited] == ["j", "k"]
+    assert "The last line is read." in reading.masked
+
+
+@pytest.mark.parametrize("definer", list(_OWN_DEFINITIONS))
+@pytest.mark.parametrize("name", list(_OWN_USES))
+def test_an_authors_own_tag_defined_in_an_input_file_is_theirs_in_the_entry_file(
+    tmp_path: Path, name: str, definer: str
+) -> None:
+    """Defined in a file the preamble inputs, the command is the author's in the file that
+    uses it too: the tree tells each file of it."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    preamble, body = _with_own_definition(name, definer)
+    head, definition = preamble.rsplit("\n", 2)[0], preamble.rsplit("\n", 2)[1]
+    (tmp_path / "macros.tex").write_text(definition + "\n", encoding="utf-8")
+    (tmp_path / "main.tex").write_text(f"{head}\n{chr(92)}input{{macros}}\n{body}",
+                                       encoding="utf-8")  # fmt: skip
+    document = read_document(tmp_path)
+    assert document.refusals == (), document.refusals
+    cited = [c.key for source in document.sources for c in source.reading.cited]
+    assert cited == ["j", "k"], cited
+
+
+def _tag_document(preamble: str, use: str, package: str = "mathtools") -> str:
+    return (f"!documentclass{{article}}\n!usepackage{{{package}}}\n" + preamble + "\n"
+            "!begin{document}\nAs before !cite{j}, the value is\n" + use
+            + "\nSee !cite{k}.\n!end{document}\n").replace("!", chr(92))  # fmt: skip
+
+
+def test_an_authors_own_tag_is_no_text_argument() -> None:
+    """Round 2 of #836: a `\\tag` the paper defines is the author's command, read as an
+    unknown one is, so inline maths in it is not the text argument's: it is refused, as it
+    was before the reader knew `\\tag`, and only what stands before it is read."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!renewcommand{!tag}[1]{!text{#1}}",
+                         "!begin{equation} y = x !tag{!(1!)} !end{equation}")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
+
+
+def test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too() -> None:
+    """Known gaps, round 2 of #836: LaTeX defines nothing by `\\providecommand` where
+    mathtools gives `\\shortintertext`, but the reader takes it for the author's, as any
+    definition of it, so inline maths in it is refused, as before #836."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!providecommand{!shortintertext}[1]{!intertext{#1}}",
+                         "!begin{align} a &= 1 !shortintertext{where $x > 0$} b &= 2 "
+                         "!end{align}")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
+
+
+def test_a_short_intertext_provided_without_mathtools_is_the_authors() -> None:
+    """Round 2 of #836: where no package gives `\\shortintertext`, `\\providecommand`
+    defines it, and it is the author's: inline maths in it is refused, as LaTeX stops on it
+    where the body sets maths."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = _tag_document("!providecommand{!shortintertext}[1]{#1}",
+                         "!begin{align} a &= 1 !shortintertext{$x$} b &= 2 !end{align}",
+                         package="amsmath")  # fmt: skip
+    reading = read(text)
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
 
 
 @pytest.mark.parametrize("stop", ["latin1", "csname"])
@@ -21409,11 +21675,16 @@ _TYPED_ONLY_BIB = """
 
 def _uncited(root: Path, typed: str, bib: str = _TYPED_ONLY_BIB) -> dict:
     """G7's `reference-uncited` findings by key, the manuscript holding `typed` and
-    `references.bib` the entries of `bib` beside its own."""
+    `references.bib` the entries of `bib` beside its own. Its header asks pandoc for every
+    entry (`nocite: '@*'`), where each entry nothing cites reaches the paper and is a warning
+    of its own: what these tests tell apart is that warning from the note on an entry cited
+    only as typed text. Where only the cited works print, the warnings are one note
+    (`_one_note`)."""
     path = root / "literature" / "references.bib"
     path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
     main = main_md(root)
-    main.write_text(main.read_text(encoding="utf-8") + f"\n{typed}\n", encoding="utf-8")
+    text = main.read_text(encoding="utf-8").replace("---\n", "---\nnocite: '@*'\n", 1)
+    main.write_text(text + f"\n{typed}\n", encoding="utf-8")
     found = [f for f in _g7(root).findings if f.code == "reference-uncited"]
     return {re.search(r"@(\w+)", f.message).group(1): f for f in found}
 
@@ -21943,9 +22214,14 @@ def test_no_hint_sends_one_entry_s_removal_through_sync_bib(project: Path) -> No
 
 
 def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -> None:
-    """A LaTeX manuscript cites by command, so the key is offered as one."""
+    """A LaTeX manuscript cites by command, so the key is offered as one. Its list prints
+    every entry, by a `\\nocite{*}` in a hook, which the reader records as no citation."""
     entry = _twin(project)
     _into_results(entry, "A claim.")
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}",
+                                  "\\AtBeginDocument{\\nocite{*}}\n\\begin{document}", 1),
+                     encoding="utf-8")  # fmt: skip
     path = project / "literature" / "references.bib"
     path.write_text(path.read_text(encoding="utf-8") + _TYPED_ONLY_BIB, encoding="utf-8")
     (found,) = [f for f in _g7(project).findings if f.code == "reference-uncited"
@@ -21969,6 +22245,244 @@ def test_a_latex_manuscript_keeps_its_warning(project: Path) -> None:
     assert typed_only(loaded, ["imaginary2018"]) == {}
 
 
+# The entries nothing cites, where the bibliography prints only the works cited: one note
+# for the file (Basile, 2026-11-27, "One note per .bib").
+
+_NOWHERE_BIB = _one_entry("zeta2001", "Zeta, Zoe") + _one_entry("alpha2002", "Alpha, Al")
+
+
+def _one_note(root: Path) -> list:
+    """G7's findings on the entries of `references.bib` no citation key points to."""
+    from manuscript_guard.gates.citations import UNCITED_ENTRIES
+
+    return [f for f in _g7(root).findings if f.code in ("reference-uncited", UNCITED_ENTRIES)]
+
+
+def _with_entries(root: Path, bib: str = _NOWHERE_BIB, *, header: str = "",
+                  typed: str = "") -> None:  # fmt: skip
+    """`references.bib` with the entries of `bib` beside its own, the manuscript's header
+    with `header` in it and its text with `typed` after it."""
+    path = root / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8").replace("---\n", f"---\n{header}", 1)
+    main.write_text(text + f"\n{typed}\n", encoding="utf-8")
+
+
+def test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print(
+    project: Path,
+) -> None:
+    """Pandoc's citeproc prints only the works cited, so an entry nothing cites never
+    reaches the paper: the file's such entries are one note, which counts them, says why
+    none is printed and lists their keys. Its key names the file and no sentence. An entry
+    cited only as typed text keeps its own note and is not listed."""
+    from manuscript_guard.findings import INFO
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 3
+    _with_entries(project, _NOWHERE_BIB + _one_entry("imaginary2018", "Imaginary, Anne", 2018),
+                  typed="A claim (Imaginary, 2018).")  # fmt: skip
+    found = _one_note(project)
+    (note,) = [f for f in found if f.code == "bib-entries-uncited"]
+    assert note.severity == INFO and note.path.name == "references.bib", note
+    said = (f"2 of the {held} entries of references.bib are cited nowhere, and the "
+            "bibliography prints only the works cited, so none of them reaches the paper: "
+            "@alpha2002, @zeta2001")  # fmt: skip
+    assert note.message == said, note.message
+    assert 'cites one of these works in words, as in "Smith (2020) showed"' in note.hint
+    assert "as in [@alpha2002], or the work is not printed" in note.hint, note.hint
+    assert "do not use `sync-bib` for this" in note.hint, note.hint
+    said = note.as_dict()
+    assert said["key"] == "G7|bib-entries-uncited|references.bib|-" and "key_from" not in said
+    (typed,) = [f for f in found if f.code == "reference-uncited"]
+    assert typed.severity == INFO and "@imaginary2018" in typed.message, typed
+    assert "cites only as typed text" in typed.message, typed.message
+
+
+def test_one_entry_cited_nowhere_is_said_in_the_singular(project: Path) -> None:
+    _with_entries(project, _one_entry("zeta2001", "Zeta, Zoe"))
+    (note,) = _one_note(project)
+    assert re.match(r"1 of the \d+ entries of references\.bib is cited nowhere, ",
+                    note.message), note.message  # fmt: skip
+    assert note.message.endswith("so it does not reach the paper: @zeta2001"), note.message
+
+
+@pytest.mark.parametrize("header", [
+    "nocite: '@*'\n",
+    'nocite: "@*"\n',
+    "nocite: |\n  @*\n",
+    "nocite: ['@zeta2001', '@*']\n",
+    "base: &every\n  nocite: '[@*]'\n<<: *every\n",
+])  # fmt: skip
+def test_a_list_that_prints_every_entry_keeps_a_warning_for_each(
+    project: Path, header: str
+) -> None:
+    """`nocite` holding `@*` asks pandoc for every entry of the file, its own or merged into
+    the header, so each entry nothing cites reaches the printed list: a warning each, as
+    before, and no note."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, header=header)
+    found = _one_note(project)
+    said = {f.message: f.severity for f in found}
+    if header.startswith("nocite: ['@zeta2001'"):
+        # A key under `nocite:` is a citation of it, and it is not uncited.
+        assert said == {"references.bib holds @alpha2002, which nothing cites": WARN}, said
+    else:
+        assert said == {"references.bib holds @alpha2002, which nothing cites": WARN,
+                        "references.bib holds @zeta2001, which nothing cites": WARN}, said
+
+
+@pytest.mark.parametrize("header", [
+    "nocite: '@zeta2001'\n",
+    "nocite: 'email@*'\n",
+    "title: 'nocite: @*'\n",
+    "nocite: ''\n",
+])  # fmt: skip
+def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
+    project: Path, header: str
+) -> None:
+    """A `nocite` of one key cites that key, and the rest of the list still prints only the
+    works cited: the note stays, without the key `nocite` names. Nor is `@*` read in an
+    address, in another key's value or in the body."""
+    _with_entries(project, header=header, typed="The header said nocite: '@*' once.")
+    (note,) = _one_note(project)
+    assert note.code == "bib-entries-uncited", note
+    listed = "@alpha2002" if "zeta2001" in header else "@alpha2002, @zeta2001"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
+
+
+@pytest.mark.parametrize(("snippet", "where", "printed"), [
+    ("\\nocite{*}", "body", None),
+    ("\\AtBeginDocument{\\nocite{*}}", "preamble", True),
+    ("\\newcommand{\\every}{\\nocite{alpha2002,*}}", "preamble", True),
+    ("\\iffalse \\nocite{*} \\fi", "body", True),
+    ("\\begin{lstlisting}\n\\nocite{*}\n\\end{lstlisting}", "body", True),
+    ("% \\nocite{*}", "body", False),
+    ("\\nocite{zeta2001}", "body", False),
+])  # fmt: skip
+def test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings(
+    project: Path, snippet: str, where: str, printed: bool | None
+) -> None:
+    """`\\nocite{*}` the reader records cites every entry, so none is uncited. One it does
+    not record, in a hook or a definition, still makes BibTeX print them all: a warning
+    each. So does one in an `\\iffalse` block or a listing, which TeX never runs (DESIGN.md,
+    Known gaps). In a comment, or of single keys, it asks for no other entry, and the rest
+    are one note, whose hint cites by command."""
+    from manuscript_guard.findings import WARN
+
+    entry = _twin(project)
+    if where == "preamble":
+        text = entry.read_text(encoding="utf-8")
+        entry.write_text(text.replace("\\begin{document}", snippet + "\n\\begin{document}", 1),
+                         encoding="utf-8")  # fmt: skip
+    else:
+        _into_results(entry, snippet)
+    path = project / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + _NOWHERE_BIB, encoding="utf-8")
+    found = _one_note(project)
+    if printed is None:
+        assert found == [], found
+    elif printed:
+        assert sorted((f.code, f.severity, f.message) for f in found) == [
+            ("reference-uncited", WARN, f"references.bib holds @{key}, which nothing cites")
+            for key in ("alpha2002", "zeta2001")], found  # fmt: skip
+    else:
+        (note,) = found
+        assert note.code == "bib-entries-uncited", note
+        assert "\\cite{" in note.hint and "[@" not in note.hint, note.hint
+        assert ("@zeta2001" in note.message) == ("zeta2001" not in snippet), note.message
+
+
+@pytest.mark.parametrize(("typed", "printed"), [
+    ("\n---\nnocite: '@*'\n---\n", True),
+    ("\n---\ntitle: Kept\nnocite: [ '@*' ]\n...\n", True),
+    # Not a block: no blank line before it, or inside a fence.
+    ("Text.\n---\nnocite: '@*'\n---\n", False),
+    ("\n```\n\n---\nnocite: '@*'\n---\n```\n", False),
+])  # fmt: skip
+def test_a_metadata_block_in_the_body_asks_for_every_entry(
+    project: Path, typed: str, printed: bool
+) -> None:
+    """Round 1 of #835: the build strips the front matter, and passes a YAML metadata block
+    of the body to pandoc as it stands (`masking.metadata_blocks`). Its `nocite: '@*'` makes
+    citeproc print every entry, so each entry nothing cites is a warning; text that is no
+    such block asks for nothing."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, typed=typed)
+    found = _one_note(project)
+    if printed:
+        assert sorted((f.code, f.severity) for f in found) == [
+            ("reference-uncited", WARN), ("reference-uncited", WARN)], found  # fmt: skip
+    else:
+        assert [f.code for f in found] == ["bib-entries-uncited"], found
+
+
+def test_the_note_counts_and_lists_the_entries_alone(project: Path) -> None:
+    """Round 1 of #835: an `@string`, an `@preamble` and an `@comment` name no work, so the
+    note neither counts nor lists them, and nothing warns of them."""
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 1
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@STRING{lancet = "Lancet"}\n'
+                           '@preamble{"\\newcommand{\\noop}[1]{}"}\n'
+                           "@comment{jabref-meta: databaseType:bibtex;}\n"
+                           + _one_entry("zeta2001", "Zeta, Zoe"))  # fmt: skip
+    (note,) = _one_note(project)
+    assert note.message == (f"1 of the {held} entries of references.bib is cited nowhere, and "
+                            "the bibliography prints only the works cited, so it does not "
+                            "reach the paper: @zeta2001"), note.message  # fmt: skip
+
+
+def test_where_every_entry_prints_no_string_or_comment_is_warned_of(project: Path) -> None:
+    """Round 2 of #835: where `nocite` asks for every entry, each entry nothing cites is
+    warned of, and an `@string` or an `@comment`, which names no work, is not."""
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@comment{jabref-meta: x;}\n'
+                           + _one_entry("zeta2001", "Zeta, Zoe"),
+                  header="nocite: '@*'\n")  # fmt: skip
+    said = sorted(f.message for f in _one_note(project))
+    assert said == ["references.bib holds @zeta2001, which nothing cites"], said
+
+
+_CROSSREF_BIB = """
+@inproceedings{a2019,
+  author = {Ant, Ann}, title = {A}, year = {2019}, crossref = {proc2019},
+}
+@inproceedings{b2019,
+  author = {Bee, Bo}, title = {B}, year = {2019}, crossref = {Proc2019},
+}
+@inproceedings{c2020,
+  author = {Cee, Cy}, title = {C}, year = {2020}, xref = {proc2020},
+}
+@proceedings{proc2019,
+  title = {Proceedings 2019}, year = {2019},
+}
+@proceedings{proc2020,
+  title = {Proceedings 2020}, year = {2020},
+}
+"""
+
+
+@pytest.mark.parametrize("latex", [True, False])
+def test_an_entry_two_cited_entries_crossref_is_printed_in_latex(
+    project: Path, latex: bool
+) -> None:
+    """Round 1 of #835: BibTeX and biblatex print an entry that two cited entries name in
+    `crossref` (`min-crossrefs`, biblatex's `mincrossrefs` and `minxrefs`, 2 by default), so
+    a LaTeX paper's note leaves it out, without warning of it, keys matched without case. An
+    entry one cited entry names is not printed, and stays in the note. Pandoc's citeproc
+    prints neither, so a Markdown paper's note lists both."""
+    if latex:
+        entry = _twin(project)
+        _into_results(entry, "A claim \\cite{a2019, b2019, c2020}.")
+        path = project / "literature" / "references.bib"
+        path.write_text(path.read_text(encoding="utf-8") + _CROSSREF_BIB, encoding="utf-8")
+    else:
+        _with_entries(project, _CROSSREF_BIB, typed="A claim [@a2019; @b2019; @c2020].")
+    (note,) = _one_note(project)
+    listed = "@proc2020" if latex else "@proc2019, @proc2020"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:
@@ -25024,6 +25538,12 @@ def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> N
     plan.write_bytes(text.replace("## Population and data source", "## Cohort {#population}")
                      .encode())  # fmt: skip
     assert _sources_said(project) == [("plan-source-unnamed", "warn")]
+    # Headed as a case report heads its patient, "Patients" or "Patient information" whole,
+    # it is the Population G12 counts, and this check reads it as such (round 1 of #840:
+    # neither G12 nor this check said anything of it).
+    for heading in ("## Patients", "## Patient information", "## The patient"):
+        plan.write_bytes(text.replace("## Population and data source", heading).encode())
+        assert _sources_said(project) == [("plan-source-unnamed", "warn")], heading
 
 
 def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:
@@ -40819,6 +41339,185 @@ def test_the_deviations_are_found_by_their_words_and_never_named(project: Path) 
     assert "{#" not in hints["the plan says nothing about deviations"]
 
 
+def test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis(
+    project: Path,
+) -> None:
+    """A case report took `other` until it became a design of the table, and its plan was
+    asked for the seven sections alone: how its data would be analysed and how the plan was
+    departed from, which a report of one patient's care has no use for, and never whether
+    the patient consented or could be recognised. Its plan is asked for CARE's sections,
+    each with its item in the hint, and not for the analysis or the deviations, whether it
+    leaves them out or holds them empty (Basile, 2026-11-27)."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="case-report")
+    care = ["de-identification", "diagnostic assessment", "informed consent",
+            "patient perspective", "timeline"]  # fmt: skip
+    assert _plan_asked(project) == care
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(CARE 2013 checklist, item 13)" in hints[
+        "the plan says nothing about informed consent"]
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Analysis\n" in text and "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Analysis\n", "## Notes\n")
+                    .replace("## Deviations from the plan\n", "## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == care
+    report = check_design(load_project(project)[0])
+    assert report.counts["design_expected"] == 10, report.counts
+    plan.write_text(text.replace("## Deviations from the plan\n",
+                                 "## Deviations from the plan\n\nTBD\n\n## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    report = check_design(load_project(project)[0])
+    assert not [f for f in report.findings if f.code == "plan-section-empty"], report.render()
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Anonymisation", "de-identification", True),
+        ("## Confidentiality", "de-identification", True),
+        ("## Identifiable details", "de-identification", True),
+        ("## Identification of the patient", "de-identification", False),
+        ("## Time line", "timeline", True),
+        ("## Chronology of events", "timeline", True),
+        ("## Follow-up time", "timeline", False),
+        ("## Diagnosis", "diagnostic assessment", True),
+        ("## Differential diagnosis", "diagnostic assessment", True),
+        ("## Prognosis", "diagnostic assessment", False),
+        ("## Work-up", "diagnostic assessment", False),
+        ("## The patient's perspective", "patient perspective", True),
+        ("## Patient’s view", "patient perspective", True),
+        ("## Patients' experiences", "patient perspective", True),
+        ("## Clinical perspective", "patient perspective", False),
+        ("## Patient information", "patient perspective", False),
+        ("## Consent for publication", "informed consent", True),
+        ("## Patient consent", "informed consent", True),
+        ("## Ethics approval", "informed consent", False),
+    ],
+)  # fmt: skip
+def test_a_case_report_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """A case report's sections are found by words those sections alone use, as the
+    cross-sectional and the diagnostic accuracy designs' are (DESIGN.md, Known gaps, "A
+    design's sections are found by the words of their headings"): its own headings count,
+    and a heading of another section, the patient's information or the ethics approval,
+    or of none, does not."""
+    _paper_has(project, study_type="case-report")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
+def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared(
+    project: Path,
+) -> None:
+    """A descriptive case series took `other`, and its plan was asked for the seven sections
+    alone: never how its cases were found, how long they were followed, what its results are
+    set against, or whether an ethics committee and the patients agreed. Its plan is asked
+    for those four, each with its PROCESS 2023 item in the hint, and still for the analysis
+    and the deviations every plan has (Basile, 2026-11-27)."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="case-series")
+    series = ["case selection", "comparison", "consent and ethics", "follow-up"]
+    assert _plan_asked(project) == series
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(PROCESS 2023 checklist, items 6b and 11)" in hints[
+        "the plan says nothing about consent and ethics"]
+    assert "(PROCESS 2023 checklist, items 6c and 6f)" in hints[
+        "the plan says nothing about case selection"]
+    report = check_design(load_project(project)[0])
+    assert report.counts["design_expected"] == 11, report.counts
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Analysis\n" in text and "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Analysis\n", "## Notes\n")
+                    .replace("## Deviations from the plan\n", "## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == sorted([*series, "analysis", "deviations"])
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Consecutive patients", "case selection", True),
+        ("## Recruitment", "case selection", True),
+        ("## Case identification", "case selection", True),
+        ("## Selection of cases", "case selection", True),
+        # Round 1 of #849: a hyphen after "case", and "consecutively", were not read.
+        ("## Case-finding", "case selection", True),
+        ("## Case-identification", "case selection", True),
+        ("## Consecutively treated patients", "case selection", True),
+        ("## Patient selection", "case selection", False),
+        ("## Follow up", "follow-up", True),
+        ("## Loss to follow-up", "follow-up", True),
+        ("## Length of observation", "follow-up", False),
+        ("## Comparison with published series", "comparison", True),
+        ("## Historical controls", "comparison", True),
+        ("## External controls", "comparison", True),
+        ("## Comparator", "comparison", True),
+        ("## 3. Comparison", "comparison", True),
+        ("## Comparisons with the literature", "comparison", True),
+        ("## Statistical comparisons", "comparison", False),
+        # Round 1 of #849: an analysis's comparisons were taken for the external one.
+        ("## Correction for multiple comparisons", "comparison", False),
+        ("## Subgroup comparisons", "comparison", False),
+        ("## Comparison of outcomes between groups", "comparison", False),
+        ("## Historical background", "comparison", False),
+        ("## Ethical approval", "consent and ethics", True),
+        ("## Informed consent", "consent and ethics", True),
+        ("## Ethics committee", "consent and ethics", True),
+        ("## Data protection", "consent and ethics", False),
+    ],
+)  # fmt: skip
+def test_a_case_series_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """A case series' sections are found by words those sections alone use, as the other
+    designs' are (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): "Statistical comparisons" is the analysis and no comparison, and a
+    "Patient selection" or "Historical background" names none of them."""
+    _paper_has(project, study_type="case-series")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("heading", "found"),
+    [
+        ("## Patient information", True), ("## The patient", True), ("## Patient", True),
+        ("## Patients", True), ("## 3. Patient information", True),
+        ("## Patient information (de-identified)", True),
+        ("## Patient perspective", False), ("## Patient consent", False),
+        ("## Patient information sheet", False), ("## Patient and public involvement", False),
+    ],
+)  # fmt: skip
+def test_the_patient_is_the_population_where_the_heading_is_the_patient_whole(
+    project: Path, heading: str, found: bool
+) -> None:
+    """CARE heads what a case report says of its patient "Patient information", and G12
+    reads such a heading as the population of a plan of any design; but only one that is
+    the patient whole, as STARD's index test and target condition are (round 3 of #830),
+    since a heading that names the patient in passing heads another section, the
+    patient's perspective or consent."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Population and data source\n" in text
+    plan.write_text(text.replace("## Population and data source\n", f"{heading}\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert ("population" not in _plan_asked(project)) is found
+
+
 def test_a_diagnostic_accuracy_plan_is_asked_for_its_reference_standard_and_thresholds(
     project: Path,
 ) -> None:
@@ -41165,7 +41864,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
 
     assert sorted(study_types()) == sorted([
         "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
-        "self-controlled", "disproportionality", "systematic-review", "prediction-model"])
+        "case-report", "case-series", "self-controlled", "disproportionality",
+        "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)
@@ -41226,6 +41926,10 @@ def _guideline_said(root: Path) -> list[str]:
         ("cohort", ["CONSORT"], True),
         ("prediction-model", ["TRIPOD+AI"], False),
         ("disproportionality", ["READUS-PV"], False),
+        # A case series follows PROCESS, written for surgery, or Kempen: either counts.
+        ("case-series", ["PROCESS-2023"], False),
+        ("case-series", ["Kempen-2011"], False),
+        ("case-series", ["STROBE"], True),
         (None, [], False),
         # A design none of the table's has no guideline to be held to.
         ("other", [], False),
@@ -44806,6 +45510,61 @@ def test_the_declarations_of_the_latex_twin_are_held_to_authors_yaml(project: Pa
 
 
 # --------------------------------------------------------------------------------------
+# G4: the statements every paper makes, and no heading with nothing under it
+# (`gates/statements.py`). A note before drafting, a warning while drafting, a failure from
+# internal review.
+
+
+def _statement_findings(root: Path, stage: str) -> list[tuple[str, str, str]]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return sorted((f.code, f.severity, f.subject or "") for f in report.findings
+                  if f.code in ("section-empty", "declaration-missing"))  # fmt: skip
+
+
+def test_a_statement_left_as_a_comment_under_its_heading_is_caught(project: Path) -> None:
+    """The heading prints alone: the comment saying what is to be written does not print."""
+    _replaced(main_md(project), "This work received no funding.",
+              "<!-- TO CONFIRM WITH THE AUTHORS: no funding. -->")
+    assert _statement_findings(project, "drafting") == [("section-empty", "warn", "Funding")]
+    assert _statement_findings(project, "internal-review") == [
+        ("section-empty", "fail", "Funding")]
+
+
+def test_a_statement_missing_with_no_journal_chosen_is_caught(project: Path) -> None:
+    """Without the journal's list, the five every paper makes are asked for: the example's
+    data, funding and competing interests statements, its ethics in a denial, and no author
+    contributions statement."""
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    assert _statement_findings(project, "drafting") == [
+        ("declaration-missing", "warn", "contributions")]
+    _replaced(main_md(project), "# Competing interests\n\nNone declared.\n", "")
+    assert _statement_findings(project, "submission") == [
+        ("declaration-missing", "fail", "contributions"),
+        ("declaration-missing", "fail", "interests")]
+
+
+def test_a_declarations_section_of_labels_over_comments_is_caught(project: Path) -> None:
+    """Springer's layout before the statements are written: each a label over a comment, or
+    over a placeholder G6 passes. The labels print, so the heading is not empty, and every
+    statement is missing (round 1 of #819); a CRediT role there states no funding."""
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    text = main_md(project).read_text(encoding="utf-8")
+    at = text.index("# Data availability")
+    main_md(project).write_text(text[:at] + (
+        "# Declarations\n\n**Funding:** <!-- TO CONFIRM WITH THE AUTHORS -->\n\n"
+        "**Competing interests:** TO CONFIRM WITH THE AUTHORS.\n\n"
+        "**Ethics approval:** <!-- -->\n\n"
+        "**Availability of data and materials:** To be completed.\n\n"
+        "**Author contributions:** AE: Conceptualization, Funding acquisition.\n"),
+        encoding="utf-8")
+    assert _statement_findings(project, "internal-review") == [
+        ("declaration-missing", "fail", subject)
+        for subject in ("data", "ethics", "funding", "interests")]
+
+
+# --------------------------------------------------------------------------------------
 # G4: the AI-use statement held to the records of a model's work and to what the authors
 # declare (DESIGN.md, "The AI-use statement names the models the records hold").
 
@@ -45218,3 +45977,28 @@ def test_an_audit_says_a_trial_registered_after_it_started(
     said = json.loads(capsys.readouterr().out)["findings"]
     late = [f["message"] for f in said if f["code"] == "registration-late"]
     assert len(late) == 1 and late[0].startswith("NCT04446611"), late
+
+
+def test_an_audit_says_a_reference_whose_doi_is_another_work_s(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Corrupted: a reference gives a real DOI with an invented title, the commonest
+    fabricated citation. `audit --lookup` must say its DOI is of another work, with both
+    titles (`auditing.references._title_differs`, item 7b)."""
+    from test_audit_doi_title import GIVEN, Registries, _paper
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.lookup import http
+    from manuscript_guard.lookup import run as lookup
+
+    table = Registries()
+    table.records["10.5555/given.1"] = ("Mitochondrial dynamics in budding yeast", "")
+    monkeypatch.setattr(http, "default_transport", table)
+    paced = lookup.Pacer
+    monkeypatch.setattr(lookup, "Pacer", lambda: paced(sleep=lambda seconds: None))
+    paper = tmp_path / "paper.md"
+    paper.write_text(_paper(), encoding="utf-8")
+    main(["audit", str(paper), "--lookup", "--json"])
+    said = [f["message"] for f in json.loads(capsys.readouterr().out)["findings"]
+            if f["code"] == "reference-title-differs"]  # fmt: skip
+    assert len(said) == 1 and GIVEN in said[0] and "Mitochondrial dynamics" in said[0], said

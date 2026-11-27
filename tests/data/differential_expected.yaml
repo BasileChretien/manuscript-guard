@@ -26,12 +26,10 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a diagnostic accuracy study is a design of `data/study_types.yaml`: a plan whose
-      paper.yaml names it is asked for its sampling, reference standard, thresholds,
-      blinding, indeterminate results, missing data and sample size, each from its STARD
-      2015 item, where main read `study_type: diagnostic-accuracy` as no design of its table
-      and refused it; and every plan's exposure and outcome are found under STARD's words,
-      "Index test" and "Target condition", which the drawn plans now hold
+      a descriptive case series is a design of `data/study_types.yaml`: a plan whose
+      paper.yaml names it is asked for its case selection, follow-up, comparison, and
+      consent and ethics, each from its PROCESS 2023 item, beside the seven every plan has,
+      where main read `study_type: case-series` as no design of its table and refused it
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,
@@ -128,11 +126,11 @@ expected:
       were (Basile, 2026-11-14, decision 16: 1,405 such notes on 22 real preprints)
   - reading: latex refusals
     why: >-
-      a `\makeatletter` in the body is skipped to its `\makeatother`, and a conditional in
-      the body to its matching `\fi`, and the file read on past it, where the base stopped
-      reading at it; a block skipped is no refusal of the reader's but the tree's, so it is
-      not listed here, and one with no end in the file is refused as before (Basile,
-      2026-11-13, three real papers whose reading stopped at one)
+      inline maths in a text argument of display maths, amsmath's `\tag{\(1\)}` or
+      mathtools' `\shortintertext{where $x > 0$}`, is a formula of its own there, as it is
+      in `\text` and `\intertext`, where the base refused the file as unbalanced at it and
+      read nothing past it (Basile, 2026-11-27); the inputs now hold such displays, each
+      text argument with each delimiter in every example
   - reading: latex bindings
     why: >-
       past a `\makeatletter` or a conditional skipped in the body the file is read on, so a
@@ -230,11 +228,17 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      every finding of `check --json` carries a `key`, `gate|code|subject|digest`, and a
-      finding whose code names no subject yet `"key_from": "context"`; each form G14's
-      question lists carries the key its warning has (Basile, 2026-11-19). Nothing else of
-      the report changes: no message, line, severity, count or exit code. The entry it
-      replaces, decision 30's, is spent
+      G4 says each heading with nothing under it but a comment (`section-empty`), and, where
+      no journal's profile lists the statements the journal asks for, each statement every
+      paper makes that the main text lacks: data availability, ethics, funding, competing
+      interests, author contributions, and AI use where a model was at work
+      (`declaration-missing`; Basile, 2026-11-26). Each is a note at the design stage, a
+      warning while drafting and a failure from internal review, so the report gains those
+      findings and its counts with them, and at submission its exit code is 1 where one
+      fails; where it asks for the funding, competing interests or AI-use statement, the note
+      `funding-not-stated`, `interests-not-stated` or `ai-use-not-stated` is not raised (one
+      gap, one finding: round 1 of #819); nothing else of it changes. The entry it replaces,
+      the keys' of 2026-11-19, is spent
   - reading: data dates
     why: >-
       the finding says the date was emitted as a string rather than typed, and its hint adds
@@ -357,12 +361,10 @@ expected:
       and be honest", after 3 of 20 LaTeX preprints of the corpus run)
   - reading: latex citations
     why: >-
-      a known command the preamble defines again, `\renewcommand{\emph}`, and a preamble's
-      `\expandafter` that only redefines, `\expandafter\def\expandafter\normalsize`, were
-      refused and the rest of the file read as typed; each is read now, and a use of the
-      command refused where it prints; past any refusal the rest of the file is blanked, not
-      read as typed; the inputs now hold such a preamble (Basile, 2026-11-11, "Read more,
-      and be honest", after 3 of 20 LaTeX preprints of the corpus run)
+      a citation after a display whose `\tag` or `\shortintertext` holds inline maths,
+      `\tag{\(1\)}`, is read, where the base refused the file as unbalanced at the display
+      and read no citation past it (Basile, 2026-11-27); the inputs now hold such displays,
+      a citation after each
   - reading: latex places
     why: >-
       optidef's problems, `mini!`, `maxi` and the rest, are maths (decision 13), so the lines
@@ -430,3 +432,17 @@ expected:
       paper.yaml's, which the reading now hands `read` (READUS-PV 1a and 1b on the
       bisphosphonates paper), where the base names no part for it; a quote of the title's
       words under a heading stands in "the title in paper.yaml"
+  - reading: figure script numbers
+    why: >-
+      a new reading of G3's script check, on inputs that hold the three kinds it now passes
+      (the bisphosphonates paper, 2026-11-26): a string that is, whole, one of R's colour names
+      with digits in an R script ("grey50", "steelblue4") or matplotlib's "C0" in a Python
+      one, a number that is a whole subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and a
+      zero compared with an exit status (`if (status != 0) stop()`), each of which the base
+      reports as a number the figure draws or one bound to nothing; what only looks like each
+      is reported on both
+  - reading: figure svg text
+    why: >-
+      a new reading: the text of an SVG's `<style>` and `<script>` is not read as text the
+      figure draws, where the base read svglite's `stroke-miterlimit: 10.00` as two numbers
+      of the figure; its `<text>`, its metadata and its attributes are read as before

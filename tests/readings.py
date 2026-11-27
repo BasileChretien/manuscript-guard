@@ -328,6 +328,25 @@ def _latex_pointers() -> Reading:
     return lambda text: [list(span) for span in read(text).pointers]
 
 
+@reading("audit displays")
+def _audit_displays() -> Reading:
+    """What `audit` says of a paper's tables and figures told by their legends, as G2 holds
+    a project's to the order ICMJE asks for (wave B, 2026-11-27)."""
+    from manuscript_guard.auditing.displays import of_files  # noqa: F401 - absent at base
+
+    def said(given: str | dict[str, str]) -> dict[str, Any]:
+        """`given` is `main.md`'s text, or the files' texts by name."""
+        files = given if isinstance(given, dict) else {"main.md": given}
+        read = of_files(files, Path("m"))
+        return {"findings": [[f.code, f.line, f.message] for f in read.findings],
+                "notes": [f.message for f in read.notes], "counted": read.counted,
+                "supplement": {kind: list(numbers) for kind, numbers in read.supplement.items()},
+                "to_supplement": [[kind, number, finding.line]
+                                  for kind, number, finding in read.to_supplement]}  # fmt: skip
+
+    return said
+
+
 @reading("latex displays cited")
 def _latex_displays_cited() -> Reading:
     """What G2 says of a LaTeX document's pointers to the tables and figures it numbers, and
@@ -886,6 +905,19 @@ def _cited_as_typed() -> Reading:
     return cited
 
 
+@reading("every entry printed")
+def _every_entry_printed() -> Reading:
+    from manuscript_guard.gates.printed_entries import every_entry_printed
+
+    def printed(given: dict[str, Any]) -> bool:
+        """Whether a manuscript file asks for every entry of the bibliography, read as its
+        format is: what keeps G7's warnings for each entry nothing cites, where they are
+        otherwise one note."""
+        return every_entry_printed([given["text"]], latex=given["latex"])
+
+    return printed
+
+
 @reading("typed references")
 def _typed_references() -> Reading:
     from manuscript_guard.typed_references import read
@@ -1012,6 +1044,19 @@ def _disclosures() -> Reading:
         contributions statements against an authors.yaml, at submission."""
         return _told(judge(given["authors"], given["main"], given.get("supplement", ""),
                            submission=True, path=MAIN))  # fmt: skip
+
+    return read
+
+
+@reading("statements")
+def _statements() -> Reading:
+    from manuscript_guard.gates.statements import empty_headings, stated
+
+    def read(text: str) -> dict[str, Any]:
+        """Which statements every paper makes a main text holds, and which of its headings
+        have nothing under them (`gates/statements.py`)."""
+        return {"stated": stated(text),
+                "empty": [[heading.title, heading.line] for heading in empty_headings(text)]}
 
     return read
 
@@ -1484,6 +1529,24 @@ def _registration_named() -> Reading:
         registry, kept = identify(given["id"])
         entry = Declared(given["id"], kept, registry, None, (), False, 0)
         return named_in(blank_comments(given["text"]), entry)
+
+    return read
+
+
+@reading("doi title differs")
+def _doi_title_differs() -> Reading:
+    from manuscript_guard.auditing.references import NUMBERED, Entry, _title_differs
+
+    def read(given: dict[str, str]) -> list[str]:
+        """What `audit --lookup` says of a numbered entry whose DOI's record Crossref holds
+        with the title and subtitle given (`auditing.references._title_differs`): the
+        message, or nothing where the record holds enough of the entry's title."""
+        entry = Entry("entry 1", 1, 1, dois=("10.5555/given.1",), text=given["entry"])
+        answers = {"crossref": {"status": "found", "title": given["title"],
+                                "subtitle": given["subtitle"] or None}}  # fmt: skip
+        if given.get("openalex"):
+            answers["openalex"] = {"status": "found", "title": given["openalex"]}
+        return [problem.message for problem in _title_differs(entry, answers, None, NUMBERED)]
 
     return read
 
@@ -3669,6 +3732,43 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 
 def _changed(before: dict[str, bytes], after: dict[str, bytes]) -> set[str]:
     return {name for name in {*before, *after} if before.get(name) != after.get(name)}
+
+
+# ------------------------------------------------------------------------- figures (G3)
+
+
+@reading("figure script numbers")
+def _figure_script_numbers() -> Reading:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        """What G3 says of a figure script's source, given as its suffix (`.R`, `.py`) and its
+        text: each finding with its line and what it says, the file named by its name alone,
+        and the counts."""
+        with tempfile.TemporaryDirectory() as folder:
+            script = Path(folder) / f"figure{given['suffix']}"
+            script.write_bytes(given["text"].encode("utf-8"))
+            told = _told(check_figure_source(script, Classifier.load()))
+        for finding in told["findings"]:
+            finding["path"] = finding["path"] and Path(finding["path"]).name
+        return told
+
+    return read
+
+
+@reading("figure svg text")
+def _figure_svg_text() -> Reading:
+    from manuscript_guard.gates.figures import _extract_text
+
+    def read(svg: str) -> str | None:
+        """The text of an SVG figure as G3 reads it for the numbers it draws."""
+        with tempfile.TemporaryDirectory() as folder:
+            figure = Path(folder) / "figure.svg"
+            figure.write_bytes(svg.encode("utf-8"))
+            return _extract_text(figure)
+
+    return read
 
 
 # -------------------------------------------------------------------------- the round trip

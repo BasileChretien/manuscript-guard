@@ -5,4 +5,4 @@ max_turns: 10
 allowed_tools: [Read, Glob, Grep, Skill]
 ---
 
-Start a new manuscript-guard project for my next paper and show me the daily loop.
+Use manuscript-guard for my next paper: set the project up with me, and show me the daily loop.

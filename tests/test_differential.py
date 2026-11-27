@@ -216,8 +216,19 @@ CHANGED = {
     # reading them there changed nothing.
     "a plan's population heading read by its first word": (
         "data/study_types.yaml",
-        "    heading: '(?i)\\bpopulation|participants|data source\\b'\n",
+        "    heading: '(?i)\\bpopulation|participants|data source\\b"
+        "|^\\W*(?:(?:\\d+(?:\\.\\d+)*|[A-Za-z]|[IVXivx]+)[.)]\\s*|\\d+(?:\\.\\d+)*\\s+)?"
+        "(?:the\\s+)?patients?(?:\\s+information)?"
+        "(?:\\(s\\))?(?:\\s*\\([^()]*\\))?\\W*$'\n",
         "    heading: '(?i)\\bpopulation'\n",
+        "plan sections asked",
+    ),
+    # A case report's plan is not asked for its analysis or its deviations; the drawn plans
+    # of the design hold both, of every kind.
+    "a design's set-aside sections are asked": (
+        "gates/design.py",
+        '    return frozenset(study_types().get(study_type or "", {}).get("not_asked", ()))\n',
+        "    return frozenset()\n",
         "plan sections asked",
     ),
     # A heading that names its section exactly, `{#sample-size}`, is its section's whatever

@@ -96,6 +96,51 @@ angiography", names the section exactly: `## 10a. Index test {#exposure}`.
 - **Sample size.** How many, with how many having the condition, and how it was worked
   out. (STARD 2015, 18)
 
+## case-report
+
+The paper follows CARE (2013). A case report describes one patient's care after it was
+given, so its plan is not asked for an analysis or for deviations (`not_asked` in
+`study_types.yaml`): what it settles before the writing is what the report will say of
+the patient, and what it must not. The patient is the population, read under a heading
+that is "Patient information", "The patient" or "Patient" whole; the treatment is the
+exposure ("Therapeutic intervention"), and the follow-up and its outcomes the outcome.
+Under any other heading, "Case presentation" or "Patient history", name the population
+exactly: `## Case presentation {#population}`.
+
+- **De-identification.** Which details of the patient the report gives, and which it
+  leaves out or blurs so that no one can recognise them. (CARE, 5)
+- **Timeline.** The important dates and events of the case, in order, as a table or a
+  figure. (CARE, 7)
+- **Diagnostic assessment.** How the diagnosis was reached: the tests, the difficulties,
+  the other diagnoses considered and, where it applies, the prognosis. (CARE, 8)
+- **Patient perspective.** Whether the patient gives their own account of what they went
+  through and of their care. (CARE, 12)
+- **Informed consent.** That the patient, or whoever may decide for them, agreed to the
+  publication, and how that is recorded. (CARE, 13)
+
+## case-series
+
+A descriptive case series, several patients who share a condition, an exposure or a
+treatment described together with no comparison group of their own. It is not the
+self-controlled case series, which is `self-controlled`. No general guideline is written
+for case series: the paper follows PROCESS (2023), written for surgical case series, or
+Kempen (2011), for uncontrolled case series in any field, and G5 accepts either. The plan
+is asked for all seven sections, the analysis being the counts and summaries the series
+will give. The sections cite PROCESS 2023. The comparison is found under a comparator,
+a comparison with something, historical or external controls, or a heading that is
+"Comparison" whole; a comparison the analysis makes ("Multiple comparisons") is not it.
+
+- **Case selection.** How the cases are found and chosen: from which records or referrals,
+  over which period, and whether the series holds every case seen or only some. (PROCESS
+  2023, 6c and 6f)
+- **Follow-up.** How long and how often each patient is followed, by what means, and how
+  those lost to follow-up are counted and explained. (PROCESS 2023, 6l and 7c)
+- **Comparison.** What the results are set against, published studies, the current
+  standard of care or a historical group, and why it is comparable. (PROCESS 2023, 8b)
+- **Consent and ethics.** Whether an ethics committee approves the study or waives its
+  approval, and how the patients' consent is obtained, or why it is not. (PROCESS 2023, 6b
+  and 11)
+
 ## self-controlled
 
 No reporting guideline is written for self-controlled designs; the paper follows STROBE.

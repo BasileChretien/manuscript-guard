@@ -63,6 +63,18 @@ features:
     tests: [tests/test_scaffold.py, tests/test_from_word.py]
     docs: docs/getting-started.md
 
+  - id: setup-conversation
+    stage: start
+    title: Start in conversation
+    says: >-
+      Puts to the authors, one question at a time, each decision a project needs at its
+      start, then writes the project exactly as they answered, filling only what is blank.
+    status: works
+    commands: [setup]
+    skills: [project-setup]
+    tests: [tests/test_setup.py]
+    docs: docs/setup.md
+
   - id: what-next
     stage: start
     title: Say what to do now
@@ -353,14 +365,15 @@ features:
     title: Word documents
     says: >-
       Builds the manuscript and its supplement as Word documents, with live Zotero
-      citations, says why when a citation could not be one, and on request every number
-      coloured by what backs it.
+      citations, says why when a citation could not be one, puts the reference list under
+      its heading, and on request every number coloured by what backs it.
     status: works
     commands: [build]
     tests:
       - tests/test_build.py
       - tests/test_annotate.py
       - tests/test_zotero_word.py
+      - tests/test_references_heading.py
       - tests/test_cli.py::test_an_offline_build_says_its_citations_are_text_and_check_notes_it
 
   - id: readable
@@ -467,14 +480,21 @@ features:
     title: Citations that resolve
     says: >-
       Each citation leads to a reference with well-formed identifiers and the fields it
-      needs, no work is cited under two keys, and an entry nothing cites is warned of, or
-      noted where the paper cites it only as typed text in brackets.
+      needs, and no work is cited under two keys. The entries nothing cites are one note
+      for the file where the bibliography prints only the works cited, and a warning each
+      where it prints every entry; an entry cited only as typed text in brackets is a note
+      of its own.
     status: works
     gates: [G7]
     tests:
       - tests/test_corruption.py::test_a_malformed_identifier_fails_from_internal_review
       - tests/test_corruption.py::test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do
       - tests/test_corruption.py::test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning
+      - tests/test_corruption.py::test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print
+      - tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each
+      - tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings
+      - tests/test_corruption.py::test_a_metadata_block_in_the_body_asks_for_every_entry
+      - tests/test_properties.py::test_a_nocite_of_every_entry_is_told_from_one_of_single_keys
       - tests/test_zotero.py
 
   - id: zotero
@@ -635,11 +655,12 @@ features:
     stage: check
     title: Declarations
     says: >-
-      The funding, competing interests, ethics, contributions and AI-use statements say what
-      the authors' records say.
+      The paper makes the statements every paper makes, data availability, ethics, funding,
+      competing interests, contributions and AI use, each saying what the authors' records
+      say, and no heading is left with nothing under it.
     status: works
     gates: [G4]
-    tests: [tests/test_disclosures.py, tests/test_ai_use.py]
+    tests: [tests/test_disclosures.py, tests/test_ai_use.py, tests/test_statements.py]
 
   - id: reporting-checklist
     stage: check
@@ -913,12 +934,34 @@ features:
       compare reading the PDF's lines as before; front matter and side boxes are read as
       prose (DESIGN.md, Known gaps).
 
+  - id: audit-displays
+    stage: others
+    title: Tables and figures
+    says: >-
+      Holds a paper's tables and figures to the order ICMJE asks for, each counted by its
+      legends: each cited, numbered in the order of its first citation, and no pointer to
+      one the paper has no legend for, the supplement's held to its own legends.
+    status: works
+    commands: [audit]
+    tests:
+      - tests/test_properties.py::test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order
+      - tests/test_audit_displays.py::test_the_three_findings_each_at_its_place
+      - tests/test_audit_displays.py::test_a_pointer_to_the_supplement_is_held_to_the_supplement_s_legends_wherever_given
+      - tests/test_audit_displays.py::test_the_audit_reports_them_in_their_section_and_in_its_summary
+    docs: docs/audit.md
+    limits: >-
+      A kind whose legends do not number it 1 to n once each, or that has none, is not
+      checked, nor a pointer past the legends where the file holds more tables or pictures
+      than they number; a legend missed by its form makes the one past it read as a pointer
+      to nothing; a PDF is read only where its lines were rebuilt into paragraphs (DESIGN.md,
+      Known gaps).
+
   - id: audit-page
     stage: others
     title: Audit in a web browser
     says: >-
       Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not
-      uploaded anywhere.
+      uploaded anywhere. A journal's rules typed once can be sent as a link that fills them in.
     status: works
     tests: [tests/test_web.py]
     docs: docs/audit-page.md
@@ -991,6 +1034,19 @@ features:
     status: works
     commands: [audit]
     tests: [tests/test_audit_registration.py]
+    docs: docs/audit.md
+
+  - id: audit-doi-title
+    stage: others
+    title: A DOI of another work
+    says: >-
+      With the lookups on, notes a reference whose DOI leads to a work with another title
+      than the one it gives: a wrong DOI, or a real DOI with an invented title. A note, with
+      what it was worth on published papers, since a title given in translation looks the
+      same.
+    status: works
+    commands: [audit]
+    tests: [tests/test_audit_doi_title.py]
     docs: docs/audit.md
 
   - id: editor-letter

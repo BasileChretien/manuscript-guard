@@ -102,12 +102,13 @@ as `cd paper && manuscript-guard submit` does when it is sent from the folder ab
 The same skills come with the plugin under Claude Code and Codex, and `install-skills`
 copies them for the other tools (below). Start with `guide`, which works through the
 paper with its author from `manuscript-guard next`, and `project-setup`, which starts the
-project; most of the other skills name the finding codes that should send you to them.
+project in conversation when you tell the agent to use manuscript-guard for a new paper; most
+of the other skills name the finding codes that should send you to them.
 
 | Skill | For |
 |---|---|
 | `guide` | the paper worked through with its author turn by turn, from `manuscript-guard next`: each choice put as numbered options, each step handed to its skill |
-| `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
+| `project-setup` | starting a paper project in conversation, each decision put to the authors and written by `setup` as they answered; and the daily loop from analysis to .docx |
 | `results-binding` | publishing values from the analysis, and turning a red number into a bound one |
 | `analysis-plan` | writing the plan before the analysis, and recording deviations from it |
 | `data-sources` | the datasets that could answer the question, how each is reached and on what terms, chosen by the author |

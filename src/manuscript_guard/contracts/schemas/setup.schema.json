@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/setup/1",
+  "title": "manuscript-guard setup answers",
+  "description": "design/setup.yaml: what the authors chose when the project was set up, each answer at the place `manuscript-guard setup questions` names for its question. `setup apply` writes the project from it, each setting only where it is blank, and records the date it did. paper.yaml and authors.yaml hold the settings and are what every check reads; nothing is checked against this file. A value of `later` puts a decision off: nothing is written for it, and `manuscript-guard next` asks it when it is due.",
+  "type": "object",
+  "required": ["schema"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "manuscript-guard/setup/1"},
+    "applied_on": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "Written by `setup apply`: the day it wrote the project from these answers."},
+    "start": {"type": "string", "minLength": 1, "description": "How the manuscript is written: `markdown`, `latex`, or the name of a .docx in the folder, brought in from Word."},
+    "title": {"type": "string", "description": "The working title. Empty with a Word paper: the title its Title style holds."},
+    "language": {"enum": ["en-GB", "en-US", "other"], "description": "British or American English, or another language, for which no English is declared and the writing checks, which read English, do not apply."},
+    "study_type": {"type": "string", "minLength": 1, "description": "One of the designs paper.yaml's study_type takes: `setup questions` lists them, and an answer outside them keeps its question open."},
+    "reporting_guideline": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "pattern": "\\S"}, "description": "The guidelines the paper follows; empty for none yet."},
+    "journal": {
+      "description": "`later`, `help` (the journal is chosen with the journal-profile skill), the name of a profile the project has, or the journal named, whose profile `setup apply` starts.",
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "object", "required": ["name"], "additionalProperties": false,
+         "properties": {"name": {"type": "string", "minLength": 1, "pattern": "\\S"},
+                        "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}}}
+      ]
+    },
+    "authors": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Every author, in the order of the byline, each as they gave their name.",
+      "items": {
+        "type": "object",
+        "required": ["given", "family", "affiliations"],
+        "additionalProperties": false,
+        "properties": {
+          "given": {"type": "string", "minLength": 1, "pattern": "\\S"},
+          "family": {"type": "string", "minLength": 1, "pattern": "\\S"},
+          "affiliations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "\\S"}, "description": "Each affiliation's text, as printed: \"Department, Institution, City, Country\"."},
+          "corresponding": {"type": "boolean"},
+          "equal_contribution": {"type": ["boolean", "string"]},
+          "degrees": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "orcid": {"type": "string", "pattern": "^\\d{4}-\\d{4}-\\d{4}-\\d{3}[\\dX]$"},
+          "email": {"type": "string", "minLength": 3},
+          "funding": {"type": "array", "items": {"type": "string", "minLength": 1, "pattern": "\\S"}},
+          "competing_interests": {"type": "string", "minLength": 1, "pattern": "\\S"},
+          "credit": {"type": "array", "uniqueItems": true, "items": {"enum": ["Conceptualization", "Data curation", "Formal analysis", "Funding acquisition", "Investigation", "Methodology", "Project administration", "Resources", "Software", "Supervision", "Validation", "Visualization", "Writing – original draft", "Writing – review & editing"]}}
+        }
+      }
+    },
+    "declarations": {"enum": ["given", "later"], "description": "`given`: each author's funding, competing interests and CRediT roles are written in their entry above, as they gave them; `later`: none is asked now."},
+    "statistician": {
+      "description": "`later`, an author by family name, full name or ORCID iD, or someone who is not an author.",
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "object", "required": ["name"], "additionalProperties": false, "properties": {"name": {"type": "string", "minLength": 1, "pattern": "\\S"}}}
+      ]
+    },
+    "ethics_lead": {
+      "description": "`later`, `none` where the study needs no approval, or the author who holds it and the approval's reference.",
+      "oneOf": [
+        {"enum": ["later", "none"]},
+        {"type": "object", "required": ["author", "approval"], "additionalProperties": false,
+         "properties": {"author": {"type": "string", "minLength": 1}, "approval": {"type": "string", "minLength": 1, "pattern": "\\S"}}}
+      ]
+    },
+    "analysis": {"enum": ["python", "r", "other", "undecided"], "description": "The language of the analysis: `other` takes its outputs in with `harvest`."},
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "where": {"enum": ["project", "vault", "site", "not-yet"]},
+        "folder": {"type": "string", "minLength": 1, "description": "With `project`: the folder of the project the data are in."},
+        "publishable": {"type": "boolean", "description": "With `project`: whether the data may be published with the repository."},
+        "minimum_cell_count": {"type": "integer", "minimum": 1, "description": "The smallest count the data's custodian lets be published; 1 where they set none."}
+      }
+    },
+    "registration": {
+      "description": "`none`, `later`, or each registration's identifier as the registry writes it.",
+      "oneOf": [
+        {"enum": ["none", "later"]},
+        {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "pattern": "^\\S+$"}}
+      ]
+    },
+    "stage": {"enum": ["design", "analysis", "drafting", "internal-review"]},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "git": {"type": "boolean", "description": "Make the folder a git repository."},
+        "visibility": {"enum": ["public", "private", "none"], "description": "Where the repository is shared: on a public site, a private one, or nowhere."},
+        "sources_in_git": {"type": "boolean", "description": "In a private repository: commit the stored copies of the cited works."},
+        "github_actions": {"type": "boolean", "description": "Write the workflow that runs check on each push and pull request."}
+      }
+    },
+    "earlier_work": {"type": "boolean", "description": "The authors have published on these data before: an abstract, a preprint or an article."}
+  }
+}

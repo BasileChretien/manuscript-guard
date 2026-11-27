@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/setup-questions/1",
+  "title": "manuscript-guard setup questions --json",
+  "description": "What `manuscript-guard setup questions --json` prints: the decisions still open for a project's start, given the folder and the answers in design/setup.yaml. A field added keeps the schema at /1; a field renamed or removed, or a value added to a fixed list, makes it /2. A question's id is the place in design/setup.yaml its answer is written at. docs/setup.md describes each field.",
+  "type": "object",
+  "required": ["schema", "tool_version", "folder", "project", "answers_file", "ready", "questions", "waiting", "known", "after"],
+  "additionalProperties": false,
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["skill", "title", "why", "who"],
+      "additionalProperties": false,
+      "properties": {
+        "skill": {"type": ["string", "null"]},
+        "title": {"type": "string"},
+        "why": {"type": "string"},
+        "who": {"enum": ["agent", "author"]}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"const": "manuscript-guard/setup-questions/1"},
+    "tool_version": {"type": "string"},
+    "folder": {"type": "string"},
+    "project": {"enum": ["new", "under-way"]},
+    "answers_file": {"const": "design/setup.yaml"},
+    "ready": {"type": "boolean", "description": "No question is open or waiting: `setup apply` may write the project."},
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question", "why", "kind", "options", "recommended", "other", "shortlist", "example", "problem"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "question": {"type": "string"},
+          "why": {"type": "string"},
+          "kind": {"enum": ["choice", "several", "text", "number", "yes-no", "authors"]},
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["value", "label", "effect"],
+              "additionalProperties": false,
+              "properties": {"value": {}, "label": {"type": "string"}, "effect": {"type": "string"}}
+            }
+          },
+          "recommended": {"description": "The value of the option a rule or the folder recommends, or null."},
+          "other": {"type": ["string", "null"], "description": "What an answer outside the options is, where one is taken."},
+          "shortlist": {"type": ["integer", "null"], "description": "How many options to offer once the author has described the study in their words."},
+          "example": {"type": ["string", "null"], "description": "The answer as written in design/setup.yaml."},
+          "problem": {"type": ["string", "null"], "description": "Why the answer written cannot be taken."}
+        }
+      }
+    },
+    "waiting": {
+      "type": "array",
+      "items": {"type": "object", "required": ["id", "on"], "additionalProperties": false,
+                "properties": {"id": {"type": "string"}, "on": {"type": "array", "items": {"type": "string"}}}}
+    },
+    "known": {
+      "type": "array",
+      "items": {"type": "object", "required": ["id", "value", "said"], "additionalProperties": false,
+                "properties": {"id": {"type": "string"}, "value": {}, "said": {"type": "string"}}}
+    },
+    "after": {"type": "array", "items": {"$ref": "#/$defs/step"}}
+  }
+}

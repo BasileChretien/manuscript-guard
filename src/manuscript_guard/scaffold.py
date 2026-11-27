@@ -639,18 +639,22 @@ class AttributesAdvice:
     off the others (`take_off`). Where none does, the eol line is added at the top
     (`add_on_top`). `add_at_end` are decided on the file as `rewrite_attributes` leaves it: a
     line keeping a pattern's files as bytes that a `*` line below it undoes, again, and
-    `*.svg binary` where the SVG is not kept as bytes. `own` says the file has lines for
-    patterns of their own; `svg_undone`, that its own `*.svg` line is undone by a `*` line
-    below it."""
+    `*.svg binary` where the SVG is not kept as bytes. `changed_to` is the changed line as
+    it is to read: the eol line with every other attribute the line set (round 4).
+    `own` says the file has lines for patterns of their own; `svg_undone`, that its own
+    `*.svg` line is undone by a `*` line below it; `svg_kept`, that the file as it is keeps
+    SVGs as bytes, so that only the change asked of it would undo that."""
 
     wanted: tuple[str, ...] = ()
     change: int | None = None
+    changed_to: str | None = None
     move_to_top: bool = False
     add_on_top: bool = False
     take_off: tuple[int, ...] = ()
     add_at_end: tuple[str, ...] = ()
     own: bool = False
     svg_undone: bool = False
+    svg_kept: bool = False
 
 
 def _entries(attributes: list[str]) -> list[tuple[int, list[str]]]:
@@ -673,16 +677,19 @@ def attributes_advice(attributes: list[str]) -> AttributesAdvice:
     advice then rewrote that line)."""
     entries = _entries(attributes)
     lines = [words for _at, words in entries]
-    change, move, on_top, off = None, False, False, ()
+    change, changed_to, move, on_top, off = None, None, False, False, ()
     if _state(lines, ("*",)) != ("auto", "lf"):
         setters = [at for at, words in entries
                    if words[0] == "*" and _apply({"text": None, "eol": None}, words)]
         if setters:
             change, off = setters[0], tuple(setters[1:])
+            words = dict(entries)[change]
+            changed_to = " ".join([EOL_LINE, *_without_text_or_eol(words)[1:]])
             move = any(words[0] != "*" for at, words in entries if at < change)
         else:
             on_top = True
-    draft = AttributesAdvice(change=change, move_to_top=move, add_on_top=on_top, take_off=off)
+    draft = AttributesAdvice(change=change, changed_to=changed_to, move_to_top=move,
+                             add_on_top=on_top, take_off=off)  # fmt: skip
     left = _attribute_lines(rewrite_attributes(attributes, draft))
     end: list[str] = []
     for at, words in entries:
@@ -695,9 +702,10 @@ def attributes_advice(attributes: list[str]) -> AttributesAdvice:
         end.append(SVG_BINARY)
     eol = (EOL_LINE,) if change is not None or on_top else ()
     return AttributesAdvice(
-        wanted=eol + tuple(end), change=change, move_to_top=move, add_on_top=on_top,
-        take_off=off, add_at_end=tuple(end), own=any(words[0] != "*" for words in lines),
-        svg_undone=_rule(lines, "*.svg") == UNDONE,
+        wanted=eol + tuple(end), change=change, changed_to=changed_to, move_to_top=move,
+        add_on_top=on_top, take_off=off, add_at_end=tuple(end),
+        own=any(words[0] != "*" for words in lines),
+        svg_undone=_rule(lines, "*.svg") == UNDONE, svg_kept=_rule(lines, "*.svg") == KEPT,
     )
 
 
@@ -716,15 +724,17 @@ def _without_text_or_eol(words: list[str]) -> list[str]:
 
 def rewrite_attributes(attributes: list[str], advice: AttributesAdvice) -> list[str]:
     """The `.gitattributes` whose lines are `attributes` with `advice` taken as `init` says it:
-    the eol line at the top or in place of the line it changes, `text` and `eol` taken off
-    the lines it names (a line left with no attribute goes), and the lines for its end
-    added there. What `attributes_advice` decides its last lines on, and what a test of the
-    advice applies (round 3 of #815)."""
-    out = [EOL_LINE] if advice.add_on_top or advice.move_to_top else []
+    the line it changes, as it is to read (`changed_to`: the eol line with the line's other
+    attributes), at the top or in its place, `text` and `eol` taken off the lines it names
+    (a line left with no attribute goes), and the lines for its end added there. What
+    `attributes_advice` decides its last lines on, and what a test of the advice applies
+    (rounds 3 and 4 of #815)."""
+    changed = advice.changed_to or EOL_LINE
+    out = [changed] if advice.add_on_top or advice.move_to_top else []
     for at, line in enumerate(attributes):
         if at == advice.change:
             if not advice.move_to_top:
-                out.append(EOL_LINE)
+                out.append(changed)
         elif at in advice.take_off:
             kept = _without_text_or_eol(line.split())
             if len(kept) > 1:

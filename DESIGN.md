@@ -28713,15 +28713,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   first line leaves that line unread, and a leading space makes ` build/` count, where git
   does the opposite (finding 4). In `.gitattributes`, `text` and `eol` are read by the last
   value each takes over the lines, attribute by attribute, as git reads them (rounds 1 and 2
-  of #815), but only for the patterns `*` and `*.svg` as written, and a macro attribute is
-  not read (`[attr]keep -text -diff` with `*.svg keep` is answered with `*.svg binary`, a
-  false alarm). The file needs `text=auto` and `eol=lf` from its `*` lines, so
-  `* text eol=lf`, which sets `text` on every file, binary ones too, is asked to become
-  `* text=auto eol=lf` (finding 5), while the two set on separate lines count. Every line
-  asked for after the eol line is decided on the file as the advice leaves it (round 3): an
-  SVG is taken as kept where it ends with `text` unset or where the last line to set its
-  `text` or `eol` is the file's own `*.svg` line, so a file's own `*.svg text eol=lf` or
-  `*.svg text=auto` is taken as the author's choice though git then normalises those SVGs;
+  of #815), but only for `*`, `*.svg` and each binary line's own pattern, as written, and a
+  macro attribute is not read (`[attr]keep -text -diff` with `*.svg keep` is answered with
+  `*.svg binary`, a false alarm). The file needs `text=auto` and `eol=lf` from its `*`
+  lines, so `* text eol=lf`, which sets `text` on every file, binary ones too, is asked to
+  become `* text=auto eol=lf` (finding 5), while the two set on separate lines count. Every
+  line asked for after the eol line is decided on the file as the advice leaves it (round
+  3): an SVG is taken as kept where it ends with `text` unset or where the last line to set
+  its `text` or `eol` is the file's own `*.svg` line, so a file's own `*.svg text eol=lf`,
+  `*.svg text=auto` or `*.svg eol=crlf`, and an own `*.svg` line setting `text` or `eol`
+  after `*.svg binary` and a `*` line (`*.svg binary`, `* text=auto eol=lf`,
+  `*.svg eol=crlf`), is taken as the author's choice though git then normalises those SVGs;
   and a line that keeps a pattern's files as bytes (`*.docx binary`) and that a `*` line
   below it undoes is asked for again, at the end. So `figures/*.svg binary` or
   `*.SVG binary` is answered with `*.svg binary` again, a false alarm, and a later line for

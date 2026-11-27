@@ -826,13 +826,19 @@ def _files_of(pattern: str) -> str:
     "*  text  eol=crlf\n*.png binary\n",
     "* text=auto eol=lf\n",
     "* text\n* eol=crlf\n",
+    # Round 4: as git and `init` read a file, line endings, comments, blank lines and the
+    # white space around a line aside; two `*` lines alike; a changed line's other attribute.
+    "# figures are kept as bytes\r\n\r\n  *.docx binary\r\n* text eol=crlf\r\n",
+    "* text\n*.docx binary\n* text\n",
+    "* text whitespace=trailing-space\n*.docx binary\n",
 ], ids=["svg above the * line", "a * line that sets text above an svg line", "binary lines only",
         "neither", "an svg line that sets nothing", "a * line checking out crlf",
         "a * line below a binary line", "two * lines", "a later -text",
         "eol on a line of its own", "a binary line undone below", "only * -text",
         "only * binary", "* -text and a binary line", "* text eol=lf then * -text",
         "a line spaced as its author wrote it", "only * lines, no svg line",
-        "only * lines, crlf"])  # fmt: skip
+        "only * lines, crlf", "crlf, a comment, a blank line and leading white space",
+        "two * lines alike", "a changed line with another attribute"])  # fmt: skip
 def test_init_s_gitattributes_advice_applied_keeps_svgs_and_binaries_as_bytes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], attributes: str
 ) -> None:
@@ -844,12 +850,18 @@ def test_init_s_gitattributes_advice_applied_keeps_svgs_and_binaries_as_bytes(
     advice is applied by the function `init` decides it with (`rewrite_attributes`), and the
     file it gives leaves the SVG and every file a binary line names unnormalised, a script
     and a .docx no line names `auto`, text checked out as LF, and nothing more to ask; what
-    `_say_git_lines` prints says the same, each line quoted as the file writes it."""
+    `_say_git_lines` prints says the same, each line named by its number and quoted as the
+    file writes it (round 4). The lines are given as `init` reads them (`read_lines`)."""
     import shutil
     import subprocess
 
     from manuscript_guard.cli import _say_git_lines
-    from manuscript_guard.scaffold import attributes_advice, git_lines_to_add, rewrite_attributes
+    from manuscript_guard.scaffold import (
+        attributes_advice,
+        git_lines_to_add,
+        read_lines,
+        rewrite_attributes,
+    )
 
     if shutil.which("git") is None:
         pytest.skip("git is not installed")
@@ -857,23 +869,26 @@ def test_init_s_gitattributes_advice_applied_keeps_svgs_and_binaries_as_bytes(
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     (root / ".gitattributes").write_bytes(attributes.encode("utf-8"))
-    lines = attributes.splitlines()
+    lines = read_lines(root / ".gitattributes")
     advice = attributes_advice(lines)
     wanted = git_lines_to_add(root)
     assert wanted.get(".gitattributes", []) == list(advice.wanted)
     _say_git_lines(wanted, root)
     said = capsys.readouterr().out
-    if advice.change is not None and lines[advice.change] != "* text=auto eol=lf":
-        assert f"Change its line `{lines[advice.change]}`" in said, said
+    if advice.change is not None and (lines[advice.change] != advice.changed_to
+                                      or advice.move_to_top):  # fmt: skip
+        assert (f"Change its line {advice.change + 1} (`{lines[advice.change]}`) to "
+                f"`{advice.changed_to}`") in said, said  # fmt: skip
     assert ("move it to the top of the file" in said) == advice.move_to_top, said
     for at in advice.take_off:
-        assert f"`{lines[at]}`" in said, said
+        assert f"line {at + 1} (`{lines[at]}`)" in said, said
     for line in advice.add_at_end:
         assert line in said.split("\n"), said
     rewritten = "\n".join(rewrite_attributes(lines, advice)) + "\n"
     (root / ".gitattributes").write_bytes(rewritten.encode("utf-8"))
     assert _git_text(root, "figures/forest.svg") == "unset", (said, rewritten)
-    named = {line.split()[0] for line in lines if line.split()[0] not in ("*", "*.svg")
+    named = {line.split()[0] for line in lines if line and not line.startswith("#")
+             and line.split()[0] not in ("*", "*.svg")
              and {"binary", "-text"} & set(line.split())}  # fmt: skip
     for pattern in named:
         assert _git_text(root, _files_of(pattern)) == "unset", (pattern, said, rewritten)
@@ -931,9 +946,53 @@ def test_init_says_why_each_gitattributes_line_is_asked_for(
     (root / ".gitattributes").write_text("* text eol=crlf\n*.png binary\n", encoding="utf-8")
     assert main(["init", str(root)]) == 0
     sentence, lines = _said_of_gitattributes(capsys.readouterr().out)
-    assert "Change its line `* text eol=crlf` to `* text=auto eol=lf`." in sentence
+    assert "Change its line 1 (`* text eol=crlf`) to `* text=auto eol=lf`." in sentence
     assert "move it" not in sentence and "Add these lines at its end:" in sentence
     assert lines == ["*.svg binary"]
+
+
+def test_init_says_an_svg_kept_as_bytes_stays_so_once_the_line_above_is_changed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Round 4 of #815: a file whose `* -text` keeps its SVGs as bytes is not told it does not
+    keep them; it is told that `*.svg binary` keeps them so once the line init asks it to
+    change is changed. A file that does not keep them is told it does not."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "analysis-repo"
+    root.mkdir()
+    for kept in ("* -text\n", "* binary\n", "* text eol=lf\n* -text\n"):
+        (root / ".gitattributes").write_text(kept, encoding="utf-8")
+        assert main(["init", str(root)]) == 0
+        sentence, lines = _said_of_gitattributes(capsys.readouterr().out)
+        assert lines == ["*.svg binary"], (kept, sentence)
+        assert "it does not keep SVG figures byte for byte" not in sentence, kept
+        assert "`*.svg binary` keeps them byte for byte once the line above is changed" in \
+            sentence, kept  # fmt: skip
+    (root / ".gitattributes").write_text("* text eol=crlf\n", encoding="utf-8")
+    assert main(["init", str(root)]) == 0
+    sentence, _lines = _said_of_gitattributes(capsys.readouterr().out)
+    assert "it does not keep SVG figures byte for byte" in sentence
+    assert "once the line above is changed" not in sentence
+
+
+@pytest.mark.parametrize(("attributes", "changed_to"), [
+    (["* text whitespace=trailing-space", "*.docx binary"],
+     "* text=auto eol=lf whitespace=trailing-space"),
+    (["* binary"], "* text=auto eol=lf -diff -merge"),
+    (["* eol=crlf diff=astextplain"], "* text=auto eol=lf diff=astextplain"),
+    (["* text eol=crlf"], "* text=auto eol=lf"),
+], ids=["whitespace", "binary's diff and merge", "diff", "none other"])  # fmt: skip
+def test_init_s_changed_line_keeps_its_other_attributes(
+    attributes: list[str], changed_to: str
+) -> None:
+    """Round 4 of #815: the `*` line init asks to change keeps every attribute it sets but
+    `text` and `eol`, as the lines it takes `text` and `eol` off do."""
+    from manuscript_guard.scaffold import attributes_advice, rewrite_attributes
+
+    advice = attributes_advice(attributes)
+    assert advice.change == 0 and advice.changed_to == changed_to
+    assert rewrite_attributes(attributes, advice)[0] == changed_to
 
 
 def test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing(

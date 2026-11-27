@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- What this page may do, enforced by the browser. It may load code and data only from
-     where it is served ('self'), and send a request only there and to the five registries
+     where it is served ('self'), and send a request only there and to the seven registries
      named, which it does only when the reader ticks the box. It may show no frame but a
      blob: address, which it uses only for the PDF of the report it made itself; it may not
      start a worker from a file, send a form, or load a frame, an image or a style from
      elsewhere. Checked by
      web/test/ in Chrome and Firefox; docs/audit-page.md says what it cannot stop. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; frame-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; frame-src blob:; connect-src 'self' https://api.crossref.org https://api.openalex.org https://api.datacite.org https://doi.org https://eutils.ncbi.nlm.nih.gov https://clinicaltrials.gov https://www.isrctn.com; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Check your paper · manuscript-guard</title>
 <meta name="description" content="A friendly check-up for a scientific paper, run in your browser: numbers, abbreviations, spelling and references. Your paper is never uploaded.">
 <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)">
@@ -22,7 +22,9 @@
 <main>
   <header class="hero">
     <div class="hero-text">
-      <p class="kicker">manuscript-guard · paper check-up</p>
+      <!-- On a page a journal's host built (web/build.py --host), its logo and its name, which
+           app.js sets from manifest.json, as text. -->
+      <p class="kicker"><img id="hostlogo" class="hostlogo" alt="" hidden><span id="kicker">manuscript-guard · paper check-up</span></p>
       <h1>Give your paper a friendly check-up</h1>
       <p class="lead">Drop your manuscript here. In a minute or two you get the report a careful
         co-author would write: numbers that do not add up, abbreviations, spelling and
@@ -71,6 +73,23 @@
     </div>
 
     <form id="form">
+      <!-- Shown on a page a journal's host built with its journals (web/build.py --host,
+           app.js): the journal whose profile the paper is held to, as the host gave it. A link
+           may choose one, ?journal=<slug>, and nothing else of the address is read. -->
+      <div id="journalpick" class="journalpick" hidden>
+        <label><span class="field">Which journal are you submitting to?</span>
+          <span class="help">The paper is held to its rules: its limits, the sections and
+            statements it requires, and for a blind review each place an author is
+            named.</span>
+          <select id="journal" name="journal" disabled>
+            <option value="">None: check the paper alone</option>
+            <option value="other">Another journal: type its rules under "For a journal"</option>
+          </select></label>
+        <details id="journalrules" class="rules" hidden>
+          <summary>Its rules, as the check reads them</summary>
+          <pre id="journaltext"></pre></details>
+      </div>
+      <p id="journalnote" class="note" role="status" hidden></p>
       <label class="drop">
         <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path class="fill-card stroke-teal" d="M12 4h17l9 9v29a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path class="stroke-teal" d="M29 4v9h9M24 34V20M18 26l6-6 6 6"/></svg>
         <span class="field">The paper</span>
@@ -129,11 +148,12 @@
               placeholder="Electron temperature relations" disabled></label>
           <label class="tick"><input id="lookup" type="checkbox" disabled>
             <span><span class="field">Check the reference list for retracted and unregistered
-              works</span>
+              works, and the trial's registration</span>
               <span class="help">This sends the DOIs and PubMed IDs the paper cites to Crossref,
-                OpenAlex, DataCite, doi.org and PubMed, and, for a reference with neither, its
-                title, first author and year to Crossref. No sentence of the paper is
-                sent.</span></span></label>
+                OpenAlex, DataCite, doi.org and PubMed; for a reference with neither, its title,
+                first author and year to Crossref; and each ClinicalTrials.gov or ISRCTN number
+                the paper names outside its reference list to that registry. No sentence of the
+                paper is sent.</span></span></label>
         </div>
       </details>
 
@@ -233,7 +253,7 @@
             <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="trial-registration" id="jst-trial-registration" disabled><span>Trial registration</span></label>
               <input id="jsh-trial-registration" type="text" value="Trial registration" autocomplete="off" aria-label="The heading the journal asks for, for Trial registration" disabled></div>
             <div class="statement"><label class="tick"><input type="checkbox" name="jstatement" value="use-of-ai" id="jst-use-of-ai" disabled><span>Use of AI</span></label>
-              <input id="jsh-use-of-ai" type="text" value="Declaration of generative AI" autocomplete="off" aria-label="The heading the journal asks for, for Use of AI" disabled></div>
+              <input id="jsh-use-of-ai" type="text" value="Declaration of generative AI and AI-assisted technologies in the writing process or Declaration of generative AI or Use of AI" autocomplete="off" aria-label="The heading the journal asks for, for Use of AI" disabled></div>
           </fieldset>
           <label><span class="field">Its peer review</span>
             <select id="jblinding" disabled>
@@ -324,7 +344,7 @@
         <li>Once the page says <em>Ready</em>, turn off your network, then choose your paper:
           the check still runs.</li>
         <li>The page's own rules let it send requests only to the address it came from, and to
-          the five reference registries when you tick that box. Your browser enforces them.
+          the seven registries the box names when you tick it. Your browser enforces them.
           <button id="probe" type="button" class="quiet small">Test the rules</button></li>
         <li>Every file the page loads is listed with its SHA-256 in
           <a href="files.sha256">files.sha256</a>, and its source is
@@ -342,9 +362,13 @@
           units are written, and phrasing to look at.</li>
         <li>The reference list: each entry read, and with the box ticked, each DOI and PubMed
           ID looked up for a retraction.</li>
-        <li>With a journal's rules typed in "For a journal": its limits, the sections and
-          statements it requires, what a .docx holds besides its text, and in a blind review
-          each place an author is named.</li>
+        <li>With the box ticked, each ClinicalTrials.gov or ISRCTN number the paper names
+          outside its reference list:
+          what its registry holds, and, by ClinicalTrials.gov's dates, whether the trial was
+          registered after it started.</li>
+        <li>With a journal's rules, one this page offers or those typed in "For a journal": its
+          limits, the sections and statements it requires, what a .docx holds besides its
+          text, and in a blind review each place an author is named.</li>
       </ul>
     </details>
     <details>
@@ -373,6 +397,9 @@
   </section>
 
   <footer>
+    <!-- On a page a journal's host built, its contact line: its words and one link, set as
+         text by app.js. The page sends nothing to it. -->
+    <p id="contact" class="contact" hidden></p>
     <p id="versions"></p>
     <p>Licences: manuscript-guard, <a href="licences/manuscript-guard-MIT.txt">MIT</a>;
       pandoc, <a href="licences/pandoc-GPL-2.0.txt">GPL-2.0-or-later</a>

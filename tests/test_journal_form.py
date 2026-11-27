@@ -101,6 +101,18 @@ def test_a_line_of_spaces_after_a_title_is_read_in_linear_time(assert_linear, op
                   "a statement's pattern, by the spaces after its title")  # fmt: skip
 
 
+@pytest.mark.parametrize("text", [
+    "# Declaration of generative AI and AI-assisted technologies in the writing process",
+    "# Declaration of generative AI",
+    "**Use of AI:** none.",
+])  # fmt: skip
+def test_the_usual_heading_of_the_use_of_ai_is_found_in_the_forms_journals_print(text) -> None:
+    """With a heading matched whole, the box offers Elsevier's heading in full and the
+    shorter ones other journals print: "Declaration of generative AI" alone found no paper
+    under Elsevier's (#787's review)."""
+    assert found(STATEMENTS["use-of-ai"].heading, text)
+
+
 def test_a_statement_ticked_takes_its_usual_heading_or_the_journal_s(tmp_path: Path) -> None:
     """Each statement ticked is held to the heading the reader typed, alternatives joined by
     " or ", or to its usual one where nothing is typed, and the report's hint names them."""

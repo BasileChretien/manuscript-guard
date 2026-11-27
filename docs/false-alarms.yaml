@@ -11,10 +11,10 @@
 #          each row is one report and code of one paper, [paper, report, warnings, judged
 #          true, judged false], the code unnamed
 tuning:
-  run: main-8f4629a2f
-  commit: 8f4629a2fa9be302580dc81151f6666c5c426211
+  run: main-27b5cfba4
+  commit: 27b5cfba437d9c0698f9793b18129023421691f9
   version: 0.2.503
-  date: '2026-11-25'
+  date: '2026-11-26'
   verdicts:
     first: 2547
     batches: 1182
@@ -139,7 +139,7 @@ tuning:
       G6/revision-residue: 3
       G6/vague-attribution: 12
       G7/entries-not-told-apart: 13
-      G7/entry-never-cited: 6
+      G7/entry-never-cited: 15
       audit/does-not-fit: 13
       audit/sum-off: 1
     audit-pdf:
@@ -200,6 +200,7 @@ tuning:
   - [docx-cs-C1, audit, G14/spelling-mixed, 1, 1, 0]
   - [docx-cs-C1, audit, G14/spelling-variant, 1, 1, 0]
   - [docx-cs-C1, audit, G6/vague-attribution, 1, 1, 0]
+  - [docx-cs-C1, audit, G7/entry-never-cited, 9, 9, 0]
   - [docx-cs-C1, check, G14/abbreviation-redefined, 3, 2, 0]
   - [docx-cs-C1, check, G14/abbreviation-used-before-defined, 1, 1, 0]
   - [docx-cs-C1, check, G14/code-name-in-prose, 7, 7, 0]
@@ -814,10 +815,10 @@ tuning:
   - [tex-stat-ap-B2, compare, compare/claim-moved, 2, 0, 2]
   - [tex-stat-ap-B2, compare, compare/claim-weaker, 1, 1, 0]
 heldout:
-  run: main-77abd45db
-  commit: 77abd45db580a5cc7fecbd4d800bd4694001908d
-  version: 0.2.502
-  milestone: 1
+  run: main-27b5cfba4
+  commit: 27b5cfba437d9c0698f9793b18129023421691f9
+  version: 0.2.503
+  milestone: 2
   papers:
     h01: docx
     h02: docx
@@ -882,7 +883,6 @@ heldout:
   - [h03, check, 2, 0, 2]
   - [h03, check, 2, 1, 1]
   - [h03, check, 1, 1, 0]
-  - [h03, check, 2, 0, 2]
   - [h05, audit, 5, 3, 2]
   - [h05, audit, 4, 4, 0]
   - [h05, audit, 7, 0, 7]
@@ -951,12 +951,10 @@ heldout:
   - [h24, audit, 2, 2, 0]
   - [h25, audit, 8, 0, 8]
   - [h25, audit, 8, 2, 6]
-  - [h25, audit, 7, 3, 4]
   - [h25, audit, 1, 0, 1]
   - [h25, audit, 3, 0, 3]
   - [h26, audit, 13, 6, 7]
   - [h26, audit, 5, 3, 2]
-  - [h26, audit, 4, 4, 0]
   - [h26, audit, 2, 2, 0]
   - [h26, audit, 1, 1, 0]
   - [h26, audit, 2, 2, 0]
@@ -966,22 +964,18 @@ heldout:
   - [h28, audit, 1, 0, 1]
   - [h28, audit, 1, 0, 1]
   - [h29, audit, 8, 0, 8]
-  - [h29, audit, 1, 1, 0]
   - [h29, audit, 2, 0, 2]
   - [h30, audit, 1, 0, 1]
-  - [h30, audit, 1, 1, 0]
   - [h30, audit, 1, 0, 1]
   - [h30, audit, 1, 0, 1]
-  - [h31, audit, 5, 1, 4]
-  - [h31, audit, 6, 5, 1]
-  - [h31, audit, 4, 0, 4]
+  - [h31, audit, 10, 4, 6]
+  - [h31, audit, 5, 4, 1]
   - [h31, audit, 1, 1, 0]
   - [h31, audit, 2, 2, 0]
   - [h32, audit, 2, 2, 0]
   - [h32, audit, 1, 1, 0]
   - [h33, audit, 6, 0, 6]
   - [h33, audit, 7, 4, 3]
-  - [h33, audit, 2, 0, 2]
   - [h33, audit, 1, 1, 0]
   - [h33, audit, 1, 0, 1]
   - [h33, audit, 1, 1, 0]
@@ -992,13 +986,12 @@ heldout:
   - [h34, audit, 1, 1, 0]
   - [h34, audit, 1, 1, 0]
   - [h34, audit, 1, 0, 1]
-  - [h34, audit, 1, 0, 1]
   - [h34, audit, 1, 1, 0]
   - [h34, audit, 1, 1, 0]
   - [h35, audit, 2, 1, 1]
   - [h35, audit, 1, 0, 1]
   - [h35, audit, 1, 0, 1]
-  - [h35, audit, 3, 0, 3]
+  - [h35, audit, 2, 0, 2]
   - [h35, audit, 1, 0, 1]
   - [h36, audit, 4, 0, 4]
   - [h36, audit, 1, 0, 1]

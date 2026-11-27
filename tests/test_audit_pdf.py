@@ -1823,3 +1823,116 @@ def test_a_line_of_words_before_the_keywords_of_a_structured_abstract_ends_it() 
     pdf = _pdf_of(lines)
     assert [title for _line, title in pdf.headings][:2] == ["Abstract", "Background"]
     assert pdf.placed is None
+
+
+# ------------------------------------------------- its lines rebuilt into paragraphs for G6 and G14
+
+#: A paper whose G14 findings stand at known lines: a form used before its definition on
+#: line 4 of page 1, defined on line 5, and one used and never defined on page 2, line 2.
+REBUILT = [
+    "Methods", "We read the records of the cohort.", "We kept them all.",
+    "The KQ rose in each site.", "The knee quotient (KQ) held.", "We kept the sites.",
+    "Results", "We read them again.", "The ZY rose.", "We kept the cohort.",
+]
+
+
+def _rebuilt_pdf(tmp_path: Path) -> Path:
+    from proof_pdf import knows_word_places
+
+    if not knows_word_places():
+        pytest.skip("the pdftotext found gives no word's place (poppler's does)")
+    return write(tmp_path / "paper.pdf", REBUILT, per_column=6)
+
+
+def test_g6_and_g14_s_findings_on_a_rebuilt_pdf_are_placed_by_its_rebuilt_lines(
+    tmp_path: Path, capsys
+) -> None:
+    """The design of 2026-11-26, answer 5: the PDF's lines rebuilt for G6 and G14 place their
+    findings, in the report and its JSON, at the page and the line counted down the page in
+    reading order (the prototype's JSON placed them by the other reading, a third of them
+    wrongly); and the report says once how G6 and G14 read it."""
+    reading._REBUILT.clear()
+    paper = _rebuilt_pdf(tmp_path)
+    _code, report, _err = audited(capsys, str(paper))
+    before = found(report, "abbreviation-used-before-defined")
+    assert [(f["page"], f["line"]) for f in before] == [(1, 4)], before
+    notes = [f["message"] for f in report["findings"] if f["code"] == "not-audited"]
+    assert any("rebuilt into paragraphs" in note and "left column first" in note
+               for note in notes), notes  # fmt: skip
+
+
+def test_a_pdf_whose_lines_cannot_be_rebuilt_is_read_by_g6_and_g14_as_before(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The author's answer 1 of 2026-11-26: where the pdftotext found gives no word's place,
+    as Xpdf's does not, G6 and G14 read the PDF's lines as they did, every finding the same,
+    and the report says the paragraphs were not rebuilt and why."""
+    from manuscript_guard.auditing import pdf_layout
+    from manuscript_guard.auditing.gates import run_gates
+
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext is not installed")
+    paper = write(tmp_path / "paper.pdf", REBUILT, per_column=6)
+    before = run_gates(paper)
+    reading._REBUILT.clear()
+    said = "pdftotext 4.00 (Xpdf) gives no word's place (-bbox-layout)"
+
+    def no_places(path: Path):
+        raise pdf_layout.NotRebuilt(said)
+
+    monkeypatch.setattr(pdf_layout, "markup", no_places)
+    after = run_gates(paper, paragraphs=True)
+    assert [(f.code, f.line, f.message) for f in [*after.writing, *after.language]] == [
+        (f.code, f.line, f.message) for f in [*before.writing, *before.language]]
+    assert after.places is None and before.read == ""
+    assert "not rebuilt into paragraphs" in after.read and said in after.read, after.read
+    reading._REBUILT.clear()
+
+
+def test_xpdf_s_pdftotext_found_leaves_a_pdf_s_lines_as_they_were(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The same with Xpdf's own pdftotext, where it is the one on PATH (Git for Windows
+    installs it) and none other is named: its usage, which lists no -bbox-layout, is read
+    as its saying it gives no word's place (`reporting.rows.knows_no_bbox`)."""
+    from manuscript_guard.auditing import pdf_layout
+    from manuscript_guard.auditing.gates import run_gates
+    from manuscript_guard.proof.reading import _pdftotext_name
+
+    if shutil.which("pdftotext") is None or "Xpdf" not in _pdftotext_name():
+        pytest.skip("the pdftotext on PATH is not Xpdf's")
+    monkeypatch.delenv(pdf_layout.POPPLER, raising=False)
+    reading._REBUILT.clear()
+    paper = write(tmp_path / "paper.pdf", REBUILT, per_column=6)
+    before, after = run_gates(paper), run_gates(paper, paragraphs=True)
+    assert [(f.code, f.line) for f in [*after.writing, *after.language]] == [
+        (f.code, f.line) for f in [*before.writing, *before.language]]
+    assert "Xpdf" in after.read and "-bbox-layout" in after.read, after.read
+    reading._REBUILT.clear()
+
+
+def test_only_g6_and_g14_of_an_audit_read_a_pdf_s_rebuilt_lines(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The author's answer 4 of 2026-11-26: only G6 and G14 of `audit` read a PDF's lines
+    rebuilt into paragraphs. The text the rest of the audit reads, G4's staging and all of
+    `compare` keep the lines `pdftotext` reads: with the rebuild made to fail loudly, they
+    run as before."""
+    from manuscript_guard.auditing import pdf_layout
+    from manuscript_guard.auditing.gates import _stage
+
+    paper = _rebuilt_pdf(tmp_path)
+    assert reading.read_paragraphs(paper).paragraphs
+    assert reading.read_pdf(paper).paragraphs == ()
+
+    def refused(path: Path):
+        raise AssertionError("the lines were rebuilt")
+
+    monkeypatch.setattr(pdf_layout, "read_layout", refused)
+    reading._REBUILT.clear()
+    staged = _stage(paper)
+    assert staged.placer is None and staged.displays == {} and staged.cited == {}
+    old = write(tmp_path / "v1.pdf", REBUILT[:-1], per_column=6)
+    assert main(["compare", str(old), str(paper), "--json"]) in (0, 1)
+    capsys.readouterr()
+    reading._REBUILT.clear()

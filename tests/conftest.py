@@ -44,6 +44,13 @@ REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
 #: unless latexmk is on PATH and pdfLaTeX is that TeX Live (step 9).
 REQUIRE_LATEX = "MANUSCRIPT_GUARD_REQUIRE_LATEX"
 
+#: Set by CI to the poppler it installs, as `pdftotext -v` names its version ("24.04.0").
+#: The tests that rebuild a PDF's paragraphs from where each word is set skip where the
+#: pdftotext found (`auditing.pdf_layout.program`: the one `MANUSCRIPT_GUARD_POPPLER` names,
+#: else the one on PATH) is not poppler's; with this set, the suite refuses to start unless
+#: it is that poppler's.
+REQUIRE_POPPLER = "MANUSCRIPT_GUARD_REQUIRE_POPPLER"
+
 #: The version on the line that names the program, wherever that line falls in the output.
 #: pandoc 3.8 and later print "pandoc"; earlier releases print the name they were started
 #: by, which on Windows ends in ".exe", in whatever case `shutil.which` gave the path.
@@ -105,6 +112,7 @@ def pytest_configure(config: pytest.Config) -> None:
     except (AttributeError, OSError, ValueError):
         _TERMINAL = None
     _require_latex()
+    _require_poppler()
     wanted = os.environ.get(REQUIRE_PANDOC, "").strip()
     if not wanted:
         return
@@ -144,6 +152,32 @@ def _require_latex() -> None:
     first = printed.splitlines()[0] if printed else "nothing"
     if wanted not in first:
         raise pytest.UsageError(f"{REQUIRE_LATEX}={wanted}, but pdflatex on PATH is {first}")
+
+
+def _require_poppler() -> None:
+    """Where poppler is required, refuse to start unless the pdftotext the audit rebuilds a
+    PDF's paragraphs with is that poppler's."""
+    wanted = os.environ.get(REQUIRE_POPPLER, "").strip()
+    if not wanted:
+        return
+    from manuscript_guard.auditing.pdf_layout import POPPLER, program
+
+    found = program()
+    if found is None:
+        raise pytest.UsageError(f"{REQUIRE_POPPLER}={wanted}, but no pdftotext is on PATH "
+                                f"and {POPPLER} names none")  # fmt: skip
+    try:
+        done = subprocess.run([found, "-v"], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=60, check=False)  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise pytest.UsageError(f"{REQUIRE_POPPLER}={wanted}, but {found} did not run: {exc}") \
+            from exc
+    said = f"{done.stdout}\n{done.stderr}"
+    version = re.search(r"pdftotext version (\S+)", said)
+    found_version = version.group(1) if version else "unreadable"
+    if "Poppler" not in said or found_version != wanted:
+        raise pytest.UsageError(f"{REQUIRE_POPPLER}={wanted}, but {found} is pdftotext "
+                                f"{found_version}{'' if 'Poppler' in said else ', not poppler'}")
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

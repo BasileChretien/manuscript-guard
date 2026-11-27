@@ -293,6 +293,10 @@ def items(report) -> list[Item]:
             for p in looked.problems
         ]  # fmt: skip
     found += _title_items(report)
+    if getattr(report, "registration", None) is not None:
+        from manuscript_guard.auditing.registration import findings as registration
+
+        found += registration(report.registration)
     return (found + _journal_items(report.journal) + _document_items(report)
             + _causal_items(report.causal) + _baseline_items(report.baseline)
             + _cited_items(report.cited)
@@ -666,6 +670,9 @@ def as_json(report, discrimination) -> str:
         **_abstract_counts(report.abstract),
         "reference_entries": sum(len(c.entries) for c in report.references),
         **_reader_counts(report),
+        # Only where --lookup asked about a registration number the papers name.
+        **({} if getattr(report, "registration", None) is None else
+           {"registration_numbers": len(report.registration.asked)}),
         **_package_counts(report.package),
         **_baseline_counts(report.baseline),
     }
@@ -1001,6 +1008,12 @@ def _sections(
         out.append((WORDS, words))
     if report.references and (details or _anything_in_references(report)):
         out.append((f"{REFERENCES} (not counted by --strict)", _references(report, show)))
+    if getattr(report, "registration", None) is not None:
+        from manuscript_guard.auditing.registration import SECTION, findings
+
+        out.append((f"{SECTION} (--lookup; not counted by --strict)",
+                    [f"  {show.located(item.path, item.line)}: {item.message}"
+                     for item in findings(report.registration)]))  # fmt: skip
     if report.journal is not None:
         out.append((f"{JOURNAL} (not counted by --strict)", _journal(report.journal, root, show)))
     if report.documents or report.journal is not None:

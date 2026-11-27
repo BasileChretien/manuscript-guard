@@ -437,6 +437,12 @@ def check_ai_use(project: Project, stage: str | None = None) -> Report:
     missing = [item for item in must if not _in_any(item, whole)]
     if not missing:
         return report
+    from manuscript_guard.gates.statements import AI_USE, asked_for
+
+    if AI_USE in asked_for(project):
+        # One gap, one finding: `declaration-missing` asks for the statement, the models on
+        # record in its hint (round 1 of #819).
+        return report
     return report.with_findings(Finding(
         gate=GATE, code=NOT_STATED, severity=INFO,
         message=f"the records show AI use the manuscript does not state: {_listed(missing)}",

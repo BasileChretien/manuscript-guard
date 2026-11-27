@@ -31204,6 +31204,53 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whether it happened or was planned, and a registration after a start that was only
     planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
     by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
+- **The statements every paper makes are found by their headings and labels.** G4's check of
+  empty headings and of the statements every paper makes (`gates/statements.py`, built
+  2026-11-26 after a draft built its declarations as headings over comments) has these
+  limits. Accepted.
+  - Where the journal's profile lists required statements, the check asks for none of its
+    own: a kind the profile leaves out is not asked for. Its empty headings are still said.
+    Pinned by `tests/test_statements.py::test_a_profile_that_lists_the_journal_s_statements_asks_for_them_and_this_asks_none`.
+  - The headings and labels are English only, as G4 reads the declarations: a statement
+    under "Financement" is none.
+    Pinned by `tests/test_statements.py::test_a_statement_under_a_heading_in_another_language_is_not_read`.
+  - A LaTeX manuscript's statements are read in its printed view, and its headings are not
+    checked for emptiness.
+    Pinned by `tests/test_statements.py::test_a_latex_manuscript_s_statements_are_read_and_its_headings_are_not`.
+  - A heading has something under it as soon as anything is printed there that is no
+    placeholder of the check's own list, which G6 does not fail ("TO CONFIRM", "To be
+    completed", "Pending"): a figure, a table, a listing, a sentence. A placeholder G6 fails
+    as `model-artefact` ("TBD", "TODO", "XXX", "[Placeholder]", "[TO BE COMPLETED]") counts
+    as something, and one gap is one finding, G6's.
+    Pinned by `tests/test_statements.py::test_a_listing_a_table_or_a_binding_is_something_and_a_hash_in_a_listing_is_no_heading`
+    and `tests/test_statements.py::test_a_placeholder_g6_fails_is_g6_s_and_one_g6_passes_is_empty`.
+  - An ethics statement is also any sentence of the Methods with "ethics", "ethical",
+    "institutional review" or "IRB" in it, and a sentence anywhere in the main text or the
+    supplement that says no approval was needed, as G4 reads a denial.
+    Pinned by `tests/test_statements.py::test_an_ethics_statement_may_be_in_the_methods_or_a_denial_anywhere`.
+  - The Acknowledgements count as a funding statement, as G4 reads the declarations, whatever
+    they say. Accepted.
+  - The Data availability headings this check reads are wider than G4's own data checks'
+    (`data_statement.HEADING`): a statement under "Data accessibility" or "Code and data
+    availability" is a data statement here, while the profile's data policy is not applied
+    to it and no package DOI is looked for in it.
+    Pinned by `tests/test_statements.py::test_g4_s_data_policy_reads_only_its_own_data_headings`.
+  - Only the notes that say a statement is not stated give way to this check's finding. A
+    label over a placeholder, with a grant on record, is also `funding-grant-missing` beside
+    `declaration-missing`; a heading over one, with a model on record, is also
+    `ai-use-model-unnamed` beside `section-empty`.
+    Pinned by `tests/test_statements.py::test_a_label_over_a_placeholder_is_said_by_g4_s_other_checks_too`.
+  - A label is what G4's reading of the declarations takes for one, a short paragraph wholly
+    in emphasis among them, with or without a stop: Basile chose that strict reading over a
+    list of the words statements' titles are made of, which missed real titles (question box,
+    2026-11-27, round 4 of #819). So a short sentence wholly in emphasis standing alone, "*The
+    authors declare no competing interests.*", is a label of its kind with nothing after it,
+    and `declaration-missing` is said of a statement the paper makes; its hint says to write
+    the statement in plain text or after its label. A sentence of more than six words in
+    emphasis is read as a sentence. An ethics denial is the exception: `no_approval` reads a
+    denial wherever it stands and whatever its emphasis, so "*Ethical approval was not
+    required.*" alone is an ethics statement.
+    Pinned by `tests/test_statements.py::test_a_short_sentence_wholly_in_emphasis_reads_as_a_label`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

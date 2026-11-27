@@ -9406,6 +9406,254 @@ def declaration_papers(
     return authors, paper({}), [(code, paper(changed)) for code, changed in near]
 
 
+# ----------------------------------------------------- the statements every paper makes
+
+#: The headings and labels each standard statement is written under (`gates/statements.py`).
+DECLARED_TITLES = {
+    "data": ("Data availability", "Data availability statement", "Data sharing",
+             "Availability of data and materials", "Code and data availability",
+             "Data, Materials, and Software Availability", "Data accessibility",
+             "Data and software availability", "Data and code availability statement"),
+    "ethics": ("Ethics", "Ethics statement", "Ethical approval",
+               "Ethics approval and consent to participate",
+               "Compliance with ethical standards"),
+    "funding": ("Funding", "Sources of funding", "Financial support", "Study funding"),
+    "interests": ("Competing interests", "Conflicts of interest", "Declaration of interests",
+                  "Declaration of competing interest"),
+    "contributions": ("Author contributions", "Contributors", "CRediT author statement",
+                      "Authors' contributions"),
+    "ai_use": ("Use of AI", "Use of generative AI", "AI use statement",
+               "Declaration of generative AI use", "Statement on the use of AI"),
+}  # fmt: skip
+#: A short sentence of each kind, which wholly in emphasis and alone G4 reads as a label of
+#: that kind, with nothing after it (Basile, 2026-11-27: strict, round 4 of #819).
+DECLARED_SHORT = {
+    "data": "Data sharing is not allowed.",
+    "ethics": "Ethical approval was waived.",
+    "funding": "No funding was received.",
+    "interests": "No competing interests.",
+    "contributions": "Author contributions are below.",
+    "ai_use": "No generative AI was used.",
+}
+#: What each says, in words that name no other kind.
+DECLARED_BODIES = {
+    "data": "The extract is held by the agency and can be requested from it.",
+    # Opening as a label of its own kind does: after a label, it is that label's statement
+    # still (round 2 of #819).
+    "ethics": "Ethics committee: the committee of the hospital approved the protocol "
+    "(CPP 2021-12).",
+    "funding": "The work was paid for by the department of the first author.",
+    "interests": "None declared.",
+    # A CRediT role that names funding, which states none (round 1 of #819).
+    "contributions": "AE: Conceptualization, Funding acquisition. BS: Supervision.",
+    "ai_use": "A language model corrected the English of two paragraphs.",
+}
+#: The same, as a sentence of a Declarations section, holding the words of its heading.
+DECLARED_WORDS = {
+    "data": "Data sharing is not allowed by the agreement with the agency.",
+    "funding": "No funding was received for this work.",
+    # Seven words or more, so that in emphasis it is a sentence and no label alone.
+    "interests": "The authors declare that they have no competing interests.",
+    "contributions": "The contributions of the authors were Conceptualization and Funding "
+    "acquisition for AE, and Supervision for BS.",
+    "ai_use": "No generative AI was used in writing the paper.",
+}
+#: An ethics statement where no heading or label opens it: in the Methods, and a denial.
+ETHICS_IN_METHODS = "The ethics committee of the hospital approved the protocol."
+ETHICS_DENIED = "No ethical approval was required for these records."
+#: What a heading with nothing printed under it holds, in three kinds every generated paper
+#: holds one of each of: a comment, with `{}` the words it hides; Markdown's comment idiom;
+#: and a placeholder G6 has no rule for. One G6 fails ("[Placeholder]") is something
+#: printed.
+DECLARED_COMMENTS = ("<!-- TO CONFIRM WITH THE AUTHORS: {} -->", "<!-- {} -->", "<!--\n{}\n-->")
+DECLARED_IDIOM = "[//]: # (ask the authors for the words of it)"
+DECLARED_PLACEHOLDERS = ("TO CONFIRM WITH THE AUTHORS.", "To be completed.", "Pending.")
+DECLARED_NOTHING = (*DECLARED_COMMENTS, DECLARED_IDIOM, *DECLARED_PLACEHOLDERS)
+#: How a label alone that ends in a stop is written, its title for `{}` (round 3 of #819).
+STOPPED_LABELS = ("**{}.**", "*{}.*", "**{}**.", "_{}._")
+#: A label of each kind that the generated papers add after a label left over a comment.
+USUAL_TITLES = {"data": "Data availability", "ai_use": "Use of AI"}
+#: The titles the bibliography is printed under: the reference list's own, anywhere, and one
+#: whose last word is the list's, as the last heading of a generated paper (round 2 of #819).
+DECLARED_REFERENCES = ("References", "Bibliography")
+DECLARED_LAST_REFERENCES = ("Supplementary references", "Additional references",
+                            "S4. References cited", "Supplementary bibliography")  # fmt: skip
+#: The forms an ethics statement takes in a generated paper.
+ETHICS_FORMS = ("numbered heading", "plain alone", "methods", "denial")
+#: The Data availability statement's headings that `data_statement.HEADING` does not read.
+DATA_TITLES_NEW = ("Code and data availability", "Data, Materials, and Software Availability",
+                   "Data accessibility", "Data and software availability")  # fmt: skip
+#: What a Declarations section says before its statements, stating none of them.
+DECLARED_OPENING = "The statements below are the authors' own."
+#: The headings every generated paper holds with nothing printed under them.
+DECLARED_PLANTED = ("Limitations", "Notes on the data", "Supplementary figures",
+                    "Key references")
+
+
+@st.composite
+def statement_papers(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, str]], list[tuple[str, str, str]], list[str]]:
+    """A paper that makes every standard statement, each in a form of its own, and the
+    papers made from it: for each kind, the paper without its statement, a label of it left
+    over a comment or a placeholder in its Declarations section, and again over a comment
+    first of the labels, a Data availability or an AI-use label after it, and again as a
+    label alone that ends in a stop ("**Funding.**") over a comment, and again as a short
+    sentence wholly in emphasis, which G4 reads as a label alone, and the funding
+    statement taken out with the contributions, which name a CRediT role with funding in it,
+    written as a sentence of the Declarations section; for each kind under a heading, the
+    paper with nothing printed under that heading; and the papers that state the same in
+    other forms: the ethics statement in each of its four, and the Data availability
+    statement under each heading G4's own data checks do not read.
+
+    In every example the five kinds other than ethics take, between them, each of five
+    forms: a heading, a label that opens its paragraph, a plain label, a label alone in its
+    paragraph and a sentence of a Declarations section; ethics is under a numbered heading,
+    after a plain label alone, a sentence of the Methods or a denial in the Introduction.
+    Every example also holds a Methods heading whose words are all in its subsection; a
+    heading over a comment ("Limitations"), one over an empty subsection alone ("Appendix"
+    over "Notes on the data", Markdown's comment idiom under it), one over a placeholder G6
+    passes ("Supplementary figures") and one over a placeholder G6 fails ("Supplementary
+    tables", which is not empty); the reference list's own heading, and one whose last word
+    is the list's, as the last heading ("Supplementary references") and before it ("Key
+    references", which is empty), with nothing under them; and "Availability of code", which
+    is no data statement, in an order drawn (rounds 1 and 2 of #819). The ethics statement
+    opens like a label of its own kind ("Ethics committee:"), and the papers made from this
+    one write it after a label too, and a Declarations section's sentences of seven words or
+    more each wholly in emphasis, which are sentences still. Titles outside any list a reading
+    might keep are among those drawn ("Study funding", "Compliance with ethical standards").
+    Each is in every example, not one among several drawn, so that a rule broken
+    for any of them fails under every seed. A heading emptied leaves a label of its kind
+    over a comment beside it, and a Declarations section's paragraphs stand two blank lines
+    apart (round 5)."""
+    case = {"as": str, "upper": str.upper, "lower": str.lower}
+
+    def titled(kind: str) -> str:
+        return case[draw(st.sampled_from(sorted(case)))](
+            draw(st.sampled_from(DECLARED_TITLES[kind])))
+
+    others = ["data", "funding", "interests", "contributions", "ai_use"]
+    forms = dict(zip(others, draw(st.permutations(
+        ["heading", "label", "plain label", "alone", "declarations"])), strict=True))
+    forms["ethics"] = draw(st.sampled_from(ETHICS_FORMS))
+    titles = {kind: titled(kind) for kind in forms}
+    number = draw(st.sampled_from(("6. ", "6.1 ", "VI. ")))
+    filler = st.lists(st.sampled_from(FILLER), min_size=3, max_size=10)
+    words = {name: " ".join(draw(filler)).capitalize() + "."
+             for name in ("introduction", "design", "limitations")}  # fmt: skip
+    comment = draw(st.sampled_from(DECLARED_COMMENTS))
+    placeholder = draw(st.sampled_from(DECLARED_PLACEHOLDERS))
+    # What a heading emptied in a paper made from this one holds.
+    nothing = draw(st.sampled_from(DECLARED_NOTHING))
+    # What a label left over its kind's removal holds: a comment or a placeholder.
+    over = draw(st.sampled_from((*DECLARED_COMMENTS, *DECLARED_PLACEHOLDERS)))
+    # Over a comment first of the labels, where the label after it is a Data availability or
+    # an AI-use one, which G4's reading of the declarations does not end a label at.
+    hidden = draw(st.sampled_from(DECLARED_COMMENTS))
+    # And once more as a label alone that ends in a stop, over a comment.
+    stopped = draw(st.sampled_from(STOPPED_LABELS))
+    last = f"# {draw(st.sampled_from(DECLARED_LAST_REFERENCES))}\n"
+    own_list = f"# {draw(st.sampled_from(DECLARED_REFERENCES))}\n" + draw(
+        st.sampled_from(("", "\n::: {#refs}\n:::\n")))
+
+    def paper(left_out: str | None = None, emptied: str | None = None,
+              left_in: str = "declarations", shaped: dict[str, str] | None = None,
+              retitled: dict[str, str] | None = None,
+              emphasised: bool = False) -> str:  # fmt: skip
+        shapes = {**forms, **(shaped or {})}
+        named = {**titles, **(retitled or {})}
+
+        def body(kind: str) -> str:
+            return nothing.format(DECLARED_BODIES[kind]) if kind == emptied else (
+                DECLARED_BODIES[kind])  # fmt: skip
+
+        def written(kind: str) -> bool:
+            return kind != left_out
+
+        introduction = words["introduction"]
+        if shapes["ethics"] == "denial" and written("ethics"):
+            introduction += " " + ETHICS_DENIED
+        design = words["design"]
+        if shapes["ethics"] == "methods" and written("ethics"):
+            design += " " + ETHICS_IN_METHODS
+        blocks = {
+            "methods": f"# Methods\n\n## Design\n\n{design}\n",
+            "limitations": f"# Limitations\n\n{comment.format(words['limitations'])}\n",
+            "appendix": f"# Appendix\n\n## Notes on the data\n\n{DECLARED_IDIOM}\n",
+            "figures": f"# Supplementary figures\n\n{placeholder}\n",
+            # A placeholder G6 fails: something printed, the gap G6's alone.
+            "tables": "# Supplementary tables\n\n[Placeholder]\n",
+            # Not the document's last heading: the bibliography is not printed under it.
+            "key": "# Key references\n",
+            "own": own_list,
+            # A heading that names code and no data, which is no data statement.
+            "code": "# Availability of code\n\nThe code is in the repository.\n",
+        }
+        labels = []
+        for kind, form in shapes.items():
+            if not written(kind):
+                continue
+            if form == "heading":
+                blocks[kind] = f"# {named[kind]}\n\n{body(kind)}\n"
+            elif form == "numbered heading":
+                blocks[kind] = f"# {number}{named[kind]}\n\n{body(kind)}\n"
+            elif form == "label":
+                labels.append(f"**{named[kind]}:** {body(kind)}")
+            elif form == "plain label":
+                labels.append(f"{named[kind]}: {body(kind)}")
+            elif form == "alone":
+                labels.append(f"**{named[kind]}**\n\n{body(kind)}")
+            elif form == "plain alone":
+                labels.append(f"{named[kind]}:\n\n{body(kind)}")
+        declared = [DECLARED_WORDS[kind] for kind, form in shapes.items()
+                    if form == "declarations" and written(kind)]  # fmt: skip
+        # The kind taken out leaves its label over a comment or a placeholder, as Springer's
+        # layout does before the statement is written: a label states nothing.
+        left = ([f"**{named[left_out]}:** {over.format(DECLARED_BODIES[left_out])}"]
+                if left_out else [])  # fmt: skip
+        if left_out and left_in == "sentence":
+            left = [f"*{DECLARED_SHORT[left_out]}*"]
+        if left_out and left_in == "stopped":
+            left = [stopped.format(named[left_out]), hidden.format(DECLARED_BODIES[left_out])]
+        if left_out and left_in == "further":
+            after = "ai_use" if left_out == "data" else "data"
+            labels = [f"**{named[left_out]}:** {hidden.format(DECLARED_BODIES[left_out])}",
+                      f"**{USUAL_TITLES[after]}:** {DECLARED_BODIES[after]}", *labels]
+            left = []
+        blocks["further"] = "# Further statements\n\n" + "\n\n".join(labels) + "\n"
+        # A sentence of a Declarations section wholly in emphasis is a sentence still.
+        said = ([DECLARED_OPENING, *(f"*{sentence}*" for sentence in declared)] if emphasised
+                else [" ".join([DECLARED_OPENING, *declared])])  # fmt: skip
+        # A heading emptied leaves a label of its kind over a comment too, and the heading
+        # is the gap that is said; the paragraphs stand two blank lines apart, after which
+        # G4's own reading finds no label (round 5 of #819).
+        if emptied:
+            left = [*left, f"**{named[emptied]}:** {hidden.format(DECLARED_BODIES[emptied])}"]
+        blocks["declarations"] = ("# Declarations\n\n"
+                                  + "\n\n\n".join([*said, *left]) + "\n")  # fmt: skip
+        middle = "\n".join(blocks[name] for name in order if name in blocks)
+        return f"# Introduction\n\n{introduction}\n\n{middle}\n{last}"
+
+    headed = [kind for kind, form in forms.items() if form in ("heading", "numbered heading")]
+    # Every kind has a place in the order whatever its form, since the papers made from this
+    # one give some of them other forms.
+    order = draw(st.permutations(["methods", "limitations", "appendix", "figures", "tables",
+                                  "key", "own", "code", "further", "declarations",
+                                  *forms]))  # fmt: skip
+    shown = {kind: (number if forms[kind] == "numbered heading" else "") + titles[kind]
+             for kind in headed}  # fmt: skip
+    removed = [(kind, paper(left_out=kind, left_in=place)) for kind in forms
+               for place in ("declarations", "further", "stopped", "sentence")]
+    removed.append(("funding", paper(left_out="funding",
+                                     shaped={"contributions": "declarations"})))
+    restated = [paper(shaped={"ethics": form}) for form in (*ETHICS_FORMS, "label")]
+    restated.append(paper(shaped={"funding": "declarations"}, emphasised=True))
+    restated += [paper(shaped={"data": "heading"}, retitled={"data": title})
+                 for title in DATA_TITLES_NEW]  # fmt: skip
+    return (paper(), removed, [(kind, shown[kind], paper(emptied=kind)) for kind in headed],
+            restated)
+
+
 # --------------------------------------------------- the head over a fetched PDF's title
 
 #: The cited work each first page below is judged against, its DOI and its title.
@@ -20712,6 +20960,12 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
             + [{"authors": drawn[0], "main": text} for _code, text in drawn[2]])),
         st.tuples(declaration_papers(), texts(), texts()).map(lambda drawn: {
             "authors": drawn[0][0], "main": drawn[1], "supplement": drawn[2]}),
+    ),  # fmt: skip
+    "statements": st.one_of(
+        statement_papers().flatmap(lambda drawn: st.sampled_from(
+            [drawn[0], *(text for _kind, text in drawn[1]),
+             *(text for _kind, _title, text in drawn[2]), *drawn[3]])),
+        texts(),
     ),  # fmt: skip
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "pdf shown": pdf_first_pages().map(lambda drawn: [text for text, _work in drawn]),

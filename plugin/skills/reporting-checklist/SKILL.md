@@ -21,7 +21,8 @@ quote can be checked against its source.
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
 TRIPOD-validation, TRIPOD-development-validation, TRIPOD+AI, TRIPOD+AI-abstracts, STARD-2015,
-CHEERS-2022, ARRIVE-2.0, MDAR, SAGER-2022-human, SAGER-2022-other and SANRA. Name the guideline in
+CARE-2013, CHEERS-2022, ARRIVE-2.0, MDAR, SAGER-2022-human, SAGER-2022-other and SANRA. Name
+the guideline in
 `paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions hold
 only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both, and
 RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
@@ -174,7 +175,7 @@ that names none: choose the guideline that fits it with the author.
 | case-control | STROBE, RECORD | |
 | cross-sectional | STROBE, RECORD | |
 | diagnostic-accuracy | STARD | |
-| case-report | CARE (no recipe yet) | |
+| case-report | CARE | |
 | self-controlled | STROBE, RECORD (no guideline is written for the design) | |
 | disproportionality | READUS-PV | |
 | systematic-review | PRISMA | PRISMA-P |

@@ -31107,9 +31107,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     only through a chain of `crossref`s, or by `xdata`, stays in the note, though BibTeX
     or biblatex may print it. Accepted.
   - The rule adds `crossref` and `xref` into one count, takes `xref` in a BibTeX paper too,
-    which BibTeX does not know, and reads no `min-crossrefs`, `mincrossrefs` or `minxrefs`
-    the paper sets: in each case an entry it takes for printed is left out of the note
-    though nothing prints it (round 2 of #835). Accepted.
+    which BibTeX does not know, and takes 2 for the threshold whatever `min-crossrefs`,
+    `mincrossrefs` or `minxrefs` the paper sets. Where the paper's bibliography counts
+    otherwise, the note may leave out an entry nothing prints, or list one that prints, as
+    with `mincrossrefs=1` and one cited entry naming it (round 2 of #835). Accepted.
   - A metadata block in the body counts though it stands in an HTML comment, which pandoc
     reads as raw HTML and not as metadata, so such a paper keeps the warnings (round 2 of
     #835). Accepted.

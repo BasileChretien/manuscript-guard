@@ -424,8 +424,6 @@ TABLE_COMMANDS = frozenset({"toprule", "midrule", "bottomrule", "rowcolor", "cel
 #: defined, either is the author's command, read as an unknown one is, as the reader read
 #: both before it knew them (round 1 of #836).
 AUTHORS_IF_DEFINED = frozenset({"tag", "shortintertext"})
-#: The packages that give each: there a `\\providecommand` of it defines nothing (round 2).
-GIVEN_BY = {"tag": ("amsmath", "mathtools"), "shortintertext": ("mathtools",)}
 #: The definers that define nothing where the command is defined already.
 PROVIDERS = frozenset({"providecommand", "ProvideDocumentCommand"})
 #: pandoc's commands under citeproc, which its template defines.

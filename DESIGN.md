@@ -1430,10 +1430,7 @@ order is `printed_order`.
   `\let`, as one that does not load mathtools may make, makes it the author's command, read
   as an unknown one is, whatever the paper loads, as the reader read both before it knew
   them (`AUTHORS_IF_DEFINED`; round 1 of #836: known, each use of one so defined was refused
-  as defined again). A `\providecommand` of either defines nothing where the paper's
-  `\usepackage` loads a package that gives it, amsmath or mathtools for `\tag`, mathtools
-  for `\shortintertext`, and there each stays a text argument; elsewhere it is the author's
-  (round 2 of #836).
+  as defined again). So does a `\providecommand` of either (Known gaps).
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
   counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
   there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
@@ -31034,6 +31031,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whether it happened or was planned, and a registration after a start that was only
     planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
     by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
+
+- **A `\providecommand` of `\tag` or `\shortintertext` makes it the author's command.** LaTeX
+  defines nothing where amsmath or mathtools already gives the command, but the reader takes
+  it, as any definition of either, for the author's, read as an unknown one is, so inline
+  maths in it is refused where the package's text argument would hold it, as before #836
+  (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
+  Pinned by
+  `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

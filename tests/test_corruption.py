@@ -17442,18 +17442,18 @@ def test_an_authors_own_tag_is_no_text_argument() -> None:
     assert [c.key for c in reading.cited] == ["j"]
 
 
-def test_a_provided_short_intertext_stays_a_text_argument() -> None:
-    """Round 2 of #836: `\\providecommand` of a command that is defined defines nothing, so
-    mathtools' `\\shortintertext` stays a text argument, inline maths in it balancing as in
-    text."""
+def test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too() -> None:
+    """Known gaps, round 2 of #836: LaTeX defines nothing by `\\providecommand` where
+    mathtools gives `\\shortintertext`, but the reader takes it for the author's, as any
+    definition of it, so inline maths in it is refused, as before #836."""
     from manuscript_guard.text.latex.mask import read
 
     text = _tag_document("!providecommand{!shortintertext}[1]{!intertext{#1}}",
                          "!begin{align} a &= 1 !shortintertext{where $x > 0$} b &= 2 "
                          "!end{align}")  # fmt: skip
     reading = read(text)
-    assert reading.refusals == (), reading.refusals
-    assert [c.key for c in reading.cited] == ["j", "k"]
+    assert [r.code for r in reading.refusals] == ["tex-unbalanced"], reading.refusals
+    assert [c.key for c in reading.cited] == ["j"]
 
 
 def test_a_short_intertext_provided_without_mathtools_is_the_authors() -> None:

@@ -95,9 +95,10 @@ first; nothing is redistributed by this project. The document is checksummed aga
 recipe, so a revised checklist stops the build rather than producing a plausible wrong
 transcription. Both commands write into `profiles/reporting/` in the project you are
 standing in — pass `--root` to choose somewhere else. The recipes themselves ship inside the
-package, and a recipe of the same name in your project overrides the shipped one. See [ATTRIBUTION.md](../ATTRIBUTION.md) for each guideline's licence and the
-day it was read. Two of them, READUS-PV and CARE 2013, are non-commercial, and several state
-no reuse licence at all.
+package, and a recipe of the same name in your project overrides the shipped one. See
+[ATTRIBUTION.md](../ATTRIBUTION.md) for each guideline's licence and the day it was read.
+Two of them, READUS-PV and CARE 2013, are non-commercial, and several state no reuse
+licence at all.
 
 Recipes ship for twenty-one checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
 PRISMA 2020 and its abstracts checklist, READUS-PV and its abstracts checklist, TRIPOD in

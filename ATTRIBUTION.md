@@ -9,9 +9,9 @@ repository or included in the distributed package.
 
 That is a deliberate structure, not an oversight. Reporting guidelines are published under
 a patchwork of terms — two of those below, READUS-PV and CARE 2013, are explicitly
-non-commercial, several state no reuse licence at all — and a repository that shipped their text would have to satisfy the
-strictest of them. Fetching on request avoids the question entirely: you obtain the document
-exactly as you would by clicking the link.
+non-commercial, several state no reuse licence at all — and a repository that shipped their
+text would have to satisfy the strictest of them. Fetching on request avoids the question
+entirely: you obtain the document exactly as you would by clicking the link.
 
 The guidelines below are the work of their respective groups. Nothing here claims any right
 in them, and citing the guideline you followed remains your responsibility as an author.

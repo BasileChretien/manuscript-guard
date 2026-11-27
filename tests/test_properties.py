@@ -190,6 +190,7 @@ from generated import (
     response_letters,
     results_named_papers,
     revisions,
+    saved_pages,
     sectioned_plans,
     set_hazards,
     share_tables,
@@ -11959,11 +11960,13 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
     """G5 (Basile, 2026-11-12): an answer's quote stands under the heading its `where` names,
     subsections included, in the main text or the supplement, the section carried on into
     the next file the build prints (round 1 of #651), or in the caption of the table
-    or figure it names, an emitted caption or a typed legend; found as a finding's quote is,
+    or figure it names, an emitted caption or a typed legend, or in paper.yaml's title where
+    `where` says "Title" (2026-11-26); found as a finding's quote is,
     folded as G7 folds a quote, markup out, whole words, pieces in order where words are left
     out, its bindings as written or each value's display, not half of each. A quote under
-    another heading, under the parent's own text where `where` names a subsection, or in
-    another display's caption is said to stand there; a quote in a comment, with a word
+    another heading, under the parent's own text where `where` names a subsection, in
+    another display's caption or in the title is said to stand there, and so is a heading's
+    quote where `where` names the title; a quote in a comment, with a word
     changed, inside a word or with its pieces out of order stands nowhere; three words, or
     none, are no quote."""
     given, ways = drawn
@@ -11971,6 +11974,24 @@ def test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowher
     assert {kind for kind, _expected in ways} == set(CHECKLIST_QUOTES)
     for (kind, expected), got, item in zip(ways, found, given["items"], strict=True):
         assert got == expected, (kind, item, got)
+
+
+from generated import LATEX_TITLES, latex_titles  # noqa: E402
+
+
+@holds(20, latex_titles())
+def test_a_latex_title_is_each_one_tex_reads_where_it_stands(
+    drawn: list[tuple[str, dict[str, str], list[list[Any]]]],
+) -> None:
+    """G5, round 2 of #813: the titles a LaTeX manuscript's main text sets that TeX reads, in
+    the entry file or in a file its preamble inputs, past a CAS option, each as the body
+    prints it, its `\\emph` its word and its `--` an en dash, its notes left out, braces and
+    all; not one in a comment or in `\\iffalse`; and both of two, each at its file and line,
+    for G5 not to choose between."""
+    read = READINGS["latex titles"]()
+    assert {kind for kind, _files, _titles in drawn} == set(LATEX_TITLES)
+    for kind, files, titles in drawn:
+        assert read(files) == titles, (kind, files)
 
 
 from generated import finding_places  # noqa: E402
@@ -24042,6 +24063,54 @@ def _any_table_s_caption_is_the_one_where_names(patch: pytest.MonkeyPatch) -> No
                   else (named(where)[0], False, 1))  # fmt: skip
 
 
+def _title_names_no_part_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    patch.setattr(checklist_quotes, "names_title", lambda where: False)
+
+
+def _the_paper_s_title_is_not_read_for_a_checklist_quote(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    read = checklist_quotes.read
+    patch.setattr(checklist_quotes, "read", lambda texts, namespace, captions=(), title=None:
+                  read(texts, namespace, captions))  # fmt: skip
+
+
+def _the_paper_s_title_is_folded_as_raw_lowered_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import checklist_quotes
+
+    part = checklist_quotes._title_part
+
+    def raw(title: str, namespace, named: str = checklist_quotes.TITLE_SHOWN):
+        lowered = title.lower()
+        return dataclasses.replace(part(title, namespace, named), own=(lowered, lowered),
+                                   enclosed=(lowered, lowered))  # fmt: skip
+
+    patch.setattr(checklist_quotes, "_title_part", raw)
+
+
+def _only_the_first_latex_title_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    titles = printed.printed_titles
+    patch.setattr(printed, "printed_titles", lambda folder: titles(folder)[:1])
+
+
+def _a_latex_title_tex_does_not_read_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    passed = printed._passed_over
+    patch.setattr(printed, "_passed_over", lambda reading: (lambda at: True,
+                                                            passed(reading)[1]))  # fmt: skip
+
+
+def _a_definition_of_latex_title_is_a_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import printed
+
+    patch.setattr(printed, "_DEFINED", re.compile(r"(?!)"))
+
+
 # ------------------------------------------------- broken rules of a finding's quote
 
 
@@ -26616,6 +26685,36 @@ def _an_entry_for_any_format_does_not_hold_from_a_pdf(patch: pytest.MonkeyPatch)
     patch.setattr(table, "measured", guarded)
 
 
+
+
+@holds(40, saved_pages())
+def test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown(
+    described: dict[str, Any],
+) -> None:
+    """A journal's page as a browser saved it is stored as the page shows it: each paragraph's
+    words on a line of their own, in order, a word an inline element splits whole, the links
+    of a navigation bar apart, and none of the words of what a browser does not show."""
+    lines = READINGS["saved journal page"]()(described)
+    assert lines == described["lines"], described
+    assert not {word for line in lines for word in line.split()} & set(described["unshown"])
+
+
+def _a_tag_in_a_saved_page_is_a_space(patch: pytest.MonkeyPatch) -> None:
+    shown = journal_quotes_gate._Shown
+    started, ended = shown.handle_starttag, shown.handle_endtag
+
+    def start(self, tag, attrs):
+        started(self, tag, attrs)
+        self.parts.append(" ")
+
+    def end(self, tag):
+        ended(self, tag)
+        self.parts.append(" ")
+
+    patch.setattr(shown, "handle_starttag", start)
+    patch.setattr(shown, "handle_endtag", end)
+
+
 from generated import registration_papers  # noqa: E402
 
 
@@ -27408,6 +27507,30 @@ BROKEN = {
     "any table's caption is the one a checklist's answer names": (
         _any_table_s_caption_is_the_one_where_names,
         test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "a checklist answer's `where: Title` names no part": (
+        _title_names_no_part_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the paper's title is not read for a checklist answer's quote": (
+        _the_paper_s_title_is_not_read_for_a_checklist_quote,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "the paper's title is folded as raw lowered text for a checklist answer's quote": (
+        _the_paper_s_title_is_folded_as_raw_lowered_text,
+        test_a_checklist_answer_s_quote_stands_under_what_its_where_names_and_nowhere_else,
+    ),
+    "only the first of a LaTeX manuscript's titles is kept": (
+        _only_the_first_latex_title_is_kept,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
+    ),
+    "a LaTeX title in a comment or in iffalse is read": (
+        _a_latex_title_tex_does_not_read_is_read,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
+    ),
+    "a definition of LaTeX's title is read as a title": (
+        _a_definition_of_latex_title_is_a_title,
+        test_a_latex_title_is_each_one_tex_reads_where_it_stands,
     ),
     "a finding's quote is found as characters, not as words": (
         _a_quote_is_found_as_characters,
@@ -34335,6 +34458,10 @@ BROKEN = {
     "Availability of code is a data statement": (
         _availability_of_code_is_a_data_statement,
         test_each_statement_is_found_however_it_is_written_and_an_empty_heading_is_said,
+    ),
+    "a tag in a saved page is a space": (
+        _a_tag_in_a_saved_page_is_a_space,
+        test_a_saved_page_keeps_the_words_of_each_paragraph_and_nothing_unshown,
     ),
 }
 

@@ -252,6 +252,188 @@ def test_g8r_reads_the_twins_checklist_answers_as_the_examples(
     ]
 
 
+#: The twin's `\title`, as `main.tex` writes it.
+_TWIN_TITLE = ("\\title{Reporting of hepatic injury with example-drug: a disproportionality "
+               "analysis of a synthetic spontaneous reporting database}")  # fmt: skip
+
+
+def _title_said(twin: Path, quote: str, stage: str = "submission") -> list[tuple[str, str, str]]:
+    """What G5 says, at `stage`, of the checklist's first item answered `where: Title` with
+    `quote`: each finding's code, severity and message."""
+    import yaml
+
+    from manuscript_guard.gates import check_reporting
+
+    path = twin / "reporting" / "DEMO-OBS.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["items"][0].update(where="Title", quote=quote)
+    path.write_bytes(yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode())
+    found = check_reporting(load_project(twin)[0], stage=stage).findings
+    return [(f.code, f.severity, f.message) for f in found if f.code.startswith("checklist-")]
+
+
+def _title_answer(twin: Path, quote: str) -> list[tuple[str, str]]:
+    """What G5 says, at submission, of the checklist's first item answered `where: Title`
+    with `quote`: each finding's code and message."""
+    return [(code, message) for code, _severity, message in _title_said(twin, quote)]
+
+
+def test_a_latex_answer_in_the_title_is_held_to_the_title_main_tex_prints(twin: Path) -> None:
+    """Round 1 of #813: the PDF prints `\\title{}`, not paper.yaml's title, which `init
+    --latex` copies once and the author then edits in main.tex. The quote is held to the
+    `\\title` as the reader prints the body, its markup and its dashes folded and its note left
+    out; paper.yaml's title, which no document prints, is not found."""
+    main = twin / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    assert _TWIN_TITLE in text
+    main.write_bytes(text.replace(_TWIN_TITLE, (
+        "\\title{Hepatic injury with \\emph{example-drug} -- a disproportionality\\\\ "
+        "analysis\\thanks{Funded by no grant of any kind.} of synthetic reports}")).encode())
+    assert _title_answer(twin, "Hepatic injury with example-drug \N{EN DASH} a "
+                               "disproportionality analysis of synthetic reports") == []
+    said = _title_answer(twin, "Reporting of hepatic injury with example-drug: a "
+                               "disproportionality analysis")  # fmt: skip
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+    assert "is not under the \\title in main.tex" in said[0][1]
+    note = _title_answer(twin, "Funded by no grant of any kind")
+    assert [code for code, _message in note] == ["checklist-quote-not-found"]
+
+
+def test_the_title_read_is_the_one_tex_prints_past_a_comment_and_an_option(
+    tmp_path: Path,
+) -> None:
+    """A `\\title` in a comment prints nothing, and a CAS template's `\\title[mode = title]`
+    prints its argument; with none, there is no title to read."""
+    from manuscript_guard.text.latex.printed import printed_titles
+
+    folder = tmp_path / "manuscript"
+    shutil.copytree(TWIN, folder)
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_bytes(text.replace(_TWIN_TITLE, (
+        f"% {_TWIN_TITLE}\n\\title[mode = title]{{A title the CAS class prints}}")).encode())
+    assert [(t.text, t.path, t.line) for t in printed_titles(folder)] == [
+        ("A title the CAS class prints", "main.tex", 4)]
+    main.write_bytes(text.replace(_TWIN_TITLE + "\n", "").encode())
+    assert printed_titles(folder) == []
+
+
+def _set_title(twin: Path, written: str, front: str | None = None) -> None:
+    """The twin's `\\title` line written as `written`, and `front.tex` beside main.tex holding
+    `front`, where it is given."""
+    main = twin / "manuscript" / "main.tex"
+    main.write_bytes(main.read_text(encoding="utf-8").replace(_TWIN_TITLE, written).encode())
+    if front is not None:
+        (twin / "manuscript" / "front.tex").write_bytes(front.encode())
+
+
+def test_a_title_in_iffalse_is_not_one_tex_prints(twin: Path) -> None:
+    """Round 2 of #813: what `\\iffalse` leaves out prints nothing, so the `\\title` after it is
+    the one title, and words of the other are not found in it."""
+    _set_title(twin, "\\iffalse\n\\title{A title TeX never reads at all}\n\\fi\n" + _TWIN_TITLE)
+    assert _title_answer(twin, "Reporting of hepatic injury with example-drug: a "
+                               "disproportionality analysis") == []  # fmt: skip
+    said = _title_answer(twin, "A title TeX never reads at all")
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+    assert "is not under the \\title in main.tex" in said[0][1]
+
+
+def test_a_title_set_only_in_an_input_file_is_read_there(twin: Path) -> None:
+    """Round 2 of #813: a preamble that inputs its front matter sets the title in that file."""
+    _set_title(twin, "\\input{front}", "\\title{The study of example-drug in an input file}\n")
+    assert _title_answer(twin, "The study of example-drug in an input file") == []
+    said = _title_answer(twin, "Reporting of hepatic injury with example-drug: a")
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+    assert "is not under the \\title in front.tex" in said[0][1]
+
+
+def test_two_titles_are_not_guessed_between(twin: Path) -> None:
+    """Round 2 of #813: two `\\title`s TeX prints, in main.tex and in a file it inputs (and so
+    a conditional's two branches), are not guessed between: the answer is told where each
+    stands, and to keep one, and its quote is not held to either."""
+    _set_title(twin, "\\input{front}\n" + _TWIN_TITLE,
+               "\\title{An older title of the study}\n")  # fmt: skip
+    said = _title_answer(twin, "Reporting of hepatic injury with example-drug: a")
+    assert [code for code, _message in said] == ["checklist-location-unknown"]
+    assert "front.tex line 1" in said[0][1] and "main.tex line 4" in said[0][1]
+
+
+@pytest.mark.parametrize(("stage", "severity"),
+                         [("drafting", "info"), ("internal-review", "warn"),
+                          ("submission", "fail")])  # fmt: skip
+def test_two_titles_are_told_as_a_quote_is_and_a_missing_quote_still_is_said(
+    twin: Path, stage: str, severity: str
+) -> None:
+    """Round 3 of #813: the finding of two titles is told at the stage a quote's finding is,
+    a note while drafting, a warning from internal review and a failure at submission; and an
+    answer that quotes nothing is still said to, beside it."""
+    _set_title(twin, "\\input{front}\n" + _TWIN_TITLE,
+               "\\title{An older title of the study}\n")  # fmt: skip
+    quoted = _title_said(twin, "Reporting of hepatic injury with example-drug: a", stage)
+    assert [(code, said) for code, said, _message in quoted] == [
+        ("checklist-location-unknown", severity)]
+    unquoted = _title_said(twin, "", stage)
+    assert [(code, said) for code, said, _message in unquoted] == [
+        ("checklist-location-unknown", severity), ("checklist-quote-missing", severity)]
+
+
+#: How a preamble defines `\title` rather than setting a title, each before the title set.
+_TITLE_DEFINED = (
+    "\\renewcommand\\title[1]{\\gdef\\thetitle{#1}}",
+    "\\renewcommand*\\title[1]{\\gdef\\thetitle{#1}}",
+    "\\providecommand\\title{A title defined and never set}",
+    "\\newcommand\\title{A title defined and never set}",
+    "\\def\\title{A title defined and never set}",
+)
+
+
+@pytest.mark.parametrize("defined", _TITLE_DEFINED)
+def test_a_definition_of_title_is_no_title(tmp_path: Path, defined: str) -> None:
+    """Round 3 of #813: `\\title` after a definer is the command being defined, which prints
+    nothing there; the title is the one set after it."""
+    from manuscript_guard.text.latex.printed import printed_titles
+
+    folder = tmp_path / "manuscript"
+    shutil.copytree(TWIN, folder)
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_bytes(text.replace(_TWIN_TITLE, f"{defined}\n{_TWIN_TITLE}").encode())
+    assert [(t.path, t.line) for t in printed_titles(folder)] == [("main.tex", 4)]
+
+
+def test_a_title_set_after_its_definition_is_held_to(twin: Path) -> None:
+    """Round 3 of #813: so a quote of the title set is found, and one of the definition's
+    words is not."""
+    _set_title(twin, f"{_TITLE_DEFINED[3]}\n{_TWIN_TITLE}")
+    assert _title_answer(twin, "Reporting of hepatic injury with example-drug: a") == []
+    said = _title_answer(twin, "A title defined and never set")
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+
+
+def test_a_title_s_notes_are_left_out_their_braces_nested(twin: Path) -> None:
+    """Round 2 of #813: a `\\footnote` in the title prints as a note, as `\\thanks` does, and
+    braces inside either do not end it early."""
+    _set_title(twin, (
+        "\\title{Hepatic injury with example-drug\\thanks{Funded by {the} grant {of {no} one}}"
+        "\\footnote{See {the} note on {the} {data {held here}}} in synthetic reports}"))
+    assert _title_answer(twin, "Hepatic injury with example-drug in synthetic reports") == []
+    for note in ("Funded by the grant of no one", "See the note on the data held here"):
+        said = _title_answer(twin, note)
+        assert [code for code, _message in said] == ["checklist-quote-not-found"], note
+
+
+def test_a_latex_manuscript_with_no_title_command_is_held_to_paper_yaml_s(twin: Path) -> None:
+    """Where no file of the main text sets a `\\title`, the title is paper.yaml's."""
+    main = twin / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_bytes(text.replace(_TWIN_TITLE + "\n", "").encode())
+    assert _title_answer(twin, "Reporting of hepatic injury with example-drug: a "
+                               "disproportionality analysis") == []  # fmt: skip
+    said = _title_answer(twin, "Hepatic injury with example-drug in a cohort study")
+    assert [code for code, _message in said] == ["checklist-quote-not-found"]
+    assert "is not under the title in paper.yaml" in said[0][1]
+
+
 def test_g7_reads_the_twins_quotations_and_cited_statements_as_the_examples(
     project: Path, tmp_path: Path
 ) -> None:

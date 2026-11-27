@@ -2141,7 +2141,7 @@ The result is compiled and packed by the code above, and checked three times:
 - An encoding set in a file of ASCII is held to the files of its tree, not to a file nothing
   inputs, which TeX does not read (2026-10-23).
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
-  in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
+  in a definition's body is not, and G7 says that its key is cited nowhere (round 1 of
   step 5).
 - `sync-bib` and `lookup` refuse a LaTeX manuscript the reader refuses anywhere, since the
   keys after the refusal are not read (round 1 of step 5; `lookup` since round 1 of #626,
@@ -2740,7 +2740,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     is refused, and one LaTeX found in its distribution is left as it was. A `.bib` the document
     names (`references.bib` from `literature/`, as the build puts it beside the entry) is cut
     to the cited entries, those their `crossref` and `xdata` name, and every `@string` and
-    `@preamble`; `\nocite{*}` keeps every entry. The cited keys are the reader's and those
+    `@preamble`; a `\nocite{*}` the reader or the `.aux` records keeps every entry. The cited keys are the reader's and those
     the build's `.aux` holds, so that a citation a macro makes keeps its entry, and keys are
     matched without case, as BibTeX matches them; biblatex's `xref`, `related` and
     `entryset` are followed too (round 1). A file the folder holds under another name than
@@ -3064,6 +3064,39 @@ verified. The schemas of both files now refuse a blank or all-space field (`sour
 `locator` and `quote` in the ledger; `source`, `locator`, `statement` and `attested_by`
 in `attested.yaml`), and a value that reaches the gates without a source all the
 same is `literature-source-missing` and counted as failed.
+
+**An entry nothing cites is one note for its file, where only the cited works print.**
+BibTeX, biblatex and pandoc's citeproc print the works a citation names and no other, unless
+told to print them all, so an entry of `references.bib` nothing cites never reaches the paper.
+On the tuning corpus at `main-c94aa0bcf`, a warning for each was 3,365 of `check`'s loud
+findings in 31 reports, 1,982 of them in one LaTeX paper, and they buried the rest. Such
+entries are now one note, `bib-entries-uncited`, which counts them among the file's entries,
+says that the bibliography prints only the works cited, and lists their keys; its key names
+the file (`G7|bib-entries-uncited|references.bib|-`), so it stays one finding however the
+list grows (Basile, 2026-11-27, "One note per .bib"). Where the paper prints every entry,
+each one nothing cites reaches the printed list, and is a warning of its own as before
+(`gates/printed_entries.py`):
+
+- in LaTeX, a `\nocite` whose keys, parted at commas, hold `*`, outside a comment, in any
+  file the main text's or the supplement's document inputs. It is read in the file as typed,
+  so one the reader records nowhere counts too: in a hook (`\AtBeginDocument{\nocite{*}}`),
+  in a definition, or past a part the reader refuses. One the reader does record cites every
+  entry, so none is uncited.
+- in Markdown, a `nocite` whose text, or a string in whose list, holds `@*`, its own or
+  merged in with `<<`, as pandoc reads it: in the front matter of a file under
+  `manuscript/`, or in a YAML metadata block of its body (`masking.metadata_blocks`), which
+  the build passes to pandoc as it stands (round 1 of #835).
+
+A `\nocite{smith2019}`, or `nocite: '@smith2019'`, cites that key and asks for no other: the
+key is cited, and the note goes on listing the rest. An entry cited only as typed text keeps
+its own note, which says what `sync-bib` would do, and is not listed in the file's. The note
+counts and lists entries alone: an `@string`, an `@preamble` or an `@comment` names no work,
+and is neither in it nor warned of. In a LaTeX paper an entry two cited entries name in
+`crossref`, or in biblatex's `xref`, is printed by BibTeX and biblatex (`min-crossrefs`,
+`mincrossrefs` and `minxrefs`, 2 by default), keys matched without case, so where only the
+works cited print it is left out of the note and not warned of; one a single cited entry
+names stays in it. Where every entry prints, it is warned of like any other. Pandoc's
+citeproc prints no such entry, so a Markdown paper's note lists it (round 1 of #835).
 
 **A reference's identifiers are read offline.** Nothing read `references.bib` but for its
 keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345678", an
@@ -28117,18 +28150,22 @@ Open, recorded as each change landed:
   not hold is gone; the file's header says to import it into Zotero first. An entry no
   citation was made a key of is `reference-uncited` to G7: a note that `sync-bib` would drop
   it where the manuscript cites it as typed text in brackets, as exactly its names and year
-  (Basile, 2026-11-23 and 2026-11-24), and otherwise a warning, whose hint says to give a
-  citation in words its key, to delete the entry by hand only if the work really is not
-  cited, and not to use `sync-bib` for that. Accepted.
+  (Basile, 2026-11-23 and 2026-11-24). Otherwise it is cited nowhere: one of the entries the
+  file's one note `bib-entries-uncited` lists, where the bibliography prints only the works
+  cited, and a warning of its own where it prints every entry (Basile, 2026-11-27, "One note
+  per .bib"; "An entry nothing cites is one note for its file" above). Either hint says to
+  give a citation in words its key, to delete the entry by hand only if the work really is
+  not cited, and not to use `sync-bib` for that. Accepted.
 - **G7 counts a typed citation for an entry only in brackets, as exactly its names and
   year.** A citation in the sentence, "Smith (2020) showed", is not read at all (Basile,
   2026-11-24): what stands before the bracket cannot be told from a longer name ("Garcia
   Smith", "zur Smith"). In brackets, a part, the bracket's content or one `;`-separated piece
   of it where every piece is text, a comma and a year, counts where it is the entry's
   names as the import renders them, a comma and the year, with only a page or further years
-  after it. Every other citation leaves the entry a warning that nothing cites it, though a
-  reader sees that something does, and whose hint says to give such a citation its key,
-  since `sync-bib` would drop the entry: a piece beside one that is no citation ("*d* =
+  after it. Every other citation leaves the entry cited nowhere, though a reader sees that
+  something does: listed in the file's note, or a warning where the list prints every entry,
+  either with a hint that says to give such a citation its key, since `sync-bib` would drop
+  the entry: a piece beside one that is no citation ("*d* =
   0.17; Smith, 2020", "BDI; Smith, 2020"), words before the name
   ("e.g., Smith, 2020", "ABC, Smith, 2020", "A. Smith, 2020"), no comma before the year, the
   names in another order than the list's ("Smith, Lee & Jones" for Smith, Jones and Lee),
@@ -31423,6 +31460,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
   (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
   Pinned by
   `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
+
+- **G7 takes a `nocite` of every entry for what the build prints, as typed.** A front
+  matter's `nocite: '@*'` keeps a warning for each entry nothing cites, though the build
+  writes its own header from `paper.yaml` and strips each file's, so pandoc never reads that
+  key and the document still prints only the works cited. Pinned by
+  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`.
+  - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
+    inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
+    keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX
+    pack, which keeps the entries the reader and the build's `.aux` cite, keeps only the
+    cited ones. One in a hook TeX runs is in the `.aux`, and the pack keeps every entry, as
+    the warnings say. Pinned by
+    `tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings`
+    and `tests/test_latex_submit.py::test_the_pack_keeps_every_entry_where_tex_runs_a_nocite_of_every_entry`.
+  - The `crossref` rule counts the cited entries that name an entry directly: one named
+    only through a chain of `crossref`s, or by `xdata`, stays in the note, though BibTeX
+    or biblatex may print it. Accepted.
+  - The rule adds `crossref` and `xref` into one count, takes `xref` in a BibTeX paper too,
+    which BibTeX does not know, and takes 2 for the threshold whatever `min-crossrefs`,
+    `mincrossrefs` or `minxrefs` the paper sets. Where the paper's bibliography counts
+    otherwise, the note may leave out an entry nothing prints, or list one that prints, as
+    with `mincrossrefs=1` and one cited entry naming it (round 2 of #835). Accepted.
+  - A metadata block in the body counts though it stands in an HTML comment, which pandoc
+    reads as raw HTML and not as metadata, so such a paper keeps the warnings (round 2 of
+    #835). Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

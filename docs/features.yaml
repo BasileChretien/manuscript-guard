@@ -480,14 +480,21 @@ features:
     title: Citations that resolve
     says: >-
       Each citation leads to a reference with well-formed identifiers and the fields it
-      needs, no work is cited under two keys, and an entry nothing cites is warned of, or
-      noted where the paper cites it only as typed text in brackets.
+      needs, and no work is cited under two keys. The entries nothing cites are one note
+      for the file where the bibliography prints only the works cited, and a warning each
+      where it prints every entry; an entry cited only as typed text in brackets is a note
+      of its own.
     status: works
     gates: [G7]
     tests:
       - tests/test_corruption.py::test_a_malformed_identifier_fails_from_internal_review
       - tests/test_corruption.py::test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do
       - tests/test_corruption.py::test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning
+      - tests/test_corruption.py::test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print
+      - tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each
+      - tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings
+      - tests/test_corruption.py::test_a_metadata_block_in_the_body_asks_for_every_entry
+      - tests/test_properties.py::test_a_nocite_of_every_entry_is_told_from_one_of_single_keys
       - tests/test_zotero.py
 
   - id: zotero

@@ -786,8 +786,13 @@ def test_a_link_this_page_did_not_make_is_refused_with_why() -> None:
     assert said[6] == {"error": "it holds more than any journal's rules"}
     # A form the page could fill packs short and unpacks to too much, which is why the button
     # holds a link to both (round 4 of #847).
+    from manuscript_guard.journal_form import BLINDINGS, LIMITS, STATEMENTS
+
     long = {"date": "2026-11-27", "sections": ["a" * 2000] * 100}
-    (packed,) = _rules([{"pack": long}])
+    offered = {"limits": list(LIMITS), "statements": list(STATEMENTS),
+               "blindings": list(BLINDINGS)}  # fmt: skip
+    (packed, shape) = _rules([{"pack": long}, {"shape": long, "offered": offered}])
+    assert shape == {"wrong": ""}, "the form's shape takes it, so only the byte count refuses it"
     assert len(packed["text"]) <= 16000 < 65536 < len(json.dumps(long).encode("utf-8"))
     assert _rules([{"unpack": packed["text"]}]) == [
         {"error": "it holds more than any journal's rules"}]

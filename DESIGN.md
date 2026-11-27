@@ -30044,12 +30044,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
     word-for-word check gives the command line the page's own build, run in Node, so it holds
     the page to the command line's code, not to a reader's `pdftotext`. A PDF whose text
     needs poppler-data's character maps (a CJK font with no map of its own to Unicode) gives
-    no text for it on the page, where a poppler with poppler-data installed reads it.
-    Pinned by `tests/test_web.py::test_the_pages_pdftotext_is_the_build_the_lock_pins_with_its_source`.
+    no text for it on the page, where a poppler with poppler-data installed reads it. And a
+    PDF whose reading needs more than the 2 GiB of memory the build can take stops it: the
+    page says pdftotext failed on it, exit 1 with the WebAssembly's error, where a
+    `pdftotext` on a computer may read it. Which build the page runs is held by
+    `tests/test_web.py::test_the_pages_pdftotext_is_the_build_the_lock_pins_with_its_source`;
+    what it reads otherwise is not. Accepted.
   - *A program on the page is not stopped at its timeout.* The page cannot stop pdftotext
-    under way, which runs to its end in the checker's thread; one that took longer than the
-    command line waits (`proof.reading.PDFTOTEXT_SECONDS`) is said, once it ends, as the
-    command line says one it stopped. Pinned by
+    or pdfinfo under way, which runs to its end in the checker's thread; one that took longer
+    than the command line waits for it (`proof.reading.PDFTOTEXT_SECONDS` for a reading, 30
+    seconds for `pdftotext -v`, `auditing.pdf.PDFINFO_SECONDS` for pdfinfo) is said, once it
+    ends, as the command line says one it stopped. Pinned by
     `tests/test_web.py::test_a_run_longer_than_its_timeout_is_said_as_one_once_it_ends`.
   - *An archive is unpacked into the browser's memory*, so it is refused past 1 GiB
     unpacked (`web.PAGE_MAX_BYTES`), where a package's `.zip` is taken up to 16 GiB; a

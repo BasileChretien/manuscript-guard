@@ -1112,7 +1112,9 @@ def test_another_program_goes_to_subprocess_run_and_one_found_elsewhere_too(
                       ([str(tmp_path / "other" / "pdftotext"), "-v"], (),
                        {"capture_output": True})]  # fmt: skip
     assert run([str(tmp_path / "pdfinfo"), "x.pdf"], capture_output=True).stdout == b"pdfinfo"
-    assert run([Path("pdftotext"), "-v"], capture_output=True).args == ["pdftotext", "-v"]
+    # The command as it was given, as `subprocess.run` keeps it; the program is given text.
+    given = [Path("pdftotext"), "-v"]
+    assert run(given, capture_output=True).args is given
 
 
 @pytest.mark.parametrize("options, said", [

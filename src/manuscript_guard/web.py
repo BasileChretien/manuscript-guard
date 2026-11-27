@@ -230,15 +230,15 @@ def program_runner(program: Program, fallback: Callable = _RUN,
             said = (", ".join(unknown) if unknown else "positional argument" if rest
                     else "output it does not capture")  # fmt: skip
             raise OSError(f"the page runs {name} with its output captured, and takes no {said}")
-        argv = [os.fspath(arg) for arg in args]
         started = time.monotonic()
-        code, out, err = program(name, argv[1:], os.getcwd())
+        code, out, err = program(name, [os.fspath(arg) for arg in args[1:]], os.getcwd())
         timeout = options.get("timeout")
         if timeout is not None and time.monotonic() - started > timeout:
-            raise subprocess.TimeoutExpired(argv, timeout)
+            raise subprocess.TimeoutExpired(args, timeout)
         if any(options.get(key) for key in ("text", "universal_newlines", "encoding", "errors")):
             out, err = _as_text(out, options), _as_text(err, options)
-        done = subprocess.CompletedProcess(argv, code, out, err)
+        # The command as it was given, as `subprocess.run` keeps it.
+        done = subprocess.CompletedProcess(args, code, out, err)
         if options.get("check"):
             done.check_returncode()
         return done

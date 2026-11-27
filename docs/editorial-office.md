@@ -27,8 +27,10 @@ editor then does with it is in [For editors and reviewers](refereeing.md).
 ## Two ways to run it
 
 **The audit page**, <https://basilechretien.github.io/manuscript-guard/audit/>, for an
-editor who will not open a terminal. It reads a Word (.docx) or Markdown paper, or a LaTeX
-project given as a .zip or a .tar.gz. The page and every file it loads are plain files that
+editor who will not open a terminal. It reads a Word (.docx), Markdown or PDF paper, or a
+LaTeX project given as a .zip or a .tar.gz; a PDF with poppler's `pdftotext` built for the
+browser, which may read it otherwise than the one an office has installed
+([The audit page](audit-page.md)). The page and every file it loads are plain files that
 GitHub Pages serves; the paper is read inside the browser, and nothing behind the page could
 receive it.
 
@@ -40,7 +42,7 @@ loaded, it sends that server nothing either. Its `files.sha256` can be compared 
 the same release's page, and turning the network off shows that the paper is not sent.
 
 **The command line**, `uvx manuscript-guard audit paper.pdf`, for an editor or an office
-that will. It also reads PDF (with poppler's `pdftotext` installed) and LaTeX, holds the
+that will. It reads a PDF with the `pdftotext` installed (poppler's), and LaTeX, holds the
 paper to the journal's rules (`--journal`), sorts what it found in an editor's four parts
 (`--editor`) and sets a revision beside the version before it with the response letter
 (`compare`). Installing it downloads the package from PyPI; running it sends nothing.
@@ -114,8 +116,9 @@ wrong is marked as a note rather than a warning.
   audit page is built from each release and says at its top which version it runs, with a
   link to what that release changed.
 - manuscript-guard is MIT. The audit page also runs pandoc (GPL-2.0-or-later, with a link to
-  its source), Pyodide (MPL-2.0) and `browser_wasi_shim` (MIT or Apache-2.0); the page's
-  footer links to each licence.
+  its source), poppler's `pdftotext` and `pdfinfo` (GPL-2.0-only or GPL-3.0-only, with links
+  to its source and to how it was built), Pyodide (MPL-2.0) and `browser_wasi_shim` (MIT or
+  Apache-2.0); the page's footer links to each licence.
 - Questions and faults go to the project's
   [issues](https://github.com/BasileChretien/manuscript-guard/issues). A security problem
   goes privately, as [SECURITY.md](../SECURITY.md) says.

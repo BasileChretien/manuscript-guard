@@ -314,6 +314,7 @@ def test_a_timeout_says_zotero_is_busy_not_that_it_is_not_running(monkeypatch) -
     def slow(*_args, **_kwargs):
         raise urllib.error.URLError(TimeoutError("timed out"))
 
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", slow)
     with pytest.raises(ZoteroUnavailable) as caught:
         client.rpc("item.search", [""], timeout=1)
@@ -322,13 +323,18 @@ def test_a_timeout_says_zotero_is_busy_not_that_it_is_not_running(monkeypatch) -
 
 
 def test_a_refused_connection_asks_whether_zotero_is_running(monkeypatch) -> None:
-    def refused(*_args, **_kwargs):
+    asked: list[object] = []
+
+    def refused(target, *_args, **_kwargs):
+        asked.append(target)
         raise urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
 
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
     monkeypatch.setattr(client.urllib.request, "urlopen", refused)
     with pytest.raises(ZoteroUnavailable) as caught:
         client.rpc("item.search", [""], timeout=1)
     assert "Is Zotero running" in str(caught.value)
+    assert len(asked) == 1, "the refusal came from the fake, not from the switch"
 
 
 # ---------------------------------------------------------------- G7 with Zotero running
@@ -493,3 +499,65 @@ def test_a_group_is_read_as_the_pattern_reads_it() -> None:
         text = "".join(rng.choice(pieces) for _ in range(rng.randint(0, 24)))
         expected = [(m.span(), m.span("body")) for m in BRACKETED.finditer(text)]
         assert [(m.span(), m.span("body")) for m in bracketed(text)] == expected, repr(text)
+
+
+# ---------------------------------------------------------------- what a live build would meet
+
+
+def test_a_closed_zotero_is_said_as_not_running(monkeypatch) -> None:
+    from manuscript_guard.zotero import NOT_RUNNING, readiness
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: False)
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("a", True)]))
+    assert readiness(("a",)).state == NOT_RUNNING
+
+
+def test_a_zotero_without_better_bibtex_is_said_as_such(monkeypatch) -> None:
+    """Zotero answers its ping, and nothing answers Better BibTeX's address: Zotero gives a
+    404 there when the plugin is not installed."""
+    from manuscript_guard.zotero import NO_BETTER_BIBTEX, readiness
+
+    def not_found(*_args, **_kwargs):
+        raise urllib.error.HTTPError(client.ENDPOINT, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
+    monkeypatch.setattr(client.urllib.request, "urlopen", not_found)
+    assert readiness(("a",)).state == NO_BETTER_BIBTEX
+
+
+def test_a_better_bibtex_that_does_not_answer_in_time_is_said_as_busy(monkeypatch) -> None:
+    from manuscript_guard.zotero import BUSY, readiness
+
+    def slow(*_args, **_kwargs):
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.delenv(client.NO_ZOTERO, raising=False)  # the transport is a fake
+    monkeypatch.setattr(client.urllib.request, "urlopen", slow)
+    found = readiness(("a",))
+    assert found.state == BUSY
+    assert "did not answer" in found.detail
+
+
+def test_keys_the_library_does_not_hold_are_named(monkeypatch) -> None:
+    from manuscript_guard.zotero import KEYS_MISSING, readiness
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("a", True), csl("d", True), csl("d", False)]))
+    found = readiness(("a", "b", "d", "c"))
+    assert found.state == KEYS_MISSING
+    assert found.missing == ("b", "c")
+    assert found.ambiguous == ("d",)
+    assert not found.ready
+
+
+def test_a_library_holding_every_key_is_ready(monkeypatch) -> None:
+    from manuscript_guard.zotero import readiness
+
+    monkeypatch.setattr(client, "_ping", lambda timeout: True)
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("a", True), csl("b", False)]))
+    assert readiness(("b", "a", "a")).ready
+    # A Better BibTeX too old to know api.ready still answers.
+    monkeypatch.setattr(client, "rpc", FakeBBT([csl("a", True)], refuse={"api.ready"}))
+    assert readiness(("a",)).ready

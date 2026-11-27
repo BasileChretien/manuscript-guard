@@ -265,8 +265,8 @@ features:
     stage: analyse
     title: Run it all again
     says: >-
-      Runs the analysis again and checks that it gives the recorded results, value by
-      value.
+      Runs the analysis again, with the R the author names, and checks that it gives the
+      recorded results, value by value, saying which R or Python ran each script.
     status: works
     commands: [verify]
     tests: [tests/test_verify.py]
@@ -353,12 +353,16 @@ features:
     title: Word documents
     says: >-
       Builds the manuscript and its supplement as Word documents, with live Zotero
-      citations and the reference list under its heading, and on request every number
-      coloured by what backs it.
+      citations, says why when a citation could not be one, puts the reference list under
+      its heading, and on request every number coloured by what backs it.
     status: works
     commands: [build]
-    tests: [tests/test_build.py, tests/test_annotate.py, tests/test_zotero_word.py,
-            tests/test_references_heading.py]
+    tests:
+      - tests/test_build.py
+      - tests/test_annotate.py
+      - tests/test_zotero_word.py
+      - tests/test_references_heading.py
+      - tests/test_cli.py::test_an_offline_build_says_its_citations_are_text_and_check_notes_it
 
   - id: readable
     stage: write

@@ -106,8 +106,12 @@ server it asks for the page, so the rules reach whoever opens the link, and not 
 host. Opened, the page holds the link's rules to the form's boxes and, in the checker, to
 the profile's schema, as it holds a profile the reader chooses, and only then fills the
 form, keeping the date the rules were read on until a box of them is changed; a link it did
-not make, or one cut short, fills nothing and says why. Where the browser does not let the
-page copy, the link is shown to copy by hand. The page reads its address and never writes
+not make, or one cut short, fills nothing and says why above the form. A link pasted into
+the page already open is read the same way. On a page a journal's host built, the rules a
+link carries take the place of a journal its `?journal=` chose, and the page says so. The
+button makes a link only of rules the checker takes, and says why where it does not, so
+that no link is sent that every editor would find refused. Where the browser does not let
+the page copy, the link is shown to copy by hand. The page reads its address and never writes
 it, and keeps nothing: the link is the reader's to keep and to send.
 
 A LaTeX project comes as the archive Overleaf downloads (`.zip`) or arXiv gives a paper's

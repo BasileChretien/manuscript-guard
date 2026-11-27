@@ -78,7 +78,9 @@ export async function unpacked(text) {
 // `offered` names ({limits, statements, blindings}). What the profile then makes of them is
 // the checker's to say (`web.journal_files`).
 export function shaped(form, offered) {
-  const text = (value) => typeof value === "string" && value.length <= MOST_CHARS;
+  // A line a box holds as it is given: a text box drops a line break (round 1 of #847).
+  const text = (value) => typeof value === "string" && value.length <= MOST_CHARS
+    && !/[\r\n]/.test(value);
   const lines = (value) => Array.isArray(value) && value.length <= MOST_LINES && value.every(text);
   const mapping = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const quoted = (value) => `"${String(value).slice(0, 40)}"`;
@@ -93,7 +95,8 @@ export function shaped(form, offered) {
     if (!mapping(form.limits)) return "its limits are not the form's";
     const other = Object.keys(form.limits).find((key) => !offered.limits.includes(key));
     if (other !== undefined) return `it gives a limit on ${quoted(other)}, which the form has no box for`;
-    if (!Object.values(form.limits).every((value) => typeof value === "string" && value.length <= 7)) {
+    // Digits alone, as a number box holds them; " 4" it would hold as nothing.
+    if (!Object.values(form.limits).every((value) => typeof value === "string" && /^[0-9]{0,7}$/.test(value))) {
       return "a limit it gives is not a number the form can hold";
     }
   }

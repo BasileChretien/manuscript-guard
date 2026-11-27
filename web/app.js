@@ -211,7 +211,7 @@ const booted = Promise.all([ask("boot"), hostLoaded]).then(([boot]) => {
     box.disabled = false;
   }
   window.mgReady = true;
-  if (linkedRules !== null) rulesOpened(linkedRules);
+  if (rulesInAddress() !== null) rulesOpened(rulesInAddress());
 }).catch((error) => {
   loaded();
   say(`The checker could not start: ${error.message}`);
@@ -572,8 +572,13 @@ $("journal").addEventListener("change", journalPicked);
 
 // A link with the journal's rules (web/rules.js; Basile, 2026-11-26): the form's values
 // after "#rules=", the authors' names never among them. The page reads its own address and
-// never writes it, and keeps nothing: the link is the reader's to keep and send.
-const linkedRules = location.hash.startsWith(RULES) ? location.hash.slice(RULES.length) : null;
+// never writes it, and keeps nothing: the link is the reader's to keep and send. Read once
+// the checker is ready, and again where a link is pasted into the page already open, which
+// the browser does not load anew (round 1 of #847).
+const rulesInAddress = () => (location.hash.startsWith(RULES) ? location.hash.slice(RULES.length) : null);
+window.addEventListener("hashchange", () => {
+  if (window.mgReady && rulesInAddress() !== null) rulesOpened(rulesInAddress());
+});
 // The date the instructions were read on, as the link gave it.
 const linked = { date: "" };
 const rulesSaid = (text) => {
@@ -593,8 +598,17 @@ $("journalbox").addEventListener("input", (event) => {
 });
 $("copyrules").addEventListener("click", async () => {
   const form = journalForm();
+  $("ruleslink").hidden = true;
   if (!form) {
     rulesSaid("Type the journal's rules first: the link carries them.");
+    return;
+  }
+  // Only rules the checker takes, so that no link is sent that every editor finds refused
+  // (round 1 of #847).
+  try {
+    await ask("rules", form);
+  } catch (error) {
+    rulesSaid(`No link was made: ${error.message.replace(/^the journal's form: /, "")}.`);
     return;
   }
   const link = `${location.origin}${location.pathname}${RULES}${await packed(form)}`;
@@ -611,13 +625,18 @@ $("copyrules").addEventListener("click", async () => {
 });
 // The rules a link gave, once the checker is ready: held to the form's shape, then by the
 // checker to the profile's schema (`web.journal_files`), as a profile the reader chooses is,
-// and only then put in the form, or nothing put in it and why said.
+// and only then put in the form, in place of a journal the page offers that ?journal= chose;
+// or nothing put in it, and why said above the form, where it is seen whether the form is
+// open or not (round 1 of #847).
 async function rulesOpened(text) {
+  window.mgRulesRead = false;
+  $("journalnote").hidden = true;
   try {
     const form = await unpacked(text);
     const wrong = shaped(form, offeredBoxes());
     if (wrong) throw new Error(wrong);
     await ask("rules", form);
+    const replaced = offered();
     if (journals.size) {
       $("journal").value = "other";
       journalPicked();
@@ -637,9 +656,12 @@ async function rulesOpened(text) {
     linked.date = form.date;
     $("journalbox").open = true;
     rulesSaid(`These rules came with the link, read from the journal's instructions on `
-      + `${form.date}. Check them against the instructions before relying on them.`);
+      + `${form.date}${replaced ? `, in place of ${replaced.name}'s, which the link also named` : ""}. `
+      + "Check them against the instructions before relying on them.");
   } catch (error) {
-    rulesSaid(`The link's rules were not put in the form: ${error.message.replace(/^the journal's form: /, "")}.`);
+    $("journalnote").textContent = "The link's rules were not put in the form: "
+      + `${error.message.replace(/^the journal's form: /, "")}.`;
+    $("journalnote").hidden = false;
   }
   window.mgRulesRead = true;  // what web/test/browser.mjs waits for
 }

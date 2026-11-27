@@ -802,16 +802,19 @@ def test_a_link_s_rules_are_held_to_the_form_s_shape() -> None:
              {**good, "sections": ["x"] * 101}, {**good, "limits": {"pages": "10"}},
              {**good, "limits": {"tables": 4}}, {**good, "statements": ["secrets"]},
              {**good, "headings": {"ethics": "Ethics"}}, {**good, "blinding": "secret"},
-             {**good, "name": "x" * 2001}]
+             {**good, "name": "x" * 2001},
+             # What a box would hold otherwise than given (round 1 of #847).
+             {**good, "name": "A\nB"}, {**good, "limits": {"tables": " 4"}},
+             {**good, "sections": ["Intro\nMethods"]}]
     said = [one["wrong"] for one in _rules([{"shape": case, "offered": offered}
                                             for case in cases])]  # fmt: skip
     assert said[0] == ""
     assert said[1] == said[2] == "it holds no journal's rules"
     assert said[3] == 'it holds "authors", which the form has no box for'
-    assert said[4] == said[12] == "its name is not a text the form can hold"
-    assert said[5] == said[6] == "its sections are not lines the form can hold"
+    assert said[4] == said[12] == said[13] == "its name is not a text the form can hold"
+    assert said[5] == said[6] == said[15] == "its sections are not lines the form can hold"
     assert said[7] == 'it gives a limit on "pages", which the form has no box for'
-    assert said[8] == "a limit it gives is not a number the form can hold"
+    assert said[8] == said[14] == "a limit it gives is not a number the form can hold"
     assert said[9] == 'it asks for a statement "secrets", which the form has no box for'
     assert said[10] == 'it gives a heading for "ethics", a statement it does not ask for'
     assert said[11] == 'its review is "secret", which the form does not offer'

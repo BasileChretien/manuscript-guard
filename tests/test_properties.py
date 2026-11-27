@@ -158,6 +158,7 @@ from generated import (
     latex_trees,
     latex_words,
     latex_writing,
+    legend_displays,
     lines,
     linked_lines,
     margin_tables,
@@ -3874,6 +3875,68 @@ def test_a_pdf_s_lines_are_rebuilt_into_the_paragraphs_typeset(drawn: dict[str, 
     expected, spans = _as_markdown(drawn["blocks"])
     assert _g14_said(text, displays) == _g14_said(expected, spans), (text, expected)
     assert not [f for f in writing if f.code == "vague-attribution"], writing
+
+
+def _a_legend_without(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
+    from manuscript_guard.auditing import displays
+
+    assert old in displays._LEGEND.pattern
+    patch.setattr(displays, "_LEGEND", re.compile(displays._LEGEND.pattern.replace(old, new)))
+
+
+def _a_bmc_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|[^\S\n]+(?=[A-Z])", "")
+
+
+def _a_picture_s_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:!?\[)?", "")
+
+
+def _a_fig_legend_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"|figs?\.?)", ")")
+
+
+def _a_sentence_opening_with_a_pointer_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?=[A-Z])", "")
+
+
+def _a_link_opening_a_sentence_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #837: a link's end, whatever follows it, read as a legend's.
+    _a_legend_without(patch, r"(?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?", r".*)?")
+
+
+def _a_range_s_dash_sets_off_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", "")
+
+
+def _a_range_of_links_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837: only a number after the dash read as a range's.
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", r"(?![^\S\n]*\d)")
+
+
+def _a_file_s_displays_are_not_held_against_its_legends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import displays
+
+    patch.setattr(displays, "_held", lambda text: {"table": 0, "figure": 0})
+
+
+def _a_kind_holding_more_is_left_uncounted(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837's guard: a kind its file holds more of than its legends number is not
+    # held to anything.
+    from manuscript_guard.auditing import displays
+
+    counted = displays._counted
+
+    def broken(kind, legends, cited, path, held=0):
+        found, notes, checked = counted(kind, legends, cited, path, held)
+        return ([], notes, False) if checked and held > len(legends) else (found, notes, checked)
+
+    patch.setattr(displays, "_counted", broken)
+
+
+def _a_range_from_a_panel_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?",
+                      "[A-Za-z]?")
 
 
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
@@ -12043,6 +12106,38 @@ def test_a_ref_prints_the_number_its_display_has_or_is_said(
     findings = said["report"]["findings"]
     found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
     assert found == planted, (files, findings)
+
+
+@holds(100, legend_displays())
+def test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper written outside manuscript-guard, its tables and figures told by their legends
+    in every form a paper sets one, is held as G2 holds a project (`auditing.displays`): the
+    first citation out of order, the display cited nowhere and the pointer past the last
+    legend are said, at their lines, for each kind, and nothing else. Each kind is counted, and
+    no note says otherwise."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert said["notes"] == [] and said["counted"] == 2, (text, said)
+
+
+@holds(100, legend_displays(unread=True))
+def test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest(
+    drawn: tuple[str, set[tuple[str, int]]],
+) -> None:
+    """A paper whose file holds a table and a picture its legends do not number may hold a
+    legend the check does not read, and a pointer past its legends may be to one of them: it
+    is said not checked, in one note for each kind, and the kind is held to the rest, the
+    order of its first citations and each one cited, as before (the fix-only round on
+    f0bd603 of #837)."""
+    text, planted = drawn
+    said = READINGS["audit displays"]()(text)
+    assert {(code, line) for code, line, _message in said["findings"]} == planted, (text, said)
+    assert [("past its table legends" in note, "past its figure legends" in note)
+            for note in said["notes"]] == [(True, False), (False, True)], (text, said)
+    assert said["counted"] == 2, (text, said)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -26605,6 +26700,46 @@ def _a_registration_number_s_line_counted_in_the_masked_text(patch: pytest.Monke
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "an audited paper's legend set as BMC sets it is read as a citation": (
+        _a_bmc_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's picture's legend is read as a citation": (
+        _a_picture_s_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's legend opened by Fig. is read as a citation": (
+        _a_fig_legend_is_a_citation,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's sentence opening with a pointer is read as a legend": (
+        _a_sentence_opening_with_a_pointer_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's cross-reference link opening a sentence is read as a legend": (
+        _a_link_opening_a_sentence_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range opening a sentence is read as a legend": (
+        _a_range_s_dash_sets_off_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range of two links opening a sentence is read as a legend": (
+        _a_range_of_links_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range from a panel opening a sentence is read as a legend": (
+        _a_range_from_a_panel_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's tables and pictures are not held against its legends": (
+        _a_file_s_displays_are_not_held_against_its_legends,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
+    "an audited paper's kind its file holds more of than its legends is left uncounted": (
+        _a_kind_holding_more_is_left_uncounted,
+        test_a_paper_holding_displays_its_legends_do_not_number_is_held_to_the_rest,
+    ),
     "registration numbers are read in the reference list too": (
         _registration_numbers_read_in_the_reference_list,
         test_the_audit_takes_the_registration_numbers_the_text_names_and_no_other,

@@ -30980,6 +30980,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     holds one of the short form's letters: "low rank role (LR group; Figure 1)" gives "low
     rank". Pinned by
     `tests/test_definition_shapes.py::test_a_pointer_s_long_form_drops_its_last_words_while_the_rest_spells_it`.
+  - The word before a pointer's semicolon must hold a letter, so a numbered form before a
+    pointer defines nothing: "the Electronic Supplementary Material (ESM 1; Table S2)" leaves
+    ESM undefined there, as main does. Reading it would read "(OR 3; Table 2)" as a
+    definition again, a value taken for its word. Accepted.
   - A colon pair is read past its commas only where it has one short form and the reading
     cut at the first comma spells nothing, and never into the next pair of a list a comma
     divides, so "CM: Cameroon, AZ: Azerbaijan" defines nothing; a long form with a stop in
@@ -30994,10 +30998,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     nothing; a longer one is text. Pinned by
     `tests/test_g14_places.py::test_a_short_paragraph_wholly_in_bold_owes_no_definition_and_is_a_use`.
   - A citation's author owes no definition wherever it stands, so a short form used only as
-    one, "(QXW, 2016)", is asked about nowhere, and an author before a year in a bracket on
-    one line with another year before a comma, a semicolon or the close is read as one. A
-    reference typed in a table's cell, "Consortium. (2020). *Levels.*", is not. Pinned by
+    one, "(QXW, 2016)", is asked about nowhere. An author before a year in a bracket on one
+    line is read as one where the bracket is a list of citations: the author's own part ends
+    at its year, its markup passed, and every other part is an author and a year, a part
+    ending in "et al." taken with the year after its comma and a year's further letter with
+    its year, "(Kaye et al., 2009, NIH 2016a)", "(Kaye 2009a,b, NIH 2016)", "(Kaye 2009,
+    [NIH 2016a]{.mark})". A reference typed in a table's cell, "Consortium. (2020).
+    *Levels.*", is not. Pinned by
     `tests/test_g14_places.py::test_a_citation_s_author_owes_no_definition_and_is_a_use`.
+  - A year alone after a citation's year is a part of its own, so "(NIH 2016, 2017; Kaye
+    2009)" is no list of citations and NIH there still owes its definition: the year cannot
+    be told from the second year of "(IQR 1850, 2010)", which is no citation. Accepted.
+  - The words before a part's year are not asked to be a name, so "(UKB 2006, Finland
+    2012)" is a list and UKB there owes nothing. And the typed-citation reading
+    (`typed_citations.typed_citation`, which is main's and which `_authors_a_citation`, this
+    pull request's, asks first) takes a capitalised word with a year and the close after it
+    for a citation, so "(SD 1950)" leaves SD owing nothing at that use. Both shapes are rare
+    in a paper's prose. Accepted.
   - Only the statistical list's forms owe no later definition, and only one a table's or a
     figure's own text gives; one the running text gives later, and one listed in paper.yaml,
     on the shipped list or among G2's names, is used before it. A PDF whose lines are not

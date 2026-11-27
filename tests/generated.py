@@ -1705,9 +1705,9 @@ def undue_places(
     body = ["# Introduction", f"The {_DEFINED_LONG} ({defined}) was read. The {defined} rose.",
             "# Methods", f"**The {both['bold heading']} study**",
             f"Keyword-based retrieval used the {keyword} index.",
-            f"Rules held (Kaye et al. 2009, Research Councils. 2011, "
-            f"{only['citation author']} 2016a, {also['citation author']} 2016b, "
-            "[Holdren 2012]{.mark}).",
+            f"Rules held (Kaye et al. 2009, Stuart et al., 2018, Research Councils. 2011, "
+            f"Lowe 2010a,b, [{only['citation author']} 2016a]{{.mark}}, "
+            f"*{also['citation author']} 2016b*, [Holdren 2012]{{.mark}}).",
             *(owed.format(short) for owed, short in zip(UNDUE_OWED, UNDUE_OWED_FORMS,
                                                        strict=True)),  # fmt: skip
             "# Results",
@@ -1869,10 +1869,14 @@ def statistics_used(draw: st.DrawFn) -> tuple[str, list[str], tuple[str, str, st
 
 
 #: A display each pointer kind names after a bracket's semicolon, and the long forms of
-#: three words whose first two give the short form's letters (decision D10, docx-psych-C4).
-POINTER_KINDS = ("Figure 1, Panel B", "see Table 2", "Fig. 3", "Box 1", "Supplementary Table S2")
+#: three words whose first two give the short form's letters (decision D10, docx-psych-C4),
+#: the last holding a letter of the short form in one, "gap" for WA, and not needed for it
+#: (round 2 of #838).
+POINTER_KINDS = ("Figure 1, Panel B", "see Table 2", "Fig. 3", "Box 1", "Supplementary Table S2",
+                 "Panel 2")  # fmt: skip
 POINTER_FORMS = (("low rank position", "LR"), ("top tier place", "TT"), ("mean grade score", "MG"),
-                 ("new band level", "NB"), ("pale zone area", "PZ"))  # fmt: skip
+                 ("new band level", "NB"), ("pale zone area", "PZ"),
+                 ("wide arc gap", "WA"))  # fmt: skip
 
 
 @st.composite

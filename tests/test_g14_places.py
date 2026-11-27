@@ -517,3 +517,10 @@ def test_a_citation_s_author_owes_no_definition_and_is_a_use(tmp_path: Path) -> 
             "NIH 2016a, NIH 2016b, [Holdren 2012]{.mark}).\n\n# Methods\n\nThe National "
             "Institutes of Health (NIH) paid. The NIH rose.\n")
     assert checked(tmp_path, {"main.md": text}) == []
+    # Round 2 of #838: "et al." with the year after its comma, a year's further letter, and
+    # the author's own part highlighted or in italics, are a list of citations all the same.
+    for bracket in ("(Kaye et al., 2009, NIH 2016a)", "(Kaye 2009a,b, NIH 2016)",
+                    "(Kaye 2009, [NIH 2016a]{.mark})", "(Kaye 2009, *NIH 2016a*)"):
+        text = (f"# Introduction\n\nRules were set {bracket}.\n\n# Methods\n\nThe National "
+                "Institutes of Health (NIH) paid. The NIH rose.\n")
+        assert checked(tmp_path, {"main.md": text}) == [], bracket

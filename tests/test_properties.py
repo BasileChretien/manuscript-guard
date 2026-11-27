@@ -3509,14 +3509,27 @@ def test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need(
     drawn: tuple[str, list[str]],
 ) -> None:
     """A bracket of a short form and its word before a semicolon, after which it points to a
-    display of each kind, defines the short form, its long form the words before it up to
-    the last that holds a letter of it: "a low rank position (LR group; Figure 1, Panel B)"
-    and the paper's later "Low rank (LR)" give one meaning, LR defined again (decision D10,
-    the author, 2026-11-27)."""
+    display of each kind, defines the short form, its long form the words before it less
+    their last words while the rest still spells it, two kept at the least (`_trimmed`): "a
+    low rank position (LR group; Figure 1, Panel B)" and the paper's later "Low rank (LR)"
+    give one meaning, LR defined again (decision D10, the author, 2026-11-27), and so do "a
+    wide arc gap (WA group; Panel 2)" and "Wide arc (WA)", though "gap" holds an A."""
     text, expected = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
     assert sorted(f.message.split(";")[0] for f in report.findings) == expected, text
+
+
+def _a_pointer_s_long_form_runs_to_its_last_word_holding_a_letter(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    def to_the_last_letter(short: str, long: str) -> str:
+        words, letters = long.split(), set(short.lower())
+        while len(words) > 2 and not set(words[-1].lower()) & letters:
+            words = words[:-1]
+        return " ".join(words)
+
+    patch.setattr(language_gate, "_trimmed", to_the_last_letter)
 
 
 def _a_pointer_after_a_semicolon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -3550,6 +3563,18 @@ def _a_citation_s_own_part_may_go_on_past_its_year(patch: pytest.MonkeyPatch) ->
 
 def _any_bracket_of_years_is_a_list_of_citations(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_cited_part", lambda part: True)
+
+
+def _a_year_after_et_al_s_comma_is_a_part_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_YEAR_PART", re.compile(r"(?!)"))
+
+
+def _a_year_s_further_letter_is_a_part_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_LETTER_PART", re.compile(r"(?!)"))
+
+
+def _markup_after_a_citation_s_year_ends_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_past_markup", lambda prose, at: at)
 
 
 def _a_highlighted_citation_ends_a_list_of_citations(patch: pytest.MonkeyPatch) -> None:
@@ -30495,6 +30520,10 @@ BROKEN = {
         _a_pointer_after_a_semicolon_defines_nothing,
         test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
     ),
+    "a pointer's long form runs to its last word holding a letter": (
+        _a_pointer_s_long_form_runs_to_its_last_word_holding_a_letter,
+        test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
+    ),
     "a pointer's long form runs to its bracket": (
         _a_pointer_s_long_form_runs_to_its_bracket,
         test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
@@ -30525,6 +30554,18 @@ BROKEN = {
     ),
     "a highlighted citation ends a list of citations": (
         _a_highlighted_citation_ends_a_list_of_citations,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a year after et al.'s comma is a part of its own": (
+        _a_year_after_et_al_s_comma_is_a_part_of_its_own,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a year's further letter is a part of its own": (
+        _a_year_s_further_letter_is_a_part_of_its_own,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "markup after a citation's year ends nothing": (
+        _markup_after_a_citation_s_year_ends_nothing,
         test_no_definition_is_asked_where_none_is_due,
     ),
     "a year after a word makes it a citation's author": (

@@ -1673,10 +1673,12 @@ _FEWEST_PAIRS = 3
 
 def _bracket_pairs(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, str]]:
     """Each definition of a bracket of pairs a semicolon divides, each item a long form then
-    its short form in capitals, "(strongly agree, SA; agree A; neutral, N; disagree, D)":
-    each item read as "long form (SHORT)" is, its long form the item's words before the short
-    form (Basile, 2026-11-27; docx-educ-A3, of which only the last item was read). Three items
-    at least, each of that shape, or none is read: "(OR, 1.2; HR, 0.8; RR, 1.1)" gives
+    its short form in capitals: each item is read as "long form (SHORT)" would be, its long
+    form the item's words before the short form (Basile, 2026-11-27; docx-educ-A3, of which
+    only the last item was read). So "(strongly agree, SA; neutral answer, NA; strongly
+    disagree, SDA)" defines all three, and "(strongly agree, SA; agree A; neutral, N;
+    disagree, D)" defines SA alone, a single capital being no short form. Three items at
+    least, each of that shape, or none is read: "(OR, 1.2; HR, 0.8; RR, 1.1)" gives
     statistics."""
     parts = bracket.group(1).split(";")
     if len(parts) < _FEWEST_PAIRS:
@@ -2727,8 +2729,9 @@ def _authors_a_citation(prose: str, end: int) -> bool:
     """Whether the word ending at `end` is the author of a citation typed as text, its year
     after it: "(EOSC-HLEG, 2016)", which the typed-citation reading reads (`typed_citation`),
     and "(Kaye et al. 2009, NIH 2016a, NIH 2016b)", author-year citations a comma divides,
-    which it does not: a bracket on one line holding two years or more, each before a comma,
-    a semicolon or the close, the author's among them (Basile, 2026-11-27; docx-pharm-epi-A1).
+    which it does not: a bracket on one line whose author's part ends at its year
+    (`_ends_its_part`) and whose every other part is an author and a year (`_citation_parts`,
+    `_cited_part`) (Basile, 2026-11-27; docx-pharm-epi-A1; rounds 1 and 2 of #838).
     Such a use owes no definition, as a keywords line's does, and is a use (`_undue`)."""
     from manuscript_guard.gates.typed_citations import typed_citation
 
@@ -2745,17 +2748,53 @@ def _authors_a_citation(prose: str, end: int) -> bool:
         return False
     # A list of citations: every other part of the bracket an author and a year, so "(IQR
     # 1850, 2010)" and "(ICD-10 2019, DSM-5 2013)" are none (round 1 of #838).
-    parts = re.split(r"[,;]", prose[opened + 1 : closed])
-    own = len(re.findall(r"[,;]", prose[opened + 1 : year.start("year")]))
-    return len(parts) >= 2 and all(_cited_part(part) for at, part in enumerate(parts)
-                                   if at != own)  # fmt: skip
+    parts = _citation_parts(prose[opened + 1 : closed])
+    own = year.start("year") - opened - 1
+    return len(parts) >= 2 and all(_cited_part(part) for start, part in parts
+                                   if not start <= own <= start + len(part))  # fmt: skip
+
+
+#: A part of a bracket that is the year of the author's part before it, a comma between:
+#: "Kaye et al., 2009" (round 2 of #838).
+_YEAR_PART = re.compile(r"\s*(?:1[89]|20)\d\d[a-z]?\s*")
+#: A part that is a further letter of the year before it: "Kaye 2009a,b" (round 2 of #838).
+_LETTER_PART = re.compile(r"\s*[a-z]\s*")
+#: A year with its letter at the end of a part: "2009a".
+_LETTERED_YEAR_END = re.compile(r"(?:1[89]|20)\d\d[a-z]\s*$")
+
+
+def _citation_parts(inside: str) -> list[tuple[int, str]]:
+    """The parts of a bracket a comma or a semicolon divides, each with where it starts in
+    `inside`, a citation's own pieces kept together: a part ending in "et al." with the year
+    after it, "Kaye et al., 2009", and a letter after a year with its letter, "Kaye 2009a,b"
+    (round 2 of #838). A year alone after a citation's year, "(NIH 2016, 2017; Kaye 2009)",
+    stays a part of its own: it cannot be told from "(IQR 1850, 2010)"."""
+    parts: list[tuple[int, str]] = []
+    start = 0
+    for piece in re.split(r"([,;])", inside):
+        if piece in (",", ";"):
+            start += 1
+            continue
+        if parts and _continues(parts[-1][1], piece):
+            parts[-1] = (parts[-1][0], f"{parts[-1][1]},{piece}")
+        else:
+            parts.append((start, piece))
+        start += len(piece)
+    return parts
+
+
+def _continues(before: str, piece: str) -> bool:
+    """Whether `piece` goes on the citation of the part `before` it (`_citation_parts`)."""
+    if _YEAR_PART.fullmatch(piece):
+        return before.rstrip().endswith("et al.")
+    return bool(_LETTER_PART.fullmatch(piece)) and _LETTERED_YEAR_END.search(before) is not None
 
 
 #: A part of a list of citations typed as text: an author, its words of letters, "et al." and
 #: "&" among them, then a year: "Kaye et al. 2009", "NIH 2016a".
 _CITED_PART = re.compile(
     r"\s*[^\W\d_](?:[^\W\d_]|['’.&-])*(?:\s+(?:[^\W\d_](?:[^\W\d_]|['’.&-])*|&))*,?\s+"
-    r"(?:1[89]|20)\d\d[a-z]?\s*"
+    r"(?:1[89]|20)\d\d[a-z]?(?:\s*,\s*[a-z])*\s*"
 )
 
 
@@ -2772,8 +2811,20 @@ def _cited_part(part: str) -> bool:
 
 def _ends_its_part(prose: str, at: int) -> bool:
     """Whether the year ending at `at` ends its part of the bracket: a comma, a semicolon or
-    the close follows it."""
+    the close follows it, once the markup closing the part is passed (`_past_markup`)."""
+    at = _past_markup(prose, at)
     return prose[at : at + 1] in (",", ";", ")")
+
+
+#: The markup `_PART_MARKUP` sets aside, any run of it, and the spaces G14's text leaves where
+#: a span's attributes were.
+_MARKUP_RUN = re.compile(rf"(?:{_PART_MARKUP.pattern}|[ \t])*")
+
+
+def _past_markup(prose: str, at: int) -> int:
+    """Where the markup that closes a citation's part after its year ends: "[NIH 2016a]{.mark}"
+    and "*NIH 2016a*" are the author's own part, highlighted or in italics (round 2 of #838)."""
+    return _MARKUP_RUN.match(prose, at).end()
 
 
 def _apart(file: _File, word: int, offset: int) -> bool:

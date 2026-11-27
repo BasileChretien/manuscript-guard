@@ -24,6 +24,7 @@ import yaml
 from manuscript_guard.setup.answers import (
     ANSWERS_FILE,
     LATER,
+    MISSING,
     answer,
     folder_parts,
     journal_slug,
@@ -262,22 +263,37 @@ class _Plan:
     header: tuple[Path, str] | None  # the manuscript, with the title answered in its header
 
 
-def _manuscript_text(path: Path) -> str:
-    """The manuscript's text with its line endings as they are, or `_Refused` with why."""
+@dataclass(frozen=True)
+class _Keep:
+    """The manuscript's header is not changed, and the title not written: why."""
+
+    reason: str
+
+
+_OWN_TITLE = _Keep("the manuscript's header holds a title of its own; change the two "
+                   "together by hand")  # fmt: skip
+_BOM = chr(0xFEFF)
+
+
+def _manuscript_text(path: Path) -> str | None:
+    """The manuscript's text with its line endings as they are, or None where it is not
+    UTF-8, whose header setup then does not read."""
     try:
         return path.read_bytes().decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise _Refused(f"{path.name} is not UTF-8, so its header cannot be given the title; "
-                       "save it as UTF-8 first") from exc  # fmt: skip
+    except UnicodeDecodeError:
+        return None
 
 
-def _markdown_header(text: str, title: str) -> str | None | bool:
+def _markdown_header(text: str, title: str) -> str | None | _Keep:
     """`text`, a main.md, with `title` on the line of its header that holds `init`'s
-    placeholder; None where the header holds no title (or there is none), and False where it
-    holds a title of its own, or one setup cannot type there. Each line keeps its ending."""
+    placeholder, or that line taken out where the header cannot hold the title, as `init`
+    then writes none (round 3 of #844); None where the header holds no title, or there is
+    none; `_Keep` where it holds a title of its own. Each line keeps its ending, and a
+    byte-order mark is kept."""
     from manuscript_guard.scaffold import UNTITLED, _header
 
-    lines = text.splitlines(keepends=True)
+    mark = _BOM if text.startswith(_BOM) else ""
+    lines = text[len(mark):].splitlines(keepends=True)
     if not lines or lines[0].rstrip("\r\n") != "---":
         return None
     close = next((n for n, line in enumerate(lines[1:], 1)
@@ -287,63 +303,72 @@ def _markdown_header(text: str, title: str) -> str | None | bool:
     try:
         head = yaml.safe_load("".join(lines[1:close]))
     except yaml.YAMLError:
-        return False
+        return _OWN_TITLE
     if not isinstance(head, dict) or "title" not in head:
         return None
     placeholder = _header(UNTITLED).splitlines()[1]
     held = [n for n in range(1, close) if lines[n].rstrip("\r\n") == placeholder]
+    if head["title"] != UNTITLED or len(held) != 1:
+        return _OWN_TITLE
     ours = _header(title).splitlines()
-    if head["title"] != UNTITLED or len(held) != 1 or len(ours) < 2:
-        return False
     line = lines[held[0]]
-    lines[held[0]] = ours[1] + line[len(line.rstrip("\r\n")):]
-    return "".join(lines)
+    if len(ours) >= 2:
+        lines[held[0]] = ours[1] + line[len(line.rstrip("\r\n")):]
+    elif close == 2:  # the header held the title alone: it goes, and the blank line after it
+        blank = 1 if len(lines) > 3 and not lines[3].strip() else 0
+        del lines[: 3 + blank]
+    else:
+        del lines[held[0]]
+    return mark + "".join(lines)
 
 
-def _latex_header(text: str, title: str) -> str | None | bool:
+def _latex_header(text: str, title: str) -> str | None | _Keep:
     """`text`, a main.tex, with `title` in the `title` command that holds `init`'s placeholder;
-    None where it has no such command, and False where it holds a title of its own."""
+    None where it has no such command, and `_Keep` where it holds a title of its own."""
     from manuscript_guard.build.latex_values import NotPrintable, escaped
     from manuscript_guard.scaffold import UNTITLED
 
     command = chr(92) + "title{"
     line = command + escaped(UNTITLED, "title") + "}"
     if text.count(line) != 1:
-        return None if command not in text else False
+        return None if command not in text else _OWN_TITLE
     try:
         return text.replace(line, command + escaped(title, "title") + "}", 1)
     except NotPrintable as exc:
         raise _Refused(f"the title cannot be printed in LaTeX: {exc}") from exc
 
 
-def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | bool:
+def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | _Keep:
     """The manuscript of a project under way with `title` in its header where the header holds
-    `init`'s placeholder, None where it holds no title to replace, and False where it holds a
-    title of its own, which setup does not write over."""
+    `init`'s placeholder; None where it holds no title to replace; `_Keep`, with why, where it
+    holds a title of its own or cannot be read, which setup does not write over."""
     paths = folder.setting("paths")
     named = paths.get("manuscript", "manuscript") if isinstance(paths, dict) else "manuscript"
     for path, edit in ((folder.root / named / "main.md", _markdown_header),
                        (folder.root / named / "main.tex", _latex_header)):  # fmt: skip
         if path.is_file():
-            made = edit(_manuscript_text(path), title)
+            text = _manuscript_text(path)
+            if text is None:
+                return _Keep(f"{path.name} is not UTF-8, so its header was not read; change "
+                             "the title in both by hand")  # fmt: skip
+            made = edit(text, title)
             return (path, made) if isinstance(made, str) else made
     return None
 
 
 def _title_kept(paper: _Paper, folder: Folder) -> tuple[Path, str] | None:
     """The manuscript's header with the title answered, or the title taken out of the edits
-    and kept where the header holds a title of its own."""
+    and kept, with why, where the header is not setup's to change."""
     edit = next((e for e in paper.edits if e[1] == "title"), None)
     if edit is None or not folder.is_project:
         return None
     header = _header_with(folder, edit[2])
-    if header is False:
+    if isinstance(header, _Keep):
         paper.edits.remove(edit)
-        paper.kept.append(Change("paper.yaml", f"title: {folder.setting('title')}", "the "
-                                 "manuscript's header holds a title of its own; change the two "
-                                 "together by hand"))  # fmt: skip
+        paper.kept.append(Change("paper.yaml", f"title: {folder.setting('title')}",
+                                 header.reason))  # fmt: skip
         return None
-    return header if isinstance(header, tuple) else None
+    return header
 
 
 def _writable(folder: Folder, paper: _Paper) -> None:
@@ -419,11 +444,14 @@ def _plan(folder: Folder, answers: dict) -> _Plan:
                               "to be filled from the journal's own instructions page"))
     # The line goes only on the answer, in a private repository whose paper.yaml is to say
     # that the copies are committed or says it already (round 2 of #844).
-    commit_sources = (
-        answer(answers, "repository.visibility") == "private"
-        and answer(answers, "repository.sources_in_git") is True
-        and (any(key == "literature.sources_in_git" for _k, key, _v, _w in paper.edits)
-             or (folder.setting("literature") or {}).get("sources_in_git") is True))
+    # In a private repository, the line follows paper.yaml where it says the copies are
+    # committed and the question was not asked, and otherwise the answer (rounds 2 and 3 of
+    # #844): never against an answer of no.
+    held = (folder.setting("literature") or {}).get("sources_in_git")
+    said = answer(answers, "repository.sources_in_git")
+    planned = any(key == "literature.sources_in_git" for _k, key, _v, _w in paper.edits)
+    commit_sources = answer(answers, "repository.visibility") == "private" and (
+        (said is True and (planned or held is True)) or (said is MISSING and held is True))
     _lines_, ignored = _gitignore(folder, answers, _ignored_now(folder),
                                   commit_sources=commit_sources)  # fmt: skip
     changes += ignored

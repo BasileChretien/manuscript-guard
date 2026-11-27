@@ -748,18 +748,6 @@ def test_init_s_header_with_a_key_added_and_crlf_has_only_its_title_line_changed
     assert main_md.read_bytes() == "\r\n".join(want).encode("utf-8")
 
 
-def test_a_manuscript_not_in_utf8_is_refused_with_a_sentence(tmp_path: Path) -> None:
-    root = no_git(tmp_path / "paper")
-    assert main(["init", str(root)]) == 0
-    main_md = root / "manuscript" / "main.md"
-    main_md.write_text('---\ntitle: "Untitled manuscript"\n---\n', encoding="utf-16")
-    answered(root, {**ANSWERS, "title": "X"})
-    before = files(root)
-    done = apply_answers(root)
-    assert not done.ok and "UTF-8" in done.refused
-    assert files(root) == before
-
-
 def test_the_sources_line_stays_where_the_answer_keeps_them_out(tmp_path: Path) -> None:
     """Round 2 of #844: paper.yaml saying they are committed took the line out against an
     answer of no."""
@@ -768,3 +756,62 @@ def test_the_sources_line_stays_where_the_answer_keeps_them_out(tmp_path: Path) 
                                               "github_actions": False}})  # fmt: skip
     assert apply_answers(root).ok
     assert "literature/sources/*" in (root / ".gitignore").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------- round 3 of #844
+
+
+def test_a_title_the_header_cannot_hold_goes_into_paper_yaml_and_the_header_loses_it(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #844: a title with both kinds of quotation mark, which no YAML header holds
+    as typed, was written nowhere; `init` writes no header for such a title."""
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    title = '"Wait and see": patients' + "'" + " views"
+    answered(root, {**ANSWERS, "title": title})
+    done = apply_answers(root)
+    assert done.ok, done.refused
+    assert settings(root)["title"] == title
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "Untitled manuscript" not in text and not text.startswith("---")
+
+
+def test_paper_yaml_s_committed_sources_take_the_line_out_where_the_question_is_not_asked(
+    tmp_path: Path,
+) -> None:
+    """Round 3 of #844: where paper.yaml says the copies are committed, the question is not
+    asked, and its missing answer kept the line against paper.yaml."""
+    root = _under_way(no_git(tmp_path / "paper"), "literature:\n  sources_in_git: true\n")
+    answered(root, {**ANSWERS, "repository": {"visibility": "private",
+                                              "github_actions": False}})  # fmt: skip
+    assert "repository.sources_in_git" not in [q.id for q in asked(root).questions]
+    assert apply_answers(root).ok
+    assert "literature/sources/*" not in (root / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_a_header_after_a_byte_order_mark_is_read_and_the_mark_kept(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    main_md = root / "manuscript" / "main.md"
+    main_md.write_bytes(b'\xef\xbb\xbf---\ntitle: "Untitled manuscript"\n---\n\n# Introduction\n')
+    answered(root, {**ANSWERS, "title": "X"})
+    assert apply_answers(root).ok
+    assert main_md.read_bytes() == b'\xef\xbb\xbf---\ntitle: "X"\n---\n\n# Introduction\n'
+
+
+def test_a_manuscript_not_in_utf8_keeps_the_placeholder_and_says_why(tmp_path: Path) -> None:
+    """Round 3 of #844: a manuscript setup would not change no longer refuses the whole of it;
+    its header is not read, and paper.yaml keeps its title, said."""
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root), "--latex"]) == 0
+    main_tex = root / "manuscript" / "main.tex"
+    main_tex.write_text(chr(92) + "documentclass{article}" + chr(92) + "title{Mine}" + "\n",
+                        encoding="utf-16")  # fmt: skip
+    answered(root, {**_no_start(ANSWERS), "title": "X"})
+    before = main_tex.read_bytes()
+    done = apply_answers(root)
+    assert done.ok, done.refused
+    assert settings(root)["title"] == "Untitled manuscript"
+    assert any("UTF-8" in change.why for change in done.kept)
+    assert main_tex.read_bytes() == before

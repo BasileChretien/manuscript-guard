@@ -10706,6 +10706,19 @@ other than the one run.
   - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.
+- **2026-11-27, the default model of `claude` on the machine (the report names none),
+  Claude Code 2.1.310, the plugin of #844 at 031cea1, its tree clean.** One case,
+  route-project-setup, once, with the plugin only (`--ablation none`): $0.32 at API prices,
+  run under a subscription (Basile's choice, once its description changed).
+  - Routing: the skill fired.
+  - The judged outcome failed, three votes of three. The case grants no shell and no way to
+    write a file, so the reply said it could not run `setup questions` or write the answers;
+    it listed every decision it would put, the study's design asked by a description and
+    three designs among them, chose none, and described the loop. The criterion asked for
+    the questions put, or the command named, and the reply named the tool's questions
+    without the command. The criterion now passes a reply that says it cannot run commands
+    and lists the decisions as the questions it will put, deciding none; it was not run
+    again.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
 finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of
@@ -10720,8 +10733,8 @@ refused. What the project is made of, its bindings and its emitter calls, still 
 toolkit in use to either arm, as any project made with it would, so the difference between
 the arms is what a skill adds to a model reading such a project. Four routing cases still
 start empty, and so do the near misses and the requests no skill is for:
-- project-setup starts a project, and may give the `init` command where it has no shell to
-  run it;
+- project-setup starts a project in conversation, and where it has no shell says so and
+  lists the questions it will put (since #844);
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt
   gives none;
 - analysis-plan is about the plan before any analysis code, and the example has both.

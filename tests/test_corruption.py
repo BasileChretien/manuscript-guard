@@ -17226,6 +17226,9 @@ _READS_LATEX = (
     "check_ai_use",
     # The declarations held to authors.yaml: read in the same two views.
     "check_disclosures",
+    # The statements every paper makes, read in G4's `main_text`; a LaTeX manuscript's
+    # headings are not held to having something under them (DESIGN.md, Known gaps).
+    "check_statements",
     # It reads the Results and the Discussion in each document's printed view, as
     # `check_reported` does (item 10 of the borrowed checks).
     "check_interpretation",

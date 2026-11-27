@@ -642,9 +642,10 @@ def _block(value: Any, indent: str, end: str) -> list[str]:
 
 
 def edit_block(text: str, key: str, new: list) -> Edited:
-    """`text`, a `paper.yaml`, with the top-level `key` it does not hold added at the end as a
-    block, one entry of `new` to a line (`registration`); `Refused` where the key is there or
-    the file would not read back as its settings with it added."""
+    """`text`, a `paper.yaml`, with the top-level `key` written as a block, one entry of `new`
+    to a line (`registration`): added at the end where the file does not hold the key, and in
+    place of `key: []` where it holds an empty list. `Refused` where the key holds anything
+    else, or the file would not read back as its settings with it written."""
     schema = load_schema("paper")["properties"][key]
     wrong = next(iter(Draft202012Validator(schema).iter_errors(new)), None)
     if wrong is not None:

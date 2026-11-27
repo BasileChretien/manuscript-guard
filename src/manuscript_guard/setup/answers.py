@@ -181,7 +181,7 @@ def _title_problem(title: Any, answers: dict, folder: Folder) -> str | None:
     if not title.strip():
         return "the title is empty; give the working title"
     try:
-        checked_title(title, latex=answer(answers, "start") == "latex")
+        checked_title(title, latex=_in_latex(answers, folder))
     except ContractError as exc:
         return str(exc).replace(", so nothing was made", "")
     return None
@@ -252,6 +252,20 @@ def problems(answers: dict, folder: Folder) -> dict[str, str]:
         if said:
             found[place] = said
     return found
+
+
+def _in_latex(answers: dict, folder: Folder) -> bool:
+    """The manuscript is LaTeX: it is to start so, or a project under way holds one, whose
+    title is held to what LaTeX prints as well (round 2 of #844)."""
+    if answer(answers, "start") == "latex":
+        return True
+    if not folder.is_project:
+        return False
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    paths = folder.setting("paths")
+    named = paths.get("manuscript", "manuscript") if isinstance(paths, dict) else "manuscript"
+    return manuscript_format(folder.root / named) == LATEX
 
 
 def _word(start: Any) -> bool:

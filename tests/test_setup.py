@@ -695,3 +695,76 @@ def test_a_journal_kept_starts_no_profile_and_no_step(tmp_path: Path) -> None:
     assert not (root / "profiles" / "journals" / "bmj-open.yaml").exists()
     assert not any(step.skill == "journal-profile" for step in done.after)
     assert settings(root)["target_journal"] == "kept-journal"
+
+
+# ---------------------------------------------------------------------------- round 2 of #844
+
+
+def _no_start(answers: dict) -> dict:
+    return {key: held for key, held in answers.items() if key != "start"}
+
+
+def test_a_title_latex_cannot_print_is_asked_again_in_a_latex_project_under_way(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #844: `start` is not asked of a project under way, so the title was not
+    held to LaTeX, and writing it into `title` raised."""
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root), "--latex"]) == 0
+    answered(root, {**_no_start(ANSWERS), "title": "Patients" + chr(0x2019) + " views"})
+    problem = next((q.problem for q in asked(root).questions if q.id == "title"), None)
+    assert problem
+    before = files(root)
+    done = apply_answers(root)
+    assert not done.ok and files(root) == before
+
+
+def test_a_header_with_no_title_keeps_its_text_and_the_title_goes_into_paper_yaml(
+    tmp_path: Path,
+) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    main_md = root / "manuscript" / "main.md"
+    main_md.write_bytes(b"---\nbibliography: refs.bib\n---\n\n# Introduction\n")
+    answered(root, {**ANSWERS, "title": "X"})
+    assert apply_answers(root).ok
+    assert settings(root)["title"] == "X"
+    assert main_md.read_bytes() == b"---\nbibliography: refs.bib\n---\n\n# Introduction\n"
+
+
+def test_init_s_header_with_a_key_added_and_crlf_has_only_its_title_line_changed(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #844: a header with one more key was taken for a title of the author's,
+    and a manuscript saved with CRLF was written back with LF throughout."""
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    main_md = root / "manuscript" / "main.md"
+    lines = ['---', 'title: "Untitled manuscript"', 'lang: en', '---', '', '# Introduction', '']
+    main_md.write_bytes("\r\n".join(lines).encode("utf-8"))
+    answered(root, {**ANSWERS, "title": "Statins and the liver"})
+    assert apply_answers(root).ok
+    want = [*lines[:1], 'title: "Statins and the liver"', *lines[2:]]
+    assert main_md.read_bytes() == "\r\n".join(want).encode("utf-8")
+
+
+def test_a_manuscript_not_in_utf8_is_refused_with_a_sentence(tmp_path: Path) -> None:
+    root = no_git(tmp_path / "paper")
+    assert main(["init", str(root)]) == 0
+    main_md = root / "manuscript" / "main.md"
+    main_md.write_text('---\ntitle: "Untitled manuscript"\n---\n', encoding="utf-16")
+    answered(root, {**ANSWERS, "title": "X"})
+    before = files(root)
+    done = apply_answers(root)
+    assert not done.ok and "UTF-8" in done.refused
+    assert files(root) == before
+
+
+def test_the_sources_line_stays_where_the_answer_keeps_them_out(tmp_path: Path) -> None:
+    """Round 2 of #844: paper.yaml saying they are committed took the line out against an
+    answer of no."""
+    root = _under_way(no_git(tmp_path / "paper"), "literature:\n  sources_in_git: true\n")
+    answered(root, {**ANSWERS, "repository": {"visibility": "private", "sources_in_git": False,
+                                              "github_actions": False}})  # fmt: skip
+    assert apply_answers(root).ok
+    assert "literature/sources/*" in (root / ".gitignore").read_text(encoding="utf-8")

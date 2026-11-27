@@ -262,28 +262,71 @@ class _Plan:
     header: tuple[Path, str] | None  # the manuscript, with the title answered in its header
 
 
-def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | bool:
-    """The manuscript of a project under way with `title` in its header where the header is
-    `init`'s own, None where it has no header to hold one, and False where it holds a title
-    of its own, which setup does not write over."""
-    from manuscript_guard.build.latex_values import escaped
+def _manuscript_text(path: Path) -> str:
+    """The manuscript's text with its line endings as they are, or `_Refused` with why."""
+    try:
+        return path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _Refused(f"{path.name} is not UTF-8, so its header cannot be given the title; "
+                       "save it as UTF-8 first") from exc  # fmt: skip
+
+
+def _markdown_header(text: str, title: str) -> str | None | bool:
+    """`text`, a main.md, with `title` on the line of its header that holds `init`'s
+    placeholder; None where the header holds no title (or there is none), and False where it
+    holds a title of its own, or one setup cannot type there. Each line keeps its ending."""
     from manuscript_guard.scaffold import UNTITLED, _header
 
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].rstrip("\r\n") != "---":
+        return None
+    close = next((n for n, line in enumerate(lines[1:], 1)
+                  if line.rstrip("\r\n") in ("---", "...")), None)  # fmt: skip
+    if close is None:
+        return None
+    try:
+        head = yaml.safe_load("".join(lines[1:close]))
+    except yaml.YAMLError:
+        return False
+    if not isinstance(head, dict) or "title" not in head:
+        return None
+    placeholder = _header(UNTITLED).splitlines()[1]
+    held = [n for n in range(1, close) if lines[n].rstrip("\r\n") == placeholder]
+    ours = _header(title).splitlines()
+    if head["title"] != UNTITLED or len(held) != 1 or len(ours) < 2:
+        return False
+    line = lines[held[0]]
+    lines[held[0]] = ours[1] + line[len(line.rstrip("\r\n")):]
+    return "".join(lines)
+
+
+def _latex_header(text: str, title: str) -> str | None | bool:
+    """`text`, a main.tex, with `title` in the `title` command that holds `init`'s placeholder;
+    None where it has no such command, and False where it holds a title of its own."""
+    from manuscript_guard.build.latex_values import NotPrintable, escaped
+    from manuscript_guard.scaffold import UNTITLED
+
+    command = chr(92) + "title{"
+    line = command + escaped(UNTITLED, "title") + "}"
+    if text.count(line) != 1:
+        return None if command not in text else False
+    try:
+        return text.replace(line, command + escaped(title, "title") + "}", 1)
+    except NotPrintable as exc:
+        raise _Refused(f"the title cannot be printed in LaTeX: {exc}") from exc
+
+
+def _header_with(folder: Folder, title: str) -> tuple[Path, str] | None | bool:
+    """The manuscript of a project under way with `title` in its header where the header holds
+    `init`'s placeholder, None where it holds no title to replace, and False where it holds a
+    title of its own, which setup does not write over."""
     paths = folder.setting("paths")
     named = paths.get("manuscript", "manuscript") if isinstance(paths, dict) else "manuscript"
-    markdown, latex = folder.root / named / "main.md", folder.root / named / "main.tex"
-    if markdown.is_file():
-        text = markdown.read_text(encoding="utf-8")
-        if text.startswith(_header(UNTITLED)):
-            return markdown, _header(title) + text[len(_header(UNTITLED)):]
-        return None if not text.startswith("---") else False
-    if latex.is_file():
-        text = latex.read_text(encoding="utf-8")
-        line = chr(92) + "title{" + escaped(UNTITLED, "title") + "}"
-        if text.count(line) == 1:
-            ours = chr(92) + "title{" + escaped(title, "title") + "}"
-            return latex, text.replace(line, ours, 1)
-        return None if (chr(92) + "title{") not in text else False
+    for path, edit in ((folder.root / named / "main.md", _markdown_header),
+                       (folder.root / named / "main.tex", _latex_header)):  # fmt: skip
+        if path.is_file():
+            made = edit(_manuscript_text(path), title)
+            return (path, made) if isinstance(made, str) else made
     return None
 
 
@@ -374,9 +417,13 @@ def _plan(folder: Folder, answers: dict) -> _Plan:
     if profile:
         changes.append(Change(f"profiles/journals/{profile}.yaml", "the annotated template",
                               "to be filled from the journal's own instructions page"))
-    commit_sources = answer(answers, "repository.visibility") == "private" and (
-        any(key == "literature.sources_in_git" for _kind, key, _value, _why in paper.edits)
-        or (folder.setting("literature") or {}).get("sources_in_git") is True)
+    # The line goes only on the answer, in a private repository whose paper.yaml is to say
+    # that the copies are committed or says it already (round 2 of #844).
+    commit_sources = (
+        answer(answers, "repository.visibility") == "private"
+        and answer(answers, "repository.sources_in_git") is True
+        and (any(key == "literature.sources_in_git" for _k, key, _v, _w in paper.edits)
+             or (folder.setting("literature") or {}).get("sources_in_git") is True))
     _lines_, ignored = _gitignore(folder, answers, _ignored_now(folder),
                                   commit_sources=commit_sources)  # fmt: skip
     changes += ignored
@@ -438,7 +485,7 @@ def _write(folder: Folder, answers: dict, plan: _Plan, today: str, run: Callable
         done.append("paper.yaml")
     if plan.header is not None:
         manuscript, text = plan.header
-        manuscript.write_text(text, encoding="utf-8", newline="\n")
+        manuscript.write_bytes(text.encode("utf-8"))
         done.append(manuscript.relative_to(root).as_posix())
     if plan.authors is not None:
         (root / "authors.yaml").write_text(plan.authors, encoding="utf-8", newline="\n")

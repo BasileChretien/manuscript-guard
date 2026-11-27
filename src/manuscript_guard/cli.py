@@ -46,6 +46,7 @@ from manuscript_guard.contracts import (
     load_project,
     read_text,
 )
+from manuscript_guard.emit import digests_once
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_ai_use,
@@ -190,126 +191,131 @@ def _gate_run(
     A manuscript file that cannot be read, one saved in a code page for instance, stops each
     gate that reads the manuscript, and only those. It is one finding for each such file,
     which names the gates that did not run; the others report as usual.
+
+    Each file whose digest a gate takes is read once in the run, however many records name
+    it (`digests_once`).
     """
-    project, contract_report = load_project(start)
-    namespace, results, literature, load_report = load_namespace(project)
+    with digests_once():
+        project, contract_report = load_project(start)
+        namespace, results, literature, load_report = load_namespace(project)
 
-    chosen = resolve_stage(project, stage, submission)
-    at_submission = chosen == SUBMISSION
+        chosen = resolve_stage(project, stage, submission)
+        at_submission = chosen == SUBMISSION
 
-    unreadable = _unreadable_sources(project)
-    stopped: list[str] = []
-    gate_reports: list[Report] = []
-    latex = manuscript_format(project.path("manuscript")) == LATEX
-    unread: list[str] = []
-    for name, gate in (
-        ("G11", lambda: check_review(project, submission=at_submission)),
-        ("G1", lambda: check_freshness(project, results)),
-        ("G2", lambda: check_numbers(project, namespace, results, literature)),
-        ("G2", lambda: check_bound_units(project, results)),
-        ("G2", lambda: check_bound_comparisons(project, results)),
-        ("G3", lambda: check_figures(project, results)),
-        ("G3", lambda: check_figure_alt(project, namespace, chosen)),
-        ("G3", lambda: check_figure_colours(project)),
-        ("G3", lambda: check_placed(project)),
-        # A caption that points at a line it never names, in the manuscript or emitted.
-        ("G3", lambda: check_caption_marks(project, results)),
-        ("G10", lambda: check_figure_reviews(project, content_digest)),
-        ("G7", lambda: check_citations(project, literature)),
-        ("G7", lambda: check_literature_chain(project, literature)),
-        ("G7", lambda: check_prose_quotations(project)),
-        ("G7", lambda: check_passages(project, chosen)),
-        ("G7", lambda: check_currency(project, chosen, literature)),
-        ("G7", lambda: check_weak_sources(project)),
-        ("G7", lambda: check_recycling(project, chosen)),
-        # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
-        ("G7", lambda: check_rrids(project)),
-        ("G4", lambda: check_journal(project)),
-        ("G4", lambda: check_boxes(project, namespace, chosen)),
-        # The pack's main document in a format the journal takes, as the last pack's manifest
-        # records it, or as `submit` will pack it.
-        ("G4", lambda: check_main_document(project, chosen)),
-        ("G4", lambda: check_shortlist(project)),
-        ("G4", lambda: check_package_doi(project, submission=at_submission)),
-        # It reads paper.yaml and the receipts, and none of the manuscript.
-        ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
-        ("G4", lambda: check_statement_sources(project)),
-        # Its own, since the note for a paper whose journal asks for no statement runs with
-        # no journal chosen.
-        ("G4", lambda: check_ai_use(project, chosen)),
-        # Its own too: the declarations are held to authors.yaml whether or not a journal is
-        # chosen, and a journal that asks for them has G4's required statements as well.
-        ("G4", lambda: check_disclosures(project, chosen)),
-        ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
-        ("G6", lambda: check_writing(project, results, submission=at_submission)),
-        ("G9", lambda: check_methods(project, namespace, results)),
-        # Its own, since it reads the manuscript: an analysis the Results name and the
-        # Methods never do.
-        ("G9", lambda: check_analyses_named(project)),
-        ("G12", lambda: check_design(project, results, chosen).merge(
-            check_design_rounds(project, submission=at_submission))),
-        # A check of its own, since it reads the manuscript: one that cannot be read stops
-        # it and not the plan's.
-        ("G12", lambda: check_registration(project, results, chosen)),
-        # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
-        ("G12", lambda: check_controls(project, results, chosen)),
-        ("G12", lambda: check_held_out(project, results, chosen)),
-        ("G12", lambda: check_data_sources(project, chosen)),
-        ("G12", lambda: check_declared_datasets(project, results)),
-        ("G12", lambda: check_software(project, results, chosen)),
-        # Its own, since it reads the manuscript: one that cannot be read stops it and not
-        # the check of the plan against the scripts.
-        ("G12", lambda: check_software_cited(project, results)),
-        ("G7", lambda: check_method_passages(project)),
-        ("G12", lambda: check_methods_review(project)),
-        ("G8", lambda: check_consistency(results)),
-        ("G2", lambda: check_small_cells(project, results)),
-        ("G2", lambda: check_recoverable(project, results)),
-        ("G1", lambda: check_restricted_inputs(project, results)),
-        ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
-        ("G1", lambda: check_held_out_reads(project, results, chosen)),
-        ("G1", lambda: check_vault_results(project, results, chosen)),
-        ("G1", lambda: check_datasets(project, results)),
-        ("G1", lambda: check_values(project, namespace, results)),
-        ("G8", lambda: check_reported(project, results)),
-        ("G8", lambda: check_interpretation(project)),
-        # A trial's baseline table with P values, emitted or typed (CONSORT).
-        ("G8", lambda: check_baseline(project, results)),
-        ("G8", lambda: check_relations(results)),
-        ("G8", lambda: check_recomputed(project, namespace, results)),
-        ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
-        ("G13", lambda: check_revision(project, submission=at_submission)),
-        ("G14", lambda: check_language(project, chosen, results)),
-        ("G15", lambda: check_models(project, results)),
-        ("G15", lambda: check_summaries(project, results)),
-        ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
-        ("G16", lambda: check_quality_reported(
-            project, results, chosen, submission=at_submission)),
-        ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
-        ("BUILD", lambda: check_latex(project)),
-    ):
-        if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
-            # The Markdown build's own checks: a LaTeX manuscript's build is checked by
-            # `check_latex` and its compile (step 13).
-            continue
-        if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
-            # A check that reads only Markdown would read nothing here and pass: it is not
-            # run, and its gate says so once.
-            if name not in unread:
-                unread.append(name)
-            continue
-        report = _guarded(name, gate, unreadable)
-        if report is None:
-            # A gate run as several checks stopped once, and is named once.
-            if name not in stopped:
-                stopped.append(name)
-        else:
-            gate_reports.append(report)
+        unreadable = _unreadable_sources(project)
+        stopped: list[str] = []
+        gate_reports: list[Report] = []
+        latex = manuscript_format(project.path("manuscript")) == LATEX
+        unread: list[str] = []
+        for name, gate in (
+            ("G11", lambda: check_review(project, submission=at_submission)),
+            ("G1", lambda: check_freshness(project, results)),
+            ("G2", lambda: check_numbers(project, namespace, results, literature)),
+            ("G2", lambda: check_bound_units(project, results)),
+            ("G2", lambda: check_bound_comparisons(project, results)),
+            ("G3", lambda: check_figures(project, results)),
+            ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+            ("G3", lambda: check_figure_colours(project)),
+            ("G3", lambda: check_placed(project)),
+            # A caption that points at a line it never names, in the manuscript or emitted.
+            ("G3", lambda: check_caption_marks(project, results)),
+            ("G10", lambda: check_figure_reviews(project, content_digest)),
+            ("G7", lambda: check_citations(project, literature)),
+            ("G7", lambda: check_literature_chain(project, literature)),
+            ("G7", lambda: check_prose_quotations(project)),
+            ("G7", lambda: check_passages(project, chosen)),
+            ("G7", lambda: check_currency(project, chosen, literature)),
+            ("G7", lambda: check_weak_sources(project)),
+            ("G7", lambda: check_recycling(project, chosen)),
+            # The RRIDs the manuscript types, held to what `lookup --resources` recorded.
+            ("G7", lambda: check_rrids(project)),
+            ("G4", lambda: check_journal(project)),
+            ("G4", lambda: check_boxes(project, namespace, chosen)),
+            # The pack's main document in a format the journal takes, as the last pack's manifest
+            # records it, or as `submit` will pack it.
+            ("G4", lambda: check_main_document(project, chosen)),
+            ("G4", lambda: check_shortlist(project)),
+            ("G4", lambda: check_package_doi(project, submission=at_submission)),
+            # It reads paper.yaml and the receipts, and none of the manuscript.
+            ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
+            ("G4", lambda: check_statement_sources(project)),
+            # Its own, since the note for a paper whose journal asks for no statement runs with
+            # no journal chosen.
+            ("G4", lambda: check_ai_use(project, chosen)),
+            # Its own too: the declarations are held to authors.yaml whether or not a journal is
+            # chosen, and a journal that asks for them has G4's required statements as well.
+            ("G4", lambda: check_disclosures(project, chosen)),
+            ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
+            ("G6", lambda: check_writing(project, results, submission=at_submission)),
+            ("G9", lambda: check_methods(project, namespace, results)),
+            # Its own, since it reads the manuscript: an analysis the Results name and the
+            # Methods never do.
+            ("G9", lambda: check_analyses_named(project)),
+            ("G12", lambda: check_design(project, results, chosen).merge(
+                check_design_rounds(project, submission=at_submission))),
+            # A check of its own, since it reads the manuscript: one that cannot be read stops
+            # it and not the plan's.
+            ("G12", lambda: check_registration(project, results, chosen)),
+            # Its own too: it reads the manuscript, for the controls the paper reports (item 5).
+            ("G12", lambda: check_controls(project, results, chosen)),
+            ("G12", lambda: check_held_out(project, results, chosen)),
+            ("G12", lambda: check_data_sources(project, chosen)),
+            ("G12", lambda: check_declared_datasets(project, results)),
+            ("G12", lambda: check_software(project, results, chosen)),
+            # Its own, since it reads the manuscript: one that cannot be read stops it and not
+            # the check of the plan against the scripts.
+            ("G12", lambda: check_software_cited(project, results)),
+            ("G7", lambda: check_method_passages(project)),
+            ("G12", lambda: check_methods_review(project)),
+            ("G8", lambda: check_consistency(results)),
+            ("G2", lambda: check_small_cells(project, results)),
+            ("G2", lambda: check_recoverable(project, results)),
+            ("G1", lambda: check_restricted_inputs(project, results)),
+            ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+            ("G1", lambda: check_held_out_reads(project, results, chosen)),
+            ("G1", lambda: check_vault_results(project, results, chosen)),
+            ("G1", lambda: check_datasets(project, results)),
+            ("G1", lambda: check_values(project, namespace, results)),
+            ("G8", lambda: check_reported(project, results)),
+            ("G8", lambda: check_interpretation(project)),
+            # A trial's baseline table with P values, emitted or typed (CONSORT).
+            ("G8", lambda: check_baseline(project, results)),
+            ("G8", lambda: check_relations(results)),
+            ("G8", lambda: check_recomputed(project, namespace, results)),
+            ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
+            ("G13", lambda: check_revision(project, submission=at_submission)),
+            ("G14", lambda: check_language(project, chosen, results)),
+            ("G15", lambda: check_models(project, results)),
+            ("G15", lambda: check_summaries(project, results)),
+            ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
+            ("G16", lambda: check_quality_reported(
+                project, results, chosen, submission=at_submission)),
+            ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
+            ("BUILD", lambda: check_latex(project)),
+        ):
+            if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
+                # The Markdown build's own checks: a LaTeX manuscript's build is checked by
+                # `check_latex` and its compile (step 13).
+                continue
+            if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
+                # A check that reads only Markdown would read nothing here and pass: it is not
+                # run, and its gate says so once.
+                if name not in unread:
+                    unread.append(name)
+                continue
+            report = _guarded(name, gate, unreadable)
+            if report is None:
+                # A gate run as several checks stopped once, and is named once.
+                if name not in stopped:
+                    stopped.append(name)
+            else:
+                gate_reports.append(report)
 
-    reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
-    reports += [check_format(project), Report(tuple(not_read_in_latex(name) for name in unread))]
-    report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
-    return report, project, chosen, deferred, namespace
+        reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
+        reports += [check_format(project),
+                    Report(tuple(not_read_in_latex(name) for name in unread))]
+        report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
+        return report, project, chosen, deferred, namespace
 
 
 #: The checks that read the manuscript only as Markdown, by the name each entry of
@@ -3085,12 +3091,21 @@ def cmd_compare(args: argparse.Namespace) -> int:
 def _reread(project, new: Path, page: str | None = None) -> int:
     """`journal --reread`: the stored page against the page read again, and the rules whose
     quotes it no longer holds. Writes nothing: adopting the page is the author's."""
-    from manuscript_guard.gates.journal_quotes import DIFF_LINES, reread
+    from manuscript_guard.gates.journal_quotes import DIFF_LINES, page_text, reread
+    from manuscript_guard.literature.sources import UnreadableSource
 
     try:
-        text = new.read_text(encoding="utf-8")
+        # A page saved from a browser, as a web page or printed to PDF, is read as `--store`
+        # stores it, so that the two compare as one text, and refused as it refuses it.
+        if not new.exists():
+            print(f"manuscript-guard: {new} does not exist", file=sys.stderr)
+            return 2
+        text = page_text(new)
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
+        return 2
+    except UnreadableSource as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     try:
         found = reread(project, text, page)
@@ -3123,11 +3138,79 @@ def _reread(project, new: Path, page: str | None = None) -> int:
     inside = stored.is_relative_to(project.root)
     where = stored.relative_to(project.root).as_posix() if inside else str(stored)
     print(
-        f"Read the difference for rules the page added, too. To adopt the page, save it over "
-        f"{where}, then record page_sha256: {found.digest}{dated} in the "
+        f"Read the difference for rules the page added, too. To adopt the page, store it over "
+        f"{where} with `"
+        + _journal_command(project, "--store", new, "--replace",
+                           *(("--page", where) if found.blocks else ()))
+        + f"`, then record page_sha256: {found.digest}{dated} in the "
         + (f"profile's {', '.join(found.blocks)}." if found.blocks else "profile.")
     )
     return 1 if gone else 0
+
+
+def _journal_command(project, *words: object) -> str:
+    """A `journal` command to paste: the project's folder where it is not the one the command
+    is run from, and every path in double quotes, a name with a space in it among them."""
+    shown = ["manuscript-guard", "journal"]
+    try:
+        here = Path.cwd().resolve() == project.root.resolve()
+    except OSError:
+        here = False
+    if not here:
+        shown.append(f'"{project.root}"')
+    shown += [word if str(word).startswith("--") else f'"{word}"' for word in map(str, words)]
+    return " ".join(shown)
+
+
+def _store(project, args: argparse.Namespace) -> int:
+    """`journal --store`: the text of a page the author saved, where the profile reads its
+    page, and the digest to record of it. The journal is `--template`'s where it is given,
+    the profile just started, and otherwise paper.yaml's target journal."""
+    from manuscript_guard.gates.journal_quotes import AnotherPageStored, PageRefused, store_page
+    from manuscript_guard.literature.sources import UnreadableSource
+
+    slug = args.template or project.target_journal
+    if not slug:
+        print("manuscript-guard: --store needs the journal whose page it is: give --template "
+              "<slug> to start its profile with the page, or set target_journal in paper.yaml",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    if not args.store.exists():
+        print(f"manuscript-guard: {args.store} does not exist", file=sys.stderr)
+        return 2
+    try:
+        stored = store_page(project, args.store, slug, args.page, replace=args.replace)
+    except AnotherPageStored as exc:
+        page = ("--page", args.page) if args.page else ()
+        print(f"manuscript-guard: {exc}:\n"
+              f"  {_journal_command(project, '--reread', args.store, *page)}\n"
+              f"  {_journal_command(project, '--store', args.store, '--replace', *page)}",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    except (PageRefused, LookupError, UnreadableSource) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"manuscript-guard: {args.store} cannot be read as a web page, a PDF or UTF-8 "
+              f"text: {exc}. Save the page as a web page (HTML only) or print it to PDF",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    inside = stored.path.is_relative_to(project.root)
+    where = stored.path.relative_to(project.root).as_posix() if inside else str(stored.path)
+    whose = f"profile's {', '.join(stored.blocks)}" if stored.blocks else "profile"
+    if not stored.written:
+        print(f"{where} already holds this page, unchanged; its page_sha256 is "
+              f"{stored.digest}")  # fmt: skip
+        return 0
+    print(f"stored {where}: the text of {args.store.name}, {stored.lines} lines")
+    print(
+        "\nRead it before filling the profile from it: it is the page every rule's quote is "
+        f"held to. Then record in the {whose}:\n"
+        f"  page_sha256: {stored.digest}\n"
+        f"  retrieved_on: {date.today().isoformat()}\n"
+        "  source_url: the address of the page you saved"
+    )
+    return 0
 
 
 def cmd_journal(args: argparse.Namespace) -> int:
@@ -3140,18 +3223,32 @@ def cmd_journal(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
 
-    if args.page and not args.reread:
-        print("manuscript-guard: --page names the page --reread reads again; give it with "
-              "--reread <file>", file=sys.stderr)  # fmt: skip
+    if args.page and not (args.reread or args.store):
+        print("manuscript-guard: --page names the page --reread reads again or --store "
+              "stores; give it with --reread <file> or --store <file>",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    if args.replace and not args.store:
+        print("manuscript-guard: --replace goes with --store <file>", file=sys.stderr)
+        return 2
+    if args.reread and args.store:
+        print("manuscript-guard: --reread reads a page against the stored one and --store "
+              "stores it; give one at a time", file=sys.stderr)  # fmt: skip
         return 2
     if args.reread:
         return _reread(project, args.reread, args.page)
+    if args.store and not args.template:
+        return _store(project, args)
 
     if args.template:
         source = SHIPPED_JOURNALS / "TEMPLATE.yaml"
         target = project.root / "profiles" / "journals" / f"{args.template}.yaml"
         if target.exists():
             print(f"{target} already exists; not overwriting", file=sys.stderr)
+            return 2
+        # The page first: refused, it leaves no profile behind, and the same command can be
+        # run again once the page is saved right.
+        if args.store and _store(project, args):
             return 2
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
@@ -6323,6 +6420,11 @@ def _checker_build(project, items, args) -> int:
         )
     if standing.already:
         print(f"{standing.already} more on the page are marked as checked before this round.")
+    # Said where the pages are made, which is where a copy can still be stored before they go.
+    from manuscript_guard.checking.produce import unstored_lines
+
+    for line in unstored_lines(items):
+        print(line)
     print(f"Each page is recorded in {REGISTER}, with the digest of its token.")
     print(
         "Send each person their one file. It opens by double-clicking, needs nothing installed "
@@ -6888,18 +6990,91 @@ _GIT_LINES = {
     ".gitignore": "it does not leave out what the build writes (`build/`) or the stored copies "
                   "of cited works, paywalled papers among them, which a public repository "
                   "would publish (`literature/sources/*`)",
-    ".gitattributes": "it does not check text out with LF line endings everywhere, and "
-                      "manuscript-guard's digests, taken over the bytes, then differ between "
-                      "machines and read as edits nobody made",
+}  # fmt: skip
+#: Why each line of `.gitattributes` belongs there: one reason a line, said for those missing.
+_ATTRIBUTE_LINES = {
+    "* text=auto eol=lf": "it does not check text out with LF line endings everywhere, and "
+                          "manuscript-guard's digests, taken over the bytes, then differ "
+                          "between machines and read as edits nobody made",
+    "*.svg binary": "it does not keep SVG figures byte for byte: svglite on Windows writes "
+                    "them with CRLF, and normalised to LF a figure is no longer the file its "
+                    "render record and its review hold, so both read as changed in another "
+                    "checkout",
 }  # fmt: skip
 
 
-def _say_git_lines(wanted: dict[str, list[str]]) -> None:
+def _say_git_lines(wanted: dict[str, list[str]], root: Path) -> None:
     """What `init` says of an existing .gitignore or .gitattributes that lacks a line the
-    project needs: it never writes over them, so it prints the lines, as for AGENTS.md."""
+    project needs: it never writes over them, so it prints the lines, as for AGENTS.md.
+    Git reads a later line of `.gitattributes` over an earlier one, attribute by attribute,
+    so it says where they go: the eol line above the lines for patterns of their own, which
+    a `*` line after them would undo (round 1 of #815), and, where a `*` line of the file's
+    sets `text` or `eol` already, that line changed rather than another added, which it would
+    override (round 2). What it says is `scaffold.attributes_advice`, the advice
+    `scaffold.rewrite_attributes` applies, each line named by its number and quoted as the
+    file writes it (rounds 3 and 4). Each reason is true of the file as it is: one that keeps
+    its SVGs as bytes is told that only the change it is asked for would undo that (round 4)."""
+    from manuscript_guard.scaffold import EOL_LINE, SVG_BINARY, attributes_advice, read_lines
+
     for name, lines in wanted.items():
-        print(f"\n{name} was already there and was left as it was, and {_GIT_LINES[name]}. "
-              "Add these lines to it:\n\n" + "\n".join(lines))
+        advice = None
+        if name == ".gitattributes":
+            attributes = read_lines(Path(root) / name) or []
+            advice = attributes_advice(attributes)
+        why = _GIT_LINES.get(name) or ", and ".join(
+            _SVG_KEPT_UNTIL_CHANGED if line == SVG_BINARY and advice and advice.svg_kept
+            else _ATTRIBUTE_LINES.get(line) or _BINARY_UNDONE.format(line=line)
+            for line in lines)  # fmt: skip
+        where = "Add these lines to it"
+        if advice is not None:
+            if advice.svg_undone and SVG_BINARY in lines:
+                why += ("; its own `*.svg` line stands above, and a `*` line below it that "
+                        "sets `text` undoes it")
+            if advice.change is not None:
+                print(f"\n{name} was already there and was left as it was, and {why}. "
+                      + _changed_attributes(advice, attributes, EOL_LINE))
+                continue
+            if advice.own and advice.add_on_top:
+                where = (f"Add `{EOL_LINE}` at the top of the file, above its lines for "
+                         "patterns of their own, which a `*` line below them undoes"
+                         + (", and the others at its end" if len(lines) > 1 else ""))
+        print(f"\n{name} was already there and was left as it was, and {why}. "
+              f"{where}:\n\n" + "\n".join(lines))
+
+
+#: Why a line keeping a pattern's files as bytes is asked again: a `*` line below undoes it.
+_BINARY_UNDONE = ("a `*` line below its `{line}` sets `text` and undoes it, so git "
+                  "normalises the files it keeps as bytes")  # fmt: skip
+#: Why `*.svg binary` is asked of a file that keeps its SVGs as bytes now, through a `*` line
+#: the change asked of it rewrites (round 4 of #815).
+_SVG_KEPT_UNTIL_CHANGED = ("its SVG figures are kept as bytes now only by a `*` line that the "
+                           "change below rewrites: `*.svg binary` keeps them byte for byte "
+                           "once the line above is changed")  # fmt: skip
+
+
+def _changed_attributes(advice, attributes: list[str], eol_line: str) -> str:
+    """What `init` asks of a `.gitattributes` whose `*` lines set `text` or `eol` otherwise:
+    the first changed to the eol line with its other attributes, moved to the top where a
+    line for a pattern of its own stands above it, `text` and `eol` taken off the others,
+    which would override it, and the lines still wanted on the file that leaves added at its
+    end (rounds 2 to 4 of #815). Each line is named by its number and quoted as the file
+    writes it, so two lines alike are not mistaken for each other."""
+    first = attributes[advice.change]
+    changed_to = advice.changed_to or eol_line
+    said = []
+    if first != changed_to or advice.move_to_top:
+        change = f"Change its line {advice.change + 1} (`{first}`) to `{changed_to}`"
+        if advice.move_to_top:
+            change += (", and move it to the top of the file, above its lines for patterns of "
+                       "their own, which a `*` line below them undoes")
+        said.append(change)
+    if advice.take_off:
+        named = ", ".join(f"line {at + 1} (`{attributes[at]}`)" for at in advice.take_off)
+        said.append(f"{'take' if said else 'Take'} `text` and `eol` off {named}, which "
+                    f"would override it")  # fmt: skip
+    rest = list(advice.add_at_end)
+    tail = " Add these lines at its end:\n\n" + "\n".join(rest) if rest else ""
+    return "; ".join(said) + "." + tail
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -6954,7 +7129,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
             + rules
         )
-    _say_git_lines(git_lines_to_add(args.path))
+    _say_git_lines(git_lines_to_add(args.path), Path(args.path))
     if under_way:
         made = [path for path in missing if path.exists()]
         for path in made:
@@ -7618,7 +7793,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     journal = sub.add_parser(
         "journal",
-        help="list journal profiles, or start one from the annotated template",
+        help="list journal profiles, start one from the annotated template, or store or "
+        "read again the journal's page",
         description="No journal profile ships with the toolkit, deliberately: author "
         "guidelines change without announcement, so a rule compiled in would eventually be "
         "wrong and would be wrong silently. Every profile is read from the journal's own "
@@ -7638,11 +7814,26 @@ def build_parser() -> argparse.ArgumentParser:
         "and which rules quote words it no longer has; writes nothing",
     )
     journal.add_argument(
+        "--store",
+        metavar="FILE",
+        type=Path,
+        help="the journal's page as you saved it from your browser, a web page (.html, HTML "
+        "only) or printed to PDF, or its text: store its text where the profile reads its "
+        "page, and print the page_sha256 to record; for a page behind a bot check. The "
+        "journal is --template's, given with it, or else paper.yaml's target_journal",
+    )
+    journal.add_argument(
+        "--replace",
+        action="store_true",
+        help="with --store: replace another page stored there, once --reread has shown you "
+        "the difference",
+    )
+    journal.add_argument(
         "--page",
         metavar="FILE",
-        help="with --reread: the page of its own a block of the profile names (its page_file, "
-        "as the profile writes it) that FILE is read again in place of; without it, the "
-        "instructions page",
+        help="with --reread or --store: the page of its own a block of the profile names (its "
+        "page_file, as the profile writes it) that FILE is read again in place of, or stored "
+        "as; without it, the instructions page",
     )
     journal.set_defaults(func=cmd_journal)
 

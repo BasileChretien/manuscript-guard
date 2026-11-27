@@ -125,6 +125,10 @@ def digest_of(item: dict) -> str:
     the digest, adding one paragraph to the Introduction would refuse every answer about every
     sentence below it, none of which had changed.
 
+    Nor what the page says of a cited work the builder held no copy of (`unstored`): it is how
+    much the co-author has to read the item by, not what they are asked, and a copy stored
+    afterwards would otherwise ask again everyone who had answered.
+
     Not in it either, deliberately: the group's `ask`. Rewording the question put to a reader
     would otherwise discard every answer in that group, and the questions are fixed prose about
     what a group is, not about any one item. DESIGN.md's Known gaps records it.

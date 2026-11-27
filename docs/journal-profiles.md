@@ -16,6 +16,36 @@ each number above 1 of a box and of a graphical abstract, each of a graphical ab
 numbers that is not whole, and its aspect ratio. A rule no gate
 checks goes under `manual:`, quoted, and the corresponding author signs it off.
 
+## A page behind a bot check
+
+Some publishers keep their instructions pages from scripts behind a bot check (BMJ Open's
+stood behind Cloudflare's), so neither an agent nor a script can read them, and neither
+should try to get past it. The author opens the page in their own browser and saves it,
+as a web page ("Save page as", "Webpage, HTML only") or printed to PDF, and stores it:
+
+```bash
+manuscript-guard journal --store "Instructions for authors.html"
+manuscript-guard journal --template bmj-open --store instructions.pdf   # a new profile
+```
+
+`--store` writes the page's text where the profile reads it, `profiles/journals/sources/<slug>.txt`
+or the profile's `page_file`, and prints the `page_sha256` to record. It writes nowhere outside
+the project as the path is written, and never through a link at the page's own file; a sources
+folder linked to a shared folder is written through, as the author linked it. A web page is read in the character set a browser reads it in, and keeps its
+words as a browser shows the page opened out: no script, style, comment, title, `<template>`
+or `<noscript>`, and the words of a section folded away in an accordion kept; each block on a
+line of its own, and inline markup joining its words, so that a sentence with a link in it is
+the sentence the author copies. A PDF is read in reading order, as the literature's PDFs are,
+with poppler's `pdftotext` or `pypdf`, and a text file as it is, a name with a dot in it and no
+suffix known here among them. A page saved as a single file (`.mhtml`, `.mht`), a `.rtf`, a
+document or an image is refused: save it as "Webpage, HTML only". A section hidden on the page
+is kept, and so is a notice hidden there (DESIGN.md, Known gaps).
+The journal is `--template`'s when given with it, the page stored before the profile is
+started, and otherwise `paper.yaml`'s `target_journal`. A file with no text shown, which is
+what a page saved while the check stood in its place holds, is refused, and so is a page
+different from the one already stored, until `--reread` has shown the difference and
+`--replace` says to replace it. `--reread` takes the same files.
+
 Most of the profile is about the paper: word limits, required sections and statements, the
 structured abstract, the reference style, the figures' artwork rules, the English, how a
 pointer to a table is written. This page describes the three blocks about what the journal
@@ -190,6 +220,6 @@ manuscript-guard journal --reread new-sharing.txt --page profiles/journals/sourc
 ```
 
 Without `--page`, or with `--page` naming the instructions page's file, `--reread` reads the
-instructions page again, against the quotes held to it alone. `--page` without `--reread` is
-refused. A box names its page in its own entry; two blocks may name one page. See also
+instructions page again, against the quotes held to it alone. `--page` without `--reread` or
+`--store` is refused. A box names its page in its own entry; two blocks may name one page. See also
 [DESIGN.md](../DESIGN.md).

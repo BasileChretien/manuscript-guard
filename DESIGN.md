@@ -2315,7 +2315,12 @@ The result is compiled and packed by the code above, and checked three times:
   Word copies, and `submit` says so in a note (step 10).
 - A LaTeX manuscript's `\title` is not compared with paper.yaml's title, where a Markdown
   file's header title is (`two-titles`), and the PDF prints the `\title` (round 1 of step
-  13).
+  13). So G5 holds a checklist answer's quote under `where: Title` to the one `\title{}` of the
+  main text TeX reads, as the reader prints the body, its `\thanks` and `\footnote` left out,
+  and to paper.yaml's title only where no file of the main text sets one (round 1 of #813).
+  Where TeX reads several, in two files or in a conditional's two branches, it names where
+  each stands and holds the quote to none, since which prints cannot be told from the source
+  (round 2). A class's `\subtitle` or `\shorttitle` is not read as part of it.
 - G7's text recycling places a passage that runs on past an `\input` at its first file only,
   ending on its first line there (step 13).
 - G7's text recycling does not compare a caption `\subfloat[...]` takes in its option, nor a
@@ -18123,6 +18128,27 @@ to fix is pinned until the fix lands, and the fix changes its test.
   change.
   Pinned by `tests/test_checking.py::test_a_cross_reference_renumbered_stales_the_methods_answers_that_cite_it`
   and `tests/test_checking.py::test_a_claim_keeps_its_identifier_when_a_bound_value_changes`.
+- **The page carries no stored copy of a cited work.** A cited sentence and a value quoted from
+  the literature are shown with the quotes and passages the author recorded, and never with the
+  PDF or a page of it, so a co-author asked whether the work says what the sentence says reads
+  only what the author copied out. Where the computer that builds the page holds no full copy of
+  a work (none, its abstract alone, or one kept out of git), each item citing it says so, and
+  `checker build` lists those works by group and key; a copy counts under the work's filed name
+  in `literature/sources/`, as a ledger entry's `source_file`, or as a file the record lists,
+  and a file every ledger entry naming it reads at `depth: abstract-only` is the abstract.
+  What is said is outside the digest, so storing the copy later keeps the answers given. A copy
+  stored is not shown either. Whether the page is to carry the PDF, or the cited pages as images
+  with the passage marked, awaits the author's decision.
+  Pinned by `tests/test_checking.py::test_a_cited_statement_and_a_value_whose_work_has_no_copy_say_so`,
+  `tests/test_checking.py::test_a_copy_the_ledger_names_under_a_name_of_its_own_is_held`,
+  `tests/test_checking.py::test_a_file_the_ledger_reads_as_an_abstract_is_only_the_abstract`
+  and `tests/test_checking.py::test_storing_a_copy_later_keeps_the_answers_given_without_it`.
+- **On the checker page, a file's depth is the ledger's.** A stored file is a cited work's
+  abstract where every ledger entry naming it reads it at `depth: abstract-only`, and nothing
+  reads the file to see which it is: a full text saved later over that file is still said to
+  be only its abstract, on each item citing the work and in `checker build`'s list, until the
+  entry's depth is changed. Accepted.
+  Pinned by `tests/test_checking.py::test_the_depth_is_the_ledgers_and_not_the_files`.
 - **A methods item's code is read from disk, and only what the step's digest holds.** The
   lines shown are the script as it is when the page is built, and a script whose digest is not
   the one its run recorded is said to be so on the page and by `build`; a fragment that records
@@ -20352,6 +20378,14 @@ Open, recorded as each change landed:
   until the quote holds the digits. A limit of none or one is not held to its quote's number
   at all, only its quote to the page: "may not include figures", "Figures: none" and "a
   single table" were each read wrong by a rule that tried, one way or the other. Accepted.
+- **A page `journal --store` keeps holds what its hidden elements say** (`gates/journal_quotes.py`,
+  `_Shown`). A saved page keeps the words of an element hidden by `hidden` or `display: none`,
+  so that a section folded in an accordion, opened to copy a quote from, is on the stored page.
+  So a cookie notice or a modal hidden on the page is stored with it, and a bot check's page
+  whose words sit only in hidden elements holds text and is stored as the journal's page; only
+  one whose words are in its title, a `<noscript>`, a script or a `<template>` is refused. The
+  skill says to read the stored text before filling the profile from it. Accepted. Pinned by
+  `tests/test_journal_saved_page.py::test_what_a_page_hides_is_stored_with_it`.
 - **A rule left out of a journal profile entirely is not seen.** Nothing reads the stored
   page for rules that are neither a field nor under `manual:`: which sentences of a page are
   rules is the reader's judgement, and a heuristic that guessed it would warn of every
@@ -28853,9 +28887,24 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `!literature/sources/*.pdf`, or a later `!build/`, counts as present though git then
   commits those files, a false pass (round 1 of #546, finding 3). A UTF-8 BOM before the
   first line leaves that line unread, and a leading space makes ` build/` count, where git
-  does the opposite (finding 4). In `.gitattributes` only a `*` line with both
-  `text=auto` and `eol=lf` counts, so `* text eol=lf`, or the two on separate lines, both of
-  which check out LF, are asked for again (finding 5). The folders are `build/` and
+  does the opposite (finding 4). In `.gitattributes`, `text` and `eol` are read by the last
+  value each takes over the lines, attribute by attribute, as git reads them (rounds 1 and 2
+  of #815), but only for `*`, `*.svg` and each binary line's own pattern, as written, and a
+  macro attribute is not read (`[attr]keep -text -diff` with `*.svg keep` is answered with
+  `*.svg binary`, a false alarm). The file needs `text=auto` and `eol=lf` from its `*`
+  lines, so `* text eol=lf`, which sets `text` on every file, binary ones too, is asked to
+  become `* text=auto eol=lf` (finding 5), while the two set on separate lines count. Every
+  line asked for after the eol line is decided on the file as the advice leaves it (round
+  3): an SVG is taken as kept where it ends with `text` unset or where the last line to set
+  its `text` or `eol` is the file's own `*.svg` line, so a file's own `*.svg text eol=lf`,
+  `*.svg text=auto` or `*.svg eol=crlf`, and an own `*.svg` line setting `text` or `eol`
+  after `*.svg binary` and a `*` line (`*.svg binary`, `* text=auto eol=lf`,
+  `*.svg eol=crlf`), is taken as the author's choice though git then normalises those SVGs;
+  and a line that keeps a pattern's files as bytes (`*.docx binary`) and that a `*` line
+  below it undoes is asked for again, at the end. So `figures/*.svg binary` or
+  `*.SVG binary` is answered with `*.svg binary` again, a false alarm, and a later line for
+  another pattern that holds SVGs (`figures/* text`) undoes the `*.svg` line unread, a false
+  pass. The folders are `build/` and
   `literature/sources/*` whatever `paths:` in `paper.yaml` names (finding 2). And the
   reason printed for `.gitignore` is one sentence that names both lines whichever is
   missing, so it can say the file does not leave out `build/` when `/build` does, or warn
@@ -28863,8 +28912,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Closed by asking `git check-ignore`, as `literature/away.py`'s `ignored_by_git` does, by
   `project.path` for the folders, and by a reason for each missing line.
   Pinned by `tests/test_scaffold.py::test_init_s_git_advice_reads_spellings_and_not_git_s_rules`,
-  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`
-  and `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`.
+  `tests/test_scaffold.py::test_init_s_reason_for_a_gitignore_names_both_lines_whichever_is_missing`,
+  `tests/test_scaffold.py::test_init_in_a_repository_says_which_git_lines_its_files_lack`
+  and `tests/test_scaffold.py::test_init_asks_for_svgs_byte_for_byte_where_the_file_has_no_rule_for_them`.
 - **The status line's "Next:" is the first action's title and no more.** Its options, its
   command and who runs it are in `next`; a status line that has to say a choice is due says
   only its title, "Name the study design", and an agent that acts on the line alone has not

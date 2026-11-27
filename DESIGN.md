@@ -5457,6 +5457,26 @@ funding or of interests alone names no initials, since their capitals are instit
 often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
 those; Known gaps says where one is read as a contributions statement.
 
+**Where a Word paper's parts begin and end (Basile, 2026-11-27, after the loud
+`abbreviation-used-before-defined` findings judged false on the corpus's Word papers).** These
+are readings every gate that finds the part shares. A reference list's title in a block quote
+opens the list under a line of `>` alone as under a blank line, which is how pandoc writes the
+blank line between two quoted paragraphs of a Word document, "> **11. REFERENCES**:"; and
+"Literature" alone titles a list, as a German paper has it (`text/reference_lists.py`), so
+that G14, G4's word counts, the recycling check and the gates that pass a list over read
+none of its entries. A heading set in bold as a whole, "### **Abstract**", names the Abstract
+(`section_names.names_abstract`), for every reader of the Abstract. An APA manuscript repeats
+its title in bold to open its Introduction, with no heading: G14 ends the Abstract at a
+paragraph wholly in bold, in it, that repeats a paragraph of four words or more standing
+before it, the title as typed, inside the comment `init --from` sets the title page aside in
+or not (decision D6), so the Introduction's definitions are the main text's. A paper's
+Highlights, under "Highlights", "Research highlights", "Key points" or "Key messages", owe
+no definition, as a keywords section does, a journal printing them beside the Abstract
+(decision D4: the Abstract's definitions still do not serve the main text). And an indented
+code block, lines indented four spaces or a tab after a blank line, not under a list item's
+paragraph, is hidden as a fenced one is (`language._views`, which G15 and the code names
+share), so R pasted into a Word paper's appendix is no prose.
+
 **The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
 "INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
 defined). Its departments, units and institutions need no defining, and nothing on it is a
@@ -30220,13 +30240,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The finding stands on the plan's item, not on the sentence of the manuscript, since a
     package unnamed has no sentence. Accepted.
 
-- **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
-  number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
-  scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
-  as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
-  so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
-  both (see "A title in a span named nothing"). Pinned by
-  `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
+- **A heading in bold is not the Methods.** `is_methods` matches a title as it is typed, so
+  `# **Methods**` is not the Methods to G2, where `# **Results**` is the Results
+  (`names_results` reads the title as printed, its emphasis taken off) and, since 2026-11-27,
+  `# **Abstract**` the Abstract (`names_abstract` takes off the emphasis around the whole
+  title, so "**Abstract** of the trial" names none; docx-educ-2). A span around the words is
+  taken off for both (see "A title in a span named nothing"). Pinned by
+  `tests/test_text.py::test_a_heading_in_bold_is_the_abstract_and_not_the_methods`.
   - A closing `#` or an attribute block inside a span's words is taken off as the
     heading's own: `# [C#]{.underline}` is titled "C" and `# [Results {-}]{.underline}`
     "Results", where pandoc prints "C#" and "Results {-}", the span's text. Pinned by
@@ -30849,6 +30869,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
     one on fewer, as MNRAS sets its "MNRAS 000, 1-16 (2025)" at the foot of even pages only
     (tex-astro-ga-B2), is read as text. Pinned by
     `tests/test_g14_places.py::test_a_line_repeated_on_fewer_than_half_the_pages_is_read`.
+- **Where a Word paper's parts begin and end is read from how they are typed (Basile,
+  2026-11-27).** A list's title, a bold Abstract heading, the title again, Highlights and an
+  indented code block are each read by their typing, and a paper that types its part
+  otherwise is read as before. Accepted.
+  - "Literature" alone over the entries titles a list, so a review's section headed by the
+    word alone, in bold or as a heading, is passed over to the list's end, the first
+    paragraph that is no entry. Pinned by
+    `tests/test_audit.py::test_literature_alone_opens_a_reference_list`.
+  - The title again ends the Abstract only in bold as a whole and repeating a paragraph of
+    four words or more before the Abstract word for word, case, emphasis and a closing stop
+    or colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
+    nothing, and the Abstract runs to the next heading as before. Pinned by
+    `tests/test_g14_places.py::test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract`.
+  - An indented paragraph is a code block unless the paragraph before it opens a list item;
+    one under a list item nested deeper than that, or a block quote's own indented code,
+    `>     SE <- 1`, is read as text. Pinned by
+    `tests/test_language.py::test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in
   scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
   "·") and a power, and a power alone, a number with a caret and a braced exponent or a

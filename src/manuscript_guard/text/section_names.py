@@ -180,6 +180,18 @@ def names_paper_summary(title: str) -> bool:
     return _whole(title) in PAPER_SUMMARIES
 
 
+#: The headings of a paper's highlights, which a journal prints beside its Abstract and not in
+#: its text (Basile, 2026-11-27, decision D4; docx-ecol-B1).
+HIGHLIGHTS = frozenset({"highlights", "research highlights", "key points", "key messages"})
+
+
+def names_highlights(title: str) -> bool:
+    """Whether a heading's whole title, numbered, marked or not, is one of `HIGHLIGHTS`:
+    "Highlights", "Research highlights", "Key points", "Key messages"; not "Highlights of the
+    trial"."""
+    return _whole(title) in HIGHLIGHTS
+
+
 def names_statement(title: str) -> bool:
     """Whether a heading's whole title names one or several of the statements a journal asks
     for, or a list of the back matter: "Funding", "Acknowledgements", "Author contributions",
@@ -210,14 +222,30 @@ def names_methods(title: str) -> bool:
     return "methods" in title.lower() or _METHOD_TITLE.fullmatch(plain(title)) is not None
 
 
+#: A title wholly in emphasis, bold or italics, as a Word heading set in bold reads once
+#: converted: "**Abstract**", "__Abstract__", "*Abstract*".
+_EMPHASISED = re.compile(r"(\*\*|__|\*|_)(?P<inside>\S(?:.*\S)?)\1", re.DOTALL)
+
+
+def _unemphasised(title: str) -> str:
+    """`title` without the marks of emphasis around the whole of it, each pair: "**1.
+    Abstract**" is "1. Abstract", and "**Abstract** of the trial" is as typed."""
+    title = title.strip()
+    while (wrapped := _EMPHASISED.fullmatch(title)) is not None:
+        title = wrapped["inside"].strip()
+    return title
+
+
 def names_abstract(title: str, named: str | None = None) -> bool:
     """Whether a heading names the abstract: "Abstract" or "Structured abstract", numbered
     or not, or the title a journal profile gives it (`structure.abstract_title`, "Summary"
     in The Lancet), as a whole title and in any case; in a span or not, as pandoc writes an
-    underlined one, "[Abstract]{.underline}" (`without_spans`)."""
+    underlined one, "[Abstract]{.underline}" (`without_spans`); in bold or italics as a whole,
+    as a Word heading also set in bold reads, "### **Abstract**" (Basile, 2026-11-27;
+    docx-educ-2)."""
     from manuscript_guard.text.attributes import without_spans
 
-    title = bare(without_spans(title))
+    title = bare(_unemphasised(without_spans(title)))
     if _ABSTRACT.match(title):
         return True
     return bool(named) and title.rstrip(" .:").casefold() == str(named).strip().casefold()

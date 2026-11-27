@@ -46,6 +46,7 @@ _BIBLIOGRAPHY = re.compile(
     r"(?:(?P<numbered>\d+\\?[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
     r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature"
+    r"|literature"
     rf"|{REFERENCE_WORDS_ELSEWHERE})"
     r"(?P<tail>[\s*_:.|]*)$",
     re.IGNORECASE,
@@ -253,9 +254,12 @@ def _first_printed(lines: list[str], number: int) -> str:
 
 
 def _opens_a_paragraph(lines: list[str], number: int, under: set[int]) -> bool:
-    """Whether line `number` opens a paragraph: it is the first, or the line above is blank or
-    ends a heading (`under`)."""
-    return not number or not lines[number - 1].strip() or number - 1 in under
+    """Whether line `number` opens a paragraph: it is the first, or the line above is blank,
+    a block quote's line of `>` alone among them, as pandoc writes the blank line between two
+    quoted paragraphs of a Word document, or ends a heading (`under`). So "> **11.
+    REFERENCES**:" under a line of `>` opens a list as it does under a blank one (Basile,
+    2026-11-27; docx-med-A3)."""
+    return not number or not lines[number - 1].strip(" \t>") or number - 1 in under
 
 
 #: A list item's marker: "3." or "3)" of an ordered list, "-", "*" or "+" of another.

@@ -85,6 +85,7 @@ from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, ma
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
+    names_highlights,
     names_statement,
     section_name_alone,
 )
@@ -797,12 +798,53 @@ def _views(text: str) -> tuple[str, str]:
     masked = mask(text)
     code = code_spans(masked)
     unread = [(0, front_matter_end(text)), *(found.span() for found in _IMAGE.finditer(text))]
-    spans = [*code, *equation_spans(masked, code), *unread, *_rrids(masked)]
+    spans = [*code, *equation_spans(masked, code), *unread, *_rrids(masked),
+             *_indented_code(text)]
     kept = "".join(
         "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
     )
     return _hide(kept, spans), _set_aside(_only(masked, code), unread)
+
+
+#: What indents a line of an indented code block, as pandoc's Markdown reads one.
+_CODE_INDENT = re.compile(r"(?: {4}|\t)")
+#: A list item's first line, under which an indented paragraph is the item's and no code.
+_ITEM_LINE = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]")
+
+
+def _indented_code(text: str) -> list[tuple[int, int]]:
+    """Where each indented code block runs, as pandoc's Markdown reads one (`CodeBlock`): lines
+    indented four spaces or a tab after a blank line, not under a list item's paragraph and
+    not a table's or a block quote's, to the last such line before one that is neither
+    indented nor blank. R pasted into a Word paper's appendix, "SE<-as.vector(...)", is
+    code, and no word of it is a sentence's (Basile, 2026-11-27; docx-psych-2)."""
+    lines = text.split("\n")
+    offsets, at = [], 0
+    for line in lines:
+        offsets.append(at)
+        at += len(line) + 1
+    spans: list[tuple[int, int]] = []
+    index, opening = 0, ""
+    while index < len(lines):
+        line = lines[index]
+        blank_above = index == 0 or not lines[index - 1].strip()
+        if (blank_above and line.strip() and _CODE_INDENT.match(line)
+                and not _ITEM_LINE.match(opening)
+                and not line.lstrip().startswith(("|", "+", ">"))):  # fmt: skip
+            stop = index
+            while stop < len(lines) and (not lines[stop].strip()
+                                         or _CODE_INDENT.match(lines[stop])):  # fmt: skip
+                stop += 1
+            while stop > index and not lines[stop - 1].strip():
+                stop -= 1
+            spans.append((offsets[index], offsets[stop - 1] + len(lines[stop - 1])))
+            index = stop
+            continue
+        if line.strip() and blank_above:
+            opening = line
+        index += 1
+    return spans
 
 
 def _rrids(text: str) -> list[tuple[int, int]]:
@@ -902,6 +944,46 @@ def _set_apart(
         if at == len(regions) or regions[at].start > end:
             out.append(replace(current, start=end))
     return out + regions[at:]
+
+
+#: The fewest words a paragraph standing before the Abstract has to repeat the title.
+_TITLE_WORDS = 4
+#: What stands around a paragraph's words as typed and is no word of them: emphasis, an
+#: escape, and the marks of the comment `init --from` sets a title page aside in.
+_NOT_WORDS = re.compile(r"<!--|-->|[*_\\]")
+
+
+def _plain_paragraph(paragraph: str) -> str:
+    """A paragraph's words as a reader sees them, in one case, for one to be compared with
+    another: "**The Title: a study.**" is "the title: a study"."""
+    return " ".join(_NOT_WORDS.sub(" ", paragraph).split()).strip(" .:").casefold()
+
+
+def _title_again(prose: str, text: str, regions: list[_Region]) -> list[_Region]:
+    """`regions` with each Abstract's ended where a paragraph wholly in bold in it repeats a
+    paragraph of four words or more standing before the Abstract, the paper's title, as an
+    APA manuscript opens its Introduction with the title again and no heading; the main text
+    opens there (decision D6, the author, 2026-11-27; docx-educ-B1, docx-educ-C3). The title is
+    read as typed, inside the comment `init --from` sets a title page aside in or not."""
+    out = list(regions)
+    for index, region in enumerate(regions):
+        if region.scope != ABSTRACT:
+            continue
+        end = regions[index + 1].start if index + 1 < len(regions) else len(prose)
+        before = {_plain_paragraph(each) for each in _BLANK_LINE.split(text[: region.start])}
+        before = {each for each in before if len(each.split()) >= _TITLE_WORDS}
+        start = region.start
+        for gap in (*_BLANK_LINE.finditer(prose, region.start, end), None):
+            stop = end if gap is None else gap.start()
+            paragraph = prose[start:stop]
+            if (start > region.start and paragraph.strip() and _BOLD.fullmatch(paragraph)
+                    and _plain_paragraph(paragraph) in before):  # fmt: skip
+                out.insert(out.index(region) + 1,
+                           _Region(start, BODY, region.quiet, region.statement))  # fmt: skip
+                break
+            if gap is not None:
+                start = gap.end()
+    return out
 
 
 def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
@@ -1139,7 +1221,10 @@ def _region(
     if references or any(section.is_references for section in chain):
         return _Region(start, None, True, True)
     quiet = any(_QUIET.search(section.title) for section in chain)
-    statement = quiet or any(names_statement(section.title) for section in chain)
+    # A paper's highlights owe no definition, as a keywords section does: a journal prints
+    # them beside the Abstract and not in the text (decision D4, the author, 2026-11-27).
+    statement = quiet or any(names_statement(section.title) or names_highlights(section.title)
+                             for section in chain)  # fmt: skip
     if supplementary:
         return _Region(start, SUPPLEMENT, quiet, statement)
     abstract = abstract or any(section.names_abstract(abstract_title) for section in chain)
@@ -1978,6 +2063,7 @@ def _file(
     if displays is not None:
         given = _lines_spanned(text, displays)
         displayed = lambda paired: given  # noqa: E731 - the same shape as above
+    regions = _title_again(prose, text, regions)
     return _assembled(
         order, path, text, hidden, prose, regions,
         captions=captions,

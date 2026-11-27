@@ -40982,6 +40982,97 @@ def test_a_number_written_with_script_signs_is_still_reported(project: Path, cas
 
 
 # --------------------------------------------------------------------------------------
+# Where a Word paper's parts begin and end (2026-11-27): a reference list titled in a block
+# quote or "Literature", an Abstract titled in bold or ended by the title again, Highlights,
+# and R pasted as an indented block. Each edit below is one a Word paper makes: the false
+# alarm it gave goes, and the true finding beside it stays.
+
+_PYTHON_PARAGRAPH = "The analysis was run in Python"
+
+
+@pytest.mark.parametrize(
+    "title", ["> Notes.\n>\n> **11. REFERENCES**:\n>\n> ", "**Literature**\n\n"],
+    ids=["a title in a block quote", "Literature"],
+)
+def test_a_typed_reference_list_s_titles_define_nothing(project: Path, title: str) -> None:
+    """docx-med-A3, docx-socio-B3: a reference list titled in a block quote under a line of
+    `>`, or "**Literature**", is passed over, so a definition in an entry's title defines
+    nothing and the Methods' earlier use is asked about, not used before it; a definition in a
+    quoted paragraph of the text still is one."""
+    mended = with_ror_defined(project)
+    text = mended.replace(_PYTHON_PARAGRAPH, f"The HIE was read.\n\n{_PYTHON_PARAGRAPH}", 1)
+    text = text.replace("# Data availability", f"{title}1. Doe A. Hepatic injury events (HIE) "
+                        "in trials. BMJ. 2020;1:2.\n\n# Data availability", 1)  # fmt: skip
+    main_md(project).write_text(text, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(text, "The HIE"))]
+    quoted = text.replace("> Notes.", "> The hepatic injury events (HIE) were noted.").replace(
+        "**Literature**", "> The hepatic injury events (HIE) were noted.\n\n**Literature**")
+    main_md(project).write_text(quoted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(quoted, "The HIE"))]
+
+
+def test_an_abstract_titled_in_bold_is_read_apart(project: Path) -> None:
+    """docx-educ-2: "# **Abstract**", a Word heading also set in bold, names the Abstract, so
+    the Abstract's use of ROR owes its own definition and is not used before the
+    Introduction's; a use in the Introduction above the definition still is."""
+    mended = with_ror_defined(project)
+    bold = mended.replace("# Abstract", "# **Abstract**", 1).replace(
+        "**Background.** ", "**Background.** The ROR was read. ", 1)
+    main_md(project).write_text(bold, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(bold, "The ROR was read"))]
+    early = bold.replace("# Introduction\n\n", "# Introduction\n\nThe ROR was raised.\n\n", 1)
+    main_md(project).write_text(early, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(early, "The ROR was read")),
+        ("abbreviation-used-before-defined", line_of(early, "The ROR was raised"))]
+
+
+def test_an_abstract_ends_at_the_title_repeated_in_bold(project: Path) -> None:
+    """Decision D6 (docx-educ-B1): the Introduction opened by the title again in bold, with no
+    heading, as APA has it, is the main text, so its definition of ROR covers the Methods' use;
+    the Abstract still owes its own."""
+    title = "Hepatic injury with example-drug in a synthetic database"
+    mended = with_ror_defined(project)
+    apa = mended.replace("# Abstract", f"{title}\n\n# Abstract", 1).replace(
+        "# Introduction", f"**{title}**", 1)
+    main_md(project).write_text(apa, encoding="utf-8")
+    assert language_findings(project) == []
+    used = apa.replace("**Background.** ", "**Background.** The ROR was read. ", 1)
+    main_md(project).write_text(used, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(used, "The ROR was read"))]
+
+
+def test_a_paper_s_highlights_owe_no_definition(project: Path) -> None:
+    """Decision D4 (docx-ecol-B1): "# Highlights" between the Abstract and the Introduction
+    owes no definition, so its ROR is no use before the Introduction's definition; a section
+    of the paper's own there, "# Background", still owes one."""
+    mended = with_ror_defined(project)
+    for heading, said in (("# Highlights", []),
+                          ("# Background", ["abbreviation-used-before-defined"])):
+        text = mended.replace("# Introduction", f"{heading}\n\nThe ROR of example-drug was high."
+                              "\n\n# Introduction", 1)  # fmt: skip
+        main_md(project).write_text(text, encoding="utf-8")
+        assert [code for code, _line in language_findings(project)] == said, heading
+
+
+def test_r_pasted_as_an_indented_block_is_no_prose(project: Path) -> None:
+    """docx-psych-2: R pasted into the Methods as an indented code block, "SE<-as.vector(fit)"
+    over "#SE: Posterior Standard Deviation", holds no use and no definition; the same lines
+    as a list item's indented paragraph are read."""
+    code = "    SE<-as.vector(fit)\n    #SE: standard error of the fit\n\n"
+    text = with_ror_defined(project).replace(_PYTHON_PARAGRAPH, code + _PYTHON_PARAGRAPH, 1)
+    main_md(project).write_text(text, encoding="utf-8")
+    assert language_findings(project) == []
+    item = text.replace(code, "- The SE was kept.\n\n    SE: standard error\n\n", 1)
+    main_md(project).write_text(item, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(item, "- The SE was kept"))]
+
+
+# --------------------------------------------------------------------------------------
 # G14, the vocabulary: the example keeps to "hepatic injury". Each test below lets another
 # word for it into the text, the way a co-author's paragraph or a pasted sentence does, and
 # the gate has to report that word where it stands.

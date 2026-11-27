@@ -3448,3 +3448,35 @@ def test_a_paper_s_title_naming_methods_is_no_methods_over_a_results_name(
                      encoding="utf-8")  # fmt: skip
     read = audit([paper], []).abstract
     assert read is not None and read.compared
+
+
+# ------------------------------------------------- where a Word paper's list opens (2026-11-27)
+
+
+def test_a_list_s_title_in_a_block_quote_opens_it_under_a_line_of_marks_alone() -> None:
+    """docx-med-A3: pandoc writes the blank line between two quoted paragraphs of a Word
+    document as a line of `>` alone, so "> **11. REFERENCES**:" under one opens a list, as it
+    does under a blank line; the same title inside a quoted paragraph, under a line of words,
+    opens none."""
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    entry = "> 1. Doe A. Hydroxychloroquine (HCQ) in trials. BMJ. 2020;1:2."
+    text = f"# Discussion\n\n> It held.\n>\n> **11. REFERENCES**:\n>\n{entry}\n"
+    (listed,) = unmarked_reference_lists(text)
+    assert text.index(entry) < listed[1] and listed[0] <= text.index("> **11.")
+    text = f"# Discussion\n\n> It held, as\n> **11. REFERENCES**:\n>\n{entry}\n"
+    assert unmarked_reference_lists(text) == []
+
+
+@pytest.mark.parametrize(
+    ("label", "listed"),
+    [("**Literature**", True), ("Literature", True), ("**LITERATURE:**", True),
+     ("**Literature review**", False), ("**Literature** was scarce.", False)],
+)  # fmt: skip
+def test_literature_alone_opens_a_reference_list(label: str, listed: bool) -> None:
+    """docx-socio-B3: "**Literature**" alone over the entries, as a German paper titles its
+    list, opens one; "Literature review" and a sentence that opens on the word do not."""
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    text = f"# Discussion\n\nIt held.\n\n{label}\n\n1. Doe A. Large language models (LLMs). 2020.\n"
+    assert bool(unmarked_reference_lists(text)) == listed

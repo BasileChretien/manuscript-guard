@@ -457,3 +457,52 @@ def test_mdpi_s_abbreviations_before_the_references(tmp_path: Path) -> None:
     assert checked(tmp_path, {"main.md": text}) == [(
         "abbreviation-used-before-defined", "QXL is used here and not spelt out; only the list "
         "of abbreviations defines it, at manuscript/main.md:13")]
+
+
+# ---------------------------------------- where a Word paper's Abstract ends (2026-11-27)
+
+APA_TITLE = "Exam success and the podcasts of a large course"
+
+
+@pytest.mark.parametrize(
+    "again", [f"**{APA_TITLE}**", f"**{APA_TITLE.upper()}.**", f"__{APA_TITLE}:__"],
+)
+def test_an_apa_abstract_ends_at_the_title_repeated_in_bold(tmp_path: Path, again: str) -> None:
+    """Decision D6 (docx-educ-B1, docx-educ-C3): an APA manuscript repeats its title in bold
+    to open its Introduction, with no heading, so the Abstract ends there and the main text
+    opens: the Introduction's definition covers the Methods' use. A use in the Abstract still
+    owes the Abstract's own definition."""
+    text = (f"{APA_TITLE}\n\n# Abstract\n\nWe read 40 records of the CAP.\n\n{again}\n\nThe "
+            "content acquisition podcasts (CAP) were played.\n\n# Methods\n\nThe CAP ran.\n")
+    assert checked(tmp_path, {"main.md": text}) == [(
+        "abbreviation-undefined",
+        "CAP is used once in the abstract as G14 reads it, and not defined there")]
+
+
+def test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract(
+    tmp_path: Path,
+) -> None:
+    """A sub-heading in bold, or one that holds the title's words with more, is the
+    Abstract's: the Introduction's definition is the Abstract's then, as before."""
+    for bold in ("**Exam success**", f"**{APA_TITLE} in two years**"):
+        text = (f"{APA_TITLE}\n\n# Abstract\n\nWe read 40 records.\n\n{bold}\n\nThe content "
+                "acquisition podcasts (CAP) were played.\n\n# Methods\n\nThe CAP ran.\n")
+        assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
+            "abbreviation-undefined", "abbreviation-unused"], bold
+
+
+@pytest.mark.parametrize(
+    "heading", ["# Highlights", "## Research highlights", "# KEY POINTS", "# Key messages"],
+)
+def test_a_paper_s_highlights_owe_no_definition(tmp_path: Path, heading: str) -> None:
+    """Decision D4 (docx-ecol-B1): the Highlights, which a journal prints beside the Abstract
+    and not in the text, owe no definition, and a use there is still one; "Highlights of the
+    trial" is a section of the paper's own."""
+    text = (f"# Abstract\n\nThe agri-environment scheme (AES) paid, and the AES held.\n\n"
+            f"{heading}\n\nThe AES "
+            "paid farmers.\n\n# Introduction\n\nThe agri-environment scheme (AES) paid. The AES "
+            "held.\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    text = text.replace(heading, "# Highlights of the trial")
+    assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
+        "abbreviation-used-before-defined"]

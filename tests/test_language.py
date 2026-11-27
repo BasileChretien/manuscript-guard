@@ -3187,3 +3187,22 @@ def test_a_latex_name_underscores_join_is_no_use_of_a_short_form(tmp_path: Path)
     )
     report = _judge(_latex_read(tmp_path, None), _Known(frozenset(), frozenset()), tmp_path)
     assert not report.findings, [f.message for f in report.findings]
+
+
+# ------------------------------------------------- code pasted into a Word paper (2026-11-27)
+
+
+def test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read(
+    project: Path,
+) -> None:
+    """docx-psych-2: R pasted as a block indented four spaces after a blank line is a code
+    block as pandoc reads one, and no word of it is a use or a definition. A list item's
+    indented paragraph is the item's and is read; and, a limit written down in DESIGN.md's
+    Known gaps, a block quote's own indented code, `>     SE <- 1`, is read too."""
+    code = "    SE<-as.vector(fit)\n    #SE: Posterior Standard Deviation\n"
+    report = written(project, f"# Methods\n\nWe fitted the model.\n\n{code}\nIt held.\n")
+    assert not report.findings, found(report)
+    report = written(project, "# Methods\n\n- The SE was kept.\n\n    SE: standard error\n")
+    assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
+    report = written(project, "# Methods\n\n> The SE was kept.\n>\n>     SE: standard error\n")
+    assert codes(report) == {"abbreviation-used-before-defined"}, found(report)

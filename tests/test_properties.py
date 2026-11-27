@@ -3905,7 +3905,17 @@ def _a_link_opening_a_sentence_is_a_legend(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_range_s_dash_sets_off_a_legend(patch: pytest.MonkeyPatch) -> None:
-    _a_legend_without(patch, r"(?![^\S\n]*\d)", "")
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", "")
+
+
+def _a_range_of_links_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #837: only a number after the dash read as a range's.
+    _a_legend_without(patch, r"(?![^\S\n]*[\d\[])", r"(?![^\S\n]*\d)")
+
+
+def _a_range_from_a_panel_is_a_legend(patch: pytest.MonkeyPatch) -> None:
+    _a_legend_without(patch, r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?",
+                      "[A-Za-z]?")
 
 
 def _poppler_s_flow_order(patch: pytest.MonkeyPatch) -> None:
@@ -26547,6 +26557,14 @@ BROKEN = {
     ),
     "an audited paper's range opening a sentence is read as a legend": (
         _a_range_s_dash_sets_off_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range of two links opening a sentence is read as a legend": (
+        _a_range_of_links_is_a_legend,
+        test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
+    ),
+    "an audited paper's range from a panel opening a sentence is read as a legend": (
+        _a_range_from_a_panel_is_a_legend,
         test_a_paper_s_tables_and_figures_are_counted_by_their_legends_and_held_to_order,
     ),
     "registration numbers are read in the reference list too": (

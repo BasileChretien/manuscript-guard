@@ -50,15 +50,17 @@ NOT_COUNTED = "displays-not-counted"
 #: bookmark, the `![` of a picture or the `[` of a link, and the marks of emphasis, and is
 #: set off from its title (see the module's text). A link's or a picture's text may end
 #: there, its target after it, and the set-off then follows that. A dash sets a title off
-#: where no number follows it, which a range's does ("Figures 1–3 show", round 1 of
-#: #837). Any space but a line's end, Word's no-break space among them, stands where a
-#: space does.
+#: where no number or link follows it, as one follows a range's ("Figures 1–3 show",
+#: "[Figure 1](#_Ref1)–[Figure 3](#_Ref3) show"), and a panel's letter with a dash and a
+#: letter after it opens a range too ("Figures 1A–C show") (rounds 1 and 2 of #837). Any
+#: space but a line's end, Word's no-break space among them, stands where a space does.
 _LEGEND = re.compile(
     r"[^\S\n]*(?:\[\]\{[^}\n]*\}[^\S\n]*)*(?:!?\[)?(?:\[\]\{[^}\n]*\}[^\S\n]*)*(?:\*\*\*|\*\*|__|\*|_)?[^\S\n]*"
     r"(?i:(?:supplementary|supplemental)[^\S\n]+|e|s)?"
-    r"(?i:tables?|figures?|figs?\.?)[^\S\n]*S?\d+[A-Za-z]?(?:\*\*\*|\*\*|__|\*|_)?"
+    r"(?i:tables?|figures?|figs?\.?)[^\S\n]*S?\d+"
+    r"(?:[A-Za-z](?![\N{EN DASH}\N{EM DASH}-][A-Za-z](?![A-Za-z])))?(?:\*\*\*|\*\*|__|\*|_)?"
     r"(?:[^\S\n]*\](?:\([^)\n]*\))?(?:\{[^}\n]*\})?)?"
-    r"(?:[^\S\n]*[.:|]|[^\S\n]*[\N{EN DASH}\N{EM DASH}-](?![^\S\n]*\d)|[^\S\n]+(?=[A-Z])"
+    r"(?:[^\S\n]*[.:|]|[^\S\n]*[\N{EN DASH}\N{EM DASH}-](?![^\S\n]*[\d\[])|[^\S\n]+(?=[A-Z])"
     r"|[^\S\n]*$)"
 )
 #: A picture, as pandoc writes one: what a figure the file holds may be.
@@ -102,14 +104,15 @@ def of_files(files: dict[str, str], folder: Path) -> Displays:
     counted = 0
     for name, text in files.items():
         legends, cited = _read(text, folder / name)
-        held = _held(text)
+        # The tables and pictures the main text holds stand before the supplement's first
+        # legend: those after it are the supplement's, and its legends listed alone at the
+        # end stand for none (rounds 1 and 2 of #837).
+        cut = min((p.line for p in legends if p.supplementary), default=0)
+        held = _held("\n".join(text.split("\n")[:cut - 1]) if cut else text)
         for kind in ("table", "figure"):
             main = [p for p in legends if p.kind == kind and not p.supplementary]
             pointed = [p for p in cited if p.kind == kind and not p.supplementary]
-            # The supplement's legends a file gives are of tables and pictures it holds too
-            # (round 1 of #837).
-            elsewhere = sum(p.kind == kind and p.supplementary for p in legends)
-            got, said = _counted(kind, main, pointed, folder / name, held[kind], elsewhere)
+            got, said = _counted(kind, main, pointed, folder / name, held[kind], bool(cut))
             found += got
             notes += said
             counted += bool(main) and not said
@@ -252,12 +255,13 @@ def _held(text: str) -> dict[str, int]:
 
 
 def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Path,
-             held: int = 0, elsewhere: int = 0) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
+             held: int = 0, cut: bool = False) -> tuple[list[Finding], list[Finding]]:  # fmt: skip
     """The findings on one kind of a file's main text, and the note where it is not counted:
-    where its legends do not number it 1 to n once each, or where the file holds more of the
-    kind than they number with the supplement's legends it gives (`elsewhere`), as where a
-    legend stands in a layout table or in a picture the check does not read (the corpus run
-    of ea3fc52), and its citations would point at nothing."""
+    where its legends do not number it 1 to n once each, or where the main text holds more
+    of the kind than they number (`held`, counted before the supplement's first legend where
+    the file gives one, `cut`), as where a legend stands in a layout table or in a picture
+    the check does not read (the corpus run of ea3fc52), and its citations would point at
+    nothing."""
     numbers = sorted(p.number for p in legends)
     if not numbers:
         if not cited:
@@ -267,13 +271,13 @@ def _counted(kind: str, legends: list[_Pointer], cited: list[_Pointer], path: Pa
                             message=f"{kind}s are pointed at and no legend numbers "
                             f"one, so its {kind}s were not counted")]  # fmt: skip
     count = len(numbers)
-    if numbers == list(range(1, count + 1)) and held > count + elsewhere:
+    if numbers == list(range(1, count + 1)) and held > count:
         what = "tables" if kind == "table" else "pictures"
-        given = count + elsewhere
+        before = " before the supplement's first legend" if cut else ""
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,
                             line=legends[0].line, subject=f"{kind}s",
-                            message=f"it holds {held} {what}, and its legends "
-                            f"number {given} {kind}{'s' if given != 1 else ''}, so its {kind}s "
+                            message=f"it holds {held} {what}{before}, and its legends "
+                            f"number {count} {kind}{'s' if count != 1 else ''}, so its {kind}s "
                             "were not counted")]  # fmt: skip
     if numbers != list(range(1, count + 1)):
         return [], [Finding(gate=GATE, code=NOT_COUNTED, severity=INFO, path=path,

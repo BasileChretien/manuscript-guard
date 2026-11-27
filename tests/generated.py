@@ -254,13 +254,17 @@ def legend_displays(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
                                               f"{words()}.")
                        for at, number in enumerate(again)]  # fmt: skip
         # A citation that opens its paragraph, in each form one takes, is no legend: a
-        # sentence, a Word cross-reference's link and a range (round 1 of #837).
+        # sentence, a Word cross-reference's link and a range (round 1 of #837), a range
+        # from a panel and one of two links (round 2).
         cites, low = draw(st.integers(1, count - 1)), draw(st.integers(1, count - 2))
         dash = draw(st.sampled_from(("\N{EN DASH}", "-")))
         paragraphs += [
             (f"opens {kind}", f"{word} {cites} shows {words()}."),
             (f"link {kind}", f"[{word} {cites}](#_Ref{cites}) shows {words()}."),
             (f"range {kind}", f"{word}s {low}{dash}{low + 1} show {words()}."),
+            (f"panels {kind}", f"{word}s {low}A{dash}C show {words()}."),
+            (f"links {kind}", f"[{word} {low}](#_Ref{low}){dash}[{word} {low + 1}]"
+                              f"(#_Ref{low + 1}) show {words()}."),
         ]
         for number, form in enumerate(forms, 1):
             title = words()

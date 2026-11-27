@@ -44,6 +44,8 @@ def test_a_legend_as_word_writes_one_counts_its_table(legend: str) -> None:
 @pytest.mark.parametrize(("body", "kind"), [
     ("| a |\n|---|\n| 1 |\n\n| b |\n|---|\n| 2 |\n", "tables"),
     ("![](media/image1.png)\n\n![](media/image2.png)\n", "figures"),
+    # Round 2 of #837: pandoc's own caption under a table is a legend the check does not read.
+    ("| a |\n|---|\n| 1 |\n\n| b |\n|---|\n| 2 |\n\n: Table 2. B\n", "tables"),
 ])  # fmt: skip
 def test_a_file_that_holds_more_of_a_kind_than_its_legends_number_leaves_it_uncounted(
     body: str, kind: str
@@ -84,6 +86,9 @@ def test_a_sentence_that_opens_with_a_pointer_is_a_citation_and_no_legend(text: 
     # Round 1 of #837: a Word cross-reference's link, and a range, opening a paragraph.
     "[Table 1](#_Ref1) shows the patients.", "Tables 1\N{EN DASH}2 show the patients.",
     "Tables 1-2 show the patients.", "Table 1 shows the patients.",
+    # Round 2: a range from a panel, and one of two links.
+    "Tables 1A\N{EN DASH}C show the patients.",
+    "[Table 1](#_Ref1)\N{EN DASH}[Table 2](#_Ref2) show the patients.",
 ])  # fmt: skip
 def test_a_citation_that_opens_its_paragraph_is_no_legend(opening: str) -> None:
     read = said(f"Outcomes: Table 2.\n\n{opening}\n\nTable 1. A\n\nTable 2. B\n")
@@ -97,6 +102,16 @@ def test_the_supplement_s_legends_in_the_file_count_against_the_tables_it_holds(
     read = said(f"In Table 2, then Table 1 and Table S1.\n\nTable 1. A\n\n{table}\n"
                 f"Table 2. B\n\n{table}\nTable S1. C\n\n{table}")  # fmt: skip
     assert codes(read) == [("cited-out-of-order", 1)] and read.notes == (), read
+
+
+def test_the_supplement_s_legends_listed_alone_do_not_hide_a_legend_unread() -> None:
+    """Round 2 of #837: the supplement's legends listed at the end, without their displays,
+    stand for none of the pictures the main text holds before them, and Figure 3's legend,
+    inside its picture, still leaves the figures uncounted."""
+    read = said("In Figure 1, Figure 2 and Figure 3.\n\nFigure 1. A\n\n![](a.png)\n\n"
+                "Figure 2. B\n\n![](b.png)\n\n![](c.png)\n\nFigure S1. C\n")  # fmt: skip
+    assert read.findings == () and read.counted == 0, read
+    assert [note.code for note in read.notes] == [displays.NOT_COUNTED], read
 
 
 def test_a_display_cited_nowhere_is_not_said_to_be_cited_after_the_next() -> None:

@@ -1148,12 +1148,16 @@ def test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word(project: Path) 
         ("# Methods\n\n<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
         ('# Methods\n\n<span class="x"\nstyle="color: red">The value</span> was high.',
          ["color"]),
-        # code indented inside a list item, which pandoc reads as the item's code (round 4
-        # of #841), and a block indented straight under a heading, with no blank line
+        # other indented code, which pandoc reads as code: inside a list item or a footnote,
+        # straight under a heading, and a block whose first line opens with `>` (rounds 4
+        # and 5 of #841)
         ("# Methods\n\n- The value was high.\n\n        color = tumor", ["color", "tumor"]),
+        ("# Methods\n\nThe ratio was low.[^1]\n\n[^1]: The note.\n\n        color = tumor",
+         ["color", "tumor"]),
         ("# Methods\n    color = tumor", ["color", "tumor"]),
-        # the other side: in backticks, in a fence, in a block set off by four spaces after
-        # a blank line outside a list item (#841), and a tag on one line are left alone
+        ("# Methods\n\nThe value was high.\n\n    > color = tumor", ["color", "tumor"]),
+        # the other side: in backticks, in a fence, in a block set off by four spaces at the
+        # margin after a paragraph of prose (#841), and a tag on one line are left alone
         ("# Methods\n\nSee `color` here.", []),
         ("# Methods\n\n```\ncolor = tumor\n```\n\nDone.", []),
         ("# Methods\n\nThe value was high.\n\n    color = tumor\n\nDone.", []),
@@ -1164,10 +1168,11 @@ def test_code_in_backticks_a_fence_or_an_indented_block_is_left_alone(
     project: Path, text: str, words: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
-    code in backticks, in a fence, or in a block set off by four spaces after a blank line
-    outside a list item is left alone; code indented inside a list item, a block indented
-    straight under a heading, `<code>color</code>`, the CSS inside a `<style>` block and a
-    tag whose attributes run on to a second line are read."""
+    code in backticks or a fence, and a block set off by four spaces at the margin after a
+    paragraph of prose, are left alone. Other indented code may be read, for instance code
+    indented inside a list item or a footnote, a block straight under a heading, or a block
+    whose first line opens with `>`, `+` or `|`; and `<code>color</code>`, the CSS inside a
+    `<style>` block and a tag whose attributes run on to a second line are read."""
     _, found = written(project, f"{text}\n")
     assert reported(found) == words
 

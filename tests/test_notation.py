@@ -770,8 +770,10 @@ def test_what_is_not_the_paper_s_prose_is_not_read(block: str) -> None:
 def test_a_typed_table_is_read_with_the_prose(block: str) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a table typed into
     the manuscript is read with the prose, so its compact "n=12" in a header counts against
-    the text's; a fenced block is not read, nor one set off by four spaces after a blank line
-    outside a list item (#841)."""
+    the text's. A fenced block is not read, nor a block set off by four spaces at the margin
+    after a paragraph of prose (#841); other indented code may be read, for instance code
+    indented inside a list item or a footnote, a block straight under a heading, or a block
+    whose first line opens with `>`, `+` or `|`."""
     prose = "# Results\n\nSome (n = 12) and more (n = 40), and (n = 3).\n\n"
     report = read(f"{prose}{block}\n\nDone.\n")
     assert told(report) == [

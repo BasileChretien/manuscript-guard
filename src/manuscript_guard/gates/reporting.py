@@ -124,6 +124,34 @@ def completion_path(project: Project, name: str) -> Path:
 CLAIMABLE = (
     "STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE",
     "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR", "CHEERS", "ENTREQ",
+    # A case report and a case series have recipes, CARE-2013 and PROCESS-2023, and are
+    # said to follow them (round 1 of #851). Both are words too, read in capitals only,
+    # and names of other things, read as a guideline only as `_AS_GUIDELINE` says.
+    "CARE", "PROCESS",
+)
+#: The names of `CLAIMABLE` that are also a macro's, a scale's, a cohort's or a trial's
+#: ("the PROCESS macro", "the CARE Measure", "the CARE trial"): read as a guideline only
+#: where a year follows it, "PROCESS 2023", "CARE-2013", or a word that makes it one,
+#: "the CARE guidelines" (round 2 of #851). The word may be in capitals, "the CARE
+#: Guidelines", and come after a hyphen, "CARE-guidelines", after words of a case report
+#: or a series, "the CARE case report guidelines", after other names, "the CARE and
+#: STROBE statements", or after a parenthesis, "the CARE (CAse REport) guidelines"; the
+#: name may be emphasised, "the **CARE** guidelines" (round 3). A year in a parenthesis
+#: alone is not the guideline's, "with PROCESS (2022) for SPSS" cites Hayes's macro, and
+#: "reporting" alone is a verb, "PROCESS reporting 5000 samples" (round 3).
+QUALIFIED = ("CARE", "PROCESS")
+#: The words that make one of `QUALIFIED` the guideline's name, in any case.
+_GUIDELINE_WORD = r"(?i:guidelines?|guidance|statements?|checklists?|criteria)\b"
+#: The words of a case report or a series that may stand between the name and the word.
+_BETWEEN = r"(?i:case|cases|clinical|surgical|reports?|reporting|series)\b"
+#: A space or a hyphen between two words, with the stars of Markdown's emphasis round it.
+_GAP = r"\**[\s-]+\**"
+#: Another name it is joined to, in capitals: ", STROBE", " and STROBE", "/STROBE".
+_JOINED = r"(?:\**\s*(?:,\s*(?:and|or)\b|,|/|&|\band\b|\bor\b)\s*\**[A-Z][A-Z0-9+-]+)"
+_YEAR = r"\**[\s-](?:19|20)\d\d\b"
+_PARENTHESIS = r"(?:\**\s*\([^()]*\))"
+_AS_GUIDELINE = (
+    rf"(?={_JOINED}*(?:{_YEAR}|{_PARENTHESIS}?(?:{_GAP}{_BETWEEN})*{_GAP}{_GUIDELINE_WORD}))"
 )
 
 #: Words that turn a mention of a guideline into a claim of having followed it.
@@ -138,7 +166,15 @@ _CLAIMING = re.compile(
 #: about a guideline on the Methods section of essentially every observational paper, which
 #: teaches an author to stop reading its output. Guideline names are published in capitals
 #: and written that way; requiring the published casing costs nothing and removes the family.
-_NAMED = re.compile(r"\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) + r")\b")
+def _named(as_guideline: str) -> re.Pattern[str]:
+    """`CLAIMABLE`, longest first, each of `QUALIFIED` read only where `as_guideline`
+    follows it."""
+    names = sorted(CLAIMABLE, key=len, reverse=True)
+    return re.compile(r"\b(" + "|".join(name + (as_guideline if name in QUALIFIED else "")
+                                        for name in names) + r")\b")  # fmt: skip
+
+
+_NAMED = _named(_AS_GUIDELINE)
 
 #: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
 #: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the

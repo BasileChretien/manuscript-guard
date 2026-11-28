@@ -24,6 +24,16 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: guideline claims
+    why: >-
+      G5 reads a claim to have followed PROCESS or CARE, as it reads one of every guideline
+      it names (`CLAIMABLE`): a case series and a case report have recipes, PROCESS-2023
+      and CARE-2013, and a paper that says it followed one and declares none is told so
+      (round 1 of #851). Each is read in capitals beside a year or a word that makes it
+      the guideline's, in any case and after a hyphen, words of a case report, other names
+      or a parenthesis, "PROCESS-2023", "the CARE Guidelines", "the CARE and STROBE
+      statements" (rounds 2 and 3). The reading is new, and the base's rule reads neither
+      name; the paragraphs drawn are new too, claiming every name alone and in a way drawn
   - reading: plan sections asked
     why: >-
       a heading's Unicode hyphens, U+2010 and Word's non-breaking U+2011, are read as a

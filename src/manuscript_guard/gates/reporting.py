@@ -143,7 +143,11 @@ CLAIMABLE = (
 #: CARE (2013) and the STROBE [@strobe] statements", and a hyphen may be Word's or an en
 #: dash, "CARE–2013"; but a clause after a comma is no list, "Hayes's PROCESS, and STROBE
 #: guidelines were followed", nor are a trial's criteria or a cohort's year the guideline's,
-#: "enrolled according to the CARE criteria", "the CARE 2019 cohort".
+#: "enrolled according to the CARE criteria", "the CARE 2019 cohort". Round 2 of #858:
+#: names join in chains, "the CARE and STROBE and PRISMA guidelines", and a name joined has
+#: "the" before it, or a parenthesis after it, only as the first has, so that Hayes's macro
+#: cited, "with PROCESS (Hayes, 2022) and STROBE guidelines were followed", or a clause,
+#: "used PROCESS and the STROBE checklist was followed", is not read as a list.
 QUALIFIED = ("CARE", "PROCESS")
 #: The words that make one of `QUALIFIED` the guideline's name, in any case.
 _GUIDELINE_WORD = r"(?i:guidelines?|guidance|statements?|checklists?)\b"
@@ -159,20 +163,40 @@ _DASHES = chr(0x2010) + chr(0x2011) + chr(0x2013) + "-"
 _GAP = rf"\**[\s{_DASHES}]+\**"
 #: A parenthesis or a citation after a name: "CARE (CAse REport)", "CARE [@gagnier2013]".
 _PARENTHESIS = r"(?:\**\s*(?:\([^()]*\)|\[[^\[\]]*\]))"
-#: Another name, in capitals, "the" before it and a parenthesis after it if any.
-_OTHER = rf"(?:(?:the\s+)?\**[A-Z][A-Z0-9+-]+{_PARENTHESIS}?)"
-#: What joins the name to one other, "CARE and STROBE", "CARE/STROBE": not a comma.
+#: What joins the name to another, "CARE and STROBE", "CARE/STROBE": not a comma.
 _JOIN = r"(?:(?:and|or)\b|&|/)"
-#: The others it is joined to: one by `_JOIN`, or a list, "CARE, STROBE, and PRISMA".
-_JOINED = (rf"(?:(?:\**\s*{_JOIN}|(?:\**\s*,\s*{_OTHER})+\**\s*,?\s*(?:and|or)\b)"
-           rf"\s*{_OTHER})")  # fmt: skip
 #: A year right after the name, unless a study follows it, "the CARE 2019 cohort".
 _NOT_A_STUDY = (r"(?!\**\s+(?i:cohorts?|trials?|study|studies|groups?|registry|registries|"
                 r"participants|patients)\b)")  # fmt: skip
 _YEAR = rf"\**[\s{_DASHES}](?:19|20)\d\d\b{_NOT_A_STUDY}"
-_AS_GUIDELINE = (
-    rf"(?={_PARENTHESIS}?{_JOINED}?(?:{_YEAR}|(?:{_GAP}{_BETWEEN})*{_GAP}{_GUIDELINE_WORD}))"
-)
+#: What ends the lookahead: a year, or the guideline's word after words between if any.
+_ENDING = rf"(?:{_YEAR}|(?:{_GAP}{_BETWEEN})*{_GAP}{_GUIDELINE_WORD})"
+
+
+def _joined(other: str) -> str:
+    """The others a name is joined to, each `other`: a chain, "CARE and STROBE and PRISMA",
+    "CARE/STROBE", or a list, "CARE, STROBE, and PRISMA", whose comma never comes first
+    before "and" or "or" (round 1 of #858)."""
+    return (rf"(?:(?:\**\s*{_JOIN}\s*{other})+"
+            rf"|(?:\**\s*,\s*{other})+\**\s*,?\s*{_JOIN}\s*{other})")  # fmt: skip
+
+
+def _as_guideline(the: bool) -> str:
+    """What must follow one of `QUALIFIED`, as a lookahead, with "the" before the name if
+    `the`. A name joined to it has "the" before it only if `the`, and a parenthesis after
+    it if any when the first has none, but always when the first has one (round 2 of
+    #858)."""
+    name = (r"(?:the\s+)?" if the else "") + r"\**[A-Z][A-Z0-9+-]+"
+    plain = _joined(rf"(?:{name}{_PARENTHESIS}?)")
+    cited = _joined(rf"(?:{name}{_PARENTHESIS})")
+    return rf"(?=(?:{plain}?|{_PARENTHESIS}{cited}?){_ENDING})"
+
+
+#: The lookahead after a name with no "the" before it, and after one with.
+_AS_GUIDELINE = _as_guideline(the=False)
+_AFTER_THE = _as_guideline(the=True)
+#: "the" before the name, the stars of an emphasis between if any.
+_THE_BEFORE = r"(?:(?<=\b[Tt]he[ \n])|(?<=\b[Tt]he[ \n]\*)|(?<=\b[Tt]he[ \n]\*\*))"
 
 #: Words that turn a mention of a guideline into a claim of having followed it.
 _CLAIMING = re.compile(
@@ -186,15 +210,20 @@ _CLAIMING = re.compile(
 #: about a guideline on the Methods section of essentially every observational paper, which
 #: teaches an author to stop reading its output. Guideline names are published in capitals
 #: and written that way; requiring the published casing costs nothing and removes the family.
-def _named(as_guideline: str) -> re.Pattern[str]:
-    """`CLAIMABLE`, longest first, each of `QUALIFIED` read only where `as_guideline`
-    follows it."""
+def _named(as_guideline: str, after_the: str) -> re.Pattern[str]:
+    """`CLAIMABLE`, longest first, each of `QUALIFIED` read only where `after_the` follows
+    it, after "the", or `as_guideline`."""
+
+    def one(name: str) -> str:
+        if name not in QUALIFIED:
+            return name
+        return rf"(?:{_THE_BEFORE}{name}{after_the}|{name}{as_guideline})"
+
     names = sorted(CLAIMABLE, key=len, reverse=True)
-    return re.compile(r"\b(" + "|".join(name + (as_guideline if name in QUALIFIED else "")
-                                        for name in names) + r")\b")  # fmt: skip
+    return re.compile(r"\b(" + "|".join(one(name) for name in names) + r")\b")
 
 
-_NAMED = _named(_AS_GUIDELINE)
+_NAMED = _named(_AS_GUIDELINE, _AFTER_THE)
 
 #: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
 #: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the

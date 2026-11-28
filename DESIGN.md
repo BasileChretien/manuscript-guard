@@ -24124,10 +24124,19 @@ Open, recorded as each change landed:
   "CARE-2013", or a word that makes it the guideline's, in any case, "the CARE
   Guidelines": guideline, guidance, statement or checklist. The word may come after a
   hyphen, Word's or an en dash among them, words of a case report or a series ("the CARE
-  case report guidelines"), other names, "the" before them and a parenthesis or a citation
-  after each ("the CARE (2013) and the STROBE [12] statements"), or a parenthesis ("the
-  CARE (CAse REport) guidelines"), and the name may stand in stars of emphasis (rounds 2
-  and 3 of #851, round 1 of #858). So a claim that names one alone, "we followed CARE", is
+  case report guidelines"), a parenthesis or a citation ("the CARE (CAse REport)
+  guidelines"), or other names, in a chain or a list ("the CARE and STROBE and PRISMA
+  guidelines", "the CARE, STROBE, and PRISMA statements"); and the name may stand in stars
+  of emphasis (rounds 2 and 3 of #851, rounds 1 and 2 of #858). A name joined has "the"
+  before it only if the first has, and a parenthesis or a citation after it as the first
+  has, if it has one, "the CARE (2013) and the STROBE [12] statements": so neither Hayes's
+  macro cited, "with PROCESS (Hayes, 2022) and STROBE guidelines were followed", nor a
+  clause, "used PROCESS and the STROBE checklist was followed", is read as a claim of
+  PROCESS. But "the CARE (CAse REport) and STROBE guidelines" and "CARE and the STROBE
+  guidelines" are not read as claims of CARE either, nor a list with no "and" or "or",
+  "the CARE, STROBE, PRISMA guidelines"; and a clause with neither, "Analyses used PROCESS
+  and STROBE guidelines were followed", is read as one, a false alarm. A claim that names
+  one alone, "we followed CARE", is
   not read, nor one where only a year in a parenthesis follows it, "according to PROCESS
   (2023)", which is how Hayes's macro is cited, "with PROCESS (2022) for SPSS". Nor is one
   of the guideline's criteria, "the PROCESS (2023) criteria", since "enrolled according to

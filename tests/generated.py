@@ -4181,6 +4181,15 @@ def _joined_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
     return f"{written}{join}{others[0]} {_guideline_word(draw)}", others
 
 
+def _chained_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
+    """The name chained to two or three others, "CARE and STROBE and PRISMA",
+    "CARE/STROBE/PRISMA" (round 2 of #858), and the others."""
+    others = _others(draw, written, 2, 3)
+    text = written + "".join(draw(st.sampled_from((" and ", " or ", " & ", "/"))) + other
+                             for other in others)  # fmt: skip
+    return f"{text} {_guideline_word(draw)}", others
+
+
 def _listed_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
     """The name first of a list of three or four, "CARE, STROBE, and PRISMA", and the
     others."""
@@ -4228,6 +4237,7 @@ NAMED_AS_GUIDELINE = {
         []),
     "emphasis": _emphasised,
     "joined names": _joined_names,
+    "a chain": _chained_names,
     "a list": _listed_names,
     "joined after the": _joined_after_the,
     "joined with parentheses": _joined_with_parentheses,
@@ -4240,7 +4250,8 @@ NAMED_AS_GUIDELINE = {
 #: a word of claiming, read as no guideline's, with the names that are read: a year in a
 #: parenthesis alone cites Hayes's macro, and "reporting" alone is a verb (round 3 of
 #: #851); a clause after a comma is no list, and a trial's criteria and a cohort's year are
-#: not the guideline's (round 1 of #858).
+#: not the guideline's (round 1 of #858); nor is a clause after the macro cited, or after
+#: "and the" where no "the" stands before the macro (round 2 of #858).
 NAMED_OTHERWISE = {
     "macro": (("Mediation was tested following Hayes, with the {} macro.",), []),
     "scale": (("Patient-reported empathy was measured on the {} Measure.",), []),
@@ -4256,6 +4267,11 @@ NAMED_OTHERWISE = {
     "criteria": (("Patients were enrolled according to the {} criteria.",), []),
     "a study's year": (("The {} {} cohort was followed for five years.",
                         "As reported in the {} {} trial, events fell."), []),
+    "a clause after the macro cited": (
+        ("Mediation was run with {} (Hayes, {}) and STROBE guidelines were followed.",
+         "Mediation was run with {} [14] and STROBE guidelines were followed."), ["STROBE"]),
+    "a clause after and the": (
+        ("Analyses used {} and the STROBE checklist was followed.",), ["STROBE"]),
 }  # fmt: skip
 
 

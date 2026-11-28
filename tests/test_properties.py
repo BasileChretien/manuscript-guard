@@ -4922,14 +4922,35 @@ def _a_name_is_read_in_any_case(patch: pytest.MonkeyPatch) -> None:
                   re.compile(reporting_gate._NAMED.pattern, re.IGNORECASE))
 
 
-def _care_and_process_read_with(patch: pytest.MonkeyPatch, old: str, new: str) -> None:
-    """CARE and PROCESS read where `_AS_GUIDELINE`, with `old` in it written as `new`,
-    follows them."""
+def _care_and_process_read_with(patch: pytest.MonkeyPatch, old: str, new: str,
+                                *more: tuple[str, str]) -> None:
+    """CARE and PROCESS read where `_AS_GUIDELINE` or `_AFTER_THE`, with `old` in either
+    written as `new`, and each pair of `more` the same way, follows them."""
     from manuscript_guard.gates import reporting as reporting_gate
 
-    pattern = reporting_gate._AS_GUIDELINE
-    assert old in pattern and new != old, (old, new)
-    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(pattern.replace(old, new)))
+    patterns = [reporting_gate._AS_GUIDELINE, reporting_gate._AFTER_THE]
+    for was, now in ((old, new), *more):
+        assert any(was in pattern for pattern in patterns) and now != was, (was, now)
+        patterns = [pattern.replace(was, now) for pattern in patterns]
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(*patterns))
+
+
+def _names_join_one_to_one(patch: pytest.MonkeyPatch) -> None:
+    _care_and_process_read_with(patch, r")+|(?:\**\s*,\s*", r")|(?:\**\s*,\s*")
+
+
+def _a_parenthesis_on_the_first_name_lets_any_join(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    cited = r"[A-Z0-9+-]+" + reporting_gate._PARENTHESIS + ")"
+    _care_and_process_read_with(patch, cited, cited[:-1] + "?)")
+
+
+def _the_before_a_name_joined_is_read_after_any(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    after_the = reporting_gate._AFTER_THE
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(after_the, after_the))
 
 
 def _a_guideline_word_is_read_in_lower_case_only(patch: pytest.MonkeyPatch) -> None:
@@ -4971,8 +4992,9 @@ def _the_is_not_read_before_a_name_joined(patch: pytest.MonkeyPatch) -> None:
 def _a_parenthesis_after_a_name_joined_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import reporting as reporting_gate
 
-    after = r"[A-Z0-9+-]+" + reporting_gate._PARENTHESIS + "?"
-    _care_and_process_read_with(patch, after, r"[A-Z0-9+-]+")
+    after = r"[A-Z0-9+-]+" + reporting_gate._PARENTHESIS
+    _care_and_process_read_with(patch, after + "?", r"[A-Z0-9+-]+",
+                                (after + ")", r"[A-Z0-9+-]+)"))  # fmt: skip
 
 
 def _a_citation_after_the_name_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -5005,7 +5027,8 @@ def _an_emphasised_name_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _a_name_joined_to_others_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import reporting as reporting_gate
 
-    _care_and_process_read_with(patch, reporting_gate._JOINED, "(?:(?!))")
+    alone = rf"(?={reporting_gate._PARENTHESIS}?{reporting_gate._ENDING})"
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(alone, alone))
 
 
 def _a_parenthesis_after_the_name_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -30936,6 +30959,18 @@ BROKEN = {
     ),
     "G5 reads the CARE 2019 cohort as the guideline": (
         _a_study_s_year_makes_the_guideline,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE in the CARE and STROBE and PRISMA guidelines": (
+        _names_join_one_to_one,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads Hayes's PROCESS (2022) and STROBE guidelines as a claim of PROCESS": (
+        _a_parenthesis_on_the_first_name_lets_any_join,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads PROCESS and the STROBE checklist was followed as a claim of PROCESS": (
+        _the_before_a_name_joined_is_read_after_any,
         test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
     ),
     "G8r reads a claim from one item of a list into the next": (

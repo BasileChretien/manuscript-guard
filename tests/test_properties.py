@@ -2611,6 +2611,14 @@ def test_no_definition_is_asked_where_none_is_due(
         assert found == expected, files
 
 
+def _a_bold_heading_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_bold_headings", lambda prose: [])
+
+
+def _a_citation_s_author_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_authors_a_citation", lambda prose, end: False)
+
+
 def _a_bold_title_names_no_abstract(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -3307,8 +3315,9 @@ def _a_sign_s_long_form_need_not_be_the_words_whole(patch: pytest.MonkeyPatch) -
     Small Developmental Coordination Questionnaire" defines DCQ."""
     real = language_gate._spelt_after
 
-    def found(short: str, words: list[str]) -> str | None:
-        return real(short, words) or language_gate._read_back(short, " ".join(words))
+    def found(short: str, words: list[str], one_word: bool = False) -> str | None:
+        return (real(short, words, one_word=one_word)
+                or language_gate._read_back(short, " ".join(words)))
 
     patch.setattr(language_gate, "_spelt_after", found)
 
@@ -3317,9 +3326,9 @@ def _a_sign_s_long_form_is_one_word_or_more(patch: pytest.MonkeyPatch) -> None:
     """"CM: Cameroon", a country's code, read as a definition."""
     real = language_gate._spelt_after
 
-    def found(short: str, words: list[str]) -> str | None:
-        return real(short, words) or (words[0] if len(words) == 1
-                                       and language_gate._long_form(short, words[0]) else None)
+    def found(short: str, words: list[str], one_word: bool = False) -> str | None:
+        return real(short, words, one_word=one_word) or (
+            words[0] if len(words) == 1 and language_gate._long_form(short, words[0]) else None)
 
     patch.setattr(language_gate, "_spelt_after", found)
 
@@ -3698,23 +3707,166 @@ from generated import (  # noqa: E402
 
 @holds(60, statistics_used())
 def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
-    drawn: tuple[str, list[str]],
+    drawn: tuple[str, list[str], tuple[str, str, str]],
 ) -> None:
     """The statistical abbreviations G14's list holds are not reported as undefined, and
     the others are; a journal that asks for the statistical ones defined has all of them
-    reported, and one that names some has those reported, from either list."""
-    text, named = drawn
+    reported, and one that names some has those reported, from either list. The paper
+    defines three after using them: a statistical one in a table's note, where the journal
+    does not ask it defined, was not used before its definition; another statistical one
+    in the running text was, and so was the other list's (decision D2, narrowed to displays,
+    the author, 2026-11-27)."""
+    text, named, (noted, spelt, other) = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     read = [_file(0, Path("main.md"), text, [], False)]
 
-    def undefined(statistics: bool, asked: frozenset[str]) -> list[str]:
+    def said(statistics: bool, asked: frozenset[str]) -> list[tuple[str, str]]:
         known = language_gate._asked(nothing, statistics, asked)
         report = _g14_warned(read, known, Path("."))
-        return sorted(f.message.split()[0] for f in report.findings)
+        return sorted((f.code, f.message.split()[0]) for f in report.findings)
 
-    assert undefined(False, frozenset()) == sorted(STATISTICS_NOT), text
-    assert undefined(True, frozenset()) == sorted(STATISTICS_EXEMPT + STATISTICS_NOT), text
-    assert undefined(False, frozenset(named)) == sorted({*STATISTICS_NOT, *named}), text
+    def expected(reported: set[str]) -> list[tuple[str, str]]:
+        early = {spelt, other} | ({noted} & reported)
+        return sorted([*(("abbreviation-undefined", short)
+                         for short in reported - {noted, spelt, other}),
+                       *(("abbreviation-used-before-defined", short) for short in early)])
+
+    assert said(False, frozenset()) == expected(set(STATISTICS_NOT)), text
+    assert said(True, frozenset()) == expected({*STATISTICS_EXEMPT, *STATISTICS_NOT}), text
+    assert said(False, frozenset(named)) == expected({*STATISTICS_NOT, *named}), text
+
+
+def _a_statistical_abbreviation_owes_a_later_definition(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_may_stand_undefined", lambda short, known: False)
+
+
+def _a_statistical_abbreviation_owes_no_later_definition_anywhere(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    """D2 as first decided, before "Narrow it to displays": the running text's later
+    definition as quiet as a table's."""
+    patch.setattr(language_gate, "_quiet_later",
+                  lambda short, known, covering: language_gate._may_stand_undefined(short, known))
+
+
+from generated import pointer_restated  # noqa: E402
+
+
+@holds(60, pointer_restated())
+def test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """A bracket of a short form and its word before a semicolon, after which it points to a
+    display of each kind, defines the short form, its long form the words before it less
+    their last words while the rest still spells it, two kept at the least (`_trimmed`): "a
+    low rank position (LR group; Figure 1, Panel B)" and the paper's later "Low rank (LR)"
+    give one meaning, LR defined again (decision D10, the author, 2026-11-27), and so do "a
+    wide arc gap (WA group; Panel 2)" and "Wide arc (WA)", though "gap" holds an A."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    assert sorted(f.message.split(";")[0] for f in report.findings) == expected, text
+
+
+def _a_pointer_s_long_form_runs_to_its_last_word_holding_a_letter(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    def to_the_last_letter(short: str, long: str) -> str:
+        words, letters = long.split(), set(short.lower())
+        while len(words) > 2 and not set(words[-1].lower()) & letters:
+            words = words[:-1]
+        return " ".join(words)
+
+    patch.setattr(language_gate, "_trimmed", to_the_last_letter)
+
+
+def _a_pointer_after_a_semicolon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_before_a_pointer", lambda prose, bracket: None)
+
+
+def _a_pointer_s_long_form_runs_to_its_bracket(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_trimmed", lambda short, long: long)
+
+
+def _a_bracket_of_pairs_reads_its_last_item_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_bracket_pairs", lambda prose, bracket: [])
+
+
+def _a_colon_pair_s_long_form_ends_at_its_first_comma(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_paired_past_commas",
+                  lambda prose, lines, pair, short, after_long: None)  # fmt: skip
+
+
+def _a_colon_pair_runs_into_the_next_pair(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_before_the_next_pair", lambda prose, wider: wider.group(0))
+
+
+def _a_bold_paragraph_of_any_length_is_a_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_BOLD_HEADING_MOST", 10**6)
+
+
+def _a_citation_s_own_part_may_go_on_past_its_year(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ends_its_part", lambda prose, at: True)
+
+
+def _any_bracket_of_years_is_a_list_of_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_cited_part", lambda part: True)
+
+
+def _a_year_after_et_al_s_comma_is_a_part_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_YEAR_PART", re.compile(r"(?!)"))
+
+
+def _a_year_s_further_letter_is_a_part_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_LETTER_PART", re.compile(r"(?!)"))
+
+
+def _markup_after_a_citation_s_year_ends_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_past_markup", lambda prose, at: at)
+
+
+def _a_highlighted_citation_ends_a_list_of_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_PART_MARKUP", re.compile(r"(?!)"))
+
+
+def _a_year_after_a_word_makes_it_a_citation_s_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_authors_a_citation",
+                  lambda prose, end: language_gate._YEAR_AFTER.match(prose, end) is not None)
+
+
+def _a_bracket_of_two_pairs_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_FEWEST_PAIRS", 2)
+
+
+def _a_number_before_a_pointer_is_its_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_a_word_before", lambda inside, opening: True)
+
+
+def _a_long_form_of_one_word_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_one_word", lambda short, words: False)
+
+
+from generated import spaced_glossaries  # noqa: E402
+
+
+@holds(30, spaced_glossaries())
+def test_a_word_list_s_spaced_line_defines_where_its_words_spell_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A line of a list of abbreviations whose tab Word printed as a space is an entry where
+    the words after its short form, up to a bracket, spell it whole: with a link's address or
+    text after it, its short form in bold; one whose words do not, and a sentence under the
+    heading, are no entry, and their short forms are never defined (Basile, 2026-11-27)."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == expected, text
+
+
+def _a_glossary_line_with_a_space_for_its_tab_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "_spelt_entry", lambda line, begin: None)
 
 
 def _the_statistical_list_is_empty(patch: pytest.MonkeyPatch) -> None:
@@ -31497,6 +31649,102 @@ BROKEN = {
     "no title page is found": (
         _no_title_page_is_found,
         test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a heading typed in bold is read as text": (
+        _a_bold_heading_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a citation's author is read as text": (
+        _a_citation_s_author_is_read_as_text,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a statistical abbreviation owes a later definition": (
+        _a_statistical_abbreviation_owes_a_later_definition,
+        test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a statistical abbreviation owes no later definition anywhere": (
+        _a_statistical_abbreviation_owes_no_later_definition_anywhere,
+        test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a pointer after a bracket's semicolon defines nothing": (
+        _a_pointer_after_a_semicolon_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a pointer after a bracket's semicolon defines nothing, restated": (
+        _a_pointer_after_a_semicolon_defines_nothing,
+        test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
+    ),
+    "a pointer's long form runs to its last word holding a letter": (
+        _a_pointer_s_long_form_runs_to_its_last_word_holding_a_letter,
+        test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
+    ),
+    "a pointer's long form runs to its bracket": (
+        _a_pointer_s_long_form_runs_to_its_bracket,
+        test_a_pointer_s_bracket_defines_less_the_last_words_it_does_not_need,
+    ),
+    "a bracket of pairs reads its last item alone": (
+        _a_bracket_of_pairs_reads_its_last_item_alone,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon pair's long form ends at its first comma": (
+        _a_colon_pair_s_long_form_ends_at_its_first_comma,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a colon pair runs into the next pair": (
+        _a_colon_pair_runs_into_the_next_pair,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a bold paragraph of any length is a heading": (
+        _a_bold_paragraph_of_any_length_is_a_heading,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a citation's own part may go on past its year": (
+        _a_citation_s_own_part_may_go_on_past_its_year,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "any bracket of years is a list of citations": (
+        _any_bracket_of_years_is_a_list_of_citations,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a highlighted citation ends a list of citations": (
+        _a_highlighted_citation_ends_a_list_of_citations,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a year after et al.'s comma is a part of its own": (
+        _a_year_after_et_al_s_comma_is_a_part_of_its_own,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a year's further letter is a part of its own": (
+        _a_year_s_further_letter_is_a_part_of_its_own,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "markup after a citation's year ends nothing": (
+        _markup_after_a_citation_s_year_ends_nothing,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a year after a word makes it a citation's author": (
+        _a_year_after_a_word_makes_it_a_citation_s_author,
+        test_no_definition_is_asked_where_none_is_due,
+    ),
+    "a bracket of two pairs is read": (
+        _a_bracket_of_two_pairs_is_read,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a number before a pointer is its word": (
+        _a_number_before_a_pointer_is_its_word,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a one-word glossary line is no entry": (
+        _a_long_form_of_one_word_defines_nothing,
+        test_a_word_list_s_spaced_line_defines_where_its_words_spell_it,
+    ),
+    "a long form of one word defines nothing": (
+        _a_long_form_of_one_word_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a glossary line with a space for its tab is no entry": (
+        _a_glossary_line_with_a_space_for_its_tab_is_no_entry,
+        test_a_word_list_s_spaced_line_defines_where_its_words_spell_it,
     ),
     "a quote's line of marks is no blank line": (
         _a_quote_s_line_of_marks_is_no_blank_line,

@@ -459,6 +459,73 @@ def test_mdpi_s_abbreviations_before_the_references(tmp_path: Path) -> None:
         "of abbreviations defines it, at manuscript/main.md:13")]
 
 
+# ------------------------------------------------ a Word paper's bold headings (2026-11-27)
+
+
+def test_a_short_paragraph_wholly_in_bold_owes_no_definition_and_is_a_use(tmp_path: Path) -> None:
+    """Decision D5 (docx-educ-B1): a heading typed in Word as a paragraph in bold, "**QPS**"
+    over the sentence that defines it, owes no definition, as a heading made with a style
+    does, and is still a use, so a form used again only there is not unused. A paragraph in
+    bold longer than 150 characters, and a word in bold inside a sentence, are text."""
+    long = ("**The QPS results of each of the classes of the second year of the study were read "
+            "again by a second reader who did not know which class each of them came from**")
+    assert len(long) > 150
+    text = ("# Methods\n\n**QPS**\n\nThe quiet play scale (QPS) was read. The QPS rose.\n\n"
+            "The quiet zone time (QZT) was set.\n\n**QZT**\n\n# Results\n\nIt held.\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    # A limit written down in DESIGN.md's Known gaps: a short sentence in bold is a heading.
+    text = ("# Methods\n\n**The QPS rose.**\n\nThe quiet play scale (QPS) was read. The QPS "
+            "rose.\n")  # fmt: skip
+    assert checked(tmp_path, {"main.md": text}) == []
+    for early in (long, "The **QPS** rose in the first class."):
+        text = (f"# Methods\n\n{early}\n\nThe quiet play scale (QPS) was read. The QPS "
+                "rose.\n")
+        assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
+            "abbreviation-used-before-defined"], early
+
+
+# ------------------------------------------- a citation's author typed as text (2026-11-27)
+
+
+def test_a_citation_s_author_owes_no_definition_and_is_a_use(tmp_path: Path) -> None:
+    """docx-pharm-epi-A1: "(Kaye et al. 2009, NIH 2016a, NIH 2016b)", author-year citations a
+    comma divides, and "(QXW, 2016)" name their authors, which owe no definition there: NIH
+    defined later says nothing of them. A form defined and then cited only as an author,
+    "(APA, 2020)", is used. "the NIH 2016 guidelines" in a sentence still owes one."""
+    text = ("# Introduction\n\nRules were set (Kaye et al. 2009, NIH 2016a, NIH 2016b), and "
+            "kept (QXW, 2016).\n\n# Methods\n\nThe National Institutes of Health (NIH) paid. "
+            "The NIH rose. The American Psychological Association (APA) set the style (APA, "
+            "2020).\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    text = ("# Introduction\n\nThe NIH 2016 guidelines were kept.\n\n# Methods\n\nThe National "
+            "Institutes of Health (NIH) paid. The NIH rose.\n")
+    assert [code for code, _message in checked(tmp_path, {"main.md": text})] == [
+        "abbreviation-used-before-defined"]
+    # Round 1 of #838: a bracket of years that is no list of citations owes a definition.
+    for bracket in ("(NIH 1850, 2010)", "(NIH-10 2019, DSM-5 2013)",
+                    "(Kaye 2009, NIH 2016 and 2017)"):
+        text = (f"# Introduction\n\nRanges held {bracket}.\n\n# Methods\n\nThe National "
+                "Institutes of Health (NIH) paid. The NIH rose.\n")
+        assert "abbreviation-used-before-defined" in [
+            code for code, _message in checked(tmp_path, {"main.md": text})], bracket
+    text = ("# Introduction\n\nRules were set (AERA, 2014; APA, 2020).\n\n# Methods\n\nThe "
+            "American Educational Research Association (AERA) set them. The AERA held.\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    # docx-pharm-epi-A1 as typed: an author ending in a full stop, and a citation Word
+    # highlighted, which pandoc writes as a span, are parts of the list all the same.
+    text = ("# Introduction\n\nRules were set (Kaye et al. 2009, Research Councils UK. 2011, "
+            "NIH 2016a, NIH 2016b, [Holdren 2012]{.mark}).\n\n# Methods\n\nThe National "
+            "Institutes of Health (NIH) paid. The NIH rose.\n")
+    assert checked(tmp_path, {"main.md": text}) == []
+    # Round 2 of #838: "et al." with the year after its comma, a year's further letter, and
+    # the author's own part highlighted or in italics, are a list of citations all the same.
+    for bracket in ("(Kaye et al., 2009, NIH 2016a)", "(Kaye 2009a,b, NIH 2016)",
+                    "(Kaye 2009, [NIH 2016a]{.mark})", "(Kaye 2009, *NIH 2016a*)"):
+        text = (f"# Introduction\n\nRules were set {bracket}.\n\n# Methods\n\nThe National "
+                "Institutes of Health (NIH) paid. The NIH rose.\n")
+        assert checked(tmp_path, {"main.md": text}) == [], bracket
+
+
 # ---------------------------------------- where a Word paper's Abstract ends (2026-11-27)
 
 APA_TITLE = "Exam success and the podcasts of a large course"

@@ -5789,6 +5789,42 @@ neither a definition nor a use. And a name whose parts underscores join, a serie
 variable's, "QMP_RATE", `QMP\_DURA\_12mth`, is no use of a short form any of its parts is;
 an underscore that joins no two parts, an emphasis mark's, joins nothing.
 
+**A Word paper's own shapes and places (Basile, 2026-11-27, after the 62 loud
+`abbreviation-used-before-defined` findings judged false on the corpus's Word papers).** Four
+shapes of definition, each read through the same letters. A bracket of three pairs or more a
+semicolon divides, each a long form then its short form in capitals, a comma between them or
+none, "(strongly agree, SA; neutral answer, NA; strongly disagree, SDA)", defines each pair,
+as "long form (SHORT)" would, a single capital, "agree A", being no short form; where an item is of another shape, or the bracket holds two, only its
+last pair is read, as before, so "(OR, 1.2; HR, 0.8; RR, 1.1)" gives statistics. A colon pair
+or an equals sign's whose long form cut at its first comma spells nothing is read on to the
+next semicolon, stop, sign, bracket or line's end, by the same rules, "DASS: Depression,
+Anxiety and Stress Scale;". A short form and its word before a semicolon after which the
+bracket points to a display, "a low rank position (LR hierarchy; Figure 1, Panel B)", defines
+as one before a typed citation does, the word before the semicolon holding a letter, and
+its long form loses its last words while those before them still spell the short form, two
+kept at the least, "low rank": the bracket's word is the long form's head, so the paper's
+later "Low rank (LR) hierarchy" gives LR again and not another meaning (decision D10), and
+"low rank role (LR group; Figure 1)" gives "low rank" too. And in the bracket after the short form one word is a long form where it is of letters
+only, opens with the short form's first letter and is three letters longer at least, "HCQ
+(Hydroxychloroquine,)" (decision D8); after a sign two words are still the least. A list of
+abbreviations under its heading reads a line whose tab Word printed as a space, "DTL Dutch
+Techcentre for Life Science (www.dtls.nl)", as an entry where the words after the short form,
+up to a bracket, spell it whole, as they would in the short form's bracket, one word
+among them, "HCQ Hydroxychloroquine" (decision D8; round 1 of #838). Two places owe no
+definition, as a keywords line does, and a use there is still one: a paragraph wholly in bold
+of 150 characters or fewer, which is how a heading is typed in Word with no heading's style
+(decision D5); and a citation's author typed as text, its year after it, "(EOSC-HLEG,
+2016)", or in a bracket on one line of author-year citations a comma divides, "(Kaye et al.
+2009, NIH 2016a, NIH 2016b)", a part Word highlighted read as its words, "[Holdren
+2012]{.mark}". And a form of the statistical list, where the journal does not
+ask it defined, is not used before a later definition that only a table's or a figure's own
+text gives, "SD" over a table note's "standard deviation (SD)" (decision D2, narrowed on
+2026-11-27, "Narrow it to displays": the statistical list only; a later definition in the
+running text, tex-cs-lg-1's "root mean square error (RMSE)", is owed at first use, as DOI's,
+on the shipped list, is). A display's definition still counts for
+the text where the text gives none (decision D1, "Still counts", kept), and the letters still
+decide (D9). Known gaps holds where each ends.
+
 **A paper with no heading is read as one text.** A Markdown manuscript converted from Word
 with its headings as bold lines has no section G14 can tell apart: the abstract is read with
 the main text, so a definition the abstract and the Introduction both give would be reported
@@ -26247,7 +26283,9 @@ Open, recorded as each change landed:
     no heading is still read as one text, with no `abbreviation-redefined`, and nothing
     says so. Pinned by `tests/test_language.py::test_no_headings_is_said_at_drafting_only`.
   - A word typed in capitals for emphasis is reported as an undefined abbreviation, unless
-    its paragraph is set entirely in bold and has no small letter in it.
+    its paragraph is set entirely in bold and has no small letter in it, or is set entirely
+    in bold and holds 150 characters or fewer, which is read as a heading typed in Word
+    (decision D5).
     Pinned by `tests/test_language.py::test_the_capitals_g14_reads_and_the_names_it_exempts_are_as_design_md_says`.
   - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a
     table's body, "TOTAL", are reported as undefined abbreviations.
@@ -26360,9 +26398,10 @@ Open, recorded as each change landed:
     Pinned by `tests/test_definition_shapes.py::test_the_paper_s_title_typed_as_a_heading_defines_nothing`
     and `tests/test_definition_shapes.py::test_a_heading_with_no_named_section_over_it_defines_nothing`.
   - After a sign the long form is the words after it whole, give or take an article, two
-    words at least, as in "ROR (reporting odds ratio)": a country's code, "XY: Kenya", one
-    word, and an instrument with a word before its letters, "DCQ = Small Developmental
-    Coordination Questionnaire", define nothing.
+    words at least, as in "ROR (reporting odds ratio)", where one word is enough only as
+    the next entry says: a country's code, "XY: Kenya", one word, and an instrument with a
+    word before its letters, "DCQ = Small Developmental Coordination Questionnaire", define
+    nothing.
     Pinned by `tests/test_definition_shapes.py::test_a_note_ended_on_its_line_defines`.
   - A note whose long form runs onto the next line of its paragraph, "BDI = Beck
     Depression" over "Inventory.", defines nothing (Basile, 2026-11-16, "Wrapped note
@@ -26378,8 +26417,9 @@ Open, recorded as each change landed:
     and `tests/test_definition_shapes.py::test_a_colon_that_introduces_words_with_the_letters_defines`.
   - A bracket's short form and its word before a semicolon define where an author-year
     citation the typed-citation reading knows follows, "(SDSS DR15; York et al., 2000)", as
-    a .docx or a PDF prints pandoc's prefix; a numbered citation there, "(SDSS DR15; 12)",
-    does not.
+    a .docx or a PDF prints pandoc's prefix, or a pointer to a display, "(LR hierarchy;
+    Figure 1, Panel B)" (decision D10); a numbered citation there, "(SDSS DR15; 12)", does
+    not.
     Pinned by `tests/test_definition_shapes.py::test_a_bracket_s_short_form_before_a_typed_citation_defines`.
   - The long form is looked for where a bracket's is, in the words G14 reads and within
     Schwartz and Hearst's window: one in maths (a ratio of two luminosities typed as `$...$`,
@@ -31403,6 +31443,67 @@ What papers converted from Word showed (see "What papers converted from Word sho
   match luck: 0.85 stands 77 times in psych-B2's tables, nearly all an interval's bound, so
   any Abstract's 85% would be found there whatever the paper reports (Basile, 2026-11-15).
   Pinned by `tests/test_audit.py::test_a_percentage_is_not_found_as_the_proportion_a_table_gives`.
+- **G14 reads a Word paper's shapes and places by how they are typed (Basile, 2026-11-27).**
+  The four shapes, the list's spaced line and the two places that owe no definition are
+  read by their typing, each through the letter rule, and a paper that types its meaning
+  otherwise is read as before. Accepted.
+  - One word in the bracket after the short form defines where it is of letters only, opens
+    with the short form's first letter and is three letters longer at least, and holds its
+    letters: "the HR (hours) total" defines HR as "hours", and "HCQ (Hydroxychloroquine)"
+    defines HCQ. Pinned by
+    `tests/test_definition_shapes.py::test_a_one_word_long_form_defines_only_in_the_bracket_after_the_short_form`.
+  - A bracket of pairs is read only where it has three items or more, each a long form then
+    a short form in capitals: two pairs, "(strongly agree, SA; strongly disagree, SD)", and
+    a bracket with one item of another shape read their last pair alone. Pinned by
+    `tests/test_definition_shapes.py::test_a_bracket_of_pairs_defines_each_pair_and_one_item_of_another_shape_voids_it`.
+  - A pointer after a bracket's semicolon is a figure's, a table's, a box's or a panel's with
+    its number, "see" and "Supplementary" or "online" before it allowed: "(LR hierarchy;
+    Appendix 2)" defines nothing. Its long form loses its last word while the words before it
+    still spell the short form whole, two kept at the least, so a last word goes though it
+    holds one of the short form's letters: "low rank role (LR group; Figure 1)" gives "low
+    rank". Pinned by
+    `tests/test_definition_shapes.py::test_a_pointer_s_long_form_drops_its_last_words_while_the_rest_spells_it`.
+  - The word before a pointer's semicolon must hold a letter, so a numbered form before a
+    pointer defines nothing: "the Electronic Supplementary Material (ESM 1; Table S2)" leaves
+    ESM undefined there, as main does. Reading it would read "(OR 3; Table 2)" as a
+    definition again, a value taken for its word. Accepted.
+  - A colon pair is read past its commas only where it has one short form and the reading
+    cut at the first comma spells nothing, and never into the next pair of a list a comma
+    divides, so "CM: Cameroon, AZ: Azerbaijan" defines nothing; a long form with a stop in
+    it, "Depression Inv. Scale", ends at the stop. Accepted.
+  - A list's spaced line is an entry only under a glossary's heading or opening, its long
+    form cut before its first bracket, so a long form that holds a bracket of its own loses
+    what follows it, and one whose words do not spell the short form, "HANDS Handbook
+    Handbook for the staff", is no entry and leaves its form undefined. Pinned by
+    `tests/test_language.py::test_a_glossary_line_whose_tab_word_printed_as_a_space_defines_where_its_words_spell_it`.
+  - A paragraph wholly in bold of 150 characters or fewer is a heading to the uses in it, so
+    a sentence set in bold for emphasis, "**The QPS rose.**", above the definition says
+    nothing; a longer one is text. Pinned by
+    `tests/test_g14_places.py::test_a_short_paragraph_wholly_in_bold_owes_no_definition_and_is_a_use`.
+  - A citation's author owes no definition wherever it stands, so a short form used only as
+    one, "(QXW, 2016)", is asked about nowhere. An author before a year in a bracket on one
+    line is read as one where the bracket is a list of citations: the author's own part ends
+    at its year, its markup passed, and every other part is an author and a year, a part
+    ending in "et al." taken with the year after its comma and a year's further letter with
+    its year, "(Kaye et al., 2009, NIH 2016a)", "(Kaye 2009a,b, NIH 2016)", "(Kaye 2009,
+    [NIH 2016a]{.mark})". A reference typed in a table's cell, "Consortium. (2020).
+    *Levels.*", is not. Pinned by
+    `tests/test_g14_places.py::test_a_citation_s_author_owes_no_definition_and_is_a_use`.
+  - A year alone after a citation's year is a part of its own, so "(NIH 2016, 2017; Kaye
+    2009)" is no list of citations and NIH there still owes its definition: the year cannot
+    be told from the second year of "(IQR 1850, 2010)", which is no citation. Accepted.
+  - The words before a part's year are not asked to be a name, so "(UKB 2006, Finland
+    2012)" is a list and UKB there owes nothing. And the typed-citation reading
+    (`typed_citations.typed_citation`, which `_authors_a_citation` asks first) takes a
+    capitalised word with a year and the close after it for a citation, so "(SD 1950)"
+    leaves SD owing nothing at that use (round 2 of #838). Both shapes are rare in a paper's
+    prose. Accepted.
+  - Only the statistical list's forms owe no later definition, and only one a table's or a
+    figure's own text gives; one the running text gives later, and one listed in paper.yaml,
+    on the shipped list or among G2's names, is used before it. A PDF whose lines are not
+    rebuilt into paragraphs has no display, so there every later definition is the text's.
+    Pinned by
+    `tests/test_language.py::test_a_statistical_abbreviation_defined_later_was_not_used_before_its_definition`.
 - **G14's places that owe no definition are read by their places, not their meaning
   (decision 28).** A short form that stands only on the title page, in a statement, in a
   keywords line or in a PDF's running line asks no definition; the places are found as

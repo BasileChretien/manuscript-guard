@@ -340,11 +340,39 @@ def _entry(line: str, at: int, raw: str, following: str) -> tuple[int, str, str]
         spaced = _SPACED.fullmatch(line, begin)
         if spaced is not None:
             return at + spaced.start("short"), spaced["short"], spaced["long"]
+    spelt = _spelt_entry(line, begin)
+    if spelt is not None:
+        return at + spelt[0], spelt[1], spelt[2]
     definition = _DEFINITION.match(following)
     term = re.fullmatch(rf"[ \t]*[{_MARKS}]*(?P<short>{_SHORT})[{_MARKS}]*[ \t]*", line)
     if definition is not None and term is not None:
         return at + term.start("short"), term["short"], definition["long"]
     return None
+
+
+#: What a spaced entry's long form ends before: a bracket, and what follows it, a link's
+#: address, "(www.dtls.nl)".
+_BRACKET_ON = re.compile(r"[ \t]*[(\[].*\Z")
+
+
+def _spelt_entry(line: str, begin: int) -> tuple[int, str, str] | None:
+    """An entry of a list typed in Word, the short form and its long form with the tab between
+    them printed as a space, "DTL Dutch Techcentre for Life Science (www.dtls.nl)", as where
+    its short form stands in `line`, the short form and the long form: only where the words
+    after the short form, up to a bracket, are its long form whole as the letter rule reads
+    one after a short form (`language._spelt_after`; Basile, 2026-11-27, docx-meta-2), one word
+    among them as the short form's bracket reads it, "HCQ Hydroxychloroquine" (decision D8;
+    round 1 of #838). A sentence under the heading, "NPOS was set up in 2016.", is none."""
+    from manuscript_guard.gates.language import _may_be_defined, _spelt_after
+
+    spaced = _SPACED.fullmatch(line, begin)
+    if spaced is None or not _may_be_defined(spaced["short"]):
+        return None
+    long = _spelt_after(spaced["short"], _BRACKET_ON.sub("", spaced["long"]).split(),
+                        one_word=True)
+    if long is None:
+        return None
+    return spaced.start("short"), spaced["short"], long
 
 
 def _row(line: str, at: int) -> tuple[int, str, str] | None:

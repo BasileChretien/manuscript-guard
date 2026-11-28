@@ -42099,6 +42099,138 @@ def test_a_number_written_with_script_signs_is_still_reported(project: Path, cas
     ), [failure.message for failure in report.failures]
 
 
+# G14 on papers typed in Word (2026-11-27): definitions in shapes Word papers write, a list of
+# abbreviations whose tabs became spaces, a heading typed in bold, a citation's author and a
+# statistical abbreviation defined later. Each edit below is one a Word paper makes: the false
+# alarm it gave goes, and the true finding beside it stays.
+
+_BEFORE_PYTHON = "The analysis was run in Python"
+
+
+def _inserted(root: Path, before: str, added: str) -> str:
+    """The mended example with `added` put in front of `before`, written back."""
+    text = with_ror_defined(root)
+    assert before in text, "the fixture changed under this test"
+    edited = text.replace(before, added + before, 1)
+    main_md(root).write_text(edited, encoding="utf-8")
+    return edited
+
+
+@pytest.mark.parametrize(
+    ("defined", "kept", "short"),
+    [
+        # docx-educ-A3: a bracket of pairs, each long form then its short form; a bracket of
+        # statistics so divided defines nothing.
+        ("Answers were coded (strongly agree, SA; neutral answer, NA; strongly disagree, "
+         "SDA). The SA, NA and SDA answers were counted.",
+         "The estimates were close (QOR, 1.2; QHR, 0.8; QRR, 1.1).", ("QOR", "QHR", "QRR")),
+        # docx-sport-A3: a colon pair whose long form holds a comma; a label before a
+        # sentence with commas in it defines nothing.
+        ("Note. DASS: Depression, Anxiety and Stress Scale. The DASS rose.",
+         "AIM: to test, in mice, the dose.", ("AIM",)),
+        # docx-psych-C4: a pointer to a display after the bracket's semicolon; words after it
+        # that point to none define nothing.
+        ("Each held a low rank position (LR hierarchy; Figure 1, Panel B). The LR fell.",
+         "Each held a rank (QR arm; the low one).", ("QR",)),
+        # docx-med-A3: one word in the bracket after the short form (decision D8); a word that
+        # does not open with its first letter defines nothing.
+        ("Patients took HCQ (hydroxychloroquine) daily. The HCQ dose was fixed.",
+         "The XY (Kenya) site joined.", ("XY",)),
+    ],
+    ids=["a bracket of pairs", "a colon pair with a comma", "a pointer", "one word"],
+)  # fmt: skip
+def test_a_word_paper_s_definition_shape_defines_and_its_lookalike_still_does_not(
+    project: Path, defined: str, kept: tuple[str, ...], short: tuple[str, ...]
+) -> None:
+    text = _inserted(project, _BEFORE_PYTHON, f"{defined}\n\n{kept}\n\n")
+    line = line_of(text, kept)
+    assert language_findings(project) == [("abbreviation-undefined", line)] * len(short)
+
+
+def test_a_list_of_abbreviations_typed_with_tabs_defines_its_entries(project: Path) -> None:
+    """docx-meta-2: under "# Abbreviations", "DTL Dutch Techcentre for Life Science
+    (www.dtls.nl)", Word's tab printed as a space, is an entry: the Methods' DTL is defined,
+    and an entry nothing uses is still unused."""
+    text = with_ror_defined(project).replace(
+        "# Introduction", "# Abbreviations\n\nDTL Dutch Techcentre for Life Science "
+        "(www.dtls.nl)\n\nLO Local Office\n\n# Introduction", 1).replace(
+        _BEFORE_PYTHON, f"The DTL data were read.\n\n{_BEFORE_PYTHON}", 1)
+    main_md(project).write_text(text, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-unused", line_of(text, "LO Local"))]
+
+
+def test_a_heading_typed_in_bold_owes_no_definition(project: Path) -> None:
+    """docx-educ-B1: "**ROR**" over the paragraph that defines ROR, a heading typed in Word,
+    is no use before the definition; "The **ROR** was raised." above it still is."""
+    mended = with_ror_defined(project)
+    headed = mended.replace("# Introduction\n\n", "# Introduction\n\n**ROR**\n\n", 1)
+    main_md(project).write_text(headed, encoding="utf-8")
+    assert language_findings(project) == []
+    early = mended.replace("# Introduction\n\n", "# Introduction\n\nThe **ROR** was raised.\n\n", 1)
+    main_md(project).write_text(early, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(early, "The **ROR** was raised"))]
+
+
+def test_a_citation_s_author_owes_no_definition(project: Path) -> None:
+    """docx-pharm-epi-A1: "(Kaye et al. 2009, NIH 2016a, NIH 2016b)" in the Introduction
+    names its authors, which owe no definition there, NIH defined in the Methods; "the NIH
+    2016 guidelines" in a sentence there is still used before its definition."""
+    definition = ("The National Institutes of Health (NIH) set no rule here; the NIH rules "
+                  "held.\n\n")  # fmt: skip
+    mended = with_ror_defined(project)
+    for written, said in (
+        ("This analysis asks", []),
+        ("The NIH 2016 guidelines were kept. This analysis asks",
+         ["abbreviation-used-before-defined"]),
+    ):
+        cited = mended.replace("This analysis asks", "Rules were set (Kaye et al. 2009, NIH "
+                               f"2016a, NIH 2016b). {written}", 1)  # fmt: skip
+        cited = cited.replace(_BEFORE_PYTHON, definition + _BEFORE_PYTHON, 1)
+        main_md(project).write_text(cited, encoding="utf-8")
+        assert [code for code, _line in language_findings(project)] == said, written
+
+
+
+def test_a_statistical_abbreviation_defined_later_is_not_used_before_it(project: Path) -> None:
+    """Decision D2, narrowed to displays (Basile, 2026-11-27; docx-psych-C4, tex-cs-lg-1):
+    SD, on the statistical list, used in the Introduction and defined after it only in a
+    table's note, is not used before its definition; defined after it in the running text,
+    it is, as DOI, on the shipped list, is wherever it is defined."""
+    mended = with_ror_defined(project)
+    early = mended.replace("This analysis asks", "The mean (SD) age and the DOI of each record "
+                           "were read. This analysis asks", 1)  # fmt: skip
+    note = ("| Group | Age |\n|---|---|\n| one | 54 |\n\n*Note.* The standard deviation (SD) "
+            "and the digital object identifier (DOI) of each record.\n\n")
+    spelt = ("The standard deviation (SD) and the digital object identifier (DOI) were kept. "
+             "The SD and the DOI held.\n\n")
+    for later, said in ((note, ["DOI"]), (spelt, ["DOI", "SD"])):
+        text = early.replace(_BEFORE_PYTHON, later + _BEFORE_PYTHON, 1)
+        main_md(project).write_text(text, encoding="utf-8")
+        line = line_of(text, "The mean (SD) age")
+        assert language_findings(project) == [
+            ("abbreviation-used-before-defined", line)] * len(said), later
+
+
+def test_a_statistical_abbreviation_a_pdf_s_legend_defines_later_is_not_used_before_it(
+    tmp_path: Path,
+) -> None:
+    """The same in a PDF whose lines are rebuilt into paragraphs, its legends displays: a
+    table's legend that defines SD after the text used it leaves the use alone, and the
+    running text's later definition does not (Basile, 2026-11-27)."""
+    used = _set_lines("Methods", *_UNSAID, "The mean (SD) rose in each site.")
+    legend = [{"words": ("Table", "1.", "Ages;", "the", "standard", "deviation", "(SD)", "of",
+                         "each."), "size": 7.5},
+              {"words": ("one", "12", "14"), "size": 7.5, "cells": True}]
+    for later, said in ((legend, []), (_set_lines("The standard deviation (SD) was read.",
+                                                  "The SD held."),
+                                       [("abbreviation-used-before-defined", False)])):
+        run = _rebuilt_run(tmp_path, [([], [*used, *later], _set_lines(*_UNSAID))])
+        found = [each for each in _rebuilt_said(run, "SD")
+                 if each[0] == "abbreviation-used-before-defined"]
+        assert found == said, run.language
+
+
 # --------------------------------------------------------------------------------------
 # Where a Word paper's parts begin and end (2026-11-27): a reference list titled in a block
 # quote or "Literature", an Abstract titled in bold or ended by the title again, Highlights,

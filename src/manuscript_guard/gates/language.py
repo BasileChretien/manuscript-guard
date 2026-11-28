@@ -1686,7 +1686,7 @@ def _long_after(
     # The search starts a short form's length back, so it can start inside a word.
     if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
         return None
-    long = _spelt_after(short, _before_citations(prose, bracket).split())
+    long = _spelt_after(short, _before_citations(prose, bracket).split(), one_word=True)
     if long is None:
         return None
     return head, _stem(short, long), long
@@ -1704,12 +1704,13 @@ def _before_citations(prose: str, bracket: re.Match[str]) -> str:
     return inside[:cut]
 
 
-def _spelt_after(short: str, words: list[str]) -> str | None:
+def _spelt_after(short: str, words: list[str], one_word: bool = False) -> str | None:
     """The long form `short` abbreviates where `words` stand after it and are its long form
     whole, give or take an article: "ROR (see the ratio results)" matches its letters from
     "ratio" on and defines nothing. Two words at least, and within Schwartz and Hearst's
-    bound."""
-    if not 2 <= len(words) <= _window(short):
+    bound; or, where `one_word`, in the bracket after the short form, one word that is a long
+    form of its own (`_one_word`), "HCQ (hydroxychloroquine)"."""
+    if not (one_word and _one_word(short, words)) and not 2 <= len(words) <= _window(short):
         return None
     joined = " ".join(words)
     long = _long_form(_singular(short), joined)
@@ -1719,6 +1720,24 @@ def _spelt_after(short: str, words: list[str]) -> str | None:
     if rest and rest + " " not in _ARTICLES:
         return None
     return long
+
+
+#: How many letters longer than its short form a long form of one word is at the least.
+_ONE_WORD_LONGER = 3
+
+
+def _one_word(short: str, words: list[str]) -> bool:
+    """Whether `words`, in the bracket after `short`, are one word that may be its long form
+    alone (decision D8, the author, 2026-11-27; docx-med-A3's "HCQ (Hydroxychloroquine,)"): a
+    word of letters only, opening with the short form's first letter and at least
+    `_ONE_WORD_LONGER` letters longer than it; whether it holds the letters is the letter
+    rule's to say. After a sign two words are still the least, so "XY: Kenya" defines
+    nothing."""
+    if len(words) != 1:
+        return False
+    word = words[0].strip(_EDGES)
+    return (word.isalpha() and len(word) >= len(short) + _ONE_WORD_LONGER
+            and word[:1].casefold() == short[:1].casefold())  # fmt: skip
 
 
 def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, str]]:
@@ -1743,10 +1762,12 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
     for bracket in _PAREN.finditer(prose):
         if _BLANK_LINE.search(bracket.group(1)):
             continue
-        inside = _short_inside(prose, bracket)
+        inside = _short_inside(prose, bracket) or _before_a_pointer(prose, bracket)
         definition = inside or _long_inside(prose, bracket) or _short_closing(bracket)
         if definition is not None:
             found.append(definition)
+        found += [each for each in _bracket_pairs(prose, bracket)
+                  if each[0] not in {at for at, _short, _long in found}]  # fmt: skip
         items = _listed_inside(prose, bracket)
         listed += items
         if inside is not None or items:
@@ -1771,6 +1792,85 @@ def _definitions(prose: str, typed: str | None = None) -> list[tuple[int, str, s
         if each[0] not in taken:
             taken.add(each[0])
             found.append(each)
+    return found
+
+
+#: What a bracket points to after its semicolon, a display: "Figure 1, Panel B", "see Table
+#: 2", "Supplementary Fig. S3", "Box 1" (docx-psych-C4).
+_POINTER_AFTER = re.compile(
+    r"\s*(?:see\s+)?(?:(?:supplementa(?:ry|l)|online)\s+)?"
+    r"(?:fig(?:ure)?s?\.?|tables?|box(?:es)?|panels?)\s*[A-Z]?\d",
+    re.IGNORECASE,
+)
+
+
+def _before_a_pointer(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
+    """A definition with its short form and one word in the bracket before a semicolon, after
+    which the bracket points to a display: "a low rank position (LR hierarchy; Figure 1,
+    Panel B)" (decision D10, the author, 2026-11-27). The bracket's word is the long form's
+    head, so the long form loses its last words while the rest still spells the short form
+    (`_trimmed`), "low rank". The word holds a letter (`_a_word_before`): "(OR 3; Table 2)"
+    gives a value. None otherwise: "(LR hierarchy; the low arm)"."""
+    opening = _BEFORE_A_CITATION.match(bracket.group(1))
+    if (opening is None or not _POINTER_AFTER.match(bracket.group(1), opening.end())
+            or not _a_word_before(bracket.group(1), opening)):  # fmt: skip
+        return None
+    short = opening.group("short")
+    if not _may_be_defined(short):
+        return None
+    long = _read_back(short, _paragraph_before(prose, bracket.start()))
+    if long is None:
+        return None
+    long = _trimmed(short, long)
+    return bracket.start(1) + opening.start("short"), _stem(short, long), long
+
+
+def _a_word_before(inside: str, opening: re.Match[str]) -> bool:
+    """Whether what stands between a bracket's short form and its semicolon, `opening` of
+    `inside`, holds a letter: "LR hierarchy" does, "OR 3" and "SD 12" give a value (round 1
+    of #838)."""
+    return re.search(r"[^\W\d_]", inside[opening.end("short") : opening.end()]) is not None
+
+
+def _trimmed(short: str, long: str) -> str:
+    """`long` less its last words while the words before them still spell `short` whole (the
+    letter rule, `_long_form`), two words kept at the least: "low rank position" for LR is
+    "low rank", and so is "low rank role", though "role" holds an R (round 1 of #838)."""
+    words = long.split()
+    while len(words) > 2 and _long_form(short, " ".join(words[:-1])) == " ".join(words[:-1]):
+        words = words[:-1]
+    return " ".join(words)
+
+
+#: An item of a bracket of pairs: its long form, a comma or none, and its short form in
+#: capitals, "strongly agree, SA", "agree A" (docx-educ-A3).
+_PAIR_ITEM = re.compile(rf"(?P<long>[^;]*?[^\W\d_][^;]*?),?\s+(?P<short>{_PARTS})\s*")
+#: The fewest items a bracket of pairs has: two are a definition and an aside as often.
+_FEWEST_PAIRS = 3
+
+
+def _bracket_pairs(prose: str, bracket: re.Match[str]) -> list[tuple[int, str, str]]:
+    """Each definition of a bracket of pairs a semicolon divides, each item a long form then
+    its short form in capitals: each item is read as "long form (SHORT)" would be, its long
+    form the item's words before the short form (Basile, 2026-11-27; docx-educ-A3, of which
+    only the last item was read). So "(strongly agree, SA; neutral answer, NA; strongly
+    disagree, SDA)" defines all three, and "(strongly agree, SA; agree A; neutral, N;
+    disagree, D)" defines SA alone, a single capital being no short form. Three items at
+    least, each of that shape, or none is read: "(OR, 1.2; HR, 0.8; RR, 1.1)" gives
+    statistics."""
+    parts = bracket.group(1).split(";")
+    if len(parts) < _FEWEST_PAIRS:
+        return []
+    found, at = [], bracket.start(1)
+    for part in parts:
+        item = _PAIR_ITEM.fullmatch(part)
+        if item is None or not item.group("short").isupper():
+            return []
+        short = item.group("short")
+        long = _read_back(short, item.group("long")) if _may_be_defined(short) else None
+        if long is not None:
+            found.append((at + item.start("short"), _stem(short, long), long))
+        at += len(part) + 1
     return found
 
 
@@ -1837,9 +1937,45 @@ def _paired(
                 start += len(short) + 1
         for start, short, spelt in readings:
             long = _spelt_after(short, spelt) if _may_be_defined(short) else None
+            if long is None and len(shorts) == 1 and _may_be_defined(short):
+                long = _paired_past_commas(prose, lines, pair, short, after_long)
             if long is not None:
                 found.append((pair.start("shorts") + start, _stem(short, long), long))
     return found
+
+
+#: A colon pair's long form read past its commas: to a semicolon, a stop, a sign, a bracket,
+#: a table cell's bar or its line's end.
+_PAIR_PAST_COMMAS = re.compile(r"[^;.=:|()\[\]\r\n\x00]{1,300}")
+
+
+def _paired_past_commas(
+    prose: str, lines: str, pair: re.Match[str], short: str, after_long: frozenset[int]
+) -> str | None:
+    """The long form of a pair whose long form holds a comma, "DASS: Depression, Anxiety and
+    Stress Scale;" (docx-sport-A3): where the long form cut at the first comma spells nothing,
+    the words to the next semicolon, stop or line's end are read as it, by the same rules: its
+    words whole, ended on its line, and no bracket's long form; and never into the next pair's
+    short form (`_before_the_next_pair`). None otherwise, so "AIM: to test, in mice, the dose"
+    and "CM: Cameroon, AZ: Azerbaijan" (pdf-med-A1) define nothing."""
+    wider = _PAIR_PAST_COMMAS.match(prose, pair.start("long"))
+    if wider is None or _bracket_wins(prose, wider.end(), after_long):
+        return None
+    ends = lines.find("\n", wider.end())
+    if (_RUNS_ON.match(prose, wider.end()) and not _NEW_BLOCK.match(lines, ends + 1)
+            and not lines[:ends].rstrip().endswith("\\\\")):  # fmt: skip
+        return None
+    long = _before_the_next_pair(prose, wider)
+    return _spelt_after(short, long.split()) if "," in long else None
+
+
+def _before_the_next_pair(prose: str, wider: re.Match[str]) -> str:
+    """The words of `wider` before the next pair of a list a comma divides, where a sign ends
+    them: "Cameroon, AZ" before ": Azerbaijan" is "Cameroon", and "follow-up, IBQ" before "=
+    infant ..." is "follow-up" (pdf-med-A1, pdf-nutr-C1)."""
+    if prose[wider.end() : wider.end() + 1] in ("=", ":"):
+        return wider.group(0)[: wider.group(0).rfind(",")]
+    return wider.group(0)
 
 
 def _bracket_wins(prose: str, end: int, after_long: frozenset[int]) -> bool:
@@ -2140,7 +2276,8 @@ def _file(
                        lists=unmarked_reference_lists(text), statements=statements,
                        keywords=keywords)  # fmt: skip
     undue = _united([*_run_in_named(hidden, headings), *keywords.items(),
-                     *_keywords_lines(hidden), *_lines_at(text, running)])  # fmt: skip
+                     *_keywords_lines(hidden), *_lines_at(text, running),
+                     *_bold_headings(prose)])  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
     # A glossary under a heading that names it, and one a paragraph of its own opens, as a
@@ -2168,6 +2305,26 @@ def _file(
         title_page=title_page, front=_front(hidden, headings, abstract_title), undue=undue,
         titles=_titles(hidden, spans, named), headings=tuple(sorted(spans)), from_pdf=from_pdf,
     )  # fmt: skip
+
+
+#: The longest paragraph in bold read as a heading typed in Word, in characters.
+_BOLD_HEADING_MOST = 150
+
+
+def _bold_headings(prose: str) -> list[tuple[int, int]]:
+    """Where each paragraph wholly in bold of `_BOLD_HEADING_MOST` characters or fewer runs,
+    "**CAP-S**", "**Types of podcasts**": a heading typed in Word, which pandoc makes a
+    heading only of a paragraph in a heading's style (decision D5, the author, 2026-11-27;
+    docx-educ-B1). A use there owes no definition and is still a use (`_undue`)."""
+    spans, start = [], 0
+    for gap in (*_BLANK_LINE.finditer(prose), None):
+        end = len(prose) if gap is None else gap.start()
+        paragraph = prose[start:end].strip()
+        if paragraph and len(paragraph) <= _BOLD_HEADING_MOST and _BOLD.fullmatch(paragraph):
+            spans.append((start, end))
+        if gap is not None:
+            start = gap.end()
+    return spans
 
 
 def _noted(text: str, paired: list[int]) -> Callable[[int, int], bool]:
@@ -2718,7 +2875,8 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                 continue
             at = bisect_right(starts, word.start()) - 1
             shouted = at >= 0 and word.start() < capitals[at][1]
-            undue = _undue(file, word.start(), region, front)
+            undue = _undue(file, word.start(), region, front) or _authors_a_citation(
+                file.prose, word.end())
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining or _apart(file, word.start(), offset):
@@ -2738,6 +2896,114 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                     _Use(file.order, offset, region.quiet, file.display_of(offset), undue)
                 )
     return scopes
+
+
+#: A citation's year after its author, a comma between them or none: "NIH 2016a", "APA, 2020".
+_YEAR_AFTER = re.compile(r"[ \t]*,?[ \t]*(?P<year>(?:1[89]|20)\d\d[a-z]?)(?![\w])")
+#: How far a citation's bracket is looked for on either side of its author, in characters.
+_CITATION_REACH = 300
+
+
+def _authors_a_citation(prose: str, end: int) -> bool:
+    """Whether the word ending at `end` is the author of a citation typed as text, its year
+    after it: "(EOSC-HLEG, 2016)", which the typed-citation reading reads (`typed_citation`),
+    and "(Kaye et al. 2009, NIH 2016a, NIH 2016b)", author-year citations a comma divides,
+    which it does not: a bracket on one line whose author's part ends at its year
+    (`_ends_its_part`) and whose every other part is an author and a year (`_citation_parts`,
+    `_cited_part`) (Basile, 2026-11-27; docx-pharm-epi-A1; rounds 1 and 2 of #838).
+    Such a use owes no definition, as a keywords line's does, and is a use (`_undue`)."""
+    from manuscript_guard.gates.typed_citations import typed_citation
+
+    year = _YEAR_AFTER.match(prose, end)
+    if year is None:
+        return False
+    if typed_citation(prose, year.start("year"), year.end("year")) is not None:
+        return True
+    opened = prose.rfind("(", max(0, end - _CITATION_REACH), end)
+    closed = prose.find(")", end, end + _CITATION_REACH)
+    if opened < 0 or closed < 0 or ")" in prose[opened:end] or "\n" in prose[opened:closed]:
+        return False
+    if not _ends_its_part(prose, year.end("year")):
+        return False
+    # A list of citations: every other part of the bracket an author and a year, so "(IQR
+    # 1850, 2010)" and "(ICD-10 2019, DSM-5 2013)" are none (round 1 of #838).
+    parts = _citation_parts(prose[opened + 1 : closed])
+    own = year.start("year") - opened - 1
+    return len(parts) >= 2 and all(_cited_part(part) for start, part in parts
+                                   if not start <= own <= start + len(part))  # fmt: skip
+
+
+#: A part of a bracket that is the year of the author's part before it, a comma between:
+#: "Kaye et al., 2009" (round 2 of #838).
+_YEAR_PART = re.compile(r"\s*(?:1[89]|20)\d\d[a-z]?\s*")
+#: A part that is a further letter of the year before it: "Kaye 2009a,b" (round 2 of #838).
+_LETTER_PART = re.compile(r"\s*[a-z]\s*")
+#: A year with its letter at the end of a part: "2009a".
+_LETTERED_YEAR_END = re.compile(r"(?:1[89]|20)\d\d[a-z]\s*$")
+
+
+def _citation_parts(inside: str) -> list[tuple[int, str]]:
+    """The parts of a bracket a comma or a semicolon divides, each with where it starts in
+    `inside`, a citation's own pieces kept together: a part ending in "et al." with the year
+    after it, "Kaye et al., 2009", and a letter after a year with its letter, "Kaye 2009a,b"
+    (round 2 of #838). A year alone after a citation's year, "(NIH 2016, 2017; Kaye 2009)",
+    stays a part of its own: it cannot be told from "(IQR 1850, 2010)"."""
+    parts: list[tuple[int, str]] = []
+    start = 0
+    for piece in re.split(r"([,;])", inside):
+        if piece in (",", ";"):
+            start += 1
+            continue
+        if parts and _continues(parts[-1][1], piece):
+            parts[-1] = (parts[-1][0], f"{parts[-1][1]},{piece}")
+        else:
+            parts.append((start, piece))
+        start += len(piece)
+    return parts
+
+
+def _continues(before: str, piece: str) -> bool:
+    """Whether `piece` goes on the citation of the part `before` it (`_citation_parts`)."""
+    if _YEAR_PART.fullmatch(piece):
+        return before.rstrip().endswith("et al.")
+    return bool(_LETTER_PART.fullmatch(piece)) and _LETTERED_YEAR_END.search(before) is not None
+
+
+#: A part of a list of citations typed as text: an author, its words of letters, "et al." and
+#: "&" among them, then a year: "Kaye et al. 2009", "NIH 2016a".
+_CITED_PART = re.compile(
+    r"\s*[^\W\d_](?:[^\W\d_]|['’.&-])*(?:\s+(?:[^\W\d_](?:[^\W\d_]|['’.&-])*|&))*,?\s+"
+    r"(?:1[89]|20)\d\d[a-z]?(?:\s*,\s*[a-z])*\s*"
+)
+
+
+#: A span's brackets and attributes around a part, "[Holdren 2012]{.mark}" as pandoc writes
+#: a citation Word highlighted, and emphasis: what is left is read (docx-pharm-epi-A1).
+_PART_MARKUP = re.compile(r"\]\{[^{}\n]*\}|[\[\]*]")
+
+
+def _cited_part(part: str) -> bool:
+    """Whether a part of a bracket is an author-year citation typed as text (`_CITED_PART`),
+    once a span's or emphasis's markup around it is set aside (`_PART_MARKUP`)."""
+    return _CITED_PART.fullmatch(_PART_MARKUP.sub("", part)) is not None
+
+
+def _ends_its_part(prose: str, at: int) -> bool:
+    """Whether the year ending at `at` ends its part of the bracket: a comma, a semicolon or
+    the close follows it, once the markup closing the part is passed (`_past_markup`)."""
+    at = _past_markup(prose, at)
+    return prose[at : at + 1] in (",", ";", ")")
+
+
+#: The markup `_PART_MARKUP` sets aside, any run of it, and the spaces G14's text leaves where
+#: a span's attributes were.
+_MARKUP_RUN = re.compile(rf"(?:{_PART_MARKUP.pattern}|[ \t])*")
+
+
+def _past_markup(prose: str, at: int) -> int:
+    """Where the markup that closes a citation's part after its year ends: "[NIH 2016a]{.mark}"
+    and "*NIH 2016a*" are the author's own part, highlighted or in italics (round 2 of #838)."""
+    return _MARKUP_RUN.match(prose, at).end()
 
 
 def _apart(file: _File, word: int, offset: int) -> bool:
@@ -2932,6 +3198,22 @@ def _given_again(
 _DISPLAYS_DEFINE_FOR_THE_TEXT = True
 
 
+def _may_stand_undefined(short: str, known: _Known) -> bool:
+    """Whether `short` is a form of the statistical list that the journal does not ask
+    defined (`_asked`), which owes no definition wherever the paper defines it."""
+    return short in _statistical() and short in known
+
+
+def _quiet_later(short: str, known: _Known, covering: list[_Definition]) -> bool:
+    """Whether a use of `short` before `covering`, the definitions a use outside a display is
+    held to, is no use before its definition: where `short` may stand undefined
+    (`_may_stand_undefined`) and only a table's or a figure's own text defines it, as SD in
+    docx-psych-C4's table note; the running text's definition, RMSE in tex-cs-lg-1's, is owed
+    at first use (Basile, 2026-11-27, "Narrow it to displays")."""
+    return _may_stand_undefined(short, known) and all(
+        mark.display is not None for mark in covering)
+
+
 def _covering(definitions: Iterable[_Definition]) -> list[_Definition]:
     """The definitions of one form, in order, that a use outside a display defining it is
     held to: the text's, and where the text gives none, the displays'
@@ -3110,7 +3392,13 @@ def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = No
             # 2026-11-21, "Table stands alone"). The others are held to the text's.
             owed = [use for use in _loose(uses, definitions) if not use.undue]
             covering = _covering(definitions)
-            before = bool(covering) and bool(owed) and owed[0].key < covering[0].key
+            # A form the statistical list lets stand undefined, where the journal does not
+            # ask it defined, is not used before a later definition that only a table's or a
+            # figure's own text gives (decision D2, the author, 2026-11-27, "Narrow it to
+            # displays": the statistical list only, and the running text's later definition
+            # is owed at first use, as the shipped list's and G2's names are).
+            before = (bool(covering) and bool(owed) and owed[0].key < covering[0].key
+                      and not _quiet_later(short, known, covering))  # fmt: skip
 
             if before and all(listed(mark) for mark in covering):
                 # Defined only in the list of abbreviations, after this use: the text owes

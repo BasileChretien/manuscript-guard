@@ -833,6 +833,24 @@ DEFINING = (
     ("a gait balance scale, called GBS, in all", "called GBS", "GBS"),
     ("the Deep Field Survey (hereafter DFS)", "hereafter DFS", "DFS"),
     ("# Methods\n\n## Grip strength and electromyography (EMG)", "(EMG", "EMG"),
+    # The Word papers of the real-paper corpus (Basile, 2026-11-27): a bracket of pairs a
+    # semicolon divides, each long form then its short form, a comma between or none; a
+    # colon pair whose long form holds a comma; a short form and its word before a
+    # semicolon after which the bracket points to a display, of each kind; and one word in
+    # the bracket after the short form (decision D8), with a comma Word left after it.
+    ("answers were coded (strongly agree, SA; neutral answer, NA; strongly disagree, SDA)",
+     "SA;", "SA"),
+    ("answers were coded (fully agree FA; partly agree PA; fully disagree FD)", "PA;", "PA"),
+    ("DASS: Depression, Anxiety and Stress Scale; HSQ: Health Status Questionnaire", "DASS:",
+     "DASS"),
+    ("each held a low rank position (LR hierarchy; Figure 1, Panel B)", "(LR", "LR"),
+    # A pointer in small letters, which before decision D10 defined nothing.
+    ("the Small Sample Survey (SSS DR3; see table 3)", "(SSS", "SSS"),
+    ("each held a top rank place (TR group; see Table 2)", "(TR", "TR"),
+    ("each held a mid tier role (MT band; Supplementary Fig. 3)", "(MT", "MT"),
+    ("each held a new rank spot (NR band; Box 1)", "(NR", "NR"),
+    ("the HCQ (hydroxychloroquine) dose", "HCQ (", "HCQ"),
+    ("the MTX (Methotrexate,) dose", "MTX (", "MTX"),
 )  # fmt: skip
 
 #: A dash definition at the very end of the text, which every example of `bracketed` ends
@@ -957,12 +975,34 @@ NOT_DEFINING = (
     ("*Note.* MDI = Major Depression\nInventory.", "MDI =", "MDI"),
     ("RESULT: Rates Eased Slowly Until Late Testing.", "RESULT:", "RESULT"),
     ("**RESULTS:** Rates Eased Slowly Until Late Testing Soon.", "RESULTS:", "RESULTS"),
-    ("the Small Sample Survey (SSS DR3; see table 3)", "(SSS", "SSS"),
+    ("the Small Sample Survey (SSS DR3; see above)", "(SSS", "SSS"),
     ("the odds ratio OR = 1.52 in all", "OR =", "OR"),
     ("XA/YNA = effect allele", "/YNA", "YNA"),
     ("the main survey, known as XQZ", "as XQZ", "XQZ"),
     ("a scale called WTB in all", "called WTB", "WTB"),
     ("## Grip strength (EGX)", "(EGX", "EGX"),
+    # The same shapes not met (Basile, 2026-11-27): a bracket of statistics a semicolon
+    # divides, and one with an item that is no pair; a colon before a sentence with commas
+    # in it; a short form and its word before a semicolon that points to no display; and one
+    # word that does not open with the short form's first letter, is not three letters
+    # longer than it, or does not hold its letters.
+    ("the estimates were close (XOR, 1.2; XHR, 0.8; XRR, 1.1)", "XRR,", "XRR"),
+    ("answers were coded (strongly agree, SB; mostly so; strongly disagree, SDB)", "SB;",
+     "SB"),
+    ("AIM: to test, in mice, the dose", "AIM:", "AIM"),
+    ("countries: XC: Cameroon, XZ: Azerbaijan, XF: Afghanistan", "XC:", "XC"),
+    ("FPX = forced preference looking, FUX = follow-up, IBX = infant behavior", "FUX =",
+     "FUX"),
+    ("each held a rank (QR arm; the low one)", "(QR", "QR"),
+    ("each held a low rank tier (LRT band; 12)", "(LRT", "LRT"),
+    ("the XY (Kenya) site", "XY (", "XY"),
+    ("the HRS (hours) total", "HRS (", "HRS"),
+    ("the QRD (quarterly) total", "QRD (", "QRD"),
+    # Round 1 of #838: a bracket of two pairs, which reads its last pair alone; and a number
+    # before a pointer, which is no word.
+    ("answers were coded (fully agree, FG; fully disagree, FDG)", "FG;", "FG"),
+    ("the odds rose (OR 3; Table 2)", "(OR", "OR"),
+    ("the spread of the data (SD 12; Table 1)", "(SD", "SD"),
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
@@ -1497,7 +1537,7 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     where the text uses it. In `abstract`, the text defines UFR, which only the title page
     uses again, and it is unused; the list of abbreviations at its end has UNICAEN, which
     only the title page uses, and it is used. In the papers with no title page, every
-    capital is read."""
+    capital is read, but a title typed as a heading or wholly in bold owes no definition."""
     end = draw(st.sampled_from(("\n", "\n", "\r\n")))
     title = draw(st.sampled_from(TITLE_PAGE_TITLES))
 
@@ -1582,9 +1622,10 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     methods = ("# Methods", body("the UR and the CHU paid for the survey"))
     for at, mention in enumerate(OPENING_MENTIONS):
         # With no title page, the title is read, and its PACES is undefined; a heading's
-        # words are not read for abbreviations anyway.
+        # words owe no definition anyway, and nor do a short paragraph's wholly in bold, a
+        # heading as Word papers type one (Basile, 2026-11-27, D5).
         heading = draw(st.sampled_from(TITLE_PAGE_TITLES))
-        shorts = ("CHU",) if heading.startswith("#") else ("CHU", "PACES")
+        shorts = ("CHU",) if heading.startswith(("#", "**")) else ("CHU", "PACES")
         found[f"mentions-{at}"] = (
             paper(heading, mention, *methods),
             [("abbreviation-undefined", short) for short in shorts],
@@ -1624,10 +1665,21 @@ UNDUE_RUNNING = "Journal of {}"
 UNDUE_ABSTRACTS = ("heading", "bold", "run in", "next file", "bold, next file", "none")
 #: The short forms the places hold, drawn in an order, none a word or a known form.
 UNDUE_FORMS = ("QXA", "QXB", "QXC", "QXD", "QXE", "QXF", "QXG", "QXH", "QXJ", "QXK", "QXL",
-               "QXM", "QXN", "QXP")  # fmt: skip
-#: The kinds of place, in the order the paper has them.
+               "QXM", "QXN", "QXP", "QXQ", "QXR", "QXS", "QXT")  # fmt: skip
+#: What looks like those places and owes a definition (round 1 of #838): a paragraph in bold
+#: of more than 150 characters, a word in bold inside a sentence, a year after the form in a
+#: sentence, a bracket of years that is no list of citations, and one whose own part goes on
+#: past its year; `{}` is the short form each holds, used nowhere else.
+UNDUE_OWED = ("**The {} results of each of the classes of the second year of the study were read "
+              "again by a second reader who did not know which class each of them came from**",
+              "The **{}** rose in the first class.", "The {} 2016 guidelines were kept.",
+              "Ranges held ({} 1850, 2010).", "Rules held (Kaye 2009, {} 2016 and 2017).")
+UNDUE_OWED_FORMS = ("QYA", "QYB", "QYC", "QYD", "QYE")
+#: The kinds of place, in the order the paper has them; and a heading typed in Word as a
+#: paragraph in bold (decision D5) and a citation's author, in a list of author-year
+#: citations a comma divides (Basile, 2026-11-27).
 UNDUE_KINDS = ("title page", "statement heading", "statement run in", "statement plain",
-               "keywords line", "running line")  # fmt: skip
+               "keywords line", "running line", "bold heading", "citation author")  # fmt: skip
 
 
 @st.composite
@@ -1652,7 +1704,14 @@ def undue_places(
              lines[0].format(both["title page"]), *lines[1:]]  # fmt: skip
     keywords = draw(st.sampled_from(UNDUE_KEYWORDS_LINES)).format(both["keywords line"])
     body = ["# Introduction", f"The {_DEFINED_LONG} ({defined}) was read. The {defined} rose.",
-            "# Methods", f"Keyword-based retrieval used the {keyword} index.", "# Results",
+            "# Methods", f"**The {both['bold heading']} study**",
+            f"Keyword-based retrieval used the {keyword} index.",
+            f"Rules held (Kaye et al. 2009, Stuart et al., 2018, Research Councils. 2011, "
+            f"Lowe 2010a,b, [{only['citation author']} 2016a]{{.mark}}, "
+            f"*{also['citation author']} 2016b*, [Holdren 2012]{{.mark}}).",
+            *(owed.format(short) for owed, short in zip(UNDUE_OWED, UNDUE_OWED_FORMS,
+                                                       strict=True)),  # fmt: skip
+            "# Results",
             "The " + ", the ".join(also[kind] for kind in UNDUE_KINDS) + " fell.",
             "# Discussion", "It held."]  # fmt: skip
     # The running line between three of the body's paragraphs, drawn.
@@ -1680,7 +1739,7 @@ def undue_places(
         else:
             files = [_undue_file([*title, *opening, keywords, *body, *end], running)]
         where = "the abstract" if way in ("heading", "next file") else "the main text"
-        times = dict.fromkeys([*also.values(), keyword], "once")
+        times = dict.fromkeys([*also.values(), keyword, *UNDUE_OWED_FORMS], "once")
         times[alone] = "once"
         if way == "none":
             # No title page: its short forms are the text's, and its use of the one the
@@ -1783,15 +1842,61 @@ STATISTICS_EXEMPT = ("ANOVA", "RMSD", "RMSE", "SD")
 STATISTICS_NOT = ("CI", "HR", "IQR", "OR", "SE", "SEM")
 
 
+#: The long form of each, which a paper may give after using it (decision D2).
+STATISTICS_SPELT = {"ANOVA": "analysis of variance", "RMSD": "root mean square deviation",
+                    "RMSE": "root mean square error", "SD": "standard deviation",
+                    "CI": "confidence interval", "HR": "hazard ratio",
+                    "IQR": "interquartile range", "OR": "odds ratio", "SE": "standard error",
+                    "SEM": "standard error of the mean"}  # fmt: skip
+
+
 @st.composite
-def statistics_used(draw: st.DrawFn) -> tuple[str, list[str]]:
-    """A manuscript using every abbreviation of `STATISTICS_EXEMPT` and `STATISTICS_NOT`,
-    none defined, in an order drawn; and the names a journal is drawn to ask defined, one
-    of each list at least."""
+def statistics_used(draw: st.DrawFn) -> tuple[str, list[str], tuple[str, str, str]]:
+    """A manuscript using every abbreviation of `STATISTICS_EXEMPT` and `STATISTICS_NOT`, in
+    an order drawn, then defining, after they were used, one exempt form in a table's note,
+    another in the running text, and one of `STATISTICS_NOT` in the running text (decision
+    D2, narrowed to displays, Basile, 2026-11-27); the names a journal is drawn to ask
+    defined, one of each list at least; and the three defined later, in that order."""
     planted = draw(st.permutations([*STATISTICS_EXEMPT, *STATISTICS_NOT]))
     text, _starts = _paragraphs(draw, (f"the {short} was given" for short in planted))
     named = [draw(st.sampled_from(STATISTICS_EXEMPT)), draw(st.sampled_from(STATISTICS_NOT))]
-    return "# Results\n\n" + text, sorted(set(named))
+    noted, spelt_exempt = draw(st.permutations(STATISTICS_EXEMPT))[:2]
+    later = (noted, spelt_exempt, draw(st.sampled_from(STATISTICS_NOT)))
+    spelt = " and ".join(f"the {STATISTICS_SPELT[short]} ({short})" for short in later[1:])
+    table = (f"| Group | n |\n|---|---|\n| one | 3 |\n\n*Note.* The {STATISTICS_SPELT[noted]} "
+             f"({noted}) of each group.\n")  # fmt: skip
+    return (f"# Results\n\n{text}# Discussion\n\nIn short, {spelt} were read.\n\n{table}",
+            sorted(set(named)), later)  # fmt: skip
+
+
+#: A display each pointer kind names after a bracket's semicolon, and the long forms of
+#: three words whose first two give the short form's letters (decision D10, docx-psych-C4),
+#: the last holding a letter of the short form in one, "gap" for WA, and not needed for it
+#: (round 2 of #838).
+POINTER_KINDS = ("Figure 1, Panel B", "see Table 2", "Fig. 3", "Box 1", "Supplementary Table S2",
+                 "Panel 2")  # fmt: skip
+POINTER_FORMS = (("low rank position", "LR"), ("top tier place", "TT"), ("mean grade score", "MG"),
+                 ("new band level", "NB"), ("pale zone area", "PZ"),
+                 ("wide arc gap", "WA"))  # fmt: skip
+
+
+@st.composite
+def pointer_restated(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript whose Methods define each form of `POINTER_FORMS` by a bracket of its
+    short form and a word before a semicolon, each pointing to a display of a kind of
+    `POINTER_KINDS`, in an order drawn, and whose Results define each again by its first two
+    words, the first capitalised or not; and each form's warning, that it is defined again."""
+    kinds = draw(st.permutations(POINTER_KINDS))
+    capital = draw(st.booleans())
+    methods = " ".join(f"Each held a {long} ({short} group; {kind})."
+                       for (long, short), kind in zip(POINTER_FORMS, kinds, strict=True))
+    again = []
+    for long, short in POINTER_FORMS:
+        head = " ".join(long.split()[:2])
+        again.append(f"The {head.capitalize() if capital else head} ({short}) group held, "
+                     f"and the {short} rose.")
+    text = f"# Methods\n\n{methods}\n\n# Results\n\n" + " ".join(again) + "\n"
+    return text, sorted(f"{short} is defined again" for _long, short in POINTER_FORMS)
 
 
 #: An Abstract's heading set in bold as a whole, as a Word heading also set in bold reads
@@ -2041,6 +2146,36 @@ def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
         "found": sorted([("abbreviation-redefined", "ROR"), ("abbreviation-undefined", "UMC"),
                          ("abbreviation-unused", GLOSSARY_UNUSED[1])]),
     }  # fmt: skip
+
+
+#: The lines of a list of abbreviations typed in Word, its tab between the short form and its
+#: long form printed as a space (docx-meta-2; Basile, 2026-11-27): with a link's address in
+#: brackets after it, its short form in bold, a link's text after it; and lines that are no
+#: entry, words that do not spell the short form and a sentence.
+SPACED_ENTRIES = ("DTL Dutch Techcentre for Life Science (www.dtls.nl)",
+                  "**RDA** Research Data Alliance",
+                  "NPOS National Platform for Open Science [website]",
+                  "LERU League of European Research Universities",
+                  # One word, as the short form's bracket reads it (round 1 of #838).
+                  "HCQ Hydroxychloroquine")  # fmt: skip
+SPACED_USED = ("DTL", "RDA", "NPOS", "LERU", "HCQ")
+SPACED_NOT = (("HANDS Handbook Handbook for the staff", "HANDS"),
+              ("EOSC was set up in 2016.", "EOSC"))  # fmt: skip
+
+
+@st.composite
+def spaced_glossaries(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A list of abbreviations under a heading drawn among those that name one, with every
+    line of `SPACED_ENTRIES` and `SPACED_NOT` in an order drawn, each a paragraph, then a
+    Methods section using each short form; and G14's findings: the short forms of the lines
+    that are no entry, never defined."""
+    heading = draw(st.sampled_from(("Abbreviations", "List of abbreviations", "Glossary",
+                                    "Acronyms", "LIST OF ACRONYMS")))  # fmt: skip
+    lines = draw(st.permutations([*SPACED_ENTRIES, *(line for line, _short in SPACED_NOT)]))
+    shorts = draw(st.permutations([*SPACED_USED, *(short for _line, short in SPACED_NOT)]))
+    uses = " ".join(f"The {short} met." for short in shorts)
+    text = f"# {heading}\n\n" + "\n\n".join(lines) + f"\n\n# Methods\n\n{uses}\n"
+    return text, sorted(("abbreviation-undefined", short) for _line, short in SPACED_NOT)
 
 
 #: What stands between two paragraphs: a blank line, one of spaces, of a tab or of a carriage

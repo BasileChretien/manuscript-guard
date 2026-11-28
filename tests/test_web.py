@@ -1377,10 +1377,16 @@ process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])
     assert 'const two = (n) => String(n).padStart(2, "0");' in app
     browser = (WEB / "test" / "browser.mjs").read_text(encoding="utf-8")
     assert "return [now.getFullYear(), now.getMonth() + 1, now.getDate()];" in browser
-    assert ("const { result, unlike } = await caseHeld(today,\n"
-            "      () => choose(one.paper, one.against || [], one.form || {}), one.made);\n"
-            in browser)  # fmt: skip
-    assert "    if (unlike) fail(`${one.name}: ${unlike}`);\n" in browser
+    # A case the page could not run is said so once: its files are held only after that.
+    call = browser.index("    const { result, unlike } = await caseHeld(today,\n"
+                         "      () => choose(one.paper, one.against || [], one.form || {}),"
+                         " one.made);\n"
+                         "    if (result.error) {\n"
+                         "      fail(`${one.name}: the audit could not run: ${result.error}`);\n"
+                         "      continue;\n"
+                         "    }\n")  # fmt: skip
+    assert browser.count("if (unlike)") == 1
+    assert browser.index("    if (unlike) fail(`${one.name}: ${unlike}`);\n") > call
 
 
 def _js(value: object) -> str:

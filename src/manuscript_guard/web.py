@@ -8,6 +8,11 @@ program to start and no sockets, so:
   defaults-file object rather than a command line. The flags `from_word` passes are
   translated (`pandoc_options`), and any other flag is refused rather than dropped, so that
   the page never converts a paper otherwise than the command line does without saying so.
+* `install_programs` gives Pyodide poppler's pdftotext and pdfinfo, built for WebAssembly
+  (web/poppler.mjs), as programs a command line has: each is a file on PATH, where
+  `shutil.which` finds it, and `subprocess.run` runs it with the arguments the package
+  gives it (`program_runner`). The code that reads a PDF is the command line's, unchanged:
+  it is given the same program, run the same way, and reads what it prints.
 * `xhr_transport` is `lookup.http.default_transport` in a page: one synchronous
   XMLHttpRequest, which a worker may make. `default_transport` hands over to it under Pyodide.
 * `run` runs one command and returns what it printed, for the page to show.
@@ -15,14 +20,18 @@ program to start and no sockets, so:
   as `audit --commented` does, and `report_pdf` the last audit's report as a PDF, as
   `audit --pdf` does, for the page to save.
 
-Nothing here starts a process or opens a socket, and only `install` and the transport's
-default touch `js`, which exists only in Pyodide.
+Nothing here starts a process or opens a socket, and only `install`, `install_programs` and
+the transport's default touch `js`, which exists only in Pyodide.
 """
 
 from __future__ import annotations
 
 import contextlib
 import io
+import locale
+import os
+import subprocess
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -151,6 +160,121 @@ def install(pandoc_js) -> str:
 
     from_word.runner = runner_for(_js_convert(pandoc_js))
     return str(pandoc_js.version)
+
+
+#: poppler's programs the page runs in WebAssembly (web/poppler.mjs `PROGRAMS`).
+PROGRAMS = ("pdftotext", "pdfinfo")
+#: Where `install_programs` puts them, first on PATH.
+PROGRAM_FOLDER = "/opt/poppler/bin"
+#: What each of their files holds: `subprocess.run` never starts it.
+_PROGRAM_FILE = ("#!/bin/sh\n# {name}, which the page runs in WebAssembly (manuscript_guard.web): "
+                 "this file is what\n# finds it on PATH, and is never started.\nexit 127\n")
+#: The options of `subprocess.run` the page's programs take, which are those the package
+#: passes them.
+_TAKEN = frozenset({"capture_output", "stdout", "stderr", "text", "universal_newlines",
+                    "encoding", "errors", "timeout", "check"})  # fmt: skip
+#: `subprocess.run` as Pyodide has it, which starts nothing.
+_RUN = subprocess.run
+
+#: One of PROGRAMS, run: its name, its arguments and the folder it is run in, to its exit
+#: code and what it wrote to its standard output and its standard error.
+Program = Callable[[str, list[str], str], tuple[int, bytes, bytes]]
+
+
+def _program_named(args, folder: str) -> str | None:
+    """The one of PROGRAMS that `args` starts, by its name alone or by its file in `folder`,
+    as `shutil.which` finds it there; None for any other command, or one given as a string,
+    which no shell runs here."""
+    if isinstance(args, (str, bytes)) or not args:
+        return None
+    first = os.fspath(args[0])
+    name, where = os.path.basename(first), os.path.dirname(first)
+    if name not in PROGRAMS:
+        return None
+    same = os.path.normcase(os.path.abspath(where or folder)) == os.path.normcase(
+        os.path.abspath(folder))  # fmt: skip
+    return name if same else None
+
+
+def _captured(options: dict) -> bool:
+    if options.get("capture_output"):
+        return "stdout" not in options and "stderr" not in options
+    return options.get("stdout") == subprocess.PIPE and options.get("stderr") == subprocess.PIPE
+
+
+def _as_text(data: bytes, options: dict) -> str:
+    """`data` as `subprocess.run` gives what a program printed in text mode: decoded, and each
+    carriage return, alone or before a line feed, read as a line feed."""
+    encoding = options.get("encoding") or locale.getpreferredencoding(False)
+    said = data.decode(encoding, options.get("errors") or "strict")
+    return said.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def program_runner(program: Program, fallback: Callable = _RUN,
+                   folder: str = PROGRAM_FOLDER) -> Callable:
+    """`subprocess.run` for a page: a command that starts one of PROGRAMS, by its name or its
+    file in `folder`, is run through `program`, in the working folder, and given back as
+    `subprocess.run` gives it: its exit
+    code, what it printed, decoded where text is asked for, a run that took longer than its
+    timeout said as `TimeoutExpired` once it ended, and a failure raised where `check` is set.
+    Any other command goes to `fallback`. A program is run only with what it prints captured,
+    and with none of the options the package never passes it (`input`, `cwd`, `env` and the
+    rest): otherwise it is refused with `OSError`, as a program that cannot be run is."""
+
+    def run(args, *rest, **options):
+        name = _program_named(args, folder)
+        if name is None:
+            return fallback(args, *rest, **options)
+        unknown = sorted(set(options) - _TAKEN)
+        if rest or unknown or not _captured(options):
+            said = (", ".join(unknown) if unknown else "positional argument" if rest
+                    else "output it does not capture")  # fmt: skip
+            raise OSError(f"the page runs {name} with its output captured, and takes no {said}")
+        started = time.monotonic()
+        code, out, err = program(name, [os.fspath(arg) for arg in args[1:]], os.getcwd())
+        timeout = options.get("timeout")
+        if timeout is not None and time.monotonic() - started > timeout:
+            raise subprocess.TimeoutExpired(args, timeout)
+        if any(options.get(key) for key in ("text", "universal_newlines", "encoding", "errors")):
+            out, err = _as_text(out, options), _as_text(err, options)
+        # The command as it was given, as `subprocess.run` keeps it.
+        done = subprocess.CompletedProcess(args, code, out, err)
+        if options.get("check"):
+            done.check_returncode()
+        return done
+
+    return run
+
+
+def _js_program(poppler_js) -> Program:
+    """`Program` over the page's poppler, whose `run` takes and returns JS values."""
+    from pyodide.ffi import to_js
+
+    def program(name: str, args: list[str], cwd: str) -> tuple[int, bytes, bytes]:
+        said = poppler_js.run(name, to_js(args), cwd)
+        return int(said.code), bytes(said.stdout.to_bytes()), bytes(said.stderr.to_bytes())
+
+    return program
+
+
+def install_programs(poppler_js) -> None:
+    """Give this Python poppler's programs as the page runs them, through `poppler_js`
+    (`put_programs`)."""
+    put_programs(_js_program(poppler_js))
+
+
+def put_programs(program: Program, folder: str = PROGRAM_FOLDER) -> None:
+    """A file for each of PROGRAMS in `folder`, which is put first on PATH, and
+    `subprocess.run` running each through `program` (`program_runner`), and any other
+    command as before."""
+    place = Path(folder)
+    place.mkdir(parents=True, exist_ok=True)
+    for name in PROGRAMS:
+        (place / name).write_text(_PROGRAM_FILE.format(name=name), encoding="utf-8")
+        (place / name).chmod(0o755)
+    found = [part for part in os.environ.get("PATH", "").split(os.pathsep) if part]
+    os.environ["PATH"] = os.pathsep.join([folder, *(part for part in found if part != folder)])
+    subprocess.run = program_runner(program, _RUN, folder)
 
 
 def _new_xhr():
@@ -355,6 +479,7 @@ def report_pdf(target: str) -> dict:
     return {"bytes": len(data)}
 
 
-__all__ = ["PAGE_MAX_BYTES", "PandocCall", "commented", "install", "journal_files",
-           "pandoc_options", "report_pdf", "run", "runner_for", "unpack_paper", "view",
+__all__ = ["PAGE_MAX_BYTES", "PROGRAMS", "PROGRAM_FOLDER", "PandocCall", "Program", "commented",
+           "install", "install_programs", "journal_files", "pandoc_options", "program_runner",
+           "put_programs", "report_pdf", "run", "runner_for", "unpack_paper", "view",
            "xhr_transport"]  # fmt: skip

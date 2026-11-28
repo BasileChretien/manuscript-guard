@@ -960,11 +960,16 @@ features:
     stage: others
     title: Audit in a web browser
     says: >-
-      Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not
-      uploaded anywhere. A journal's rules typed once can be sent as a link that fills them in.
+      Runs the audit on a .docx, Markdown or PDF paper, or a LaTeX project, in a web
+      browser, and the paper is not uploaded anywhere. A journal's rules typed once can be
+      sent as a link that fills them in.
     status: works
     tests: [tests/test_web.py]
     docs: docs/audit-page.md
+    limits: >-
+      A PDF is read with the page's own pdftotext, poppler 26.11.0 built for WebAssembly,
+      which may read it otherwise than the pdftotext a reader has installed (DESIGN.md,
+      Known gaps).
 
   - id: audit-page-hosted
     stage: others

@@ -1,4 +1,5 @@
-// The checker: Pyodide, the manuscript-guard wheel and pandoc.wasm, in a module worker.
+// The checker: Pyodide, the manuscript-guard wheel, pandoc.wasm and poppler's pdftotext and
+// pdfinfo, in a module worker.
 //
 // app.js starts this worker from a blob: URL, with `const BASE = "<the page's folder>";`
 // put before this text. That is what keeps it under the page's Content-Security-Policy: a
@@ -16,7 +17,8 @@ let py;
 // Where the start has got to, for the page to show while it waits: a message with no id,
 // which answers no question (app.js).
 const BOOT_STEPS = ["Python", "the Python packages and manuscript-guard",
-  "pandoc, which reads a .docx (16 MB)", "the checker itself"];
+  "pandoc, which reads a .docx (16 MB)", "pdftotext, which reads a PDF (4 MB)",
+  "the checker itself"];
 const step = (at) => self.postMessage({ progress: { at: at + 1, of: BOOT_STEPS.length, what: BOOT_STEPS[at] } });
 
 // The bytes the start has received, against those the manifest says it fetches (web/build.py,
@@ -95,15 +97,40 @@ async function started() {
 
   start = now();
   step(3);
+  const { createPoppler } = await import(BASE + "poppler/poppler.mjs");
+  const poppler = await createPoppler(
+    await WebAssembly.compileStreaming(fetch(BASE + "poppler/poppler-multicall.wasm")));
+  timings.poppler = now() - start;
+
+  start = now();
+  step(4);
   py.globals.set("PANDOC_JS", pandoc);
+  py.globals.set("POPPLER_JS", programs(poppler));
   const pandocVersion = py.runPython(`
 from manuscript_guard import web
 import manuscript_guard.cli
+web.install_programs(POPPLER_JS)
 web.install(PANDOC_JS)
 `);
   py.globals.delete("PANDOC_JS");
+  py.globals.delete("POPPLER_JS");
   timings.imports = now() - start;
   return { manifest, pandocVersion, timings, loaded: requests() };
+}
+
+// poppler's programs as Python's `subprocess.run` runs them (`web.install_programs`): each
+// argument that names a file of Pyodide's, from the folder the program is run in, is given
+// to the program with its bytes, as a program run on a computer opens the file it is named.
+const programs = (poppler) => ({
+  run: (program, args, cwd) => poppler.run(program, args, cwd, fileOf),
+});
+
+function fileOf(path) {
+  try {
+    return py.FS.isFile(py.FS.stat(path).mode) ? py.FS.readFile(path) : null;
+  } catch {
+    return null;
+  }
 }
 
 // Every request this worker made, as the browser recorded it.

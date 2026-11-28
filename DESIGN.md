@@ -20121,11 +20121,12 @@ Added by the adversarial review, verified and **not** fixed:
   its words, and one named under other words would be read by none of them. A qualitative
   study's sections are found by words of the headings real qualitative protocols and
   studies give them, kept narrow (Basile, 2026-11-28): a sample, sampling, recruitment,
-  saturation, information power, participant selection, the selection of participants,
-  informants or interviewees, of the interview, study or focus-group participants or of
-  key informants; data collection or generation, interviews, focus groups, FGDs, IDIs,
-  KIIs, a topic or discussion guide or list, field notes or fieldwork, observation; an
-  analysis, analytic, analyse, coding, a codebook, "Data processing" as the whole heading;
+  saturation, information power, participant selection, "selection of" (and "the") before
+  participants, informants or interviewees, with at most one of interview, study, key or
+  focus group (spaced or hyphened) between; data collection or generation, interviews,
+  focus groups, FGDs, IDIs, KIIs, a topic or discussion guide or list, field notes or
+  fieldwork, observation; an analysis, analytic, analyse, coding, a codebook, and "Data
+  processing" as the whole heading, numbered or not, with nothing else beside it;
   reflexivity, positionality, the research team, the researchers', interviewers' or
   investigators' characteristics, background, role, position or training, their role,
   position or background named after it ("Role of the researcher"), the relationship with
@@ -20140,7 +20141,13 @@ Added by the adversarial review, verified and **not** fixed:
   analysis is its analytic approach, as any finds every plan's analysis, "Methods and
   analysis" or "Economic analysis", and "Support from the research team" is its
   reflexivity, false passes; and "Procedure", "Instruments", "Reviewing themes", "Study
-  team" and "Validity" name none of them, false alarms the identifier answers. Its design
+  team" and "Validity" name none of them, false alarms the identifier answers, as do
+  "Selection of eligible participants", "Selection of research participants", "Data
+  processing (transcription)", "Transcription and data processing" and "Data processing
+  procedures", which narrowing the words in round 2 of #857 refused: rounds 1 to 3 widened
+  and narrowed the same two patterns, each round finding headings the last took or refused
+  wrongly, and they change no further in #857 (Basile, 2026-11-28, "One Opus read, then
+  merge"). Its design
   is every plan's, found by "design" alone, so a plan that names it under SRQR's
   "Qualitative approach and research paradigm" or COREQ's "Theoretical framework" is
   told it lacks one; and every plan's words take "Interview questions" for its question

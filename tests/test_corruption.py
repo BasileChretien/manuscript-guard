@@ -41611,6 +41611,10 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Information power", "sampling and saturation", True),
         # Round 2 of #857: the words between are those that name a participant, no others.
         ("## Selection of quotes from participants", "sampling and saturation", False),
+        # Round 3 of #857: any of the four words before any of the three nouns, and no
+        # other word, so "eligible" or "research" participants are refused (Known gaps).
+        ("## Selection of key participants", "sampling and saturation", True),
+        ("## Selection of eligible participants", "sampling and saturation", False),
         ("## Participants", "sampling and saturation", False),
         ("## Identifying potential participants", "sampling and saturation", False),
         ("## Semi-structured interviews", "data collection", True),
@@ -41634,6 +41638,10 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         # Round 2 of #857: SRQR's "Data processing" whole, not a data-protection heading.
         ("## 4. Data processing", "analytic approach", True),
         ("## Data processing and storage", "analytic approach", False),
+        # Round 3 of #857: numbered or not, and with nothing else (Known gaps).
+        ("## IV. Data processing", "analytic approach", True),
+        ("## Data processing (transcription)", "analytic approach", False),
+        ("## Transcription and data processing", "analytic approach", False),
         ("## Analysts’ perspectives and reflexivity", "analytic approach", False),
         ("## Reviewing themes", "analytic approach", False),
         ("## Reflexivity", "reflexivity", True),

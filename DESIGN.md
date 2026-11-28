@@ -17704,8 +17704,8 @@ already written.
 Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic accuracy studies
 (STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
 guideline's own page on the day of its pull request, as the file requires, and
-`choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
-have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
+`choose-study-type` offers the design. STROBE, STARD 2015, CARE 2013 (since 2026-11-27)
+and PROCESS 2023 (since 2026-11-28) have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
 (labelled "self-controlled design (case series or case-crossover)"); its label,
 "descriptive case series", says so. No guideline is written for case series in every
@@ -17756,7 +17756,7 @@ the study (answer 5).
 
 - The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
   PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
-  2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
+  2026-11-28, whose Table 3 gives its items and `PROCESS-2023` reads, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
   whose full text Europe PMC's service does not return, so its checklist was not read for
   this design; no guideline written for case series in any field was found. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
   site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
@@ -23949,10 +23949,10 @@ Open, recorded as each change landed:
 - **A descriptive case series is held to a surgical guideline or to one with no recipe.**
   No guideline is written for case series in every field, so the design names PROCESS
   2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
-  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
-  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
-  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
-  open licence. So a paper that declares either is told its checklist is not retrieved.
+  and G5 accepts either. `PROCESS-2023` reads PROCESS 2023's Table 3 from Europe PMC's
+  full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. Kempen
+  2011 has none: its full text is not served by Europe PMC, and its article states no
+  open licence, so a paper that declares it is told its checklist is not retrieved.
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for
   the intervention (6g), the operator (6j) and the variation between operators (6k) a
   series outside surgery answers as not applying. Accepted.

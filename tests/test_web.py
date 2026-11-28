@@ -1293,10 +1293,11 @@ def test_check_makes_the_journal_s_files_for_each_day_a_run_may_reach() -> None:
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_the_browsers_hold_the_page_s_files_to_the_day_it_ran_a_case() -> None:
     """browser.mjs holds the files the page made of the journal's form to those check.py made
-    for the day the case began or ended on (web/test/made.mjs), the day as web/app.js writes
-    it: a case begun before midnight and ended after it may make either day's, as Firefox's
-    did in main's `web` job at #850's merge; one run within a day only that day's; a day
-    check.py made no files for is said, not passed; and an empty form makes none."""
+    for the day the case began or ended on (web/test/made.mjs), each day read in the page
+    just before the case and just after it (`dated`) and written as web/app.js writes the
+    form's date: a case begun before midnight and ended after it may make either day's, as
+    Firefox's did in main's `web` job at #850's merge; one run within a day only that day's;
+    a day check.py made no files for is said, not passed; and an empty form makes none."""
     from datetime import date
 
     made = check_script().form_files(date(2026, 11, 27))
@@ -1309,33 +1310,50 @@ def test_the_browsers_hold_the_page_s_files_to_the_day_it_ran_a_case() -> None:
              {"made": after, "byDay": made, "days": first},
              {"made": after, "byDay": made, "days": ["2026-11-28", "2026-11-29"]},
              {"made": after, "byDay": made, "days": ["2026-11-29"] * 2},
+             {"made": before, "byDay": made, "days": ["2026-11-28", "2026-11-29"]},
              {"made": {}, "byDay": made, "days": first},
              {"made": {}, "days": first},
              {"made": after, "days": crossing}]  # fmt: skip
     module = json.dumps((WEB / "test" / "made.mjs").as_uri())
-    script = f"""import {{ dayOf, madeHeld }} from {module};
+    # A clock that turns midnight while the case runs, and the order things are asked in.
+    script = f"""import {{ dated, dayOf, madeHeld }} from {module};
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
-process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])],
+const asked = [], clock = [[2026, 11, 27], [2026, 11, 28]];
+const run = await dated(async () => (asked.push("today"), dayOf(clock.shift())),
+  async () => (asked.push("run"), "the result"));
+process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])], run, asked,
   JSON.parse(input).map((one) => madeHeld(one.made, one.byDay, one.days))]));
 """
     done = subprocess.run([NODE, "--input-type=module", "-e", script], input=json.dumps(cases),
                           capture_output=True, text=True, encoding="utf-8", timeout=60,
                           check=False)  # fmt: skip
     assert done.returncode == 0, done.stderr
-    days, held = json.loads(done.stdout)
+    days, run, asked, held = json.loads(done.stdout)
     assert days == ["2026-01-05", "2026-11-28"]
+    assert run == {"result": "the result", "days": crossing}
+    assert asked == ["today", "run", "today"]
     assert held[:3] == ["", "", ""]
     assert held[3] == f"the page made {_js(before)} of the journal's form, not {_js(after)}"
     assert held[4] == f"the page made {_js(after)} of the journal's form, not {_js(before)}"
     # Begun on a day check.py made files for, ended on one it did not.
     assert held[5] == ""
-    assert held[6] == ("the case ran on 2026-11-29, a day check.py made no files of the "
-                       "journal's form for (2026-11-27, 2026-11-28), and the page made "
-                       f"{_js(after)}")  # fmt: skip
-    assert held[7] == f"the page made {{}} of the journal's form, not {_js(before)}"
-    assert held[8] == ""
-    assert held[9] == f"the page made {_js(after)} of the journal's form, not {{}}"
+    missing = (", and the case ran on 2026-11-29, a day check.py made no files of it for "
+               "(2026-11-27, 2026-11-28)")  # fmt: skip
+    unlike = f"the page made {_js(before)} of the journal's form, not {_js(after)}"
+    assert held[6] == f"the page made {_js(after)} of the journal's form{missing}"
+    assert held[7] == unlike + missing
+    assert held[8] == f"the page made {{}} of the journal's form, not {_js(before)}"
+    assert held[9] == ""
+    assert held[10] == f"the page made {_js(after)} of the journal's form, not {{}}"
+    # The day as the page writes the form's, and as browser.mjs reads it in the page.
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    assert "`${today.getFullYear()}-${two(today.getMonth() + 1)}-${two(today.getDate())}`" in app
+    assert 'const two = (n) => String(n).padStart(2, "0");' in app
+    browser = (WEB / "test" / "browser.mjs").read_text(encoding="utf-8")
+    assert "return [now.getFullYear(), now.getMonth() + 1, now.getDate()];" in browser
+    assert "await dated(today, () => choose(" in browser
+    assert "madeHeld(result.made || {}, one.made, days)" in browser
 
 
 def _js(value: object) -> str:

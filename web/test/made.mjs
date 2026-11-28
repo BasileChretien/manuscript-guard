@@ -9,6 +9,13 @@
 export const dayOf = ([year, month, day]) =>
   `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
+/** What `run` gives, with the days `today` gives just before it and just after it. */
+export async function dated(today, run) {
+  const begun = await today();
+  const result = await run();
+  return { result, days: [begun, await today()] };
+}
+
 /** "" where `made`, the files the page made, is what check.py's `byDay` gives for one of
  * `days`, the days the case began and ended on, or none where `byDay` is absent (the form
  * empty); else what is wrong with it. */
@@ -18,11 +25,13 @@ export function madeHeld(made, byDay, days) {
     return text === "{}" ? "" : `the page made ${text} of the journal's form, not {}`;
   }
   if (days.some((day) => byDay[day] !== undefined && JSON.stringify(byDay[day]) === text)) return "";
-  const missing = [...new Set(days.filter((day) => byDay[day] === undefined))];
-  if (missing.length) {
-    return `the case ran on ${missing.join(" and ")}, a day check.py made no files of the journal's `
-      + `form for (${Object.keys(byDay).join(", ")}), and the page made ${text}`;
-  }
-  return `the page made ${text} of the journal's form, not `
-    + [...new Set(days)].map((day) => JSON.stringify(byDay[day])).join(" or ");
+  const each = [...new Set(days)];
+  const known = each.filter((day) => byDay[day] !== undefined);
+  const missing = each.filter((day) => byDay[day] === undefined);
+  const unlike = `the page made ${text} of the journal's form`
+    + (known.length ? `, not ${known.map((day) => JSON.stringify(byDay[day])).join(" or ")}` : "");
+  return missing.length
+    ? `${unlike}, and the case ran on ${missing.join(" and ")}, a day check.py made no files of it `
+      + `for (${Object.keys(byDay).join(", ")})`
+    : unlike;
 }

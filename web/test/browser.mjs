@@ -23,7 +23,7 @@ import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import puppeteer from "puppeteer-core";
-import { dayOf, madeHeld } from "./made.mjs";
+import { dated, dayOf, madeHeld } from "./made.mjs";
 
 const hosted = process.argv.includes("--hosted");
 const [site, casesDir, browserName, given] = process.argv.slice(2).filter((arg) => arg !== "--hosted");
@@ -159,9 +159,7 @@ try {
 
   const cases = JSON.parse(readFileSync(join(casesDir, hosted ? "hosted-cases.json" : "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
-    const begun = await today();
-    const result = await choose(one.paper, one.against || [], one.form || {});
-    const ended = await today();
+    const { result, days } = await dated(today, () => choose(one.paper, one.against || [], one.form || {}));
     if (result.error) {
       fail(`${one.name}: the audit could not run: ${result.error}`);
       continue;
@@ -226,7 +224,7 @@ try {
     }
     // The journal's profile and the authors' names the form made, as the command line was
     // given them, dated the day the case began or ended on; none where the form is empty.
-    const unlike = madeHeld(result.made || {}, one.made, [begun, ended]);
+    const unlike = madeHeld(result.made || {}, one.made, days);
     if (unlike) fail(`${one.name}: ${unlike}`);
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);

@@ -2611,6 +2611,155 @@ def test_no_definition_is_asked_where_none_is_due(
         assert found == expected, files
 
 
+def _a_bold_title_names_no_abstract(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_unemphasised", lambda title: title)
+
+
+from generated import apa_layouts, bold_abstracts, highlights_sections, indented_code  # noqa: E402
+
+
+@holds(30, bold_abstracts())
+def test_an_abstract_titled_in_bold_is_the_abstract(drawn: list[tuple[str, int]]) -> None:
+    """A heading set in bold as a whole names the Abstract, at any level, numbered, with a
+    colon, in asterisks or underscores (docx-educ-2; Basile, 2026-11-27): G14 reads it apart,
+    so a short form only the Methods define is undefined there, and G4 counts its words."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for text, words in drawn:
+        report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+        assert [f.message for f in report.findings] == [
+            "QAB is used once in the abstract as G14 reads it, and not defined there"], text
+        assert sections_module.measure(text).abstract_words == words, text
+
+
+@holds(10, apa_layouts())
+def test_an_apa_abstract_ends_at_the_title_repeated_in_bold(
+    drawn: list[tuple[str, list[tuple[str, str]]]],
+) -> None:
+    """An APA manuscript repeats its title in bold to open its Introduction, with no heading:
+    in its case or in capitals, with a stop or a colon, in asterisks or underscores, it ends
+    the Abstract, so the Introduction's definitions are the main text's, and the Abstract's
+    are not; a bold sub-heading in the Abstract, and the title with words added, end nothing
+    (decision D6, the author, 2026-11-27). The title is typed as a paragraph, a heading or in
+    front matter, and the title in bold as the Abstract's first paragraph ends nothing (round
+    1 of #841)."""
+    nothing = language_gate._Known(frozenset(), frozenset())
+    for text, expected in drawn:
+        report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+        assert sorted((f.code, f.message) for f in report.findings) == expected, text
+
+
+def _the_title_again_ends_the_abstract_at_its_first_paragraph(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    kept = language_gate._ends_the_abstract
+    patch.setattr(language_gate, "_ends_the_abstract",
+                  lambda paragraph, titles, read: kept(paragraph, titles, True))
+
+
+def _a_heading_s_title_is_read_with_its_attributes(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "strip_attributes", lambda text: text)
+
+
+def _a_front_matter_s_title_is_not_read_as_yaml_reads_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "front_matter_title", lambda text: None)
+
+
+def _a_title_is_read_from_paragraphs_alone(patch: pytest.MonkeyPatch) -> None:
+    def paragraphs(typed: str) -> set[str]:
+        found = {language_gate._plain_paragraph(each)
+                 for each in language_gate._BLANK_LINE.split(typed)}  # fmt: skip
+        return {each for each in found if len(each.split()) >= language_gate._TITLE_WORDS}
+
+    patch.setattr(language_gate, "_titles_before", paragraphs)
+
+
+def _an_abstract_runs_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_title_again", lambda prose, text, regions: regions)
+
+
+def _the_title_again_is_any_bold_paragraph(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_plain_paragraph", lambda paragraph: "")
+    patch.setattr(language_gate, "_TITLE_WORDS", 0)
+
+
+@holds(30, highlights_sections())
+def test_a_paper_s_highlights_owe_no_definition(drawn: tuple[str, list[str]]) -> None:
+    """A section titled "Highlights", "Research highlights", "Key points" or "Key messages",
+    in any case and at any level, owes no definition, and a use there is still one; a
+    section of the paper's own that opens with the word, "Highlights of the trial", owes
+    one (decision D4, the author, 2026-11-27)."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    assert sorted(f.message.split()[0] for f in report.findings
+                  if f.code == "abbreviation-used-before-defined") == expected, text
+    assert all(f.code == "abbreviation-used-before-defined" for f in report.findings), text
+
+
+def _highlights_are_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "names_highlights", lambda title: False)
+
+
+@holds(30, indented_code())
+def test_an_indented_code_block_is_no_prose(drawn: tuple[str, list[str]]) -> None:
+    """An indented code block, as pandoc reads one, four spaces or a tab after a blank line,
+    blank lines inside it, a deeper indent, is read for no short form: R pasted into a Word
+    paper, "SE<-as.vector(fit)" over "#SE: ...", says nothing; a list item's indented
+    paragraph and a line a paragraph wraps onto are read (Basile, 2026-11-27)."""
+    text, expected = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = _g14_warned([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-used-before-defined", short) for short in expected], text
+
+
+def _indented_code_is_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_indented_code", lambda text: [])
+
+
+def _an_indented_item_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile("(?!)"))
+
+
+def _an_item_s_third_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_keeps_the_item", lambda line: False)
+
+
+def _only_a_bullet_or_a_number_opens_an_item(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]"))
+
+
+def _any_capital_with_a_stop_opens_an_item(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile(
+        r"[ \t]*(?:[-*+]|\(?(?:\d{1,9}|[A-Za-z]|[ivxlcdmIVXLCDM]{1,6})[.)])[ \t]"))
+
+
+def _any_word_of_roman_letters_opens_an_item(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_ITEM_LINE", re.compile(
+        r"[ \t]*(?:[-*+]|(?:\d{1,9}|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,})[.)]|[A-Z]\)|[A-Z]\.(?= {2}|\t)"
+        r"|\((?:\d{1,9}|[a-z]|[A-Z]|[ivxlcdm]+|[IVXLCDM]+)\))[ \t]+"))
+
+
+def _any_indent_reaches_an_item_s_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_indent", lambda line: 10**6)
+
+
+def _a_footnote_s_paragraph_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_FOOTNOTE_LINE", re.compile("(?!)"))
+
+
+def _a_table_s_indented_row_is_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "table_lines", lambda lines: set())
+
+
+def _a_bold_title_names_the_abstract_by_its_first_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import section_names
+
+    patch.setattr(section_names, "_ABSTRACT_WHOLE", section_names._ABSTRACT)
+
+
 def _the_title_page_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_fronts", lambda files: {})
 
@@ -13731,7 +13880,7 @@ def _a_models_not_a_claim_stands(patch: pytest.MonkeyPatch) -> None:
 # ------------------------------------------ a reference list under a line that is no heading
 
 # Imported here, not at the top, to keep clear of the import block other branches edit.
-from generated import RECYCLED, addressed, reference_lists  # noqa: E402
+from generated import RECYCLED, addressed, literature_sections, reference_lists  # noqa: E402
 
 from manuscript_guard.text import reference_lists as reference_lists_module  # noqa: E402
 from manuscript_guard.text import sections as sections_module  # noqa: E402
@@ -13795,6 +13944,62 @@ def _a_line_is_read_with_its_spans(patch: pytest.MonkeyPatch) -> None:
 
 def _a_line_is_read_with_its_quote_s_marks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "_QUOTED", re.compile("(?!)"))
+
+
+def _a_quote_s_line_of_marks_is_no_blank_line(patch: pytest.MonkeyPatch) -> None:
+    def kept(lines: list[str], number: int, under: set[int]) -> bool:
+        return not number or not lines[number - 1].strip() or number - 1 in under
+
+    patch.setattr(reference_lists_module, "_opens_a_paragraph", kept)
+
+
+def _literature_over_prose_titles_a_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "literature_over_prose", lambda *args, **kwargs: False)
+
+
+@holds(60, literature_sections())
+def test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader(
+    drawn: tuple[str, list[int]],
+) -> None:
+    """"Literature" titling a section, under a heading or in bold, opens a reference list only
+    where the paragraph pandoc reads after it is shaped like an entry, for the lists G2 and
+    `init --from` read under a heading or a line (`reference_lists`) and for the audit's cut
+    (`audit.bibliography_spans`) alike: over prose it opens none (Basile, 2026-11-28, "Only
+    over entry-shaped lines"; round 2 of #841)."""
+    text, opened = drawn
+    listed = reference_lists_module.reference_lists(text)
+    starts = {text[:start].count("\n") for start, _end in listed}
+    assert sorted(starts) == opened, text
+    assert sorted(start for start, _end in audit_module.bibliography_spans(text)) == opened, text
+
+
+def _an_atx_heading_s_entry_is_read_past(patch: pytest.MonkeyPatch) -> None:
+    real = reference_lists_module.literature_over_prose
+
+    def walked(line: str, lines: list[str], number: int, **kwargs: bool) -> bool:
+        if kwargs.get("marked") and line.lstrip().startswith("#"):
+            kwargs = {**kwargs, "marked": False}
+        return real(line, lines, number, **kwargs)
+
+    patch.setattr(reference_lists_module, "literature_over_prose", walked)
+
+
+def _a_quote_s_line_of_marks_is_text_to_literature(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_blank", lambda line: not line.strip())
+
+
+def _a_carriage_return_is_no_blank_line(patch: pytest.MonkeyPatch) -> None:
+    def kept(lines: list[str], number: int, under: set[int]) -> bool:
+        return not number or not lines[number - 1].strip(" \t>") or number - 1 in under
+
+    patch.setattr(reference_lists_module, "_opens_a_paragraph", kept)
+
+
+def _literature_alone_titles_no_list(patch: pytest.MonkeyPatch) -> None:
+    pattern = reference_lists_module._BIBLIOGRAPHY
+    assert "|literature|" in pattern.pattern, "the alternative moved"
+    patch.setattr(reference_lists_module, "_BIBLIOGRAPHY", re.compile(
+        pattern.pattern.replace("|literature|", "|", 1), pattern.flags))
 
 
 def _a_line_is_read_with_its_link(patch: pytest.MonkeyPatch) -> None:
@@ -31292,6 +31497,106 @@ BROKEN = {
     "no title page is found": (
         _no_title_page_is_found,
         test_the_title_page_is_not_read_for_abbreviations,
+    ),
+    "a quote's line of marks is no blank line": (
+        _a_quote_s_line_of_marks_is_no_blank_line,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "literature alone titles no list": (
+        _literature_alone_titles_no_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a bold title names no abstract": (
+        _a_bold_title_names_no_abstract,
+        test_an_abstract_titled_in_bold_is_the_abstract,
+    ),
+    "an abstract runs to the next heading": (
+        _an_abstract_runs_to_the_next_heading,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "the title again is any bold paragraph": (
+        _the_title_again_is_any_bold_paragraph,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "highlights are text": (
+        _highlights_are_text,
+        test_a_paper_s_highlights_owe_no_definition,
+    ),
+    "an item's third paragraph is code": (
+        _an_item_s_third_paragraph_is_code,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "any capital with a stop opens an item": (
+        _any_capital_with_a_stop_opens_an_item,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "any word of roman letters opens an item": (
+        _any_word_of_roman_letters_opens_an_item,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "any indent reaches an item's text": (
+        _any_indent_reaches_an_item_s_text,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "only a bullet or a number opens an item": (
+        _only_a_bullet_or_a_number_opens_an_item,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "a footnote's second paragraph is code": (
+        _a_footnote_s_paragraph_is_code,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "a table's indented row is code": (
+        _a_table_s_indented_row_is_code,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "a bold title names the Abstract by its first word": (
+        _a_bold_title_names_the_abstract_by_its_first_word,
+        test_an_abstract_titled_in_bold_is_the_abstract,
+    ),
+    "the title again ends the Abstract at its first paragraph": (
+        _the_title_again_ends_the_abstract_at_its_first_paragraph,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "a heading's title is read with its attributes": (
+        _a_heading_s_title_is_read_with_its_attributes,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "a front matter's title is not read as YAML reads it": (
+        _a_front_matter_s_title_is_not_read_as_yaml_reads_it,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "a title is read from paragraphs alone": (
+        _a_title_is_read_from_paragraphs_alone,
+        test_an_apa_abstract_ends_at_the_title_repeated_in_bold,
+    ),
+    "literature over prose titles a list, in every reader": (
+        _literature_over_prose_titles_a_list,
+        test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader,
+    ),
+    "an ATX heading's entry is read past": (
+        _an_atx_heading_s_entry_is_read_past,
+        test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader,
+    ),
+    "a quote's line of marks is text to literature": (
+        _a_quote_s_line_of_marks_is_text_to_literature,
+        test_literature_opens_a_reference_list_only_over_an_entry_in_every_reader,
+    ),
+    "literature over prose titles a list": (
+        _literature_over_prose_titles_a_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a carriage return is no blank line": (
+        _a_carriage_return_is_no_blank_line,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "an indented code block is prose": (
+        _indented_code_is_prose,
+        test_an_indented_code_block_is_no_prose,
+    ),
+    "an indented paragraph of a list item is code": (
+        _an_indented_item_paragraph_is_code,
+        test_an_indented_code_block_is_no_prose,
     ),
     "the title page is read as text": (
         _the_title_page_is_read_as_text,

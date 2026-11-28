@@ -46,6 +46,7 @@ _BIBLIOGRAPHY = re.compile(
     r"(?:(?P<numbered>\d+\\?[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
     r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature"
+    r"|literature"
     rf"|{REFERENCE_WORDS_ELSEWHERE})"
     r"(?P<tail>[\s*_:.|]*)$",
     re.IGNORECASE,
@@ -113,6 +114,53 @@ def is_bibliography_heading(
     if found.group("hashes"):
         return False
     return found.group("word")[0].isupper() and "." not in found.group("tail")
+
+
+#: An entry of a numbered list, a number then an author's surname and initials: "1. Doe
+#: HA,", "[3] Roe MB.", "2\\. Smith J" as pandoc escapes a numbered Word paragraph.
+_NUMBERED_AUTHORS = re.compile(
+    r"\s*(?:\[\d{1,4}\]|\d{1,4}\\?[.)])\s+[^\W\d_][\w'’-]+\s+[A-Z]{1,3}\b"
+)
+
+
+def _shaped_as_an_entry(line: str) -> bool:
+    """Whether a line opens like a reference entry: authors and a year, or a numbered style's
+    entry (`audit.looks_like_reference`), or a number then an author's surname and initials
+    (`_NUMBERED_AUTHORS`)."""
+    from manuscript_guard.audit import looks_like_reference
+
+    line = _QUOTED.sub("", line, count=1).replace("\r", "")
+    return bool(looks_like_reference(line) or _NUMBERED_AUTHORS.match(line))
+
+
+def literature_over_prose(
+    line: str, lines: list[str], number: int, *, marked: bool = False, markdown: bool = True
+) -> bool:
+    """Whether `line`, line `number` of `lines` and a bibliography heading, titles its list
+    "Literature" alone where the paragraph after it is not shaped like an entry
+    (`_shaped_as_an_entry`): a section of prose titled so, under a heading or a paragraph in
+    bold, opens no list (Basile, 2026-11-28, "Only over entry-shaped lines"). In Markdown the
+    paragraph after is the first after a blank line, a line of a block quote's marks alone
+    being one, as `_opens_a_paragraph` has it; under an ATX heading, which is one line, it is
+    the next line that holds text; in a .docx's text, the next line (round 2 of #841)."""
+    if markdown:
+        line = _LINK.sub(r"\g<words>", _QUOTED.sub("", without_spans(line), count=1))
+    text = strip_attributes(line.lstrip().rstrip(" \t")) if marked else line.strip()
+    found = _BIBLIOGRAPHY.match(text.rstrip("#").rstrip(" \t") if marked else text)
+    if found is None or found.group("word").casefold() != "literature":
+        return False
+    at = number + 1
+    if markdown and not (marked and lines[number].lstrip().startswith("#")):
+        while at < len(lines) and not _blank(lines[at]):
+            at += 1
+    following = next((each for each in lines[at:] if not _blank(each)), "")
+    return not _shaped_as_an_entry(following)
+
+
+def _blank(line: str) -> bool:
+    """Whether a Markdown line is blank to a paragraph: nothing, or a block quote's marks
+    alone, `>` (`_opens_a_paragraph`)."""
+    return not line.replace(">", "").strip()
 
 
 def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
@@ -217,7 +265,8 @@ def _lists(text: str, *, marked: bool, ends: bool = False) -> list[tuple[int, in
     if marked:
         for heading in headings:
             start = line_of(heading.start)
-            if is_bibliography_heading(lines[start], marked=True):
+            if is_bibliography_heading(lines[start], marked=True) and not literature_over_prose(
+                    lines[start], lines, start, marked=True):
                 end = runs_to(start + 1 + heading.setext)
                 spans.append((offsets[start], offsets[end] if end < len(lines) else len(text)))
         return spans
@@ -228,6 +277,7 @@ def _lists(text: str, *, marked: bool, ends: bool = False) -> list[tuple[int, in
             or not _opens_a_paragraph(lines, number, under)
             or _in_a_list(lines, number)
             or not is_bibliography_heading(_first_printed(lines, number))
+            or literature_over_prose(_first_printed(lines, number), lines, number)
         ):
             number += 1
             continue
@@ -253,9 +303,12 @@ def _first_printed(lines: list[str], number: int) -> str:
 
 
 def _opens_a_paragraph(lines: list[str], number: int, under: set[int]) -> bool:
-    """Whether line `number` opens a paragraph: it is the first, or the line above is blank or
-    ends a heading (`under`)."""
-    return not number or not lines[number - 1].strip() or number - 1 in under
+    """Whether line `number` opens a paragraph: it is the first, or the line above is blank,
+    a block quote's line of `>` alone among them, as pandoc writes the blank line between two
+    quoted paragraphs of a Word document, or ends a heading (`under`). So "> **11.
+    REFERENCES**:" under a line of `>` opens a list as it does under a blank one (Basile,
+    2026-11-27; docx-med-A3)."""
+    return not number or not lines[number - 1].replace(">", "").strip() or number - 1 in under
 
 
 #: A list item's marker: "3." or "3)" of an ordered list, "-", "*" or "+" of another.

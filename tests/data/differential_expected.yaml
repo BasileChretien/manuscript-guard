@@ -278,13 +278,14 @@ expected:
       one word; the inputs now hold Japanese, Chinese and Thai pieces (G7, quote-too-short)
   - reading: hidden
     why: >-
-      G14 read the mask with each line feed put back and each carriage return NUL; the
-      mask keeps both now in the front matter and a listing, so a file with CRLF line ends
-      keeps its carriage returns there too, which every reading of it takes for a space
+      a block indented four spaces or a tab after a blank line, not under a list item's
+      paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
+      view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix):
+      the inputs' indented lines, " reports ", are blanked where the base kept them as
+      words. The entry it replaces is spent
   - reading: own words
     why: >-
-      read from the `hidden` text, which keeps a carriage return in the front matter and a
-      listing of a file with CRLF line ends where it was NUL
+      the same view (the entry for `hidden`); the entry it replaces is spent
   - reading: spelling
     why: >-
       a paper that declares no English, whose more words are one word repeated against three
@@ -405,20 +406,19 @@ expected:
       (the bug found building #691)
   - reading: notation
     why: >-
-      `notation-space-missing` and `notation-unit` read nothing anywhere in a run of
-      characters with no blank in it that holds a word joined by underscores (Basile,
-      2026-11-22, "Skip the whole token"): the inputs now hold "UNEMP\_DURA\_6-12mth",
-      "RATE\_x-to+0.5" and "DOSE\_6-5mg", whose number, signed number and unit stand after
-      the name's hyphen, and which the base reports as a space left out or a unit closed up;
-      the entry it replaces, for a number inside a piece raised or lowered or inside the name
-      itself, is spent
+      a block indented four spaces or a tab after a blank line, not under a list item's
+      paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
+      view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix),
+      so G14's notation reads nothing in one: " *P = 0.03* " counts no sign where the base
+      counted one. The entry it replaces is spent
   - reading: notation of a PDF's text
     why: >-
-      the same, in a file the audit staged from a PDF
+      the same, in a file the audit staged from a PDF (the entry for `notation`); the entry
+      it replaces is spent
   - reading: notation edits
     why: >-
-      the same: no space is put after the hyphen in "UNEMP\_DURA\_6-12mth" nor in
-      "DOSE\_6-5mg", where the base put one; the entry it replaces is spent
+      the same: no interval in an indented code block is rewritten (the entry for
+      `notation`); the entry it replaces is spent
   - reading: word reference lists
     why: >-
       a new reading: a .docx's entry in a heading style, numbered in brackets after the entry
@@ -426,6 +426,12 @@ expected:
       where the base ends the list there and reads the entries after it as text (window C of
       the real-paper corpus); a section's title after the list, "5. Discussion" after "4.",
       ends it on both
+  - reading: vocabulary
+    why: >-
+      a block indented four spaces or a tab after a blank line, not under a list item's
+      paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
+      view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix),
+      so G14's vocabulary counts no term in one, " *CYP2D6*4* "
   - reading: checklist quotes
     why: >-
       an answer whose `where` is "Title" or "the title" is held to the paper's title,

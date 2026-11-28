@@ -49,7 +49,7 @@ asks it when it is due.
 | `title` | the working title | `title` in paper.yaml and, in a project under way, the manuscript's header where it is `init`'s own |
 | `language` | British English, American English, another language | `english_variant`; none for another language, whose writing checks do not apply |
 | `study_type` | the design: you describe the study, and three designs that fit are offered | `study_type` |
-| `reporting_guideline` | the guidelines of that design, or another | `reporting_guideline` |
+| `reporting_guideline` | the guidelines of that design, each by its recipe's name (CARE-2013, TRIPOD+AI), or another | `reporting_guideline` |
 | `journal` | a profile the project has, a journal named, help choosing, or later | the profile started from the template, and `target_journal` |
 | `authors` | each author, in byline order: name, affiliations, corresponding author, ORCID, e-mail | authors.yaml |
 | `declarations` | each author's funding, competing interests and CRediT roles, now or later | the authors' entries |

@@ -1144,22 +1144,24 @@ def test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word(project: Path) 
 @pytest.mark.parametrize(
     ("text", "words"),
     [
-        ("The value was high.\n\n    color = tumor\n\nDone.", ["color", "tumor"]),
         ("See <code>color</code> here.", ["color"]),
         ("<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
         ('<span class="x"\nstyle="color: red">The value</span> was high.', ["color"]),
-        # the other side: in backticks, in a fence, and a tag on one line are left alone
+        # the other side: in backticks, in a fence, in a block set off by four spaces, which
+        # pandoc reads as code (#841), and a tag on one line are left alone
         ("See `color` here.", []),
         ("```\ncolor = tumor\n```\n\nDone.", []),
+        ("The value was high.\n\n    color = tumor\n\nDone.", []),
         ('<span class="x" style="color: red">The value</span> was high.', []),
     ],
 )
-def test_only_code_in_backticks_or_a_fence_is_left_alone(
+def test_only_code_pandoc_reads_as_code_is_left_alone(
     project: Path, text: str, words: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
-    a block set off by four spaces is read, and so is `<code>color</code>`, the CSS inside a
-    `<style>` block and a tag whose attributes run on to a second line."""
+    code in backticks, in a fence or in a block set off by four spaces is left alone, but
+    `<code>color</code>`, the CSS inside a `<style>` block and a tag whose attributes run on to
+    a second line are read."""
     _, found = written(project, f"# Methods\n\n{text}\n")
     assert reported(found) == words
 

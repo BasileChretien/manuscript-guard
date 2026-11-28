@@ -26308,10 +26308,10 @@ Open, recorded as each change landed:
   - A file's name written in a sentence and not set as code is read up to its last word:
     in "tumor-color.csv" the gate reads "tumor".
     Pinned by `tests/test_spelling.py::test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word`.
-  - Of code, only what is set in backticks or in a fence is left alone. A block set off
-    by four spaces is read, and so is `<code>color</code>`, the CSS inside a `<style>`
-    block, and a tag whose attributes run on to a second line.
-    Pinned by `tests/test_spelling.py::test_only_code_in_backticks_or_a_fence_is_left_alone`.
+  - Of code, only what pandoc reads as code is left alone: what is set in backticks, in a
+    fence or in a block set off by four spaces (#841). `<code>color</code>`, the CSS inside
+    a `<style>` block, and a tag whose attributes run on to a second line are read.
+    Pinned by `tests/test_spelling.py::test_only_code_pandoc_reads_as_code_is_left_alone`.
   - The title, the short title and the keywords come from `paper.yaml` and are not read.
     Nor is a caption written as an image's description, `![Color of each tumor](...)`;
     a table's caption under `Table:` is.
@@ -26457,9 +26457,7 @@ Open, recorded as each change landed:
     Pinned by `tests/test_notation.py::test_a_binding_in_a_sentence_is_a_number_whatever_it_holds`.
   - A table typed into the manuscript is read with the prose, so its own compact
     notation, "n=12" in a header, counts against the text's.
-    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
-  - A block set off by four spaces is read, as it is for the spelling.
-    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
+    Pinned by `tests/test_notation.py::test_a_typed_table_is_read_with_the_prose`.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**

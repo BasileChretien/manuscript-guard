@@ -41443,7 +41443,7 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
              if f.code == "plan-section-missing"}  # fmt: skip
     assert "(PROCESS 2023 checklist, items 6b and 11)" in hints[
         "the plan says nothing about consent and ethics"]
-    assert "(PROCESS 2023 checklist, items 6c and 6f)" in hints[
+    assert "(PROCESS 2023 checklist, items 6c to 6f)" in hints[
         "the plan says nothing about case selection"]
     report = check_design(load_project(project)[0])
     assert report.counts["design_expected"] == 11, report.counts
@@ -41483,6 +41483,14 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## Subgroup comparisons", "comparison", False),
         ("## Comparison of outcomes between groups", "comparison", False),
         ("## Historical background", "comparison", False),
+        # Main's words for the comparison, which three rounds of #853 found no better rule
+        # for: false passes and false alarms written in Known gaps.
+        ("### Comparisons", "comparison", True),
+        ("## Comparison with baseline values", "comparison", True),
+        ("## External data sources", "comparison", True),
+        ("## Sources of historical data", "comparison", True),
+        ("## Comparison versus the literature", "comparison", False),
+        ("## Comparison and benchmarking", "comparison", False),
         ("## Ethical approval", "consent and ethics", True),
         ("## Informed consent", "consent and ethics", True),
         ("## Ethics committee", "consent and ethics", True),
@@ -41654,6 +41662,32 @@ def test_a_qualitative_design_is_found_by_every_plan_s_word_alone(
     assert "## Design\n" in text
     plan.write_text(text.replace("## Design\n", f"{heading}\n"), encoding="utf-8")
     assert ("design" not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("design", "heading", "section"),
+    [
+        ("case-series", "## Case‑finding", "case selection"),
+        ("case-series", "## Follow‑up", "follow-up"),
+        ("cohort", "## Follow‑up", "time zero and follow-up"),
+        ("case-report", "## De‑identification", "de-identification"),
+        ("systematic-review", "## Meta‑analysis", "synthesis"),
+        ("cross-sectional", "## Non‐response", "bias"),
+    ],
+)
+def test_a_heading_s_unicode_hyphen_is_read_as_a_hyphen(
+    project: Path, design: str, heading: str, section: str
+) -> None:
+    """Round 2 of #849: Word writes a non-breaking hyphen (U+2011) where a hyphen must not
+    end a line, and a plan pasted from it kept the character, so "Case\u2011finding" or
+    "Follow\u2011up" was no heading of its section in a plan of any design. A heading's
+    Unicode hyphens, U+2010 and U+2011, are read as the hyphen every pattern names."""
+    _paper_has(project, study_type=design)
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert section not in _plan_asked(project)
 
 
 @pytest.mark.parametrize(

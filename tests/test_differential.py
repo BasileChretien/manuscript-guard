@@ -231,6 +231,21 @@ CHANGED = {
         "    return frozenset()\n",
         "plan sections asked",
     ),
+    # A heading's Unicode hyphen is the hyphen its words have (round 2 of #849); the drawn
+    # plans write U+2011 or U+2010 in about two in three headings that have a hyphen, in
+    # every design, and each is held apart (round 1 of #853).
+    "a plan heading's U+2010 is not read as a hyphen": (
+        "gates/design.py",
+        '_HYPHENS = str.maketrans({chr(0x2010): "-", chr(0x2011): "-"})\n',
+        '_HYPHENS = str.maketrans({chr(0x2011): "-"})\n',
+        "plan sections asked",
+    ),
+    "a plan heading's Unicode hyphen is not read as a hyphen": (
+        "gates/design.py",
+        '_HYPHENS = str.maketrans({chr(0x2010): "-", chr(0x2011): "-"})\n',
+        "_HYPHENS = str.maketrans({})\n",
+        "plan sections asked",
+    ),
     # A heading that names its section exactly, `{#sample-size}`, is its section's whatever
     # its words; the drawn plans hold one in every example.
     "a section's name on its heading is not read": (

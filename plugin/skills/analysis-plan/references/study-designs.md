@@ -129,10 +129,11 @@ is asked for all seven sections, the analysis being the counts and summaries the
 will give. The sections cite PROCESS 2023. The comparison is found under a comparator,
 a comparison with something, historical or external controls, or a heading that is
 "Comparison" whole; a comparison the analysis makes ("Multiple comparisons") is not it.
+Name a section these words miss exactly: `## Comparisons {#comparison}`.
 
 - **Case selection.** How the cases are found and chosen: from which records or referrals,
   over which period, and whether the series holds every case seen or only some. (PROCESS
-  2023, 6c and 6f)
+  2023, 6c to 6f)
 - **Follow-up.** How long and how often each patient is followed, by what means, and how
   those lost to follow-up are counted and explained. (PROCESS 2023, 6l and 7c)
 - **Comparison.** What the results are set against, published studies, the current

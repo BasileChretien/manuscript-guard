@@ -8,9 +8,9 @@ profile locally. Neither the documents nor the transcribed item text is committe
 repository or included in the distributed package.
 
 That is a deliberate structure, not an oversight. Reporting guidelines are published under
-a patchwork of terms — two of those below, READUS-PV and CARE 2013, are explicitly
-non-commercial, several state no reuse licence at all — and a repository that shipped their
-text would have to satisfy the strictest of them. Fetching on request avoids the question
+a patchwork of terms — three of those below, READUS-PV, CARE 2013 and PROCESS 2023, are
+explicitly non-commercial, several state no reuse licence at all — and a repository that
+shipped their text would have to satisfy the strictest of them. Fetching on request avoids the question
 entirely: you obtain the document exactly as you would by clicking the link.
 
 The guidelines below are the work of their respective groups. Nothing here claims any right
@@ -44,6 +44,7 @@ someone looks for it.
 | CHEERS 2022 | **CC BY 4.0**, via the licence of The BMJ's copy of the statement in its Europe PMC full text and in Crossref, with the same contradictory copyright line as TRIPOD+AI's. The statement was published in several journals at once, and one copy is CC BY-NC. Read 2026-10-16 | PMC8749494 (*BMJ* 2022, doi:10.1136/bmj-2021-067975) |
 | TRIPOD+AI | **CC BY 4.0**, via the statement paper's licence in its Europe PMC full text and in Crossref. The XML's copyright line also carries the publisher's no-commercial-reuse wording, which the licence it states contradicts. Read 2026-10-16 | PMC11019967 (*BMJ* 2024, doi:10.1136/bmj-2023-078378) |
 | CARE 2013 | **CC BY-NC-ND 3.0** — non-commercial and no derivatives, via the statement paper's licence in its Europe PMC full text, which names the licence in words and gives no address. Crossref records only the publisher's text-and-data-mining terms. The CARE site's checklist page shows a CC BY-NC badge, and its copyright page reserves all rights. Cannot be redistributed from an MIT repository. Read 2026-11-27 | PMC3833570 (*Global Advances in Health and Medicine* 2013, doi:10.7453/gahmj.2013.008) |
+| PROCESS 2023 | **CC BY-NC-ND 4.0** — non-commercial and no derivatives, via the statement paper's licence in its Europe PMC full text and in Crossref, both of which give Creative Commons' address for it. Cannot be redistributed from an MIT repository. Read 2026-11-28 | PMC10720832 (*International Journal of Surgery* 2023, doi:10.1097/JS9.0000000000000940) |
 | CONSORT 2025 | **Download and copying explicitly permitted**, with a condition and a restriction, quoted in full below | consort-spirit.org/terms-of-use |
 | SPIRIT 2025 | As CONSORT — same site, same terms page | consort-spirit.org/terms-of-use |
 | READUS-PV | **CC BY-NC** — non-commercial. Cannot be redistributed from an MIT repository | Europe PMC |
@@ -74,7 +75,7 @@ than buried in a file nobody opens.
 
 ## Download links
 
-All twenty-two recipes carry a direct `download_url`. The first thirteen were verified the
+All twenty-three recipes carry a direct `download_url`. The first thirteen were verified the
 only way worth doing: fetched into an empty directory and checked against the sha256 the
 recipe records, then transcribed. Thirteen fetched, thirteen checksums matched, thirteen
 profiles built; SANRA, the fourteenth, was added later and verified the same way against
@@ -96,6 +97,10 @@ The CARE 2013 recipe, added on 2026-11-27, reads Table 1 of its statement paper 
 Europe PMC's full text, as the TRIPOD+AI and CHEERS recipes do. It was written against a
 copy of that full text downloaded that day and transcribed from it; `fetch` has not been
 run against it.
+
+The PROCESS 2023 recipe, added on 2026-11-28, reads Table 3 of its statement paper from
+Europe PMC's full text in the same way, and was written against a copy downloaded that
+day and transcribed from it; `fetch` has not been run against it either.
 
 Two of those links took a second attempt, and both failures are the kind that would
 otherwise pass unnoticed:

@@ -1,0 +1,35 @@
+schema: manuscript-guard/recipe/1
+
+# PROCESS 2023, for case series in surgery, read from Table 3 of its statement paper as Europe
+# PMC serves the full text. The table gives the forty-two items one to a row, each with its
+# number and, on the first row of a topic, the topic's name. Table 1 of the same paper sets the
+# 2020 items beside those proposed for 2023, and Table 2 the Delphi scores; neither is the
+# checklist. The guideline was written for surgical case series: the descriptive case-series
+# design accepts it or Kempen 2011, which has no recipe.
+#
+# The licence is the paper's in its Europe PMC full text and in Crossref, which both give
+# Creative Commons' address for it. Non-commercial and no derivatives: download it and use it,
+# and do not share the profile made from it.
+
+meta:
+  name: PROCESS-2023
+  long_name: "Preferred Reporting Of Case Series in Surgery"
+  version: "2023"
+  applies_to: "Case series in surgery"
+  source_url: "https://doi.org/10.1097/JS9.0000000000000940"
+  read_from: "Table 3 of the statement paper (International Journal of Surgery 2023, doi:10.1097/JS9.0000000000000940), from Europe PMC's full text of PMC10720832"
+  retrieved_on: 2026-11-28
+  retrieved_by: "Europe PMC full text, read by the recipe's author"
+  licence: >-
+    CC BY-NC-ND 4.0, non-commercial and no derivatives: the licence of the statement paper in its Europe PMC full text and in Crossref (https://creativecommons.org/licenses/by-nc-nd/4.0/). Cannot be redistributed from an MIT repository.
+  licence_url: https://creativecommons.org/licenses/by-nc-nd/4.0/
+  download_url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC10720832/fullTextXML
+  rows_sha256: 793c8c3b3b25eed851b8dd62238f4b3b517c36a6788ac053b33f594b2fc929cb
+
+format: jats-table
+table: T3
+document: process-2023-statement.xml
+header_rows: 0
+topic_column: 0
+id_column: 1
+text_column: 2

@@ -25,7 +25,7 @@ hypothesis fitted to its results; a warning, as everything here.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -214,6 +214,13 @@ def _read_plan(path: Path) -> tuple[str, Finding | None]:
         )
 
 
+#: The Unicode hyphens a heading may hold where its words have one: Word writes the
+#: non-breaking hyphen (U+2011) where a line must not break there, and a plan pasted from
+#: it keeps the character. Every reader of the plan's sections reads them as the hyphen its
+#: patterns name (round 2 of #849).
+_HYPHENS = str.maketrans({chr(0x2010): "-", chr(0x2011): "-"})
+
+
 def _plan_sections(text: str) -> list[Section]:
     """The plan's sections, without the plan's own title.
 
@@ -227,8 +234,11 @@ def _plan_sections(text: str) -> list[Section]:
     The text before the first heading is left out by its level, not its title. A heading
     that is only an attribute block, `### {#inclusion}`, has an empty title too, and was left
     out with what it heads.
+
+    A heading's Unicode hyphens are the hyphen in its title (`_HYPHENS`).
     """
-    sections = [s for s in split_sections(text) if s.level > 0]
+    sections = [replace(s, title=s.title.translate(_HYPHENS))
+                for s in split_sections(text) if s.level > 0]  # fmt: skip
     if sections and all(s.level > sections[0].level for s in sections[1:]):
         return sections[1:]
     return sections

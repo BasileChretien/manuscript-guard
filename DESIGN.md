@@ -20095,21 +20095,28 @@ Added by the adversarial review, verified and **not** fixed:
   its words, and one named under other words would be read by none of them. A qualitative
   study's sections are found by words of the headings real qualitative protocols and
   studies give them, kept narrow (Basile, 2026-11-28): a sample, sampling, recruitment,
-  saturation, participant selection; data collection or generation, interviews, focus
-  groups, FGDs, IDIs, KIIs, a topic or discussion guide or list, field notes or fieldwork,
-  observation; an analysis, analytic, coding, a codebook; reflexivity, positionality, the
-  research team, the researchers' or interviewers' characteristics, background, role or
-  training, the relationship with the participants; trustworthiness, rigour, credibility,
-  member checking, transferability, dependability, confirmability, triangulation, an
-  audit trail; consent, ethics. So a heading that names interviews is its data collection,
-  "Analysis of interviews" or "Selection of interview participants", one that names an
+  saturation, information power, participant selection, the selection of participants,
+  informants or interviewees; data collection or generation, interviews, focus groups,
+  FGDs, IDIs, KIIs, a topic or discussion guide or list, field notes or fieldwork,
+  observation; an analysis, analytic, analyse, coding, a codebook, data processing;
+  reflexivity, positionality, the research team, the researchers', interviewers' or
+  investigators' characteristics, background, role, position or training, their role,
+  position or background named after it ("Role of the researcher"), the relationship with
+  or to the participants or between researcher and participants, a researcher-participant
+  relationship; trustworthiness, rigour, credibility, member checking, transferability,
+  dependability, confirmability, triangulation, an audit trail; consent, ethics (SRQR's
+  item names and CASP's among them, round 1 of #857). So a heading that names interviews
+  or focus groups is its data collection, "Analysis of interviews" or "Selection of
+  interview participants", one that names an
   analysis is its analytic approach, as any finds every plan's analysis, "Methods and
   analysis" or "Economic analysis", and "Support from the research team" is its
   reflexivity, false passes; and "Procedure", "Instruments", "Reviewing themes", "Study
   team" and "Validity" name none of them, false alarms the identifier answers. Its design
   is every plan's, found by "design" alone, so a plan that names it under SRQR's
   "Qualitative approach and research paradigm" or COREQ's "Theoretical framework" is
-  told it lacks one. The self-controlled designs have no reporting guideline, and
+  told it lacks one; and every plan's words take "Interview questions" for its question
+  and "Design of the topic guide" for its design, false passes a plan of `other` meets on
+  main (round 1 of #857). The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
@@ -20125,7 +20132,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_heading_s_unicode_hyphen_is_read_as_a_hyphen`,
   `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_corruption.py::test_a_qualitative_section_is_found_by_its_own_words`,
-  `tests/test_corruption.py::test_a_qualitative_design_is_found_by_every_plan_s_word_alone`,
+  `tests/test_corruption.py::test_a_qualitative_question_and_design_are_found_by_every_plan_s_words`,
   `tests/test_corruption.py::test_a_qualitative_plan_is_asked_how_its_data_were_made_and_never_for_a_model`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
@@ -24185,6 +24192,11 @@ Open, recorded as each change landed:
   line, and its paper's own table stood at OUP behind a bot check on 2026-11-28. Each
   recipe follows in a pull request of its own, SRQR's first (Basile, 2026-11-28).
   Accepted.
+- **A qualitative study's design round is sent the Statistician's starter remit.** With no
+  panel of the author's, the design round's two starter remits are sent to every design,
+  and the Statistician's asks whether the models fit the feasibility results, beside the
+  line that says a qualitative plan is not asked for an analysis. A case report's round,
+  and a plan of `other`, get the same on main (round 1 of #857). Accepted.
 - **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
   checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
   under some, which no recipe option reads. Table 1 of the statement paper (Global

@@ -677,7 +677,7 @@ types:
         own words, as the analytic approach
     sections:
       - id: sampling and saturation
-        heading: '(?i)\bsampl(?:e|es|ing)\b(?!\s+bias)|\brecruit|\bsaturat|\bparticipant selection|\bselection of (?:the )?(?:interview |study )?participants'
+        heading: '(?i)\bsampl(?:e|es|ing)\b(?!\s+bias)|\brecruit|\bsaturat|\binformation power\b|\bparticipant selection|\bselection of (?:the )?(?:[\w-]+ ){0,2}(?:participants|informants|interviewees)\b'
         says: >-
           whom the study asks to take part and why, how they are approached, how many are
           expected, and how the team will decide that no more are needed
@@ -707,7 +707,7 @@ types:
         url: https://doi.org/10.1097/ACM.0000000000000388
         read_on: 2026-11-28
       - id: analytic approach
-        heading: '(?i)\banaly(?:sis|ses|tic|tical|sing|zing|sed|zed)\b|\bcod(?:ing|ebooks?)\b'
+        heading: '(?i)\banaly(?:s[ie]s|tic(?:al)?|[sz]e[sd]?|[sz]ing)\b|\bcod(?:ing|ebooks?)\b|\bdata processing\b'
         says: >-
           how the recordings are transcribed and the data analysed: the approach, such as
           thematic, framework or content analysis, how the data are coded and themes
@@ -722,7 +722,7 @@ types:
         url: https://doi.org/10.1097/ACM.0000000000000388
         read_on: 2026-11-28
       - id: reflexivity
-        heading: '(?i)\breflexiv|\bpositionality\b|\bresearch team\b|\b(?:researchers?|interviewers?|investigators?)(?:[''’]s?)? (?:characteristics|backgrounds?|roles?|positions?|training)\b|\brelationships? (?:with|to) (?:the )?participants\b'
+        heading: '(?i)\breflexiv|\bpositionality\b|\bresearch team\b|\b(?:researchers?|interviewers?|investigators?)(?:[''’]s?)? (?:characteristics|backgrounds?|roles?|positions?|training)\b|\brelationships? (?:with|to) (?:the )?participants\b|\b(?:roles?|positions?|backgrounds?) of (?:the )?(?:researchers?|interviewers?|investigators?)\b|\brelationships? between (?:the )?researchers? and (?:the )?participants\b|\bresearcher[- ]participant relationships?\b'
         says: >-
           who the researchers are, their training, roles and relationship with the
           participants, and how their own views and position may shape the data and the

@@ -41569,6 +41569,10 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Data saturation", "sampling and saturation", True),
         ("## Participant selection", "sampling and saturation", True),
         ("## Selection of interview participants", "sampling and saturation", True),
+        # Round 1 of #857: other participants selected, and Malterud's measure.
+        ("## Selection of focus group participants", "sampling and saturation", True),
+        ("## Selection of key informants", "sampling and saturation", True),
+        ("## Information power", "sampling and saturation", True),
         ("## Participants", "sampling and saturation", False),
         ("## Identifying potential participants", "sampling and saturation", False),
         ("## Semi-structured interviews", "data collection", True),
@@ -41585,6 +41589,10 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Thematic analysis", "analytic approach", True),
         ("## Analytical approach", "analytic approach", True),
         ("## Coding", "analytic approach", True),
+        # Round 1 of #857: SRQR item 13's name, and the verb.
+        ("## Data processing", "analytic approach", True),
+        ("## How we will analyse the data", "analytic approach", True),
+        ("## How we will analyze the data", "analytic approach", True),
         ("## Analysts’ perspectives and reflexivity", "analytic approach", False),
         ("## Reviewing themes", "analytic approach", False),
         ("## Reflexivity", "reflexivity", True),
@@ -41594,6 +41602,11 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Interviewer characteristics", "reflexivity", True),
         ("## Researchers’ backgrounds", "reflexivity", True),
         ("## Relationship with participants", "reflexivity", True),
+        # Round 1 of #857: the researcher after the noun, and CASP's own words.
+        ("## Role of the researcher", "reflexivity", True),
+        ("## Relationship between researcher and participants", "reflexivity", True),
+        ("## Researcher-participant relationship", "reflexivity", True),
+        ("## Role of the funder", "reflexivity", False),
         ("## Study team", "reflexivity", False),
         ("## Characteristics of participants", "reflexivity", False),
         ("## Trustworthiness", "trustworthiness", True),
@@ -41639,29 +41652,35 @@ def test_a_qualitative_section_is_found_by_its_own_words(
 
 
 @pytest.mark.parametrize(
-    ("heading", "found"),
+    ("section", "heading", "found"),
     [
-        ("## Study design", True),
-        ("## Qualitative design", True),
+        ("design", "## Study design", True),
+        ("design", "## Qualitative design", True),
         # SRQR's item 5 and COREQ's item 9 by their names: no "design" in them.
-        ("## Qualitative approach and research paradigm", False),
-        ("## Theoretical framework", False),
-        ("## Methodological orientation", False),
+        ("design", "## Qualitative approach and research paradigm", False),
+        ("design", "## Theoretical framework", False),
+        ("design", "## Methodological orientation", False),
+        # Round 1 of #857: false passes, as for a plan of `other` on main.
+        ("design", "## Design of the topic guide", True),
+        ("question", "## Interview questions", True),
     ],
 )  # fmt: skip
-def test_a_qualitative_design_is_found_by_every_plan_s_word_alone(
-    project: Path, heading: str, found: bool
+def test_a_qualitative_question_and_design_are_found_by_every_plan_s_words(
+    project: Path, section: str, heading: str, found: bool
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
-    their headings"): a qualitative plan's design is every plan's, found by "design", so a
-    plan that names it under SRQR's or COREQ's words, its approach, paradigm or theory, is
-    told it lacks one, and answers it by naming the section (`{#design}`)."""
+    their headings"): a qualitative plan's question and design are every plan's, found by
+    every plan's words. So a plan that names its design under SRQR's or COREQ's words, its
+    approach, paradigm or theory, is told it lacks one, and answers it by naming the section
+    (`{#design}`); and a plan with no question or design but a heading on its interview
+    questions or on the design of its topic guide is told nothing."""
     _paper_has(project, study_type="qualitative")
     plan = project / "design" / "plan.md"
     text = plan.read_text(encoding="utf-8")
-    assert "## Design\n" in text
-    plan.write_text(text.replace("## Design\n", f"{heading}\n"), encoding="utf-8")
-    assert ("design" not in _plan_asked(project)) is found
+    own = {"design": "## Design\n", "question": "## Research question\n"}[section]
+    assert own in text
+    plan.write_text(text.replace(own, f"{heading}\n"), encoding="utf-8")
+    assert (section not in _plan_asked(project)) is found
 
 
 @pytest.mark.parametrize(

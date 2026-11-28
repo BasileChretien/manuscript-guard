@@ -1377,16 +1377,20 @@ process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])
     assert 'const two = (n) => String(n).padStart(2, "0");' in app
     browser = (WEB / "test" / "browser.mjs").read_text(encoding="utf-8")
     assert "return [now.getFullYear(), now.getMonth() + 1, now.getDate()];" in browser
-    # A case the page could not run is said so once: its files are held only after that.
-    call = browser.index("    const { result, unlike } = await caseHeld(today,\n"
-                         "      () => choose(one.paper, one.against || [], one.form || {}),"
-                         " one.made);\n"
-                         "    if (result.error) {\n"
-                         "      fail(`${one.name}: the audit could not run: ${result.error}`);\n"
-                         "      continue;\n"
-                         "    }\n")  # fmt: skip
-    assert browser.count("if (unlike)") == 1
-    assert browser.index("    if (unlike) fail(`${one.name}: ${unlike}`);\n") > call
+    # In the loop over the cases: a case the page could not run is said so, and no more of it;
+    # for each other case, what is wrong with its files is said once, as the last thing before
+    # its line of the log, which every case that ran reaches.
+    start = browser.index("    const { result, unlike } = await caseHeld(today,\n"
+                          "      () => choose(one.paper, one.against || [], one.form || {}),"
+                          " one.made);\n"
+                          "    if (result.error) {\n"
+                          "      fail(`${one.name}: the audit could not run: ${result.error}`);\n"
+                          "      continue;\n"
+                          "    }\n")  # fmt: skip
+    loop = browser[start:browser.index("\n    console.log(`${one.name}: ", start) + 1]
+    assert loop.endswith("\n    if (unlike) fail(`${one.name}: ${unlike}`);\n")
+    # `unlike` named, then read twice by that line, and nowhere else.
+    assert loop.count("unlike") == 3
 
 
 def _js(value: object) -> str:

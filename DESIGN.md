@@ -17821,7 +17821,7 @@ Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic a
 (STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
 guideline's own page on the day of its pull request, as the file requires, and
 `choose-study-type` offers the design. STROBE, STARD 2015, CARE 2013 (since 2026-11-27)
-and PROCESS 2023 (since 2026-11-28) have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
+and PROCESS 2023 (since 2026-11-28) have recipes; SRQR and COREQ have none yet (below). A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
 (labelled "self-controlled design (case series or case-crossover)"); its label,
 "descriptive case series", says so. No guideline is written for case series in every

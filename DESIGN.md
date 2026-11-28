@@ -20057,7 +20057,17 @@ Added by the adversarial review, verified and **not** fixed:
   heading; consent, ethics. So the comparisons an analysis makes, "Statistical
   comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
   not its comparison, and a "Patient selection" or "Length of observation" heading names
-  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
+  none of them (round 1 of #849). These words for the comparison take an analysis's
+  "### Comparisons", a comparison within the series ("Comparison with baseline values")
+  and a data source ("External data sources", "Sources of historical data"), false
+  passes, and refuse "Comparison versus the literature" and "Comparison and
+  benchmarking", false alarms (round 2 of #849). Three rounds of #853 narrowed and
+  widened them, and each found headings the next rule took or refused wrongly, so the
+  comparison's words are a pull request of their own (Basile, 2026-11-28, "Split the
+  comparison words out"). A heading's Unicode hyphens, U+2010 and Word's non-breaking
+  U+2011, are read as the hyphen every pattern names, by every reader of the plan's
+  sections and by a related output's `plan_section:` (round 2 of #849, round 1 of #853).
+  The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -20076,6 +20086,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
   `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_heading_s_unicode_hyphen_is_read_as_a_hyphen`,
   `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,

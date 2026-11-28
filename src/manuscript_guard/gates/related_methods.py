@@ -27,7 +27,7 @@ from manuscript_guard.contracts.dictionary import (
 from manuscript_guard.contracts.models import Model
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates import design
-from manuscript_guard.gates.design import PLANNED, _plan_sections, _read_plan
+from manuscript_guard.gates.design import _HYPHENS, PLANNED, _plan_sections, _read_plan
 from manuscript_guard.gates.revision import as_quoted
 from manuscript_guard.text.sections import subsections
 
@@ -183,7 +183,8 @@ class _Read:
 
 
 def _by_title(text: str) -> _Read:
-    """Each section's heading as written and its words, by its heading folded, as G12 reads
+    """Each section's heading as written, its Unicode hyphens read as hyphens, and its
+    words, by its heading folded, as G12 reads
     a plan's sections; and the folded headings that stand more than once. The plan's own
     Deviations and Planned results are left out with everything under them."""
     read = _Read()
@@ -214,8 +215,10 @@ def _words(text: str) -> list[str]:
 
 def folded_title(title: str) -> str:
     """A heading as one section of two plans is matched by: without its number, emphasis
-    or case."""
-    return _NUMBERED.sub("", as_quoted(title)).strip().casefold()
+    or case, its Unicode hyphens read as the hyphen the plan's headings are read with
+    (`_HYPHENS`), so that a reason naming a section as the plan writes it, pasted from
+    Word, names it (round 1 of #853)."""
+    return _NUMBERED.sub("", as_quoted(title.translate(_HYPHENS))).strip().casefold()
 
 
 def _parting(a: list[str], b: list[str]) -> int:

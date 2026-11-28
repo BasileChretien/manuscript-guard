@@ -623,13 +623,9 @@ types:
         url: https://doi.org/10.1097/JS9.0000000000000940
         read_on: 2026-11-28
       - id: comparison
-        # The comparisons an analysis makes ("Multiple comparisons", "Comparison of outcomes",
-        # "### Comparisons") and one within the series ("Comparison with baseline values") are
-        # not the series' own, which names what it is set against (rounds 1 and 2 of #849):
-        # other or previous series or studies, "case", "published" or "similar" between at
-        # most ("other case series"), controls after "with" or a control group, historical
-        # data that is no data source (rounds 1 and 2 of #853).
-        heading: '(?i)\bcomparators?\b|\bcomparison (?:groups?|cohorts?|series)\b|\bcomparisons?\b.*\b(?:literature|published|historical|external|standard of care|(?:with|to|against|versus|vs\.?)\s+(?:an?\s+|the\s+)?(?:\w+\s+)?(?:controls?|control (?:groups?|cohorts?|series))|(?:other|previous|prior|similar|reported)(?:\W+(?:case|published|similar))?\W+(?:series|stud(?:y|ies)|cohorts?|reports?|centres?|centers?|groups?))\b|\b(?:external|historical) (?:comparisons?|comparators?|controls?|cohorts?|series|groups?)\b|\bhistorical data\b(?!\s+sources?\b)|\bbenchmark|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?comparison(?:\s*\([^()]*\))?\W*$'
+        # The comparison an analysis makes ("multiple comparisons", "comparison of outcomes")
+        # is not the series' own (round 1 of #849).
+        heading: '(?i)\bcomparators?\b|\bcomparisons? (?:with|to|against)\b|\bcomparison (?:groups?|cohorts?|series)\b|\b(?:external|historical) (?:comparisons?|comparators?|controls?|cohorts?|series|data)\b|\bbenchmarks?\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?comparisons?(?:\s*\([^()]*\))?\W*$'
         says: >-
           what the results are set against, published studies, the current standard of care
           or a historical group, and why it is comparable

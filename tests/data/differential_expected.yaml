@@ -26,16 +26,11 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a case series' comparison is found only under a heading that names what the series is
-      set against (a comparator, a comparison group, the literature, published, other or
-      historical work, external controls, a benchmark, or "Comparison" whole), so an
-      analysis's "Comparisons", "Multiple comparisons" or "Comparison with baseline values"
-      no longer passes for it; and a heading's Unicode hyphens, U+2010 and Word's
-      non-breaking U+2011, are read as a hyphen in a plan of any design, so "Follow-up" or
-      "Case-finding" written with one is found (round 2 of #849). The generated plans hold
-      the new forms and near misses, and write Word's hyphen in about half the headings
-      that have one; the case-selection section cites PROCESS 2023's items 6c to 6f; the
-      entry it replaces, #849's, is spent
+      a heading's Unicode hyphens, U+2010 and Word's non-breaking U+2011, are read as a
+      hyphen in a plan of any design, so "Follow-up" or "Case-finding" written with one
+      is found (round 2 of #849, round 1 of #853); the generated plans write either in
+      about two in three headings that have a hyphen; the case-selection section cites
+      PROCESS 2023's items 6c to 6f; the entry it replaces, #849's, is spent
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,

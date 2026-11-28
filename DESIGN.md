@@ -19896,29 +19896,22 @@ Added by the adversarial review, verified and **not** fixed:
   after its first results is still told to say so under Deviations, which it may then
   hold (round 1 of #840). A descriptive case series' sections are found by words they
   alone use: case selection, identification or finding, consecutive, recruitment;
-  follow-up; a comparator, a comparison group, a comparison with the literature,
-  published, historical or external work, the standard of care, controls or a control
-  group after "with", or other, previous, prior, similar or reported series, studies,
-  cohorts, reports, centres or groups, with "case", "published" or "similar" between at
-  most ("other case series"), historical or external controls or groups, historical data
-  not followed by "sources", a benchmark, or "Comparison" as the whole heading; consent,
-  ethics (rounds 1 and 2 of #853). So the comparisons an analysis makes, "Statistical
-  comparisons", "Multiple comparisons" or "Multiple comparisons and error control",
-  "Comparison of outcomes between groups" or "Comparison of other outcomes between
-  groups", or a "### Comparisons" under it, and one within the series,
-  "Comparison with baseline values" or "Comparison with previous visits", are not its
-  comparison, and a "Patient selection", "Length of observation", "External data
-  sources" or "Historical data sources" heading names none of them; a
-  comparison section headed only "Comparisons" or "Comparison of outcomes" is refused
-  with them, a false alarm chosen over a false pass (rounds 1 and 2 of #849). A heading
-  that words a comparison within the series as an external one, "Comparison with previous
-  study visits", or names a source of historical data in other words, "Sources of
-  historical data", is taken for the comparison, as main took both: a false pass (round 2
-  of #853). A heading's
-  Unicode hyphens, U+2010 and Word's non-breaking U+2011, are read as the hyphen every
-  pattern names, by every reader of the plan's sections and by a related output's
-  `plan_section:` (round 2 of #849, round 1 of #853). The author
-  answers such a false alarm, for any design and any section but
+  follow-up; a comparator, a comparison with, to or against something, a comparison
+  group, historical or external controls, a benchmark, or "Comparison" as the whole
+  heading; consent, ethics. So the comparisons an analysis makes, "Statistical
+  comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
+  not its comparison, and a "Patient selection" or "Length of observation" heading names
+  none of them (round 1 of #849). These words for the comparison take an analysis's
+  "### Comparisons", a comparison within the series ("Comparison with baseline values")
+  and a data source ("External data sources", "Sources of historical data"), false
+  passes, and refuse "Comparison versus the literature" and "Comparison and
+  benchmarking", false alarms (round 2 of #849). Three rounds of #853 narrowed and
+  widened them, and each found headings the next rule took or refused wrongly, so the
+  comparison's words are a pull request of their own (Basile, 2026-11-28, "Split the
+  comparison words out"). A heading's Unicode hyphens, U+2010 and Word's non-breaking
+  U+2011, are read as the hyphen every pattern names, by every reader of the plan's
+  sections and by a related output's `plan_section:` (round 2 of #849, round 1 of #853).
+  The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's

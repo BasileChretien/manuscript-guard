@@ -41127,43 +41127,14 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## Subgroup comparisons", "comparison", False),
         ("## Comparison of outcomes between groups", "comparison", False),
         ("## Historical background", "comparison", False),
-        # Round 2 of #849: an analysis's "Comparisons", a comparison within the series and
-        # a data source were taken for the external comparison; and the headings round
-        # 1's pattern found that name what the series is set against were refused.
-        ("### Comparisons", "comparison", False),
-        ("## Comparison with baseline values", "comparison", False),
-        ("## Comparison to pre-operative scores", "comparison", False),
-        ("## Comparison of prior and current dosing", "comparison", False),
-        ("## External data sources", "comparison", False),
-        ("## Comparison of results with published series", "comparison", True),
-        ("## Comparison versus the literature", "comparison", True),
-        ("## Comparison with previous studies", "comparison", True),
-        ("## Comparison and benchmarking", "comparison", True),
-        # Round 1 of #853: the narrowing refused the headings of an external comparison
-        # main found, and a historical or external group was never found.
-        ("## Comparison with other case series", "comparison", True),
-        ("## Comparison with similar case series", "comparison", True),
-        ("## Comparison with a control group", "comparison", True),
-        ("## Comparison with controls", "comparison", True),
-        ("## Comparison with previous study", "comparison", True),
-        ("## Historical data", "comparison", True),
-        ("## Historical group", "comparison", True),
-        ("## External group", "comparison", True),
-        ("## Historical data sources", "comparison", False),
-        ("## Comparison with previous visits", "comparison", False),
-        # Round 2 of #853: words joined across what is no phrase, and the control of
-        # multiplicity, were taken; a control group with a word before it was not.
-        ("## Comparison of other outcomes between groups", "comparison", False),
-        ("## Comparison of prior treatment between groups", "comparison", False),
-        ("## Multiple comparisons and error control", "comparison", False),
-        ("## Statistical comparisons and control of multiplicity", "comparison", False),
-        ("## Comparison with previous visits by group", "comparison", False),
-        ("## Comparison with matched controls", "comparison", True),
-        ("## Comparison with previous published studies", "comparison", True),
-        # False passes main has too, written in Known gaps (round 2 of #853): a within-series
-        # comparison worded as an external one, and a source of historical data.
-        ("## Comparison with previous study visits", "comparison", True),
+        # Main's words for the comparison, which three rounds of #853 found no better rule
+        # for: false passes and false alarms written in Known gaps.
+        ("### Comparisons", "comparison", True),
+        ("## Comparison with baseline values", "comparison", True),
+        ("## External data sources", "comparison", True),
         ("## Sources of historical data", "comparison", True),
+        ("## Comparison versus the literature", "comparison", False),
+        ("## Comparison and benchmarking", "comparison", False),
         ("## Ethical approval", "consent and ethics", True),
         ("## Informed consent", "consent and ethics", True),
         ("## Ethics committee", "consent and ethics", True),
@@ -41183,6 +41154,7 @@ def test_a_case_series_section_is_found_by_its_own_words(
     plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
                     encoding="utf-8")  # fmt: skip
     assert (section not in _plan_asked(project)) is found
+
 
 @pytest.mark.parametrize(
     ("design", "heading", "section"),

@@ -4946,6 +4946,19 @@ def _a_parenthesis_on_the_first_name_lets_any_join(patch: pytest.MonkeyPatch) ->
     _care_and_process_read_with(patch, cited, cited[:-1] + "?)")
 
 
+def _care_and_process_are_read_only_after_the(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    after_the = reporting_gate._AFTER_THE
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named("(?!)", after_the))
+
+
+def _white_space_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_one_space", lambda said: said)
+
+
 def _the_before_a_name_joined_is_read_after_any(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import reporting as reporting_gate
 
@@ -30971,6 +30984,14 @@ BROKEN = {
     ),
     "G5 reads PROCESS and the STROBE checklist was followed as a claim of PROCESS": (
         _the_before_a_name_joined_is_read_after_any,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads CARE or PROCESS only after the": (
+        _care_and_process_are_read_only_after_the,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not see the before CARE spaced twice": (
+        _white_space_is_read_as_written,
         test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
     ),
     "G8r reads a claim from one item of a list into the next": (

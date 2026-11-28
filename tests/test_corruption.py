@@ -19388,20 +19388,28 @@ def test_a_trial_named_like_a_guideline_is_read_as_a_claim(
         ("It was written to the PROCESS (2023) criteria.", []),
         ("We followed the CARE, or STROBE guidelines.", ["STROBE"]),
         # False alarms the Known gaps name: a list after a comma is read as one, and a name
-        # after "and" as joined.
+        # after "and" as joined, a citation after both names too.
         ("Mediation used Hayes's PROCESS, STROBE and CONSORT guidelines were followed.",
          ["CONSORT", "PROCESS", "STROBE"]),
         ("Analyses used PROCESS and STROBE guidelines were followed.", ["PROCESS", "STROBE"]),
-        # Round 2 of #858: names join in chains; a name joined has "the" before it, or a
-        # parenthesis after it, only as the first has.
+        ("Mediation was run with PROCESS [14] and STROBE [15] guidelines were followed.",
+         ["PROCESS", "STROBE"]),
+        # Round 3 of #858: "the" before the name however it is spaced.
+        ("We followed the  CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the\n  CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        (f"We followed the{chr(0xA0)}CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the CARE, STROBE & PRISMA guidelines.", ["CARE", "PRISMA", "STROBE"]),
+        # Round 2 of #858: names join in chains; a name joined has "the" before it only if
+        # the first has, and a parenthesis after it whenever the first has one.
         ("We followed the CARE and STROBE and PRISMA guidelines.", ["CARE", "PRISMA", "STROBE"]),
         ("We followed the CARE/STROBE/PRISMA checklists.", ["CARE", "PRISMA", "STROBE"]),
         ("Mediation was run with PROCESS (Hayes, 2022) and STROBE guidelines were followed.",
          ["STROBE"]),
         ("Mediation was run with PROCESS [14] and STROBE guidelines were followed.", ["STROBE"]),
         ("Analyses used PROCESS and the STROBE checklist was followed.", ["STROBE"]),
-        # False passes the Known gaps name: a list with no "and" or "or", and a name joined
-        # that has "the" or a parenthesis where the first has none.
+        # False passes the Known gaps name: a list that no "and", "or", "&" or "/" ends, a
+        # name joined that has "the" where the first has none, and one with no parenthesis
+        # where the first has one.
         ("We followed the CARE, STROBE, PRISMA guidelines.", ["PRISMA", "STROBE"]),
         ("We followed the CARE, STROBE guidelines.", ["STROBE"]),
         ("The report follows CARE and the STROBE guidelines.", ["STROBE"]),
@@ -19443,9 +19451,10 @@ def test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word(
     parenthesis alone, "PROCESS (2022)", and "reporting" alone are not. Round 1 of #858:
     "the" before a name joined, a citation, Word's hyphens and an en dash are read; a clause
     after a comma, "criteria" and a study's year are not. Round 2 of #858: chains are read,
-    and a name joined has "the" or a parenthesis only as the first has, so that Hayes's
-    macro cited, "with PROCESS (Hayes, 2022) and STROBE guidelines were followed", is
-    not."""
+    and a name joined has "the" before it only if the first has, and a parenthesis after it
+    whenever the first has one, so that Hayes's macro cited, "with PROCESS (Hayes, 2022)
+    and STROBE guidelines were followed", is not. Round 3: "the" is seen however it is
+    spaced."""
     from manuscript_guard.gates import check_reporting
 
     main = main_md(project)

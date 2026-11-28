@@ -145,9 +145,10 @@ CLAIMABLE = (
 #: guidelines were followed", nor are a trial's criteria or a cohort's year the guideline's,
 #: "enrolled according to the CARE criteria", "the CARE 2019 cohort". Round 2 of #858:
 #: names join in chains, "the CARE and STROBE and PRISMA guidelines", and a name joined has
-#: "the" before it, or a parenthesis after it, only as the first has, so that Hayes's macro
-#: cited, "with PROCESS (Hayes, 2022) and STROBE guidelines were followed", or a clause,
-#: "used PROCESS and the STROBE checklist was followed", is not read as a list.
+#: "the" before it only if the first has, and a parenthesis after it whenever the first
+#: has one, so that Hayes's macro cited, "with PROCESS (Hayes, 2022) and STROBE guidelines
+#: were followed", or a clause, "used PROCESS and the STROBE checklist was followed", is not
+#: read as a list.
 QUALIFIED = ("CARE", "PROCESS")
 #: The words that make one of `QUALIFIED` the guideline's name, in any case.
 _GUIDELINE_WORD = r"(?i:guidelines?|guidance|statements?|checklists?)\b"
@@ -306,6 +307,14 @@ def _for_design(project: Project, declared: set[str], wanted: list | None = None
     )
 
 
+def _one_space(said: str) -> str:
+    """A sentence with each run of white space in it one space, so that "the" before CARE
+    or PROCESS is seen by `_THE_BEFORE`, a lookbehind of a fixed width, however it is
+    spaced: two spaces, a line break and an indent, a tab, a no-break space (round 3 of
+    #858)."""
+    return " ".join(said.split())
+
+
 def _claims(texts: list[tuple[Path, str]]) -> dict[str, Path]:
     """Each guideline a sentence of the texts says was followed, with the first file that
     says so."""
@@ -315,7 +324,7 @@ def _claims(texts: list[tuple[Path, str]]) -> dict[str, Path]:
             said = sentence.group(0)
             if not _CLAIMING.search(said):
                 continue
-            for name in _NAMED.findall(said):
+            for name in _NAMED.findall(_one_space(said)):
                 named.setdefault(name.upper(), path)
     return named
 

@@ -4145,6 +4145,11 @@ _CLAIM_FRAMES = ("The report follows the {}.", "It was reported according to the
 #: for every name but those of `QUALIFIED_NAMES`.
 _BARE_CLAIMS = ("The report follows {}.", "We followed {}.",
                 "It was reported according to {}.")  # fmt: skip
+#: The ways of `NAMED_AS_GUIDELINE` read only after "the", "the CARE and the STROBE
+#: guidelines", and the white space a source may write after "the": two spaces, a line
+#: break and an indent, a tab, a no-break space (round 3 of #858).
+_AFTER_THE_ONLY = ("joined after the",)
+_SPACES = ("  ", "\n  ", "\t", chr(0xA0))
 #: The words that make CARE or PROCESS the guideline's name, and those of a case report or
 #: a series that may stand before them; "criteria" is none, being as often a trial's
 #: (round 1 of #858).
@@ -4283,10 +4288,13 @@ def named_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, list[str]]]]:
 
     Each name is claimed alone, "We followed STROBE", and in one way of
     `NAMED_AS_GUIDELINE` drawn, "the STROBE-checklist"; each of `QUALIFIED_NAMES` in its
-    capitals in every way of it, and named in every way of `NAMED_OTHERWISE`. A name in
-    capitals is read, but none in lower case, where it is a word, "the care given" or "the
-    process" (round 1 of #851); one of `QUALIFIED_NAMES` only as the guideline's, neither
-    alone nor where it names another thing (rounds 2 and 3, and round 1 of #858)."""
+    capitals in every way of it, each way once with "the" before the name and once without,
+    but for "joined after the", which is read only after "the" (round 3 of #858); once more
+    with "the" spaced as a source may space it, `_SPACES`; and named in every way of
+    `NAMED_OTHERWISE`. A name in capitals is read, but none in lower case, where it is a
+    word, "the care given" or "the process" (round 1 of #851); one of `QUALIFIED_NAMES` only
+    as the guideline's, neither alone nor where it names another thing (rounds 2 and 3, and
+    round 1 of #858)."""
     paragraphs: list[tuple[str, list[str]]] = []
 
     def claim(phrase: str, names: list[str], frames: tuple = _CLAIM_FRAMES) -> None:
@@ -4297,11 +4305,20 @@ def named_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, list[str]]]]:
             capitals = written == name
             claim(written, [name] if capitals and name not in QUALIFIED_NAMES else [],
                   _BARE_CLAIMS)
-            ways = (list(NAMED_AS_GUIDELINE) if capitals and name in QUALIFIED_NAMES
+            every = capitals and name in QUALIFIED_NAMES
+            ways = (list(NAMED_AS_GUIDELINE) if every
                     else [draw(st.sampled_from(sorted(NAMED_AS_GUIDELINE)))])  # fmt: skip
             for way in ways:
-                phrase, others = NAMED_AS_GUIDELINE[way](draw, written)
-                claim(phrase, ([name] if capitals else []) + others)
+                framings = [_CLAIM_FRAMES] + ([] if way in _AFTER_THE_ONLY else [_BARE_CLAIMS])
+                if not every:
+                    framings = [draw(st.sampled_from(framings))]
+                for frames in framings:
+                    phrase, others = NAMED_AS_GUIDELINE[way](draw, written)
+                    claim(phrase, ([name] if capitals else []) + others, frames)
+            if every:
+                phrase, others = NAMED_AS_GUIDELINE["joined after the"](draw, written)
+                spaced = f"The report follows the{draw(st.sampled_from(_SPACES))}{{}}."
+                claim(phrase, [name] + others, (spaced,))
     for name in QUALIFIED_NAMES:
         for frames, read in NAMED_OTHERWISE.values():
             sentence = draw(st.sampled_from(frames))

@@ -31746,9 +31746,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **A revision compared on the audit page names each version by the folder the page reads
   it from.** *Compare a revision* (item 6 of the editor's list; Basile, 2026-11-28) runs
   `compare` in the page, each version from a folder of its own, `v1/` and `v2/`, so that two
-  versions a journal's system gives one name are both read: its report names
-  `v1/paper.docx` where the command line, given the reader's files where they are, names
-  them as given. A response letter or comments file named `v1` or `v2`, or
+  versions a journal's system gives one name are both read: its report and the start of
+  the report name `v1/paper.docx`, where the command line names each file from the folder
+  it is run in, or by its name alone outside it. A response letter or comments file named `v1` or `v2`, or
   `report-draft.md` where the start of the report is asked for, is refused, to be renamed.
   Pinned by
   `tests/test_web.py::test_the_worker_gives_compare_each_version_in_a_folder_of_its_own`.

@@ -16,11 +16,12 @@ in Node (`parity.mjs`): its report, what it says on stderr, its exit code and it
 must be the command line's. So must each comparison (`compare`) "Compare a revision"
 runs: the example revision the page offers with its letter, comments and the start of the
 reader's report, whose text must be the command line's as well; a PDF beside the .docx; and
-two versions of one name, the letter a .docx, each version in a folder of its own as the page
-writes it (worker.js `compared`). Where the copy with tracked changes is asked for, the command
-line's `--tracked` says how many corrections it tracks, and the page's copy must track as
-many. Where the journal's form is filled, the command line is given the files `journal_form`
-makes of it, and the page must make the same. Then the site is opened in each browser named
+two different files of one name, the letter a .docx, with the start of the report, each
+version in a folder of its own as the page writes it (worker.js `compared`). Where the copy
+with tracked changes is asked for, the command line's `--tracked` says how many corrections
+it tracks, and the page's copy must track as many. Where the journal's form is filled, the
+command line is given the files `journal_form` makes of it, and the page must make the same.
+Then the site is opened in each browser named
 (`browser.mjs`): the landing page must load its style and pictures and ask no other host,
 and the audit page must start under its own policy, give the same report, notes and exit
 code for each case from the files as chosen, send nothing, and refuse every request "Test the
@@ -346,8 +347,8 @@ def versions_in(folder: Path) -> list:
         ("the example revision, its letter, comments and the start of a report", EXAMPLE[0],
          EXAMPLE[1], EXAMPLE[2], MINE, True),
         ("a PDF beside the .docx", PDF_PAPER, "paper.docx", None, None, False),
-        ("two versions of one name, the letter a .docx", f"{VERSIONS[0]}/{ONE_NAME}",
-         f"{VERSIONS[1]}/{ONE_NAME}", LETTER_DOCX, None, False),
+        ("two versions of one name, the letter a .docx, and the start of a report",
+         f"{VERSIONS[0]}/{ONE_NAME}", f"{VERSIONS[1]}/{ONE_NAME}", LETTER_DOCX, None, True),
     ]
 
 

@@ -287,7 +287,8 @@ def test_the_latex_carries_the_nocite_of_the_files_front_matter(
 def _latex_with_nocite(project: Path, monkeypatch: pytest.MonkeyPatch, relative: str,
                        value: str):  # fmt: skip
     """`build --latex`'s folder under natbib, compiled by nothing, with `_UNCITED` in
-    `references.bib` and `nocite: '<value>'` opening `manuscript/<relative>`."""
+    `references.bib` and `nocite: <value>` opening `manuscript/<relative>`, `value` between
+    single quotation marks unless it is a list or quoted already."""
     from manuscript_guard.build import latex_pack
     from manuscript_guard.build.assemble import assemble
     from manuscript_guard.build.latex import Compiled
@@ -298,7 +299,8 @@ def _latex_with_nocite(project: Path, monkeypatch: pytest.MonkeyPatch, relative:
     bib.write_text(bib.read_text(encoding="utf-8") + _UNCITED, encoding="utf-8")
     path = project / "manuscript" / relative
     text = path.read_text(encoding="utf-8")
-    line = f"nocite: '{value}'\n"
+    typed = value if value[:1] in "'\"[" else f"'{value}'"
+    line = f"nocite: {typed}\n"
     text = text.replace("---\n", f"---\n{line}", 1) if text.startswith("---\n") else (
         f"---\n{line}---\n\n{text}")  # fmt: skip
     path.write_text(text, encoding="utf-8")
@@ -325,25 +327,57 @@ def test_the_supplement_s_latex_carries_its_own_files_nocite(
     assert packed.report.findings == ()
 
 
-@needs_pandoc
-def test_a_journal_template_that_prints_no_nocite_is_warned_of(
-    project: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Round 1 of #852: pandoc's default template writes `\\nocite` from `nocite-ids`, and a
-    journal's own template may not. There nothing prints the works the `nocite` names, and
-    the `.bib` keeps none of them, so the build warns."""
-    from manuscript_guard.findings import WARN
-
+def _journal_template_without_nocite(project: Path) -> None:
+    """A journal's own pandoc template for the example's journal, with no `nocite-ids`."""
     folder = project / "profiles" / "journals" / "latex" / "demo-journal"
     folder.mkdir(parents=True)
     (folder / "template.latex").write_text(
         "\\documentclass{article}\n\\usepackage{natbib}\n\\begin{document}\n$body$\n"
         "\\bibliographystyle{plainnat}\n\\bibliography{references}\n\\end{document}\n",
         encoding="utf-8")  # fmt: skip
-    packed = _latex_with_nocite(project, monkeypatch, "main.md", "@zeta2001")
+
+
+@needs_pandoc
+def test_a_journal_template_that_prints_no_nocite_is_warned_of(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #852: pandoc's default template writes `\\nocite` from `nocite-ids`, and a
+    journal's own template may not. There nothing prints the works the `nocite` names that
+    nothing cites, and the `.bib` keeps none of them, so the build warns, naming them."""
+    from manuscript_guard.findings import WARN
+
+    _journal_template_without_nocite(project)
+    packed = _latex_with_nocite(project, monkeypatch, "main.md",
+                                "['@fictionalHepaticCohort2021', '@zeta2001']")  # fmt: skip
     held = {path.name: path for path in packed.files}
     assert "\\nocite" not in held["manuscript.tex"].read_text(encoding="utf-8")
     (finding,) = [f for f in packed.report.findings if f.code == "nocite-not-in-template"]
     assert finding.severity == WARN and finding.gate == "BUILD"
     assert finding.path.name == "template.latex"
     assert "prints no" in finding.message and "manuscript.tex" in finding.message
+    assert "@zeta2001" in finding.message, finding.message
+    assert "fictionalHepaticCohort2021" not in finding.message, finding.message
+
+
+@needs_pandoc
+def test_a_journal_template_is_not_warned_of_where_the_nocite_names_only_cited_works(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 2 of #852: a key the text cites prints from its citation, and the `.bib` keeps
+    it, whatever the template does with `nocite`: nothing is left out, and nothing said."""
+    _journal_template_without_nocite(project)
+    packed = _latex_with_nocite(project, monkeypatch, "main.md", "@fictionalHepaticCohort2021")
+    assert [f for f in packed.report.findings if f.code == "nocite-not-in-template"] == []
+
+
+@needs_pandoc
+def test_pandoc_s_default_template_is_not_blamed_for_a_joined_string_that_hides_a_key(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 2 of #852: under natbib the strings are joined, and the code span `` `x ``
+    opens hides `@zeta2001`, so pandoc's own template writes no `\\nocite`. That is the
+    Known-gaps point on joining, not a journal's template: no warning names one."""
+    packed = _latex_with_nocite(project, monkeypatch, "main.md", "['`x', '@zeta2001`']")
+    held = {path.name: path for path in packed.files}
+    assert "\\nocite" not in held["manuscript.tex"].read_text(encoding="utf-8")
+    assert [f for f in packed.report.findings if f.code == "nocite-not-in-template"] == []

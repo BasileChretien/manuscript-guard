@@ -3115,13 +3115,18 @@ are written as one string, parted by spaces. The offline Word build and the LaTe
 print the works it names. Under natbib and biblatex, pandoc's default template writes the
 `\nocite`, and the folder's `.bib` keeps the entries it names; a journal's own template
 without the `nocite-ids` block prints none of them, and the build warns of it,
-`nocite-not-in-template`. An offline document that cites nothing gets the heading over its
+`nocite-not-in-template`, where the `nocite` asks for every entry or names a key the text
+does not cite (a key the text cites prints from its citation). A key is read as the build
+reads a citation (`zotero.find_citations`), and so is one pandoc 3.9 reads that that reader
+does not, which opens with a digit or `_` or is braced, `@2019who`, `@_x`, `@{zeta.2001}`:
+it is taken for a key the text does not cite. A braced key that holds a space, `@{a b}`, is
+no citation to pandoc. An offline document that cites nothing gets the heading over its
 reference list only where a `nocite` names a key or asks for every entry:
 `references_heading.lua` runs before citeproc and heads the list whether citeproc fills it
 or not. A live build cannot print them: Better BibTeX's `zotero.lua` does not read `nocite`,
 and the bibliography field Zotero fills lists the works cited only. It warns, `nocite-not-live`,
-of each file whose `nocite` asks for every entry or names a key the text does not cite, read
-as the build reads a citation, and names `build --offline`. The plain build
+of each file whose `nocite` asks for every entry or names a key the text does not cite, and
+names `build --offline`. The plain build
 `import` compares a live document with stands in for the live build, and leaves the works
 out as it does, with no warning: its report is no one's to read, and the build that made the
 document warned (Basile, 2026-11-28, "Offline and LaTeX; live warns").
@@ -31616,11 +31621,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     spaces, since pandoc writes no `\nocite` for a list. Pandoc reads the citations of each
     as it reads them alone unless one opens what the next closes: in `['[@a', '@b]']` both
     keys are still read, while in ``['`x', '@b`']`` the code span hides `@b`, which is then
-    neither printed nor kept in the `.bib` though G7 reads it. The Word build and citeproc
-    take the list as it stands. Accepted.
-  - A key a `nocite` names is read as the build reads a citation in the text, so the live
-    build's warning and the offline heading pass over a citation pandoc reads and that
-    reader does not, an unclosed `[@a`; and a key the `.bib` lacks still names a work, so a
+    neither printed nor kept in the `.bib` though G7 reads it, and the build says nothing of
+    it under pandoc's default template. The Word build and citeproc take the list as it
+    stands. Accepted.
+  - A key a `nocite` names is read as the build reads a citation in the text, with the keys
+    pandoc reads and that reader does not taken for keys nothing cites. So the live build's
+    warning and the offline heading pass over a citation pandoc reads in another shape, an
+    unclosed `[@a` or a key braced two deep, `@{a{b{c}}}`; such a key the text does cite,
+    `[@2019who]`, is still warned of; and a key the `.bib` lacks still names a work, so a
     supplement that cites nothing gets a heading over a list citeproc leaves empty, beside
     pandoc's warning of the key. Accepted.
   - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document

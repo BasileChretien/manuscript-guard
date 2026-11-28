@@ -135,8 +135,9 @@ def build_from_markdown(project, assembled, *, engine: str = "pdflatex",
         # template may write none, and nothing prints them.
         nocited = _nocited(whole)
         keys |= nocited
-        if cited.kind != "citeproc" and not nocited and any(nocite_asks(nocite)):
-            report = report.with_findings(_nocite_not_in_template(project, f"{name}.tex"))
+        if cited.kind != "citeproc" and not nocited:
+            report = report.with_findings(
+                *_nocite_not_in_template(project, f"{name}.tex", nocite, body_markdown))
         written_out = _pictures(project, whole, body, reading, folder, names)
         (folder / f"{name}.tex").write_text(written_out, encoding="utf-8", newline="")
         written.append(name)
@@ -159,21 +160,39 @@ def build_from_markdown(project, assembled, *, engine: str = "pdflatex",
                      tuple(alone), report)  # fmt: skip
 
 
-def _nocite_not_in_template(project, name: str) -> Finding:
-    """The journal's own template writes no `\\nocite` where the document's files declare a
-    `nocite` that names works: pandoc's default template writes it from `nocite-ids`, and a
-    template without that block prints none of them, nor keeps them in the `.bib`."""
+def _nocite_not_in_template(project, name: str, nocite: tuple[str, ...],
+                            markdown: str) -> tuple[Finding, ...]:  # fmt: skip
+    """A warning where the journal's own template wrote no `\\nocite` and the document's
+    files declare a `nocite` that asks for a work nothing in the text cites: every entry, or
+    a key the text's citations, read as `document.nocite_not_live` reads them, do not name.
+    Pandoc's default template writes it from `nocite-ids`; one without that block prints none
+    of them, nor keeps them in the `.bib`. A key the text cites prints from its citation, and
+    with pandoc's default template a `\\nocite` missing is the joined string's doing (Known
+    gaps), so neither is said."""
+    from manuscript_guard.build.document import outside_code
+    from manuscript_guard.zotero import find_citations
+
     template = _journal_template(project)
-    return Finding(
+    if template is None:
+        return ()
+    every, named = nocite_asks(nocite)
+    cited = {use.citekey for use in find_citations(outside_code(markdown), Path(name))}
+    uncited = sorted(named - cited)
+    if not (every or uncited):
+        return ()
+    what = ("every entry of references.bib" if every
+            else ", ".join(f"@{key}" for key in uncited))  # fmt: skip
+    return (Finding(
         gate=GATE,
         code="nocite-not-in-template",
         severity=WARN,
         message=f"the journal's LaTeX template prints no `\\nocite`, so {name} does not print "
-        "the works its files' `nocite` names that nothing cites, and the `.bib` leaves them out",
+        f"what its files' `nocite` asks for and nothing cites ({what}), and the `.bib` leaves "
+        "it out",
         path=template,
         hint="add pandoc's `$if(nocite-ids)$\\nocite{$for(nocite-ids)$$it$$sep$, $endfor$}"
         "$endif$` to the template, before the bibliography; or cite each work in the text",
-    )
+    ),)
 
 
 def _markdown(project, assembled, *, supplementary: bool) -> str | None:

@@ -644,18 +644,37 @@ def nocite_lines(nocite: tuple[str, ...], *, one_string: bool = False) -> list[s
     return [f"nocite: {json.dumps(written, ensure_ascii=False)}"]
 
 
+def _unread_keys():
+    """The keys pandoc 3.9 reads that `zotero.find_citations` does not, measured with
+    `-f markdown -t native`: one that opens with a digit or `_`, `@2019who` or `@_x`, its
+    punctuation inside it only, and a braced one, `@{zeta.2001}`, a brace inside it at one
+    depth. A braced key that holds a space, `@{a b}`, pandoc reads as text. The `@` is not
+    glued to a word, as `find_citations` reads it."""
+    from manuscript_guard.zotero.citations import _NOT_GLUED
+
+    return re.compile(
+        rf"(?=-?@){_NOT_GLUED}-?@(?:\{{(?P<braced>(?:[^\s{{}}]|\{{[^\s{{}}]*\}})+)\}}"
+        r"|(?P<key>[0-9_](?:\w|[:.#$%&\-+?<>~/](?=\w))*))"
+    )
+
+
 def nocite_asks(nocite, path: Path | None = None) -> tuple[bool, frozenset[str]]:
     """Whether the strings a `nocite` holds ask for every entry, as G7 reads `@*`
     (`printed_entries.asks_every`), and the keys they name, as the build reads a citation
-    (`zotero.find_citations`, outside code). A null, `~` or an address names none."""
+    (`zotero.find_citations`, outside code). A null, `~` or an address names none. A key
+    pandoc reads and that reader does not (`_unread_keys`) is a key too: the text's
+    citations are read by that reader, so such a key counts as one nothing cites, and the
+    live build warns of it and the offline one heads the list it prints in."""
     from manuscript_guard.gates.printed_entries import asks_every
     from manuscript_guard.zotero import find_citations
 
     where = path or Path("nocite")
     every = any(asks_every(said) for said in nocite)
-    keys = frozenset(use.citekey for said in nocite
-                     for use in find_citations(outside_code(said), where))  # fmt: skip
-    return every, keys
+    read = [outside_code(said) for said in nocite]
+    keys = {use.citekey for text in read for use in find_citations(text, where)}
+    keys |= {found["braced"] or found["key"] for text in read
+             for found in _unread_keys().finditer(text)}  # fmt: skip
+    return every, frozenset(keys)
 
 
 def nocite_not_live(ordered, cited) -> Report:

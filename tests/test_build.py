@@ -568,48 +568,70 @@ def _live_nocite_warnings(project: Path, monkeypatch, tmp_path: Path) -> list:
 
 
 @needs_pandoc
-@pytest.mark.parametrize("value", ["~", "null", "email@*", "@fictionalHepaticCohort2021"])
+@pytest.mark.parametrize("value", ["~", "null", "email@*", "@fictionalHepaticCohort2021",
+                                   "@{a b}"])  # fmt: skip
 def test_a_live_build_does_not_warn_of_a_nocite_that_leaves_nothing_out(
     project: Path, monkeypatch, tmp_path: Path, value: str
 ) -> None:
     """Round 1 of #852: the warning came of every `nocite` not blank. A null names no work,
     nor does an address, and a key the text cites prints in a live build as well: none
     leaves a work out, and none is warned of. The keys are read as the build reads a
-    citation (`zotero.find_citations`), `@*` as G7 reads it."""
+    citation (`zotero.find_citations`), `@*` as G7 reads it. Pandoc 3.9 reads no citation
+    in a braced key that holds a space, `@{a b}`, in the text or under `nocite`."""
     _nocite_in(project, "main.md", value)
     assert _live_nocite_warnings(project, monkeypatch, tmp_path) == []
 
 
 @needs_pandoc
+@pytest.mark.parametrize("value", ["['@fictionalHepaticCohort2021', '@zeta2001']",
+                                   "@2019who", "@_x", "@{zeta.2001}"])  # fmt: skip
 def test_a_live_build_names_the_keys_a_nocite_names_that_nothing_cites(
-    project: Path, monkeypatch, tmp_path: Path
+    project: Path, monkeypatch, tmp_path: Path, value: str
 ) -> None:
-    _nocite_in(project, "main.md", "['@fictionalHepaticCohort2021', '@zeta2001']")
+    """A key pandoc reads and `find_citations` does not, one that opens with a digit or
+    `_`, or a braced one, is taken for a work the text does not cite (round 2 of #852)."""
+    _nocite_in(project, "main.md", value)
     (finding,) = _live_nocite_warnings(project, monkeypatch, tmp_path)
-    assert "@zeta2001" in finding.message, finding.message
+    key = {"@2019who": "@2019who", "@_x": "@_x", "@{zeta.2001}": "@zeta.2001"}.get(
+        value, "@zeta2001")
+    assert key in finding.message, finding.message
     assert "fictionalHepaticCohort2021" not in finding.message, finding.message
 
 
+#: Entries under keys pandoc reads and `find_citations` does not.
+_UNREAD_KEYS = (
+    "\n@article{2019who,\n  author = {Who, Wanda}, title = {V}, year = {2019},\n}\n"
+    "\n@article{_x,\n  author = {Under, Una}, title = {W}, year = {2018},\n}\n"
+    "\n@article{zeta.2001,\n  author = {Braced, Bea}, title = {X}, year = {2017},\n}\n"
+)
+
+
 @needs_pandoc
-@pytest.mark.parametrize(("value", "headed"), [
-    ("null", False), ("~", False), ("email@*", False), ("@zeta2001", True),
+@pytest.mark.parametrize(("value", "printed"), [
+    ("null", None), ("~", None), ("email@*", None), ("@{a b}", None), ("@zeta2001", "Zeta"),
+    ("@2019who", "Who"), ("@_x", "Under"), ("@{zeta.2001}", "Braced"),
 ])  # fmt: skip
 def test_a_supplement_citing_nothing_is_given_a_reference_heading_only_for_a_work_its_nocite_names(
-    project: Path, value: str, headed: bool
+    project: Path, value: str, printed: str | None
 ) -> None:
     """Round 1 of #852: `references_heading.lua` runs before citeproc and puts its heading
     over the `refs` div whether citeproc fills it or not, so a supplement that cites
     nothing, under a `nocite` that names no work, printed a heading over an empty list. The
-    filter is run for a `nocite` only where it names a key or asks for every entry."""
+    filter is run for a `nocite` only where it names a key or asks for every entry; a key
+    pandoc reads and `find_citations` does not names one too (round 2)."""
     from manuscript_guard.docxtext import BUILT_HEADING
 
     _nocite_in(project, "supplementary/S1_code_lists.md", value)
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + _UNREAD_KEYS, encoding="utf-8")
     proj, namespace, results, _lit = loaded(project)
     assembled, _ = assemble(proj, namespace, results)
     built = build_document(proj, assembled, mode=OFFLINE, supplementary=True)
     xml = zipfile.ZipFile(built.output).read("word/document.xml").decode("utf-8")
-    assert (f'w:name="{BUILT_HEADING}"' in xml) == headed, xml[-2000:]
-    assert _printed(built.output) == ({"Zeta"} if headed else set())
+    assert (f'w:name="{BUILT_HEADING}"' in xml) == (printed is not None), xml[-2000:]
+    names = ("Zeta", "Alpha", "Who", "Under", "Braced")
+    shown = {name for name in names if f"{name}, " in docx_text(built.output)}
+    assert shown == ({printed} if printed else set()), shown
 
 
 @needs_pandoc

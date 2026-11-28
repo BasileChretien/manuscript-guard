@@ -170,45 +170,45 @@ def _design(folder: Folder, answers: dict):
                     "choice", options, shortlist=3)  # fmt: skip
 
 
-def _recipes_for(name: str, root: Path) -> list[tuple[str, dict]]:
-    """The recipes of one of a design's guidelines, each with its `meta`: those whose name is
-    the guideline's or goes on from it with a hyphen or a plus (CARE-2013, RECORD-PE,
-    TRIPOD+AI), the project's own among them, the current editions first. A recipe that
-    cannot be read is offered without what it covers: `transcribe` says what is wrong."""
+def _recipe_meta(path: Path) -> dict:
+    """A recipe's `meta`, read as YAML and nothing more; empty where the file is no readable
+    mapping that holds one. Read as `transcribe` reads it, a half-written recipe of the
+    project's raised what `setup questions` stopped on (round 1 of #856): setup offers it
+    by its file's name all the same, and `transcribe` says what is wrong with it."""
     import yaml
 
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError):  # a file not in UTF-8 is a ValueError
+        return {}
+    meta = document.get("meta") if isinstance(document, dict) else None
+    return meta if isinstance(meta, dict) else {}
+
+
+def _recipes_for(name: str, root: Path) -> list[tuple[str, dict]]:
+    """The recipes of one of a design's guidelines, each by the name its profile is written
+    under (`meta.name`, which `transcribe` names the profile by, else the file's), with its
+    `meta`: those whose name is the guideline's or goes on from it with a hyphen or a plus
+    (CARE-2013, RECORD-PE, TRIPOD+AI), the project's own among them, the current editions
+    first."""
     from manuscript_guard.paths import recipes
-    from manuscript_guard.reporting import load_recipe
-    from manuscript_guard.reporting.transcribe import RecipeError
 
     found = []
-    for recipe, path in recipes(root).items():
+    for stem, path in recipes(root).items():
+        meta = _recipe_meta(path)
+        recipe = str(meta.get("name") or stem)
         rest = recipe[len(name):]
         if recipe.upper().startswith(name.upper()) and rest[:1] in ("", "-", "+"):
-            try:
-                meta = load_recipe(path)[1]
-            except (OSError, RecipeError, yaml.YAMLError):
-                meta = {}
             found.append((recipe, meta))
     return sorted(found, key=lambda one: (bool(one[1].get("superseded_by")), one[0]))
 
 
-def _covers(meta: dict) -> str:
-    """What a recipe is for, as a clause: its `applies_to`, "Case reports" read "case
-    reports", and a second sentence after a semicolon."""
-    said = " ".join(str(meta.get("applies_to") or "").split()).rstrip(".")
-    first, _, rest = said.partition(". ")
-    clauses = [part[:1].lower() + part[1:] if part[:2].istitle() else part
-               for part in (first, rest) if part]  # fmt: skip
-    return "; ".join(clauses)
-
-
 def _guideline_options(names: tuple[str, ...], root: Path) -> tuple[Option, ...]:
     """Each of a design's guidelines as paper.yaml must name it to find its checklist: by
-    its recipes' names, each with what it covers, or by its own name where no recipe is
-    there for it. Offered the design's short names, "CARE" or "PROCESS", an author found
-    no profile of that name and was told the checklist was not retrieved (round 1 of
-    #851; Basile, 2026-11-28)."""
+    its recipes' names, each with what its recipe says it covers, quoted as written, or by
+    its own name where no recipe is there for it. Offered the design's short names, "CARE"
+    or "STARD", an author found no profile of that name and was told the checklist was not
+    retrieved (round 1 of #851; Basile, 2026-11-28)."""
     options: list[Option] = []
     for name in names:
         found = _recipes_for(name, root)
@@ -217,10 +217,10 @@ def _guideline_options(names: tuple[str, ...], root: Path) -> tuple[Option, ...]
                                   "recipe yet, so its checklist is not retrieved until one "
                                   "is written (the reporting-checklist skill says how)"))
         for recipe, meta in found:
-            covers = _covers(meta)
+            covers = " ".join(str(meta.get("applies_to") or "").split())
             replaced = meta.get("superseded_by")
             options.append(Option(recipe, recipe, f"paper.yaml declares {recipe}"
-                                  + (f", the checklist for {covers}" if covers else "")
+                                  + (f', for "{covers}"' if covers else "")
                                   + (f"; replaced by {replaced}" if replaced else "")
                                   + "; its checklist is then retrieved, and each item "
                                   "answered by a quoted sentence"))

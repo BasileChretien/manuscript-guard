@@ -175,13 +175,65 @@ def test_each_guideline_offered_is_one_g5_finds_once_retrieved(tmp_path: Path) -
         named = {str(name).upper() for name in study_types()[design]["guidelines"]}
         for option in question.options:
             if option.value in recipes(root):
-                assert " the checklist for " in option.effect, (design, option)
+                assert ', for "' in option.effect, (design, option)
             else:
                 assert "has no recipe yet" in option.effect, (design, option)
                 assert option.value.upper() in named, (design, option)
     answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "cohort"})
     question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
     assert [o.value for o in question.options] == ["STROBE", "RECORD", "RECORD-PE", "TARGET-2025"]
+
+
+#: A recipe of the project's own for a case report, its meta complete and all else to come.
+_CARE_META = (b"schema: manuscript-guard/recipe/1\nmeta:\n  name: CARE-2016\n"
+              b'  applies_to: "Case reports, e.g. of rare diseases"\n'
+              b'  source_url: "https://example.invalid/care"\n  retrieved_on: 2026-11-28\n'
+              b'  licence: "CC BY 4.0"\n')  # fmt: skip
+
+
+@pytest.mark.parametrize(("written", "covers"), [
+    (_CARE_META + b"format: jats-table\ntable: T1\ndocument: care.xml\n",
+     "Case reports, e.g. of rare diseases"),
+    (b"schema: manuscript-guard/recipe/1\nmeta:\n", None),
+    (b"meta:\n  name: CARE-2016\n  applies_to: Caf" + bytes([0xE9]) + b" studies\n", None),
+    (b"meta: [CARE-2016\n", None),
+], ids=["no-text-column", "empty-meta", "not-utf-8", "not-yaml"])  # fmt: skip
+def test_a_recipe_setup_cannot_read_is_offered_by_its_name(
+    tmp_path: Path, written: bytes, covers: str | None
+) -> None:
+    """Round 1 of #856: a half-written recipe of the project's, read as `transcribe` reads
+    it, raised what `setup questions` and `setup apply` stopped on. Only its meta is read
+    now, and a recipe whose meta cannot be read is offered by its file's name; `transcribe`
+    says what is wrong with it. What a recipe covers is quoted as it writes it, an "e.g."
+    and capitals and all."""
+    root = no_git(tmp_path / "paper")
+    own = root / "profiles" / "reporting" / "recipes"
+    own.mkdir(parents=True)
+    (own / "CARE-2016.recipe.yaml").write_bytes(written)
+    answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "case-report"})
+    question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
+    (offered,) = [o for o in question.options if o.value == "CARE-2016"]
+    if covers:
+        assert f', for "{covers}"' in offered.effect, offered
+    else:
+        assert ", for " not in offered.effect, offered
+
+
+def test_a_recipe_is_offered_by_the_name_its_profile_is_written_under(tmp_path: Path) -> None:
+    """Round 1 of #856: `transcribe` names a profile by its recipe's `meta.name`, and G5
+    looks it up by that name, but setup offered the recipe file's name. A copy of CARE-2013
+    saved as CARE-2016.recipe.yaml with its name left as it was is offered as CARE-2013,
+    once, the name its profile will have."""
+    from manuscript_guard.paths import recipes
+
+    root = no_git(tmp_path / "paper")
+    shipped = recipes(root)["CARE-2013"].read_text(encoding="utf-8")
+    own = root / "profiles" / "reporting" / "recipes"
+    own.mkdir(parents=True)
+    (own / "CARE-2016.recipe.yaml").write_text(shipped, encoding="utf-8")
+    answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "case-report"})
+    question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
+    assert [o.value for o in question.options] == ["CARE-2013"]
 
 
 def test_the_study_design_is_offered_whole_for_a_shortlist_of_three(tmp_path: Path) -> None:

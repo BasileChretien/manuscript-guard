@@ -41139,6 +41139,18 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## Comparison versus the literature", "comparison", True),
         ("## Comparison with previous studies", "comparison", True),
         ("## Comparison and benchmarking", "comparison", True),
+        # Round 1 of #853: the narrowing refused the headings of an external comparison
+        # main found, and a historical or external group was never found.
+        ("## Comparison with other case series", "comparison", True),
+        ("## Comparison with similar case series", "comparison", True),
+        ("## Comparison with a control group", "comparison", True),
+        ("## Comparison with controls", "comparison", True),
+        ("## Comparison with previous study", "comparison", True),
+        ("## Historical data", "comparison", True),
+        ("## Historical group", "comparison", True),
+        ("## External group", "comparison", True),
+        ("## Historical data sources", "comparison", False),
+        ("## Comparison with previous visits", "comparison", False),
         ("## Ethical approval", "consent and ethics", True),
         ("## Informed consent", "consent and ethics", True),
         ("## Ethics committee", "consent and ethics", True),

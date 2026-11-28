@@ -19897,17 +19897,21 @@ Added by the adversarial review, verified and **not** fixed:
   hold (round 1 of #840). A descriptive case series' sections are found by words they
   alone use: case selection, identification or finding, consecutive, recruitment;
   follow-up; a comparator, a comparison group, a comparison with the literature,
-  published, historical or external work, the standard of care or other, previous,
-  prior, similar or reported series or studies, historical or external controls, a
-  benchmark, or "Comparison" as the whole heading; consent, ethics. So the comparisons an
+  published, historical or external work, the standard of care, controls, or other,
+  previous, prior, similar or reported series, studies, cohorts, reports, centres or
+  groups, two words between at most ("other case series"), historical or external
+  controls or groups, historical data that is no data source, a benchmark, or
+  "Comparison" as the whole heading; consent, ethics (round 1 of #853). So the comparisons an
   analysis makes, "Statistical comparisons", "Multiple comparisons", "Comparison of
   outcomes between groups" or a "### Comparisons" under it, and one within the series,
-  "Comparison with baseline values", are not its comparison, and a "Patient selection",
-  "Length of observation" or "External data sources" heading names none of them; a
+  "Comparison with baseline values" or "Comparison with previous visits", are not its
+  comparison, and a "Patient selection", "Length of observation", "External data
+  sources" or "Historical data sources" heading names none of them; a
   comparison section headed only "Comparisons" or "Comparison of outcomes" is refused
   with them, a false alarm chosen over a false pass (rounds 1 and 2 of #849). A heading's
   Unicode hyphens, U+2010 and Word's non-breaking U+2011, are read as the hyphen every
-  pattern names, by every reader of the plan's sections (round 2 of #849). The author
+  pattern names, by every reader of the plan's sections and by a related output's
+  `plan_section:` (round 2 of #849, round 1 of #853). The author
   answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it

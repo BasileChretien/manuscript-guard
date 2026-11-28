@@ -19896,12 +19896,19 @@ Added by the adversarial review, verified and **not** fixed:
   after its first results is still told to say so under Deviations, which it may then
   hold (round 1 of #840). A descriptive case series' sections are found by words they
   alone use: case selection, identification or finding, consecutive, recruitment;
-  follow-up; a comparator, a comparison with, to or against something, a comparison
-  group, historical or external controls, a benchmark, or "Comparison" as the whole
-  heading; consent, ethics. So the comparisons an analysis makes, "Statistical
-  comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
-  not its comparison, and a "Patient selection" or "Length of observation" heading names
-  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
+  follow-up; a comparator, a comparison group, a comparison with the literature,
+  published, historical or external work, the standard of care or other, previous,
+  prior, similar or reported series or studies, historical or external controls, a
+  benchmark, or "Comparison" as the whole heading; consent, ethics. So the comparisons an
+  analysis makes, "Statistical comparisons", "Multiple comparisons", "Comparison of
+  outcomes between groups" or a "### Comparisons" under it, and one within the series,
+  "Comparison with baseline values", are not its comparison, and a "Patient selection",
+  "Length of observation" or "External data sources" heading names none of them; a
+  comparison section headed only "Comparisons" or "Comparison of outcomes" is refused
+  with them, a false alarm chosen over a false pass (rounds 1 and 2 of #849). A heading's
+  Unicode hyphens, U+2010 and Word's non-breaking U+2011, are read as the hyphen every
+  pattern names, by every reader of the plan's sections (round 2 of #849). The author
+  answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19920,6 +19927,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
   `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_heading_s_unicode_hyphen_is_read_as_a_hyphen`,
   `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,

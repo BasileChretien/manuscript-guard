@@ -7944,10 +7944,12 @@ PLAN_HEADINGS = {
                             "Clinical perspective"),
     "informed consent": ("Consent for publication", "Patient consent", "Ethics approval"),
     "case selection": ("Consecutive patients", "Recruitment", "Case identification",
-                       "Patient selection"),
-    "follow-up": ("Follow up", "Loss to follow-up", "Length of observation"),
+                       "Case-finding", "Case‑finding", "Patient selection"),
+    "follow-up": ("Follow up", "Loss to follow-up", "Follow‑up", "Length of observation"),
     "comparison": ("Comparison with published series", "Historical controls",
-                   "External controls", "Statistical comparisons"),
+                   "External controls", "Comparator", "Comparison versus the literature",
+                   "Statistical comparisons", "Multiple comparisons",
+                   "Comparison of outcomes between groups", "Comparison with baseline values"),
     "consent and ethics": ("Ethical approval", "Informed consent", "Ethics committee",
                            "Data protection"),
 }  # fmt: skip
@@ -8034,6 +8036,10 @@ def sectioned_plans(
                 exact, exact.upper())
         else:
             heading = draw(st.sampled_from((name.capitalize(), reworded(name))))
+        if kind != "named exactly" and "-" in heading:
+            # A heading pasted from Word may hold its non-breaking hyphen (U+2011) where the
+            # words have a hyphen, in a plan of any design (round 2 of #849).
+            heading = draw(st.sampled_from((heading, heading.replace("-", chr(0x2011)))))
         parts.append(f"{mark} {heading}\n\n{draw(nothing if kind == 'empty' else said)}\n")
     parts += [f"{mark} {other}\n\n{draw(sentence)}\n"
               for other in draw(st.lists(st.sampled_from(_PLAN_OTHER), max_size=2, unique=True))]

@@ -293,8 +293,9 @@ def test_the_second_round_is_a_different_panel_and_is_blinded(
     assert run(unreviewed, "--yes") == 0, "with round one read, a run goes on to round two"
     panel = read_structured(unreviewed / "review" / "panel-2.yaml")
     assert panel["blinded"] is True
-    assert [reviewer["id"] for reviewer in panel["reviewers"]] == ["desk-editor", "subject-reader"]
-    assert len(providers.requests) == 4
+    assert [reviewer["id"] for reviewer in panel["reviewers"]] == [
+        "desk-editor", "subject-reader", "plain-reader"]
+    assert len(providers.requests) == 6
     for request in providers.requests:
         assert b"ZZ-ROUND-ONE-ZZ" not in request.body
 

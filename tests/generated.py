@@ -15369,6 +15369,240 @@ def interpretation_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool | N
     )
 
 
+#: Each place a paper binds a result, and whether G8 reads it as the Discussion's
+#: (`discussion-not-reported`). Every kind is in every example.
+DISCUSSION_KINDS = {
+    "discussion": True, "limitations under the discussion": True,
+    "a subsection of the discussion": True, "a second paragraph of the discussion": True,
+    "results": False, "a heading under the results": False, "methods": False,
+    "abstract": False, "introduction": False, "conclusions under the discussion": False,
+    "a limitations section of its own": False,
+}  # fmt: skip
+#: How a heading may name the Discussion (`section_names.names_discussion`).
+DISCUSSION_TITLES = ("Discussion", "5. Discussion", "General discussion", "DISCUSSION",
+                     "**Discussion**")  # fmt: skip
+
+
+@st.composite
+def discussion_papers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
+    """A paper with an Abstract, an Introduction, Methods, Results, a Discussion with a
+    subsection, a Limitations and a Conclusions of its own, and a Limitations section after it,
+    that binds a result of its own (`{{results.t07}}`) in each place of `DISCUSSION_KINDS`, in
+    an order drawn each time, run on in its paragraph or on lines of its own. And, for each key
+    G8 reads as the Discussion's, the title of the heading that names the Discussion."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    title = draw(st.sampled_from(DISCUSSION_TITLES))
+    parts: dict[str, list[str]] = {name: [] for name in (
+        "abstract", "introduction", "methods", "results", "secondary", "discussion", "second",
+        "subsection", "limitations", "conclusions", "own limitations")}  # fmt: skip
+    expected: dict[str, str] = {}
+    where = {"results": "results", "a heading under the results": "secondary",
+             "methods": "methods", "abstract": "abstract", "introduction": "introduction",
+             "discussion": "discussion", "a second paragraph of the discussion": "second",
+             "a subsection of the discussion": "subsection",
+             "limitations under the discussion": "limitations",
+             "conclusions under the discussion": "conclusions",
+             "a limitations section of its own": "own limitations"}  # fmt: skip
+    for kind in draw(st.permutations(tuple(DISCUSSION_KINDS))):
+        tag = next(tags)
+        words = [draw(st.sampled_from(_PLAIN)) for _ in range(draw(st.integers(0, 3)))]
+        parts[where[kind]].append(" ".join(["Of", *words, f"{{{{results.{tag}}}}}",
+                                            "were", "given."]))  # fmt: skip
+        if DISCUSSION_KINDS[kind]:
+            expected[tag] = title
+
+    def run(sentences: list[str]) -> str:
+        order = draw(st.permutations(sentences))
+        return "".join(one + draw(st.sampled_from((" ", "\n"))) for one in order).rstrip()
+
+    abstract = run(parts["abstract"])
+    if draw(st.booleans()):
+        abstract = f"## Background\n\nReports were given.\n\n## Results\n\n{abstract}"
+    limits = draw(st.sampled_from(("Limitations", "Strengths and limitations")))
+    return (
+        f"# Abstract\n\n{abstract}\n\n# Introduction\n\n{run(parts['introduction'])}\n\n"
+        f"# Methods\n\n{run(parts['methods'])}\n\n# Results\n\n{run(parts['results'])}\n\n"
+        f"## Secondary outcomes\n\n{run(parts['secondary'])}\n\n# {title}\n\n"
+        f"{run(parts['discussion'])}\n\n{run(parts['second'])}\n\n## Principal findings\n\n"
+        f"{run(parts['subsection'])}\n\n## {limits}\n\n{run(parts['limitations'])}\n\n"
+        f"## Conclusions\n\n{run(parts['conclusions'])}\n\n"
+        f"# Limitations\n\n{run(parts['own limitations'])}\n",
+        expected,
+    )
+
+
+#: Each way a name of a method may be written in the Results, and the method G9 reads it as
+#: (`gates/analyses_named.py`), or None for none. Every kind is in every example, each on a
+#: line of its own after its tag.
+ANALYSIS_FORMS = {
+    "as listed": "fisher-exact", "possessive dropped": "fisher-exact",
+    "curly possessive": "holm", "in capitals": "kruskal-wallis", "in lower case": "kaplan-meier",
+    "hyphen as a space": "mann-whitney", "hyphen as an en dash": "mann-whitney",
+    "hyphen as two": "kolmogorov-smirnov", "across a line": "logistic", "plural": "t-test",
+    "a name in capitals": "anova", "a name in capitals in lower case": None,
+    "a look-alike": None, "in a binding": None, "in a citation": None, "in code": None,
+    "in a comment": None, "in maths": "chi-squared", "a word of another field": None,
+    "a name too loose for the results": None,
+}  # fmt: skip
+#: What each form writes. `{tag}` stands before it on its line.
+ANALYSIS_WRITTEN = {
+    "as listed": ("Fisher's exact test",), "possessive dropped": ("Fisher exact test",),
+    "curly possessive": ("Holm\N{RIGHT SINGLE QUOTATION MARK}s correction",),
+    "in capitals": ("KRUSKAL-WALLIS",), "in lower case": ("kaplan-meier",),
+    "hyphen as a space": ("Mann Whitney",), "hyphen as an en dash": ("Mann\N{EN DASH}Whitney",),
+    "hyphen as two": ("Kolmogorov--Smirnov",), "across a line": ("logistic\nregression",),
+    "plural": ("t tests", "t-tests"), "a name in capitals": ("ANOVA",),
+    "a name in capitals in lower case": ("anova", "gee"),
+    "a look-alike": ("Holmes", "Waldorf", "Coxswain", "Spearmint", "Fisherman"),
+    "in a binding": ("{{results.bootstrap.ci}}",), "in a citation": ("[@holm1979]",),
+    "in code": ("`jackknife()`",), "in a comment": ("<!-- a Wilson interval -->",),
+    "in maths": ("a $\\chi^2$ test", "a $\\chi^{2}$ test"),
+    "a word of another field": ("kappa light chains", "NF-kappa B", "reporting propensity"),
+    "a name too loose for the results": ("a Wilcoxon test",),
+}  # fmt: skip
+#: Each place a name of a method may stand, and the part G9 reads it as: the Methods, the
+#: Results, or None for neither. The name is Fisher's exact test, Holm's or the bootstrap,
+#: drawn each time, but in the last place, which names both of Wilcoxon's tests in the Methods.
+ANALYSIS_PLACES = {
+    "methods": "methods", "results": "results", "a heading under the results": "results",
+    "a subsection of the methods": "methods", "abstract": None, "introduction": None,
+    "discussion": None, "the supplement's methods": "methods",
+    "the supplement's results": "results", "the supplement's tables": None,
+    "a name loose enough for the methods only": "methods",
+    "a full name the loose one opens": "methods", "another full name it opens": "methods",
+}  # fmt: skip
+#: What the Methods write in those two places, and the methods each names.
+ANALYSIS_LOOSE = {
+    "a name loose enough for the methods only": (
+        "the Wilcoxon test", ("mann-whitney", "wilcoxon-signed-rank")),
+    "a full name the loose one opens": ("the Wilcoxon rank-sum test", ("mann-whitney",)),
+    "another full name it opens": ("the Wilcoxon signed-rank test", ("wilcoxon-signed-rank",)),
+}  # fmt: skip
+#: The plain names a place is planted with, and their methods.
+ANALYSIS_PLAIN = (("Fisher's exact test", "fisher-exact"), ("Holm's correction", "holm"),
+                  ("a bootstrap", "bootstrap"))  # fmt: skip
+
+
+@st.composite
+def analysis_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, set[tuple[str, str]]]]:
+    """A paper with an Abstract, an Introduction, Methods (with a subsection),
+    Results (with a heading under them) and a Discussion, and a file of its supplement with
+    Methods, Results and tables of its own; each line of the Results holding a name of a method
+    written in each way of `ANALYSIS_FORMS`, and a plain name in each place of
+    `ANALYSIS_PLACES`, each line opening with a tag of its own ("t07"). And what G9 reads of
+    each tag: each method it names and the part, for those it reads."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    parts: dict[str, list[str]] = {name: [] for name in (
+        "abstract", "introduction", "methods", "pilot", "results", "secondary", "discussion",
+        "s methods", "s results", "s tables")}  # fmt: skip
+    expected: dict[str, set[tuple[str, str]]] = {}
+    for kind in draw(st.permutations(tuple(ANALYSIS_FORMS))):
+        tag = next(tags)
+        written = draw(st.sampled_from(ANALYSIS_WRITTEN[kind]))
+        parts["results"].append(f"{tag} compared by {written} here.")
+        if ANALYSIS_FORMS[kind] is not None:
+            expected[tag] = {(ANALYSIS_FORMS[kind], "results")}
+    where = {"methods": "methods", "results": "results",
+             "a heading under the results": "secondary",
+             "a subsection of the methods": "pilot", "abstract": "abstract",
+             "introduction": "introduction", "discussion": "discussion",
+             "the supplement's methods": "s methods", "the supplement's results": "s results",
+             "the supplement's tables": "s tables",
+             "a name loose enough for the methods only": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods"))),
+             "a full name the loose one opens": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods"))),
+             "another full name it opens": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods")))}  # fmt: skip
+    for kind in draw(st.permutations(tuple(ANALYSIS_PLACES))):
+        tag = next(tags)
+        if kind in ANALYSIS_LOOSE:
+            name, named = ANALYSIS_LOOSE[kind]
+        else:
+            name, method = draw(st.sampled_from(ANALYSIS_PLAIN))
+            named = (method,)
+        parts[where[kind]].append(f"{tag} compared by {name} here.")
+        if ANALYSIS_PLACES[kind] is not None:
+            expected[tag] = {(method, ANALYSIS_PLACES[kind]) for method in named}
+
+    def run(lines: list[str]) -> str:
+        return "\n".join(draw(st.permutations(lines))) if lines else "The data were given."
+
+    abstract = run(parts["abstract"])
+    if draw(st.booleans()):
+        abstract = f"## Methods\n\nReports were given.\n\n## Results\n\n{abstract}"
+    return (
+        f"# Abstract\n\n{abstract}\n\n# Introduction\n\n{run(parts['introduction'])}\n\n"
+        f"# Methods\n\n{run(parts['methods'])}\n\n## Statistical analysis\n\n"
+        f"{run(parts['pilot'])}\n\n# Results\n\n{run(parts['results'])}\n\n"
+        f"## Secondary outcomes\n\n{run(parts['secondary'])}\n\n"
+        f"# Discussion\n\n{run(parts['discussion'])}\n",
+        f"# Supplementary methods\n\n{run(parts['s methods'])}\n\n"
+        f"# Supplementary results\n\n{run(parts['s results'])}\n\n"
+        f"# eTable 1. Counts\n\n{run(parts['s tables'])}\n",
+        expected,
+    )
+
+
+#: Each kind of paragraph a Markdown file holds, and whether G3 warns that it points at a line
+#: or a curve it never names (`caption-line-unnamed`). Every kind is in every example.
+CAPTION_KINDS = {
+    "a legend, pointed": True, "a legend, pointed in capitals": True,
+    "a legend, the curves pointed at": True, "a legend opened with a ref": True,
+    "an image's caption, pointed": True, "a table's caption, pointed": True,
+    "a legend, the line of something": False, "a legend, the line at a value": False,
+    "a legend, the line in brackets": False, "a legend, a style between": False,
+    "a legend, a line named before": False, "a legend, a line with no place": False,
+    "prose, pointed": False, "prose opened with a pointer": False,
+    "a legend, the line and its equation": False, "a legend, the area under the curve": False,
+}  # fmt: skip
+#: The words that say where something stands against a mark.
+CAPTION_PLACES = ("below", "above", "under", "to the left of", "right of", "beyond", "across")
+
+
+@st.composite
+def caption_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
+    """A Markdown file holding a paragraph of each kind of `CAPTION_KINDS`, in an order drawn
+    each time, each tagged with a word of its own ("t07") on the line that points, a legend
+    opened with "Figure 2." or "**Table 3.**" as drawn. And the tags G3 warns of."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    paragraphs: list[str] = []
+    warned: set[str] = set()
+    for kind in draw(st.permutations(tuple(CAPTION_KINDS))):
+        tag = next(tags)
+        place = draw(st.sampled_from(CAPTION_PLACES))
+        opens = draw(st.sampled_from(("Figure 2.", "**Table 3.**", "Fig. 4:", "eFigure 1.")))
+        mark = draw(st.sampled_from(("line", "lines")))
+        said = {
+            "a legend, pointed": f"{opens} Points {tag} {place} the {mark} are kept.",
+            "a legend, pointed in capitals": f"{opens} POINTS {tag} {place.upper()} THE LINE.",
+            "a legend, the curves pointed at": f"{opens} Counts {tag} {place} the curves.",
+            "a legend opened with a ref": f"{{{{ref.figure.f{tag}}}}}. Points {tag} {place} "
+            f"the {mark} are kept.",
+            "an image's caption, pointed": f"![Points {tag} {place} the {mark}.](f{tag}.png)",
+            "a table's caption, pointed": f"| a | b |\n|---|---|\n| x | y |\n\nTable: Rows "
+            f"{tag} {place} the {mark} are totals.",
+            "a legend, the line of something": f"{opens} Points {tag} {place} the {mark} of "
+            "equal shares.",
+            "a legend, the line at a value": f"{opens} Points {tag} {place} the {mark} at 1.",
+            "a legend, the line in brackets": f"{opens} Points {tag} {place} the {mark} (y = x).",
+            "a legend, a style between": f"{opens} Points {tag} {place} the dashed {mark}.",
+            "a legend, a line named before": f"{opens} The dashed line marks equal shares; "
+            f"points {tag} {place} the {mark} are kept.",
+            "a legend, a line with no place": f"{opens} The {mark} {tag} is the fitted trend.",
+            "prose, pointed": f"The points {tag} {place} the {mark} were kept.",
+            "prose opened with a pointer": f"Figure 2 shows points {tag} {place} the {mark}.",
+            "a legend, the line and its equation": f"{opens} Points {tag} {place} the {mark}"
+            + draw(st.sampled_from((" y = x.", " $y = 2x$.", "~(y = x)."))),
+            "a legend, the area under the curve": f"{opens} Models {tag} by the "
+            + draw(st.sampled_from(("area under the curve.", "areas under the curves."))),
+        }[kind]
+        paragraphs.append(said)
+        if CAPTION_KINDS[kind]:
+            warned.add(tag)
+    return "\n\n".join(paragraphs) + "\n", warned
+
+
 #: Each way a post may say the paper is out, or seem to, and whether `said_published`
 #: reads it as this paper said out (round 2 of #470). Every kind is in every example.
 PUBLISHED_KINDS = {
@@ -21267,6 +21501,18 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "interpretation sentences": interpretation_papers().map(
         lambda drawn: {"text": drawn[0], "supplement": drawn[1]}
+    ),
+    "discussion results": st.one_of(
+        discussion_papers().map(lambda drawn: {"text": drawn[0]}),
+        summaries().map(lambda text: {"text": text}),
+    ),
+    "analyses named": st.one_of(
+        analysis_papers().map(lambda drawn: {"text": drawn[0], "supplement": drawn[1]}),
+        texts().map(lambda text: {"text": text}),
+    ),
+    "caption lines": st.one_of(
+        caption_papers().map(lambda drawn: {"text": drawn[0]}),
+        texts().map(lambda text: {"text": text}),
     ),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
     "communicate anchors": st.one_of(

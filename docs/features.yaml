@@ -685,6 +685,24 @@ features:
     gates: [G8]
     tests: [tests/test_claims.py, tests/test_intervals.py]
 
+  - id: every-reader
+    stage: check
+    title: Understood by every reader
+    says: >-
+      Asks for each term to be defined where it is first used, each method to be explained in
+      plain words and each table and figure to stand alone, and warns where the Discussion
+      gives a result the Results do not, the Results use a test the Methods never name, or a
+      caption points at a line it never names.
+    status: works
+    gates: [G3, G8, G9]
+    skills: [manuscript-writing, review-panel, figure-review]
+    tests:
+      - tests/test_corruption.py::test_a_result_the_discussion_interprets_is_one_the_results_report
+      - tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name
+      - tests/test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is
+      - tests/test_review_plan.py::test_the_second_starter_panel_reads_the_paper_as_an_outsider_would
+    docs: plugin/skills/manuscript-writing/references/clarity.md
+
   - id: arithmetic
     stage: check
     title: Arithmetic that holds

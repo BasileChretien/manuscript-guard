@@ -395,6 +395,20 @@ def test_the_second_starter_panel_shares_nobody_with_the_first() -> None:
     assert first and second and not first & second
 
 
+def test_the_second_starter_panel_reads_the_paper_as_an_outsider_would() -> None:
+    """A reader new to the paper, with no statistical training, meets it as most of its
+    readers will: terms defined at first use, a plain gloss of each method, tables that stand
+    alone. Its remit names no figure, since no model is sent one (`figures-not-seen`): the
+    displays alone are a remit read by route A (the review-panel skill)."""
+    from manuscript_guard.gates.review import _FIGURES
+
+    (reader,) = [one for one in plan.starter_panel(2) if one["id"] == "plain-reader"]
+    for asked in ("first used, the abstract included", "gloss", "named in the Methods",
+                  "each table readable without the text"):
+        assert asked in reader["remit"], asked
+    assert _FIGURES.search(reader["remit"]) is None
+
+
 def test_the_starter_panels_assume_no_field() -> None:
     """The toolkit is for any empirical paper, not for the discipline it was written in."""
     text = json.dumps([*plan.starter_panel(1), *plan.starter_panel(2)]).lower()

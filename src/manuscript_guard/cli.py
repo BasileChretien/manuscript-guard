@@ -87,7 +87,9 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.analyses_named import check_analyses_named
 from manuscript_guard.gates.baseline import check_baseline
+from manuscript_guard.gates.caption_marks import check_caption_marks
 from manuscript_guard.gates.controls import check_controls
 from manuscript_guard.gates.currency import check_currency
 from manuscript_guard.gates.custodian import (
@@ -216,6 +218,8 @@ def _gate_run(
             ("G3", lambda: check_figure_alt(project, namespace, chosen)),
             ("G3", lambda: check_figure_colours(project)),
             ("G3", lambda: check_placed(project)),
+            # A caption that points at a line it never names, in the manuscript or emitted.
+            ("G3", lambda: check_caption_marks(project, results)),
             ("G10", lambda: check_figure_reviews(project, content_digest)),
             ("G7", lambda: check_citations(project, literature)),
             ("G7", lambda: check_literature_chain(project, literature)),
@@ -248,6 +252,9 @@ def _gate_run(
             ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
             ("G6", lambda: check_writing(project, results, submission=at_submission)),
             ("G9", lambda: check_methods(project, namespace, results)),
+            # Its own, since it reads the manuscript: an analysis the Results name and the
+            # Methods never do.
+            ("G9", lambda: check_analyses_named(project)),
             ("G12", lambda: check_design(project, results, chosen).merge(
                 check_design_rounds(project, submission=at_submission))),
             # A check of its own, since it reads the manuscript: one that cannot be read stops

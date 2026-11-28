@@ -43,7 +43,17 @@ read [references/remits.md](references/remits.md), which gives each one's remit 
   comparisons it uses, and for the people whose work it says it improves on, asked apart
   whether the paper is right and whether it is new;
 - **the abstract alone**: a reader sent only the title and abstract, who says what they
-  conclude and whether the caveat that would change that conclusion is there; route A only;
+  conclude, whether the caveat that would change that conclusion is there, and which words
+  they could not understand from the abstract alone; route A only;
+- **a reader new to the paper**, on every paper: whether someone of the field who has not
+  seen it can follow it, each term defined at first use and used in one sense, each result
+  the Discussion interprets reported in the Results;
+- **statistics for a reader without statistical training**: whether each method has a plain
+  gloss where it first appears and each number says what it is, a range labelled, a test the
+  Results use named in the Methods;
+- **the displays alone**: a reader sent only the tables and the rendered figures with their
+  captions, legends and notes, who says what each shows and what it leaves undefined; then
+  each display's conclusion is set beside the text's headline; route A only;
 - **interpretation**, when `check` notes `interpretation-sentences`: a reader sent the
   sentences of the Results and the Discussion that claim and rest on neither a result nor a
   citation, which `manuscript-guard explain <file>` lists, and asked whether each follows from
@@ -57,8 +67,10 @@ reviewers with the same remit are one reviewer.
 
 If there is no panel file when `manuscript-guard review --run` is used (route B below), it
 writes a starter panel that assumes no field: design, statistics, reporting and an
-adversarial reviewer in round one; a desk editor and a specialist reader in round two. That
-is a place to start. A panel fitted to the paper sees more, so edit the file.
+adversarial reviewer in round one; a desk editor, a specialist reader and a reader new to the
+paper with no statistical training in round two. That is a place to start. A panel fitted to
+the paper sees more, so edit the file, and add the displays alone and the abstract alone as a
+round of their own read by route A.
 
 ## 2. Review
 
@@ -284,38 +296,8 @@ Two rounds by default; `review.rounds_required` in `paper.yaml` changes it.
 
 ## A design round, before the analysis
 
-The panel above reads the manuscript, once there are results. A design round reads the
-plan, `design/plan.md`, and the feasibility results, while the analysis can still change.
-Give it one or two reviewers whose remits ask whether the design supports the inference the
-plan intends, naming the risks of the study type: confounding, selection, immortal time,
-missing data, multiplicity, leakage. Where `paper.yaml` declares one of the table's designs as
-`study_type`, each reviewer is also sent what a plan for that design has to settle, with its
-sources; declare it before the round. The models in `review.models` can read it, as they
-read the manuscript: `manuscript-guard review --design --run --dry-run` shows what would be
-sent (the plan and the feasibility results, never the manuscript), and the author runs
-`review --design --run` and answers yes. Never add `--yes` for them. Or file each reading by
-hand:
-
-```bash
-manuscript-guard review --record methodologist --design --round 1 --verdict major-revision \
-  --remit "Whether the design supports the inference the plan intends"
-manuscript-guard review --seal methodologist --design --round 1   # once the findings are in
-```
-
-A remit read by more than one reader, a person and a model or two models, takes a reading
-from each: `--reading <reader>` on both commands files it as
-`review/design/round-1/methodologist.<reader>.yaml` and lists the reader in the panel. Each
-reading's majors are answered on their own.
-
-```bash
-manuscript-guard review --record methodologist --design --round 1 --reading "Dr Tanaka" \
-  --verdict minor-revision
-```
-
-G12 says a major finding not answered (a warning until submission), and a reading of a plan
-that has changed since. Answer a finding with what the plan now does, in `resolution:`. An
-objection left standing, `overridden:` with a reason, is the statistician's to accept: they
-sign it with `manuscript-guard sign`, as the warning's hint says. Never run `sign` for them.
+A design round reads `design/plan.md` and the feasibility results while the analysis can
+still change (`review --design`, G12): [references/design-round.md](references/design-round.md).
 
 ## 5. Check
 

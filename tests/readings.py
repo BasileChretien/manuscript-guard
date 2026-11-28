@@ -595,6 +595,73 @@ def _interpretation_sentences() -> Reading:
     return argued
 
 
+@reading("discussion results")
+def _discussion_results() -> Reading:
+    """The results keys a file binds in its Discussion, each with the title of the heading
+    that names the Discussion and its line, as G8 reads them (`discussion-not-reported`), and
+    whether the file has a Results section, without which they are not read."""
+    from manuscript_guard.gates.reported import DISCUSSION_CODE, Walk
+
+    def discussed(given: dict[str, Any]) -> dict[str, Any]:
+        assert DISCUSSION_CODE
+        walk = Walk(None)
+        walk.read(given["text"])
+        return {"discussed": [[one.key, one.heading, one.line] for one in walk.discussed],
+                "has results": walk.has_results}  # fmt: skip
+
+    return discussed
+
+
+@reading("analyses named")
+def _analyses_named() -> Reading:
+    """Each method of `data/statistical_methods.yaml` a file names in its Methods or its
+    Results, with its line and the part, and a file of its supplement's, as G9 reads them;
+    and the methods the Results name and the Methods never do (`analysis-not-in-methods`)."""
+    from manuscript_guard.gates.analyses_named import (
+        Named,
+        named_in,
+        paper_parts,
+        supplement_kinds,
+        unnamed_in_methods,
+    )
+    from manuscript_guard.gates.reported import Walk
+
+    def named(given: dict[str, Any]) -> dict[str, Any]:
+        found = {}
+        every = []
+        for part, text in (("paper", given["text"]), ("supplement", given.get("supplement", ""))):
+            starts, kinds = (paper_parts(text, Walk(None)) if part == "paper"
+                             else supplement_kinds(text))  # fmt: skip
+            read = named_in(text, starts, kinds)
+            found[part] = [[method, line, kind] for method, line, _at, _words, kind in read]
+            every += [Named(method, MAIN, line, at, words, kind)
+                      for method, line, at, words, kind in read]  # fmt: skip
+        found["unexplained"] = [one.method for one, _times in unnamed_in_methods(every)]
+        return found
+
+    return named
+
+
+@reading("caption lines")
+def _caption_lines() -> Reading:
+    """The line each caption of a Markdown file starts on, as G3 finds its captions, and for
+    each caption that points at a line or a curve it never names, the line of the place and
+    the words that point (`caption-line-unnamed`)."""
+    from manuscript_guard.gates.caption_marks import markdown_captions, unnamed
+
+    def pointed(given: dict[str, Any]) -> dict[str, Any]:
+        captions = markdown_captions(given["text"], MAIN, "the caption")
+        warned = []
+        for caption in captions:
+            found = unnamed(caption.read)
+            if found is not None:
+                line = caption.line + caption.typed.count("\n", 0, found.start())
+                warned.append([line, " ".join(caption.typed[found.start():found.end()].split())])
+        return {"captions": [caption.line for caption in captions], "warned": warned}
+
+    return pointed
+
+
 class _Shown:
     """A value as a reading of the boxes needs it: its display alone."""
 

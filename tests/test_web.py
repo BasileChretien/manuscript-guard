@@ -1378,8 +1378,9 @@ process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])
     browser = (WEB / "test" / "browser.mjs").read_text(encoding="utf-8")
     assert "return [now.getFullYear(), now.getMonth() + 1, now.getDate()];" in browser
     # In the loop over the cases: a case the page could not run is said so, and no more of it;
-    # for each other case, what is wrong with its files is said once, as the last thing before
-    # its line of the log, which every case that ran reaches.
+    # each other case reaches its line of the log, nothing else leaving the loop early, and what
+    # is wrong with its files is said once, as the last thing before that line. Its code is read
+    # without its comments, whose words are prose.
     start = browser.index("    const { result, unlike } = await caseHeld(today,\n"
                           "      () => choose(one.paper, one.against || [], one.form || {}),"
                           " one.made);\n"
@@ -1389,8 +1390,9 @@ process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])
                           "    }\n")  # fmt: skip
     loop = browser[start:browser.index("\n    console.log(`${one.name}: ", start) + 1]
     assert loop.endswith("\n    if (unlike) fail(`${one.name}: ${unlike}`);\n")
-    # `unlike` named, then read twice by that line, and nowhere else.
-    assert loop.count("unlike") == 3
+    code = re.sub(r"(?m)(?:^|(?<=\s))//[^\n]*", "", loop)
+    assert re.findall(r"\b(?:continue|break)\b", code) == ["continue"]
+    assert code.count("if (unlike)") == 1 and code.count("${unlike}") == 1
 
 
 def _js(value: object) -> str:

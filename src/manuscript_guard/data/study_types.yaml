@@ -656,8 +656,9 @@ types:
   # SRQR's items read in its supplement (links.lww.com/ACADMED/A218), which the AAMC
   # holds the copyright of, and COREQ's in the checklist EQUATOR links to; neither paper
   # gives a licence, so both are cited by item. Each section's heading words are those of
-  # the Methods headings of 171 open-access qualitative protocols and studies at Europe PMC,
-  # read on 2026-11-28, kept narrow: a heading they miss names its section exactly.
+  # the Methods headings of 221 open-access qualitative protocols and studies at Europe PMC,
+  # read on 2026-11-28, and of SRQR's and CASP's items, kept narrow: a heading they miss
+  # names its section exactly.
   qualitative:
     label: qualitative study
     describes: >-
@@ -677,7 +678,7 @@ types:
         own words, as the analytic approach
     sections:
       - id: sampling and saturation
-        heading: '(?i)\bsampl(?:e|es|ing)\b(?!\s+bias)|\brecruit|\bsaturat|\binformation power\b|\bparticipant selection|\bselection of (?:the )?(?:[\w-]+ ){0,2}(?:participants|informants|interviewees)\b'
+        heading: '(?i)\bsampl(?:e|es|ing)\b(?!\s+bias)|\brecruit|\bsaturat|\binformation power\b|\bparticipant selection|\bselection of (?:the )?(?:(?:interview|study|focus[- ]group|key) )?(?:participants|informants|interviewees)\b'
         says: >-
           whom the study asks to take part and why, how they are approached, how many are
           expected, and how the team will decide that no more are needed
@@ -707,7 +708,7 @@ types:
         url: https://doi.org/10.1097/ACM.0000000000000388
         read_on: 2026-11-28
       - id: analytic approach
-        heading: '(?i)\banaly(?:s[ie]s|tic(?:al)?|[sz]e[sd]?|[sz]ing)\b|\bcod(?:ing|ebooks?)\b|\bdata processing\b'
+        heading: '(?i)\banaly(?:s[ie]s|tic(?:al)?|[sz]e[sd]?|[sz]ing)\b|\bcod(?:ing|ebooks?)\b|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?data processing\W*$'
         says: >-
           how the recordings are transcribed and the data analysed: the approach, such as
           thematic, framework or content analysis, how the data are coded and themes

@@ -20122,16 +20122,19 @@ Added by the adversarial review, verified and **not** fixed:
   study's sections are found by words of the headings real qualitative protocols and
   studies give them, kept narrow (Basile, 2026-11-28): a sample, sampling, recruitment,
   saturation, information power, participant selection, the selection of participants,
-  informants or interviewees; data collection or generation, interviews, focus groups,
-  FGDs, IDIs, KIIs, a topic or discussion guide or list, field notes or fieldwork,
-  observation; an analysis, analytic, analyse, coding, a codebook, data processing;
+  informants or interviewees, of the interview, study or focus-group participants or of
+  key informants; data collection or generation, interviews, focus groups, FGDs, IDIs,
+  KIIs, a topic or discussion guide or list, field notes or fieldwork, observation; an
+  analysis, analytic, analyse, coding, a codebook, "Data processing" as the whole heading;
   reflexivity, positionality, the research team, the researchers', interviewers' or
   investigators' characteristics, background, role, position or training, their role,
   position or background named after it ("Role of the researcher"), the relationship with
-  or to the participants or between researcher and participants, a researcher-participant
-  relationship; trustworthiness, rigour, credibility, member checking, transferability,
+  or to the participants or between researcher and participants, a researcher participant
+  relationship, spaced or hyphened but not with an en dash ("Researcher–participant
+  relationship" is refused, as an en dash is by every pattern); trustworthiness, rigour,
+  credibility, member checking, transferability,
   dependability, confirmability, triangulation, an audit trail; consent, ethics (SRQR's
-  item names and CASP's among them, round 1 of #857). So a heading that names interviews
+  item names and CASP's among them, rounds 1 and 2 of #857). So a heading that names interviews
   or focus groups is its data collection, "Analysis of interviews" or "Selection of
   interview participants", one that names an
   analysis is its analytic approach, as any finds every plan's analysis, "Methods and

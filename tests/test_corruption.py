@@ -41609,6 +41609,8 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Selection of focus group participants", "sampling and saturation", True),
         ("## Selection of key informants", "sampling and saturation", True),
         ("## Information power", "sampling and saturation", True),
+        # Round 2 of #857: the words between are those that name a participant, no others.
+        ("## Selection of quotes from participants", "sampling and saturation", False),
         ("## Participants", "sampling and saturation", False),
         ("## Identifying potential participants", "sampling and saturation", False),
         ("## Semi-structured interviews", "data collection", True),
@@ -41629,6 +41631,9 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Data processing", "analytic approach", True),
         ("## How we will analyse the data", "analytic approach", True),
         ("## How we will analyze the data", "analytic approach", True),
+        # Round 2 of #857: SRQR's "Data processing" whole, not a data-protection heading.
+        ("## 4. Data processing", "analytic approach", True),
+        ("## Data processing and storage", "analytic approach", False),
         ("## Analysts’ perspectives and reflexivity", "analytic approach", False),
         ("## Reviewing themes", "analytic approach", False),
         ("## Reflexivity", "reflexivity", True),
@@ -41643,6 +41648,8 @@ def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) 
         ("## Relationship between researcher and participants", "reflexivity", True),
         ("## Researcher-participant relationship", "reflexivity", True),
         ("## Role of the funder", "reflexivity", False),
+        # Round 2 of #857: an en dash is no hyphen, here as in every pattern (Known gaps).
+        ("## Researcher–participant relationship", "reflexivity", False),
         ("## Study team", "reflexivity", False),
         ("## Characteristics of participants", "reflexivity", False),
         ("## Trustworthiness", "trustworthiness", True),

@@ -3105,6 +3105,32 @@ each one nothing cites reaches the printed list, and is a warning of its own as 
   `manuscript/`, or in a YAML metadata block of its body (`masking.metadata_blocks`), which
   the build passes to pandoc as it stands (round 1 of #835).
 
+The build strips each file's front matter and writes its own header from `paper.yaml`, so
+it carries the `nocite` of the files that make up each document into that header: the main
+text's files for the paper, the supplement's for the supplement. The strings are read with
+G7's reader (`front_matter_said`), so the two agree on what a file declares, and written as
+a list, each string read as pandoc reads it in its own header, which citeproc prints from.
+Pandoc 3.9's LaTeX writer writes no `\nocite` for a list, so under natbib and biblatex they
+are written as one string, parted by spaces. The offline Word build and the LaTeX output
+print the works it names. Under natbib and biblatex, pandoc's default template writes the
+`\nocite`, and the folder's `.bib` keeps the entries it names; a journal's own template
+without the `nocite-ids` block prints none of them, and the build warns of it,
+`nocite-not-in-template`, where the `nocite` asks for every entry or names a key the text
+does not cite (a key the text cites prints from its citation). A key is read as the build
+reads a citation (`zotero.find_citations`), and so is one pandoc 3.9 reads that that reader
+does not, which opens with a digit or `_` or is braced, `@2019who`, `@_x`, `@{zeta.2001}`:
+it is taken for a key the text does not cite. A braced key that holds a space, `@{a b}`, is
+no citation to pandoc. An offline document that cites nothing gets the heading over its
+reference list only where a `nocite` names a key or asks for every entry:
+`references_heading.lua` runs before citeproc and heads the list whether citeproc fills it
+or not. A live build cannot print them: Better BibTeX's `zotero.lua` does not read `nocite`,
+and the bibliography field Zotero fills lists the works cited only. It warns, `nocite-not-live`,
+of each file whose `nocite` asks for every entry or names a key the text does not cite, and
+names `build --offline`. The plain build
+`import` compares a live document with stands in for the live build, and leaves the works
+out as it does, with no warning: its report is no one's to read, and the build that made the
+document warned (Basile, 2026-11-28, "Offline and LaTeX; live warns").
+
 A `\nocite{smith2019}`, or `nocite: '@smith2019'`, cites that key and asks for no other: the
 key is cited, and the note goes on listing the rest. An entry cited only as typed text keeps
 its own note, which says what `sync-bib` would do, and is not listed in the file's. The note
@@ -17858,8 +17884,8 @@ already written.
 Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic accuracy studies
 (STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
 guideline's own page on the day of its pull request, as the file requires, and
-`choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
-have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
+`choose-study-type` offers the design. STROBE, STARD 2015, CARE 2013 (since 2026-11-27)
+and PROCESS 2023 (since 2026-11-28) have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
 (labelled "self-controlled design (case series or case-crossover)"); its label,
 "descriptive case series", says so. No guideline is written for case series in every
@@ -17910,7 +17936,7 @@ the study (answer 5).
 
 - The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
   PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
-  2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
+  2026-11-28, whose Table 3 gives its items and `PROCESS-2023` reads, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
   whose full text Europe PMC's service does not return, so its checklist was not read for
   this design; no guideline written for case series in any field was found. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
   site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
@@ -20095,7 +20121,17 @@ Added by the adversarial review, verified and **not** fixed:
   heading; consent, ethics. So the comparisons an analysis makes, "Statistical
   comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
   not its comparison, and a "Patient selection" or "Length of observation" heading names
-  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
+  none of them (round 1 of #849). These words for the comparison take an analysis's
+  "### Comparisons", a comparison within the series ("Comparison with baseline values")
+  and a data source ("External data sources", "Sources of historical data"), false
+  passes, and refuse "Comparison versus the literature" and "Comparison and
+  benchmarking", false alarms (round 2 of #849). Three rounds of #853 narrowed and
+  widened them, and each found headings the next rule took or refused wrongly, so the
+  comparison's words are a pull request of their own (Basile, 2026-11-28, "Split the
+  comparison words out"). A heading's Unicode hyphens, U+2010 and Word's non-breaking
+  U+2011, are read as the hyphen every pattern names, by every reader of the plan's
+  sections and by a related output's `plan_section:` (round 2 of #849, round 1 of #853).
+  The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -20114,6 +20150,7 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
   `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_heading_s_unicode_hyphen_is_read_as_a_hyphen`,
   `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
@@ -24136,6 +24173,16 @@ Open, recorded as each change landed:
   none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it. Accepted.
+- **G5 does not read a claim of having followed CARE or PROCESS.** A case report and a
+  case series have recipes, CARE-2013 and PROCESS-2023, but neither name is in
+  `CLAIMABLE`, so "the report follows the CARE guidelines" in a paper that declares
+  neither is not warned of. Both are also the names of other things, Hayes's PROCESS
+  macro, the CARE Measure of empathy, cohorts and trials, and three rounds of #851 each
+  found new ways a rule that reads them goes wrong: case ("the CARE Guidelines"), a
+  hyphen ("CARE-2013"), words between ("the CARE case report guidelines"), emphasis, and
+  a year that names a macro ("PROCESS (2022)"). So the rule is a change of its own, in a
+  pull request of its own (Basile, 2026-11-28, "Split the claim rule out"). Pinned by
+  `tests/test_compliance.py::test_a_claim_of_care_or_process_is_not_read`.
 - **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
@@ -24143,10 +24190,14 @@ Open, recorded as each change landed:
 - **A descriptive case series is held to a surgical guideline or to one with no recipe.**
   No guideline is written for case series in every field, so the design names PROCESS
   2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
-  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
-  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
-  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
-  open licence. So a paper that declares either is told its checklist is not retrieved.
+  and G5 accepts either. `PROCESS-2023` reads PROCESS 2023's Table 3 from Europe PMC's
+  full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. A paper
+  must declare it by that name: one that declares `PROCESS`, as the design names it and
+  the setup question offers it, finds no profile of that name and is told its checklist
+  is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one that
+  declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
+  text is not served by Europe PMC, and its article states no open licence, so a paper
+  that declares it is told its checklist is not retrieved.
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for
   the intervention (6g), the operator (6j) and the variation between operators (6k) a
   series outside surgery answers as not applying. Accepted.
@@ -31869,6 +31920,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The rules are not hidden from whoever has the link, nor from a browser extension: they
     are a journal's published instructions, and the authors' names are never in it. A
     browser does not send the part after `#` to the page's host. Accepted.
+- **A revision compared on the audit page names each version by the folder the page reads
+  it from.** *Compare a revision* (item 6 of the editor's list; Basile, 2026-11-28) runs
+  `compare` in the page, each version from a folder of its own, `v1/` and `v2/`, so that two
+  versions a journal's system gives one name are both read: its report and the start of
+  the report name `v1/paper.docx`, where the command line names each file from the folder
+  it is run in, or by its name alone outside it. A response letter or comments file named
+  `v1` or `v2`, or `report-draft.md` where the start of the report is asked for, is
+  refused, to be renamed. Pinned by
+  `tests/test_web.py::test_the_worker_gives_compare_each_version_in_a_folder_of_its_own`.
+  - Its report is the text alone: `compare` writes no PDF, and the page shows none (the
+    author, 2026-11-28). Accepted.
+  - A LaTeX version is not taken: `compare` reads a `.tex` with the files it inputs, and
+    the page unpacks no project for it, as it does for an audit. Accepted.
 - **The statements every paper makes are found by their headings and labels.** G4's check of
   empty headings and of the statements every paper makes (`gates/statements.py`, built
   2026-11-26 after a draft built its declarations as headings over comments) has these
@@ -31925,11 +31989,30 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Pinned by
   `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
 
-- **G7 takes a `nocite` of every entry for what the build prints, as typed.** A front
-  matter's `nocite: '@*'` keeps a warning for each entry nothing cites, though the build
-  writes its own header from `paper.yaml` and strips each file's, so pandoc never reads that
-  key and the document still prints only the works cited. Pinned by
-  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`.
+- **G7 takes a `nocite` of every entry for what the build prints, as typed, and a live
+  build prints only the works cited.** The offline build and the LaTeX output carry a front
+  matter's `nocite` into the header they write, and print what G7 says they print. A live
+  build cannot: Better BibTeX's filter does not read `nocite`, and Zotero's bibliography
+  field lists the works cited only. So `nocite: '@*'` keeps a warning for each entry nothing
+  cites, and a live document prints none of them; the build warns of it
+  (`nocite-not-live`), and `build --offline` prints them (Basile, 2026-11-28, "Offline and
+  LaTeX; live warns"). Pinned by
+  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`
+  and `tests/test_build.py::test_a_live_build_of_files_that_declare_nocite_warns_that_it_leaves_them_out`.
+  - Under natbib and biblatex the strings of a `nocite` list are written as one, parted by
+    spaces, since pandoc writes no `\nocite` for a list. Pandoc reads the citations of each
+    as it reads them alone unless one opens what the next closes: in `['[@a', '@b]']` both
+    keys are still read, while in ``['`x', '@b`']`` the code span hides `@b`, which is then
+    neither printed nor kept in the `.bib` though G7 reads it, and the build says nothing of
+    it under pandoc's default template. The Word build and citeproc take the list as it
+    stands. Accepted.
+  - A key a `nocite` names is read as the build reads a citation in the text, with the keys
+    pandoc reads and that reader does not taken for keys nothing cites. So the live build's
+    warning and the offline heading pass over a citation pandoc reads in another shape, an
+    unclosed `[@a` or a key braced two deep, `@{a{b{c}}}`; such a key the text does cite,
+    `[@2019who]`, is still warned of; and a key the `.bib` lacks still names a work, so a
+    supplement that cites nothing gets a heading over a list citeproc leaves empty, beside
+    pandoc's warning of the key. Accepted.
   - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
     inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
     keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX
@@ -31965,6 +32048,16 @@ Closed since, and why each mattered (an open gap goes above this line):
   "[European Open Science Cloud](https://...) (EOSC)", and no long form holds `](`, nor
   `][label]` by a label the file defines.
   Held by `tests/test_corruption.py::test_a_definition_made_a_link_is_no_definition`.
+
+- **A front matter's `nocite` printed nothing (2026-11-28).** It stood under "G7 takes a
+  `nocite` of every entry for what the build prints, as typed": the build stripped each
+  file's front matter and wrote its own header, so `nocite: '@*'` warned of each uncited
+  entry while the document printed only the works cited. The offline build and the LaTeX
+  output now carry the files' `nocite` into their header, each document its own files', and
+  the LaTeX folder's `.bib` keeps the entries it names. Pinned by
+  `tests/test_corruption.py::test_the_offline_build_prints_the_works_the_header_s_nocite_names`,
+  `tests/test_build.py::test_the_supplement_prints_what_its_own_files_nocite_names` and
+  `tests/test_latex_from_markdown.py::test_the_latex_carries_the_nocite_of_the_files_front_matter`.
 
 - **A long form read across a bracket it does not open defined its short form (row 4 of
   window C, 2026-11-24).** It stood under "A long form before its short form takes no letter

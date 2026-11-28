@@ -22,11 +22,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from manuscript_guard.auditing.progress import step
 from manuscript_guard.auditing.report import Item, about, placed
 from manuscript_guard.comparing import differences, letters
 from manuscript_guard.comparing.differences import GATE
 from manuscript_guard.comparing.versions import Version, read_version
-from manuscript_guard.findings import INFO
+from manuscript_guard.findings import INFO, posix_path
 from manuscript_guard.keys import NONE, keyed_json
 
 VERSIONS = "Versions"
@@ -55,20 +56,25 @@ class Comparison:
 def compare(old: Path, new: Path, letter: Path | None = None,
             comments: Path | None = None) -> Comparison:  # fmt: skip
     """The two versions read and set side by side, v2 audited, and the letter and the
-    referee's comments held to them. Raises `versions.Unreadable`."""
+    referee's comments held to them, each step said as it starts (`auditing.progress`).
+    Raises `versions.Unreadable`."""
+    step("versions")
     was, now = read_version(old), read_version(new)
     letter_text = letters.read_text_of(letter, "the letter") if letter else None
     mine = letters.read_text_of(comments, "the comments file") if comments else None
     found = Comparison(was, now, letter=letter, comments=comments)
+    step("differences")
     unmarked = [*_read(was, now, letter, comments),
                 *differences.sections(was, now), *differences.tables(was, now),
                 *differences.figures(was, now), *differences.numbers(was, now),
                 *differences.claim_moves(was, now)]  # fmt: skip
     found.items = [(item, "") for item in unmarked] + audited(was, now, found.exact)
     if letter_text is not None:
+        step("letter")
         found.items += [(item, "") for item in letters.letter_items(letter, letter_text, was,
                                                                     now, mine)]  # fmt: skip
     if mine is not None:
+        step("comments")
         found.items += [(item, "") for item in letters.comment_items(comments, mine, was, now)]
     return found
 
@@ -120,8 +126,10 @@ def audited(old: Version, new: Version,
             exact: list[tuple[Item, str]] | None = None) -> list[tuple[Item, str]]:  # fmt: skip
     """v2's audit, each finding with its mark: whether v1's audit gave the same finding.
     Each that `audit --strict` would count goes into `exact` as well."""
+    step("before")
     stood = Counter((item.gate, item.code, item.message) for item in _audit(old))
     found = []
+    step("after")
     for item in _audit(new):
         key = (item.gate, item.code, item.message)
         mark = STOOD_IN_V1 if stood[key] > 0 else NEW_IN_V2
@@ -163,9 +171,11 @@ def _pdfs(found: Comparison) -> dict:
 
 
 def _shown(path: Path, root: Path | None) -> str:
+    """A file from `root` where it is in it, with forward slashes on every system, as `audit`
+    names one (`findings.posix_path`); its name alone elsewhere."""
     if root is not None:
         try:
-            return str(path.resolve().relative_to(root.resolve()))
+            return posix_path(path.resolve().relative_to(root.resolve()))
         except ValueError:
             pass
     return path.name
@@ -213,10 +223,10 @@ def as_json(found: Comparison) -> str:
     return json.dumps(
         {
             "ok": True,
-            "old": str(found.old.path),
-            "new": str(found.new.path),
-            "letter": None if found.letter is None else str(found.letter),
-            "comments": None if found.comments is None else str(found.comments),
+            "old": posix_path(found.old.path),
+            "new": posix_path(found.new.path),
+            "letter": None if found.letter is None else posix_path(found.letter),
+            "comments": None if found.comments is None else posix_path(found.comments),
             "counts": counts(found),
             "findings": keyed_json([item.keyed() for item, _mark in found.items], [
                 placed(item.as_dict(), item.path, item.line, _pdfs(found))

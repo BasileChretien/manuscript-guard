@@ -658,6 +658,110 @@ def test_the_worker_gives_the_command_line_each_name_as_the_reader_chose_it() ->
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_worker_gives_compare_each_version_in_a_folder_of_its_own() -> None:
+    """"Compare a revision" (Basile, 2026-11-28): worker.js's `compared`, run in Node with a
+    stand-in for Pyodide (web/test/names.mjs). Each version is written in a folder of its
+    own, v1/ and v2/, so that two versions of one name, as a journal's system gives them, are
+    both read; the letter and the comments under their own names, one that starts with "-"
+    passed as `./name`; the draft of the reader's report only where it was asked for. A
+    letter or comments named as the page names a folder or the draft, or two of one name,
+    are refused before anything is written."""
+    cases = [
+        {"compare": {"before": "paper.docx", "after": "paper.docx", "letter": "letter.docx",
+                     "comments": "-mine.md", "draft": True}},
+        {"compare": {"before": "v1.pdf", "after": "Révision 2.md"}},
+        {"compare": {"before": "a.md", "after": "b.md", "letter": "v1"}},
+        {"compare": {"before": "a.md", "after": "b.md", "comments": "report-draft.md",
+                     "draft": True}},
+        {"compare": {"before": "a.md", "after": "b.md", "letter": "same.md",
+                     "comments": "same.md"}},
+        {"compare": {"before": "a/b.md", "after": "b.md"}},
+    ]
+    done = subprocess.run([NODE, str(WEB / "test" / "names.mjs")], input=json.dumps(cases),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    every, plain, folder, draft, twice, slash = json.loads(done.stdout)
+    assert every == {"args": ["compare", "v1/paper.docx", "v2/paper.docx", "--response",
+                              "letter.docx", "--comments", "./-mine.md", "--report-draft",
+                              "report-draft.md"],
+                     "written": ["/work/v1/paper.docx", "/work/v2/paper.docx",
+                                 "/work/letter.docx", "/work/-mine.md"]}  # fmt: skip
+    assert plain == {"args": ["compare", "v1/v1.pdf", "v2/Révision 2.md"],
+                     "written": ["/work/v1/v1.pdf", "/work/v2/Révision 2.md"]}
+    assert "a file chosen is named v1" in folder["error"]
+    assert "a file chosen is named report-draft.md" in draft["error"]
+    assert "two of the files chosen are named same.md" in twice["error"]
+    assert 'cannot use a file named "a/b.md"' in slash["error"]
+    assert folder["written"] == draft["written"] == twice["written"] == slash["written"] == []
+
+
+def test_a_comparison_says_each_step_and_the_page_names_each() -> None:
+    """A comparison on the page shows its steps and the time left as an audit does: compare.js
+    names each step `compare` says (`auditing.progress.COMPARE_STEPS`, held to what it says in
+    tests/test_compare.py) and no other, in the order it says them, and the worker passes
+    them on as the audit's are passed (worker.js `told`)."""
+    from manuscript_guard.auditing import progress
+
+    code = (WEB / "compare.js").read_text(encoding="utf-8")
+    table = re.search(r"export const COMPARE_STEPS = \{(.*?)\n\};", code, re.S).group(1)
+    assert re.findall(r"^  (\w+): \[\"", table, re.M) == list(progress.COMPARE_STEPS)
+    order = re.search(r"const order = \[(.*?)\];", code, re.S).group(1)
+    assert re.findall(r'"(\w+)"', order) == list(progress.COMPARE_STEPS)
+    worker = (WEB / "worker.js").read_text(encoding="utf-8")
+    compared = worker[worker.index("function compared("):]
+    assert "progress.STEP = TOLD" in compared and 'py.globals.set("TOLD", told);' in compared
+    assert 'type === "compare" ? compared(payload)' in worker
+
+
+def test_the_page_shows_the_boxes_of_the_choice_it_starts_with() -> None:
+    """A browser may restore the last visit's form on reload, "Compare a revision" checked
+    among it, and say no change: the page would then show the paper's box and require it,
+    and its button would compare nothing (round 1 of #854). So the two choices restore
+    nothing (`autocomplete="off"`), and compare.js shows the boxes of the one checked as
+    it starts, as well as on each change."""
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    for choice in ("modecheck", "modecompare"):
+        tag = re.search(rf'<input id="{choice}"[^>]*>', page).group(0)
+        assert 'type="radio" name="mode"' in tag and 'autocomplete="off"' in tag
+    code = (WEB / "compare.js").read_text(encoding="utf-8")
+    body = code[code.index("export function comparing("):]
+    listened = body.index('$(id).addEventListener("change", modeShown);')
+    assert "\n  modeShown();\n" in body[listened:]
+
+
+def test_the_example_revision_shows_each_thing_a_letter_is_held_to(tmp_path: Path) -> None:
+    """The example revision the page offers is the example paper beside an earlier version of
+    it and a letter to invented reviewers (web/example-before.md, example-letter.md), served
+    with the page (web/build.py `PAGE`). `compare` finds in it what the page's Questions and
+    docs/audit-page.md say a letter is held to: a quotation new in the revision, one the
+    first version already had, one of the first version only, one neither holds, and a table
+    the letter names that neither has."""
+    import importlib.util
+
+    from manuscript_guard.cli import main
+
+    spec = importlib.util.spec_from_file_location("web_build", WEB / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    named = re.findall(r'"(example-[\w-]+\.md)"', (WEB / "compare.js").read_text("utf-8"))
+    assert named == ["example-before.md", "example-paper.md", "example-letter.md"]
+    assert set(named) <= set(build.PAGE)
+    for name in named:
+        shutil.copyfile(WEB / name, tmp_path / name)
+    out = tmp_path / "report.txt"
+    assert main(["compare", str(tmp_path / named[0]), str(tmp_path / named[1]),
+                 "--response", str(tmp_path / named[2]), "--out", str(out)]) == 0
+    said = out.read_text(encoding="utf-8")
+    for state in ("new as quoted: v2 has it and v1 did not",
+                  "quoted as revised, but v1 had it: both versions hold it",
+                  "quotes the first version: v1 has it and v2 does not",
+                  "quotes text neither version holds", "Table 2, named on line",
+                  "claims more than it did in v1"):
+        assert state in said, state
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_the_worker_holds_the_paper_to_the_journal_the_form_or_a_file_describes() -> None:
     """The journal's form made into the files `--journal` and `--authors` read
     (`web.journal_files`), under the names the page gives them; a profile or an authors file
@@ -881,7 +985,7 @@ def test_the_page_reads_its_address_for_the_rules_and_never_writes_it() -> None:
     `location`, no `history` call, nothing kept in storage (docs/audit-page.md: the page's
     code does not set its address, and keeps nothing between visits)."""
     code = "\n".join((WEB / name).read_text(encoding="utf-8")
-                     for name in ("app.js", "rules.js", "worker.js"))  # fmt: skip
+                     for name in ("app.js", "compare.js", "rules.js", "worker.js"))  # fmt: skip
     assert "location.hash" in code
     for written in (r"\blocation(\.\w+)?\s*=[^=]", r"\bhistory\.", r"localStorage",
                     r"sessionStorage", r"indexedDB", r"document\.cookie",
@@ -1270,6 +1374,134 @@ def test_check_names_node_whole_as_path_finds_it_from_the_folder_it_is_run_in(
     # Where PATH has no node, the name, as it was.
     monkeypatch.setenv("PATH", str(empty))
     assert check.node_found() == "node"
+
+
+def test_check_makes_the_journal_s_files_for_each_day_a_run_may_reach() -> None:
+    """The page dates the journal's instructions the day it runs a case, so a run that crosses
+    midnight makes the next day's files: main's `web` job at #850's merge failed in Firefox,
+    whose journal cases ran after 00:00 UTC, when check.py expected the day it started on.
+    check.py makes the files for that day and the next, each dated its own day and otherwise
+    the same, the first of them the files the command line is given."""
+    from datetime import date
+
+    made = check_script().form_files(date(2026, 12, 31))
+    assert list(made) == ["2026-12-31", "2027-01-01"]
+    for day, files in made.items():
+        assert list(files) == ["journal.yaml", "authors.yaml"]
+        assert yaml.safe_load(files["journal.yaml"])["retrieved_on"] == day
+    first, second = made.values()
+    assert second == {"journal.yaml": first["journal.yaml"].replace("2026-12-31", "2027-01-01"),
+                      "authors.yaml": first["authors.yaml"]}  # fmt: skip
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_browsers_hold_the_page_s_files_to_the_day_it_ran_a_case() -> None:
+    """browser.mjs holds each case so (`caseHeld`, web/test/made.mjs): the files the page made
+    of the journal's form are held to those check.py made for the day the case began or ended
+    on, each day read in the page just before the case and once it has run (`dated`), and
+    written as web/app.js writes the form's date. A case begun before midnight and ended after
+    it may make either day's, as Firefox's did in main's `web` job at #850's merge; one run
+    within a day only that day's; a day check.py made no files for is said, not passed; and an
+    empty form makes none."""
+    from datetime import date
+
+    made = check_script().form_files(date(2026, 11, 27))
+    before, after = made["2026-11-27"], made["2026-11-28"]
+    crossing, first, second = ["2026-11-27", "2026-11-28"], ["2026-11-27"] * 2, ["2026-11-28"] * 2
+    cases = [{"made": after, "byDay": made, "days": crossing},
+             {"made": before, "byDay": made, "days": crossing},
+             {"made": after, "byDay": made, "days": second},
+             {"made": before, "byDay": made, "days": second},
+             {"made": after, "byDay": made, "days": first},
+             {"made": after, "byDay": made, "days": ["2026-11-28", "2026-11-29"]},
+             {"made": after, "byDay": made, "days": ["2026-11-29"] * 2},
+             {"made": before, "byDay": made, "days": ["2026-11-28", "2026-11-29"]},
+             {"made": {}, "byDay": made, "days": first},
+             {"made": {}, "days": first},
+             {"made": after, "days": crossing}]  # fmt: skip
+    # Whole cases as browser.mjs runs them, each on a clock that gives these days in turn.
+    runs = [{"clock": [[2026, 11, 27], [2026, 11, 28]], "result": {"made": after}},
+            {"clock": [[2026, 11, 28]] * 2, "result": {"made": before}},
+            {"clock": [[2026, 11, 27]] * 2, "result": {"made": after}},
+            {"clock": [[2026, 11, 27]] * 2, "result": {"error": "refused"}}]  # fmt: skip
+    module = json.dumps((WEB / "test" / "made.mjs").as_uri())
+    # The order things are asked in: the case says "run" when it is called and "ran" once it
+    # has run, so the day after it must be read after "ran", not while it runs.
+    script = f"""import {{ caseHeld, dated, dayOf, madeHeld }} from {module};
+let input = "";
+for await (const chunk of process.stdin) input += chunk;
+const {{ cases, runs, byDay }} = JSON.parse(input);
+const asked = [];
+const clockOf = (days) => async () => (asked.push("today"), dayOf(days.shift()));
+const caseOf = (result) => async () => {{
+  asked.push("run");
+  await new Promise((wait) => setTimeout(wait, 10));
+  asked.push("ran");
+  return result;
+}};
+const run = await dated(clockOf([[2026, 11, 27], [2026, 11, 28]]), caseOf("the result"));
+const order = asked.splice(0);
+const whole = [];
+for (const one of runs) whole.push(await caseHeld(clockOf(one.clock), caseOf(one.result), byDay));
+process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])], run, order,
+  whole, asked, cases.map((one) => madeHeld(one.made, one.byDay, one.days))]));
+"""
+    given = json.dumps({"cases": cases, "runs": runs, "byDay": made})
+    done = subprocess.run([NODE, "--input-type=module", "-e", script], input=given,
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    days, run, order, whole, asked, held = json.loads(done.stdout)
+    assert days == ["2026-01-05", "2026-11-28"]
+    assert run == {"result": "the result", "days": crossing}
+    assert order == ["today", "run", "ran", "today"]
+    assert held[:3] == ["", "", ""]
+    unlike = f"the page made {_js(before)} of the journal's form, not {_js(after)}"
+    assert held[3] == unlike
+    assert held[4] == f"the page made {_js(after)} of the journal's form, not {_js(before)}"
+    # Begun on a day check.py made files for, ended on one it did not.
+    assert held[5] == ""
+    missing = (", and the case ran on 2026-11-29, a day check.py made no files of it for "
+               "(2026-11-27, 2026-11-28)")  # fmt: skip
+    assert held[6] == f"the page made {_js(after)} of the journal's form{missing}"
+    assert held[7] == unlike + missing
+    assert held[8] == f"the page made {{}} of the journal's form, not {_js(before)}"
+    assert held[9] == ""
+    assert held[10] == f"the page made {_js(after)} of the journal's form, not {{}}"
+    # The whole case: what it gave, and the files held to the days read on either side of it.
+    assert whole == [{"result": {"made": after}, "unlike": ""},
+                     {"result": {"made": before}, "unlike": unlike},
+                     {"result": {"made": after}, "unlike": held[4]},
+                     {"result": {"error": "refused"}, "unlike": held[8]}]  # fmt: skip
+    assert asked == ["today", "run", "ran", "today"] * len(runs)
+    # The day as the page writes the form's, and as browser.mjs reads it in the page and holds
+    # each case.
+    app = (WEB / "app.js").read_text(encoding="utf-8")
+    assert "`${today.getFullYear()}-${two(today.getMonth() + 1)}-${two(today.getDate())}`" in app
+    assert 'const two = (n) => String(n).padStart(2, "0");' in app
+    browser = (WEB / "test" / "browser.mjs").read_text(encoding="utf-8")
+    assert "return [now.getFullYear(), now.getMonth() + 1, now.getDate()];" in browser
+    # In the loop over the cases: a case the page could not run is said so, and no more of it;
+    # each other case reaches its line of the log, nothing else leaving the loop early, and what
+    # is wrong with its files is said once, as the last thing before that line. Its code is read
+    # without its comments, whose words are prose.
+    start = browser.index("    const { result, unlike } = await caseHeld(today,\n"
+                          "      () => choose(one.paper, one.against || [], one.form || {}),"
+                          " one.made);\n"
+                          "    if (result.error) {\n"
+                          "      fail(`${one.name}: the audit could not run: ${result.error}`);\n"
+                          "      continue;\n"
+                          "    }\n")  # fmt: skip
+    loop = browser[start:browser.index("\n    console.log(`${one.name}: ", start) + 1]
+    assert loop.endswith("\n    if (unlike) fail(`${one.name}: ${unlike}`);\n")
+    code = re.sub(r"(?m)(?:^|(?<=\s))//[^\n]*", "", loop)
+    assert re.findall(r"\b(?:continue|break)\b", code) == ["continue"]
+    assert code.count("if (unlike)") == 1 and code.count("${unlike}") == 1
+
+
+def _js(value: object) -> str:
+    """`value` as JSON.stringify writes it."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 POPPLER_PACKAGE = WEB / "node_modules" / "@ai-ecoverse" / "wasm-poppler"

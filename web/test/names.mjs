@@ -15,7 +15,9 @@
 // where the worker refuses the names or the form. The stand-in for `web.journal_files` makes
 // "profile" and "authors" of what it is given, and refuses a journal named "refused"; the
 // stand-in for `web.unpack_paper` unpacks an archive into the folder named after it, and
-// refuses one whose name holds "bad".
+// refuses one whose name holds "bad". A case {"compare": {"before", "after", "letter",
+// "comments", "draft"}} is worker.js's `compared` given those files by their names: its
+// answer {"args", "written"}, or {"error", "written"}.
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 
@@ -49,6 +51,7 @@ const context = createContext({
   stub: {
     runPython: (code) => (code.includes("web.view")
       ? '{"code": 0, "out": "", "err": "", "view": null}'
+      : code.includes("web.run(") ? '{"code": 0, "out": "", "err": ""}'
       : code.includes("web.journal_files") ? journalFiles(code)
         : code.includes("web.unpack_paper") ? unpacked() : undefined),
     FS: { writeFile: (path) => written.push(path) },
@@ -61,8 +64,21 @@ runInContext("py = stub;", context);
 
 const file = (name) => ({ name, data: new ArrayBuffer(0) });
 const cases = JSON.parse(readFileSync(0, "utf-8"));
-const answers = cases.map(({ paper, against, journalFile, authorsFile, offered, ...chosen }) => {
+// A comparison's files, each by its name, as compare.js sends them.
+function comparison({ before, after, letter, comments, draft = false }) {
+  context.payload = { before: file(before), after: file(after),
+    letter: letter ? file(letter) : null, comments: comments ? file(comments) : null, draft };
+  try {
+    const { args } = runInContext("compared(payload)", context);
+    return { args: [...args], written: [...written] };
+  } catch (error) {
+    return { error: String(error.message), written: [...written] };
+  }
+}
+const answers = cases.map(({ paper, against, journalFile, authorsFile, offered, compare,
+  ...chosen }) => {
   written.length = 0;
+  if (compare) return comparison(compare);
   for (const name of ["CORRECTED", "JOURNAL", "AUTHORS", "ARCHIVE"]) delete set[name];
   context.payload = { paper: file(paper), against: against.map(file), lookup: false,
     journalFile: journalFile ? file(journalFile) : null,

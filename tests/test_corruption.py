@@ -22352,6 +22352,42 @@ def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
     assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(("header", "printed"), [
+    ("nocite: '@*'\n", {"Zeta", "Alpha"}),
+    ('nocite: "@*"\n', {"Zeta", "Alpha"}),
+    ("nocite: |\n  @*\n", {"Zeta", "Alpha"}),
+    ("nocite: ['@zeta2001', '@*']\n", {"Zeta", "Alpha"}),
+    ("base: &every\n  nocite: '[@*]'\n<<: *every\n", {"Zeta", "Alpha"}),
+    ("nocite: '@zeta2001'\n", {"Zeta"}),
+    ("nocite: ['@zeta2001']\n", {"Zeta"}),
+    # Each string read as pandoc reads it on its own: joined, the code span the first opens
+    # would hide the second's citation (round 1 of #852).
+    ("nocite: ['`x', '@zeta2001`']\n", {"Zeta"}),
+    ("nocite: 'email@*'\n", set()),
+    ("title: 'nocite: @*'\n", set()),
+    ("nocite: ''\n", set()),
+])  # fmt: skip
+def test_the_offline_build_prints_the_works_the_header_s_nocite_names(
+    project: Path, header: str, printed: set[str]
+) -> None:
+    """The build stripped each file's front matter and wrote its own header from
+    `paper.yaml`, so a `nocite` there printed nothing, while G7 took `@*` for every entry
+    printed and warned of each. The offline build now carries the file's `nocite` into its
+    header, and prints what G7 says it prints: every entry for `@*`, the key named for one
+    key, and nothing more where no citation is read."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+
+    _with_entries(project, header=header)
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _report = load_namespace(loaded)
+    assembled, _assembly = assemble(loaded, namespace, results)
+    built = build_document(loaded, assembled, mode=OFFLINE)
+    xml = zipfile.ZipFile(built.output).read("word/document.xml").decode("utf-8")
+    text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", xml, re.DOTALL))
+    assert {name for name in ("Zeta", "Alpha") if f"{name}, " in text} == printed, text[-600:]
+
+
 @pytest.mark.parametrize(("snippet", "where", "printed"), [
     ("\\nocite{*}", "body", None),
     ("\\AtBeginDocument{\\nocite{*}}", "preamble", True),
@@ -41452,7 +41488,7 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
              if f.code == "plan-section-missing"}  # fmt: skip
     assert "(PROCESS 2023 checklist, items 6b and 11)" in hints[
         "the plan says nothing about consent and ethics"]
-    assert "(PROCESS 2023 checklist, items 6c and 6f)" in hints[
+    assert "(PROCESS 2023 checklist, items 6c to 6f)" in hints[
         "the plan says nothing about case selection"]
     report = check_design(load_project(project)[0])
     assert report.counts["design_expected"] == 11, report.counts
@@ -41492,6 +41528,14 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## Subgroup comparisons", "comparison", False),
         ("## Comparison of outcomes between groups", "comparison", False),
         ("## Historical background", "comparison", False),
+        # Main's words for the comparison, which three rounds of #853 found no better rule
+        # for: false passes and false alarms written in Known gaps.
+        ("### Comparisons", "comparison", True),
+        ("## Comparison with baseline values", "comparison", True),
+        ("## External data sources", "comparison", True),
+        ("## Sources of historical data", "comparison", True),
+        ("## Comparison versus the literature", "comparison", False),
+        ("## Comparison and benchmarking", "comparison", False),
         ("## Ethical approval", "consent and ethics", True),
         ("## Informed consent", "consent and ethics", True),
         ("## Ethics committee", "consent and ethics", True),
@@ -41511,6 +41555,32 @@ def test_a_case_series_section_is_found_by_its_own_words(
     plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
                     encoding="utf-8")  # fmt: skip
     assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("design", "heading", "section"),
+    [
+        ("case-series", "## Case‑finding", "case selection"),
+        ("case-series", "## Follow‑up", "follow-up"),
+        ("cohort", "## Follow‑up", "time zero and follow-up"),
+        ("case-report", "## De‑identification", "de-identification"),
+        ("systematic-review", "## Meta‑analysis", "synthesis"),
+        ("cross-sectional", "## Non‐response", "bias"),
+    ],
+)
+def test_a_heading_s_unicode_hyphen_is_read_as_a_hyphen(
+    project: Path, design: str, heading: str, section: str
+) -> None:
+    """Round 2 of #849: Word writes a non-breaking hyphen (U+2011) where a hyphen must not
+    end a line, and a plan pasted from it kept the character, so "Case\u2011finding" or
+    "Follow\u2011up" was no heading of its section in a plan of any design. A heading's
+    Unicode hyphens, U+2010 and U+2011, are read as the hyphen every pattern names."""
+    _paper_has(project, study_type=design)
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert section not in _plan_asked(project)
 
 
 @pytest.mark.parametrize(

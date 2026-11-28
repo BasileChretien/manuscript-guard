@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from manuscript_guard.setup.answers import LATER, MISSING, answer, problems
@@ -169,6 +170,77 @@ def _design(folder: Folder, answers: dict):
                     "choice", options, shortlist=3)  # fmt: skip
 
 
+def _recipe_meta(path: Path) -> dict:
+    """A recipe's `meta`, read as YAML and nothing more; empty where the file is no readable
+    mapping that holds one. Read as `transcribe` reads it, a half-written recipe of the
+    project's raised what `setup questions` stopped on (round 1 of #856): setup offers it
+    by its file's name all the same, and `transcribe` says what is wrong with it."""
+    import yaml
+
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError):  # a file not in UTF-8 is a ValueError
+        return {}
+    meta = document.get("meta") if isinstance(document, dict) else None
+    return meta if isinstance(meta, dict) else {}
+
+
+def _recipes_for(name: str, root: Path) -> list[tuple[str, dict]]:
+    """The recipes of one of a design's guidelines, each by the name its profile is written
+    under (`meta.name`, which `transcribe` names the profile by, else the file's), with its
+    `meta`: those whose name is the guideline's or goes on from it with a hyphen or a plus
+    (CARE-2013, RECORD-PE, TRIPOD+AI), the project's own among them, the current editions
+    first."""
+    from manuscript_guard.paths import recipes
+
+    found = []
+    for stem, path in recipes(root).items():
+        meta = _recipe_meta(path)
+        recipe = str(meta.get("name") or stem)
+        rest = recipe[len(name):]
+        if recipe.upper().startswith(name.upper()) and rest[:1] in ("", "-", "+"):
+            found.append((recipe, meta))
+    return sorted(found, key=lambda one: (bool(one[1].get("superseded_by")), one[0]))
+
+
+def _guideline_options(names: tuple[str, ...], root: Path) -> tuple[Option, ...]:
+    """Each of a design's guidelines as paper.yaml must name it to find its checklist: by
+    its recipes' names, each with what its recipe says it covers, quoted as written, or by
+    its own name where no recipe is there for it. Offered the design's short names, "CARE"
+    or "STARD", an author found no profile of that name and was told the checklist was not
+    retrieved (round 1 of #851; Basile, 2026-11-28)."""
+    options: list[Option] = []
+    for name in names:
+        found = _recipes_for(name, root)
+        if not found:
+            options.append(Option(name, name, f"paper.yaml declares {name}, which has no "
+                                  "recipe yet, so its checklist is not retrieved until one "
+                                  "is written (the reporting-checklist skill says how)"))
+        for recipe, meta in found:
+            covers = " ".join(str(meta.get("applies_to") or "").split())
+            replaced = meta.get("superseded_by")
+            options.append(Option(recipe, recipe, f"paper.yaml declares {recipe}"
+                                  + (f', for "{covers}"' if covers else "")
+                                  + (f"; replaced by {replaced}" if replaced else "")
+                                  + "; its checklist is then retrieved, and each item "
+                                  "answered by a quoted sentence"))
+    return tuple({option.value: option for option in options}.values())
+
+
+def _recommended(names: tuple[str, ...], root: Path) -> list[str] | None:
+    """The guideline a rule picks: the one of a design that has one, by its one current
+    recipe that is not an abstract's (PRISMA: PRISMA-2020; TRIPOD: TRIPOD+AI), or by its
+    own name where it has no recipe; none where the design has several."""
+    if len(names) != 1:
+        return None
+    found = _recipes_for(names[0], root)
+    if not found:
+        return [names[0]]
+    current = [recipe for recipe, meta in found if not meta.get("superseded_by")
+               and not recipe.lower().endswith("-abstracts")]  # fmt: skip
+    return current if len(current) == 1 else None
+
+
 def _guideline(folder: Folder, answers: dict):
     from manuscript_guard.gates.design import study_types
 
@@ -178,14 +250,13 @@ def _guideline(folder: Folder, answers: dict):
     if design is MISSING:
         return _Wait("study_type")
     names = tuple((study_types().get(design) or {}).get("guidelines") or ())
-    options = tuple(Option(name, name, f"paper.yaml declares {name}; its own checklist is "
-                           "then retrieved, and each item answered by a quoted sentence")
-                    for name in names)  # fmt: skip
+    options = _guideline_options(names, folder.root)
     return Question("reporting_guideline", "Which reporting guidelines does the paper "
                     "follow?", "Each guideline's checklist is held to the manuscript from "
                     "internal review on. An empty list puts it off.", "several", options,
-                    recommended=[names[0]] if len(names) == 1 else None,
-                    other="a guideline's name, as STROBE or CONSORT",
+                    recommended=_recommended(names, folder.root),
+                    other="a guideline's name as its recipe is named, as STROBE or "
+                    "CARE-2013",
                     example="reporting_guideline: [STROBE]")  # fmt: skip
 
 

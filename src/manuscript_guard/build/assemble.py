@@ -38,6 +38,7 @@ from manuscript_guard.text.masking import (
     front_matter_abstract,
     front_matter_end,
     front_matter_problem,
+    front_matter_said,
     front_matter_title,
 )
 from manuscript_guard.text.placeholders import parse
@@ -57,6 +58,10 @@ FIGURE_SPAN = "mg-figure"
 class Assembled:
     path: Path
     text: str
+    #: The strings the file's front matter holds under `nocite`, read as G7 reads them
+    #: (`front_matter_said`). The header is stripped from `text`, and the build writes them
+    #: into the header it writes (`document.nocite_lines`).
+    nocite: tuple[str, ...] = ()
 
 
 def render_table(table: Table, label: str | None = None) -> str:
@@ -404,6 +409,8 @@ def assemble(
                     rendered[: placeholder.start] + replacement + rendered[placeholder.end :]
                 )
 
-        out.append(Assembled(path=path, text=rendered))
+        out.append(
+            Assembled(path=path, text=rendered, nocite=front_matter_said(source, "nocite"))
+        )
 
     return out, report.with_counts(assembled_files=len(out))

@@ -17,11 +17,13 @@
 // files it names; "expect" names a file holding what the command line printed, "form" the
 // page's boxes to set, by id, for the options the command line was given, "tracked", where
 // the copy with tracked changes is asked for, how many corrections it must track, and
-// "made", where the journal's form is filled, the files the page must make of it.
+// "made", where the journal's form is filled, the files the page must make of it, by the day
+// the page dates them (made.mjs).
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import puppeteer from "puppeteer-core";
+import { caseHeld, dayOf } from "./made.mjs";
 
 const hosted = process.argv.includes("--hosted");
 const [site, casesDir, browserName, given] = process.argv.slice(2).filter((arg) => arg !== "--hosted");
@@ -140,7 +142,9 @@ try {
     await put("against", against);
     for (const box of document.getElementById("form").querySelectorAll("input, select, textarea")) {
       if (box.type === "file") continue;
-      if (box.type === "checkbox") box.checked = Boolean(form[box.id]);
+      // "Check a paper", the page's first choice (compare.js): its value is the choice's own.
+      if (box.type === "radio") box.checked = box.value === "check";
+      else if (box.type === "checkbox") box.checked = Boolean(form[box.id]);
       else box.value = form[box.id] ?? "";
       box.dispatchEvent(new Event("change", { bubbles: true }));
     }
@@ -149,10 +153,86 @@ try {
     while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
     return window.mgLast;
   }, paper, against, form);
+  // The day in the page, in this computer's own time, as it dates the journal's form.
+  const today = async () => dayOf(await page.evaluate(() => {
+    const now = new Date();
+    return [now.getFullYear(), now.getMonth() + 1, now.getDate()];
+  }));
+
+  // A comparison, as "Compare a revision" runs it (compare.js): its choice made, the two
+  // versions, the letter and the comments chosen by their paths in the cases folder, each
+  // under its own name, the start of the report asked for or not, and the run; what the page
+  // then shows, and the start of the report as text, read in the page (a Uint8Array does not
+  // come back out of Firefox whole).
+  const compareChosen = (chosen) => page.evaluate(async ({ before, after, letter, comments, draft }) => {
+    const $ = (id) => document.getElementById(id);
+    const put = async (id, names) => {
+      const files = new DataTransfer();
+      for (const name of names) {
+        const blob = await (await fetch("/__cases__/" + encodeURIComponent(name))).blob();
+        files.items.add(new File([blob], name.split("/").pop()));
+      }
+      $(id).files = files.files;
+      $(id).dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    $("modecompare").checked = true;
+    $("modecompare").dispatchEvent(new Event("change", { bubbles: true }));
+    await put("before", [before]);
+    await put("after", [after]);
+    await put("letter", letter ? [letter] : []);
+    await put("comments", comments ? [comments] : []);
+    $("draft").checked = Boolean(draft);
+    window.mgLast = null;
+    $("run").click();
+    while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
+    const last = window.mgLast;
+    return { error: last.error, code: last.code, out: last.out, err: last.err, sent: last.sent || [],
+      draft: last.draft ? new TextDecoder().decode(last.draft.data) : null,
+      ran: $("runtext").textContent, moving: !$("running").hidden,
+      report: $("report").textContent, shown: !$("astext").hidden, button: !$("savedraft").hidden,
+      paperBox: !$("checkparts").hidden };
+  }, chosen);
+  const unix = (said) => (typeof said === "string" ? said.replace(/\r\n/g, "\n") : said);
+  async function comparisonHeld(one) {
+    const result = await compareChosen(one.compare);
+    if (result.error) {
+      fail(`${one.name}: the comparison could not run: ${result.error}`);
+      return;
+    }
+    // What the command line printed, its notes, its exit code and the start of the report.
+    const said = JSON.parse(readFileSync(join(casesDir, one.expect), "utf-8"));
+    const wrong = ["out", "err", "code", "draft"].filter((part) => unix(said[part]) !== result[part]);
+    if (wrong.length) {
+      fail(`${one.name}: the page's ${wrong.join(", ")} not the command line's`);
+      console.error(`--- command line\n${said.out}${said.err}\n--- page\n${result.out}${result.err}`);
+    }
+    if (!result.shown || result.report !== result.out || result.paperBox) {
+      fail(`${one.name}: the report shown is not the text the comparison printed, or the `
+        + "paper's box is still shown");
+    }
+    if (!result.ran.startsWith("Compared ") || result.moving) {
+      fail(`${one.name}: after the run the page says "${result.ran}"${result.moving ? ", its steps still shown" : ""}`);
+    }
+    if (result.button !== Boolean(one.compare.draft)) {
+      fail(`${one.name}: the start of the report's button is ${result.button ? "" : "not "}shown`);
+    }
+    const elsewhere = result.sent.filter((entry) => !entry.url.startsWith(origin));
+    if (elsewhere.length) fail(`${one.name}: the comparison sent ${elsewhere.map((e) => e.url).join(", ")}`);
+    console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes, exit code and start of the report"}, `
+      + `${result.sent.length} requests`);
+  }
 
   const cases = JSON.parse(readFileSync(join(casesDir, hosted ? "hosted-cases.json" : "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
-    const result = await choose(one.paper, one.against || [], one.form || {});
+    if (one.compare) {
+      await comparisonHeld(one);
+      continue;
+    }
+    // The case, and the files the page made of the journal's form in it held to those the
+    // command line was given, dated the day the case began or ended on; none where the form
+    // is empty.
+    const { result, unlike } = await caseHeld(today,
+      () => choose(one.paper, one.against || [], one.form || {}), one.made);
     if (result.error) {
       fail(`${one.name}: the audit could not run: ${result.error}`);
       continue;
@@ -215,12 +295,8 @@ try {
     } else if (result.tracked) {
       fail(`${one.name}: a copy with tracked changes was made though none was asked for`);
     }
-    // The journal's profile and the authors' names the form made, as the command line was
-    // given them; none where the form is empty.
-    const made = JSON.stringify(result.made || {});
-    if (made !== JSON.stringify(one.made || {})) {
-      fail(`${one.name}: the page made ${made} of the journal's form, not ${JSON.stringify(one.made || {})}`);
-    }
+    // The journal's profile and the authors' names the form made (caseHeld, above).
+    if (unlike) fail(`${one.name}: ${unlike}`);
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);
   }

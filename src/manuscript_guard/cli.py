@@ -3069,6 +3069,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     """Two versions of a manuscript side by side, for an editor or a referee reading a
     revision (`comparing`). Exit 0 once the comparison ran, whatever it found; 2 where a
     file could not be read, or the report's file is there already."""
+    from manuscript_guard.auditing.progress import step
     from manuscript_guard.comparing import NOTICE
     from manuscript_guard.comparing.report import as_json, compare, render
     from manuscript_guard.comparing.versions import Unreadable
@@ -3086,6 +3087,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         found = compare(args.old, args.new, args.response, args.comments)
     except Unreadable as exc:
         return _audit_refused(args, f"manuscript-guard compare: {exc}")
+    step("written")
     said = as_json(found) if args.json else render(found, Path.cwd())
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_compare
@@ -3093,7 +3095,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         from manuscript_guard.comparing.report import _pdfs
 
         text = for_compare(found, _flags_given(args, _COMPARE_FLAGS),
-                           _shown(Path.cwd(), _pdfs(found)))  # fmt: skip
+                           _shown(Path.cwd(), _pdfs(found), resolve=True))  # fmt: skip
         if not _write_draft(args, text, "compare"):
             return 2
     if args.out is None:
@@ -4587,7 +4589,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
             pandoc=pandoc(),
             numbers=numbers,
         )
-        marked.append(Assembled(path=item.path, text=text))
+        marked.append(Assembled(path=item.path, text=text, nocite=item.nocite))
         marks.extend(found)
 
     build_dir = project.path("build")
@@ -4863,7 +4865,7 @@ def _latex_from_markdown(project, args: argparse.Namespace):
     # Citeproc formats offline, with the journal's style kept by `style` or the one given.
     style = _journal_style(project, argparse.Namespace(csl=args.csl, offline=True))
     try:
-        return build_from_markdown(project, assembled, engine=_latex_engine(project), csl=style)
+        packed = build_from_markdown(project, assembled, engine=_latex_engine(project), csl=style)
     except LatexMissing as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -4873,6 +4875,9 @@ def _latex_from_markdown(project, args: argparse.Namespace):
     except OSError as exc:
         print(f"manuscript-guard: the LaTeX is not built: {exc}", file=sys.stderr)
         return 2
+    # What writing it found and built it anyway: a journal template that prints no `\nocite`.
+    _print_assembly_warnings(packed.report, project)
+    return packed
 
 
 def _build_markdown_latex(project, report, args: argparse.Namespace) -> int:
@@ -5109,6 +5114,8 @@ def _said_offline_citations(project, result, supplement: Path | None) -> None:
     if supplement is not None:
         source = project.path("build") / f"{supplement.stem}.md"
         with contextlib.suppress(OSError):
+            # The text after the header: `outside_code` blanks the build's header with the
+            # rest of the metadata, so its `nocite` is no citation (round 1 of #852).
             text = outside_code(source.read_text(encoding="utf-8"))
             keys |= {use.citekey for use in find_citations(text, source)}
     if not keys:

@@ -840,16 +840,23 @@ class _Show:
     slashes on every system as `--json` names it (`findings.placed_at`); a line as "line
     12", a line of a PDF's text as its page and its line (`auditing.pdf`), and a line of a
     .docx's as its section and its paragraph (`auditing.paragraphs`): `placers`, by the
-    paper's path (`AuditReport.placers`)."""
+    paper's path (`AuditReport.placers`). `resolve`, a file given by a path relative to the
+    folder it is run in is named from `root` too, as `compare` names one: two versions of
+    one name in folders of their own (round 1 of #854); the audit names such a file by its
+    name alone."""
 
-    def __init__(self, root: Path | None, placers: dict | None = None) -> None:
+    def __init__(self, root: Path | None, placers: dict | None = None, *,
+                 resolve: bool = False) -> None:  # fmt: skip
         self.root = root
         self.placers = placers or {}
+        self.resolve = resolve
 
     def __call__(self, path: Path) -> str:
         if self.root is None:
             return path.name
         try:
+            if self.resolve:
+                return posix_path(path.resolve().relative_to(self.root.resolve()))
             return posix_path(path.relative_to(self.root))
         except ValueError:
             return path.name
@@ -860,7 +867,8 @@ class _Show:
     def within(self, paper: Path, places) -> _Show:
         """The same, with the lines of `paper` placed by `places`, a converted .docx's text
         that G6, G14 and G4 read, where it is not None."""
-        return self if places is None else _Show(self.root, {**self.placers, paper: places})
+        return self if places is None else _Show(self.root, {**self.placers, paper: places},
+                                                 resolve=self.resolve)
 
     def at(self, path: Path | None, line: int | None) -> str:
         """"line 12", "page 3, line 12" in a PDF, "Methods, paragraph 3" in a .docx."""
@@ -875,8 +883,8 @@ class _Show:
         return f"{self(path)}, {placer.said(line)}" if line else self(path)
 
 
-def _shown(root: Path | None, placers: dict | None = None) -> _Show:
-    return _Show(root, placers)
+def _shown(root: Path | None, placers: dict | None = None, *, resolve: bool = False) -> _Show:
+    return _Show(root, placers, resolve=resolve)
 
 
 def placed(item_dict: dict, path: Path | None, line: int | None, placers: dict) -> dict:

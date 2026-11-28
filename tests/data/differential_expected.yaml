@@ -78,9 +78,12 @@ expected:
       the file defines or a heading's title is, "with [Qata4lifesciences](https://...),
       [QLS](https://...)", where the base read QLS as defined, and it is a use; a definition
       beside a link is read without the link's markup, "the [Dark Fern](https://...) Census
-      [DFC]" defining DFC as "Dark Fern Census", and no long form holds `](` or `][`. The
-      inputs now hold a piece of each shape (tests/generated.py, `LINKED`). The entry it
-      replaces, for the shapes of decisions D2, D5, D8 and D10, is spent
+      [DFC]" defining DFC as "Dark Fern Census", and a colon round a link's text pairs it as
+      printed, "[ROR](https://...): reporting odds ratio", in a note too; no long form holds
+      `](`, nor `][label]` by a label the file defines, and a link in a heading defines
+      nothing either. The inputs now hold a piece of each shape (tests/generated.py,
+      `LINKED`). The entry it replaces, for the shapes of decisions D2, D5, D8 and D10, is
+      spent
   - reading: abbreviations of a PDF's text
     why: >-
       the same, in a file the audit staged from a PDF (the entry for `abbreviations`); the

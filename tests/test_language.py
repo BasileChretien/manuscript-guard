@@ -1501,9 +1501,17 @@ _UNDEFINED_ROR = [("undefined", "ROR")]
          "[ror]: https://example.org", _UNDEFINED_ROR),
         ("The reporting odds ratio [ROR](glossary.md) was read. The ROR rose.", _UNDEFINED_ROR),
         ("The reporting odds ratio ![ROR](x.png) was read. The ROR rose.", _UNDEFINED_ROR),
+        ("The reporting odds ratio ![ROR](https://example.org/x.png) was read. The ROR rose.",
+         _UNDEFINED_ROR),
         ("The reporting odds ratio [ROR][none] was read. The ROR rose.", []),
         # A bracketed span's text, which pandoc prints with no brackets, defines still.
         ("The reporting odds ratio [ROR]{.mark} was read. The ROR rose.", []),
+        # Brackets that are no link's in a long form, `[1][2]` with no label 2 defined, are
+        # no link's markup (round 1 of the review); a collapsed reference whose text, across a
+        # line break, the link reader misses, and whose text the file defines as a label, is.
+        ("The odds ratio [1][2] (OR) was read. The OR rose.", []),
+        ("The quiet [small\ndeep][] lake survey (QLS) was read. The QLS rose.\n\n"
+         "[Small  Deep]: https://q.example", [("undefined", "QLS")]),
     ],
 )  # fmt: skip
 def test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other(
@@ -1563,6 +1571,12 @@ def test_a_link_s_text_after_words_that_hold_its_letters_defines_nothing(project
          "European Open Science Cloud"),
         ("The [Northern Quiet Network][nq] (NQN) was read.\n\n[nq]: https://nq.example",
          "NQN", "Northern Quiet Network"),
+        # A link's text in round brackets or before a colon, read as printed (round 1 of the
+        # review): the first as before, the second a pair it was not.
+        ("The reporting odds ratio ([ROR](https://x.example)) was read.", "ROR",
+         "reporting odds ratio"),
+        ("*Note.* [ROR](https://x.example): reporting odds ratio.", "ROR",
+         "reporting odds ratio"),
         # A long form a link's text is a part of, read as pandoc prints it.
         ("The [quiet](https://q.example) lake index (QLI) was read.", "QLI",
          "quiet lake index"),
@@ -1577,21 +1591,82 @@ def test_a_definition_beside_a_link_is_read_as_pandoc_prints_it(
 ) -> None:
     """A link defines nothing, but a definition after one is read (Basile, 2026-11-28): its
     long form the link's text, or words a link's text is one of, without the link's markup,
-    which pandoc does not print. A long form never holds `](` or `][`."""
+    which pandoc does not print. A long form never holds `](`."""
     read = _file(0, Path("main.md"), text, [], False)
     assert [(found, words) for _at, found, words in read.definitions] == [(short, long)]
 
 
 def test_a_long_form_holding_a_link_s_markup_is_none() -> None:
     """A link whose text runs across a line break is not found as a link's text (DESIGN.md,
-    Known gaps), so its markup is left in what G14 reads: a long form holding `](` or `][` is
-    none, rather than one pandoc never prints, "Qata4 lifesciences](" (Basile, 2026-11-28).
+    Known gaps), so its markup is left in what G14 reads: a long form holding `](`, or
+    `][label]` by a label the file defines, is none, rather than one pandoc never prints,
+    "Qata4 lifesciences](" (Basile, 2026-11-28; round 1 of the review).
     One that closes a bracket it does not open inside it was none already (`_unmatched`)."""
     text = "Of [Qata4\nlifesciences](https://q.example/), [QLS] was read."
     read = _file(0, Path("main.md"), text, [], False)
     assert read.definitions == []
     assert _long_form("DLS", "with [Data4lifestudies]( ,") is None
-    assert _long_form("DLS", "with [Data4lifestudies][d] ,") is None
+    # `][label]` only where the file defines the label, in any case and its spaces run
+    # together, a collapsed reference's by its text (round 1 of the review). A full
+    # reference's label the file defines is read as a shortcut link of its own, `[ref]`, so
+    # its markup is taken out and the long form holds the first bracket as typed.
+    for written, label, defines in (("[ref]", "REF", True), ("[ref]", "other", True),
+                                    ("[]", "Small  Deep", False), ("[]", "other", True)):
+        text = (f"The quiet [small\ndeep]{written} lake survey (QLS) was read.\n\n"
+                f"[{label}]: https://q.example")
+        read = _file(0, Path("main.md"), text, [], False)
+        assert bool(read.definitions) is defines, (written, label, read.definitions)
+
+
+def test_a_link_in_a_heading_defines_nothing() -> None:
+    """A heading under a named section defines (decision 29), but not by a link's text in it
+    (Basile, 2026-11-28, "A link defines nothing"; round 1 of the review)."""
+    for heading, defined in (("## Reporting odds ratio [ROR](https://x.example)", []),
+                             ("## Reporting odds ratio (ROR)", ["ROR"])):
+        text = f"# Methods\n\n{heading}\n\nThe ROR rose.\n"
+        read = _file(0, Path("main.md"), text, [], False)
+        assert [short for _at, short, _long in read.definitions] == defined, heading
+
+
+#: Notes that pair a link's text with its long form after a colon, read as printed (round 1
+#: of the review): one in the text after the text's definition, which it restates, and one
+#: under a table, the table's own, giving ROR another meaning than the text's.
+NOTED_LINKS = (
+    "# Methods\n\nThe reporting odds ratio (ROR) was computed.\n\n"
+    "*Note.* [ROR](https://x.example): reporting odds ratio.\n\nThe ROR rose.\n",
+    "# Methods\n\nThe ratio of odds reported (ROR) was computed, and the ROR rose.\n\n"
+    "| Drug | n |\n|---|---|\n| one | 3 |\n\n*Note.* [ROR](https://x.example): reporting odds "
+    "ratio.\n",
+)
+#: What G14 says of each, as it says it with no link.
+NOTED_SAID = (
+    [],
+    ["ROR is defined as 'reporting odds ratio' here, in a table's or a figure's own text, and "
+     "as 'reported' at manuscript/main.md:3 in the text: is it the same thing?"],
+)
+
+
+@pytest.mark.parametrize(("text", "said"), zip(NOTED_LINKS, NOTED_SAID, strict=True))
+def test_a_colon_pair_round_a_link_s_text_in_a_note_reads_as_with_no_link(
+    project: Path, text: str, said: list[str]
+) -> None:
+    """A link's text before a colon in a note is read as pandoc prints it, "ROR: reporting
+    odds ratio", and the note is found by that pair as it is with no link: one in the text
+    restates the text's definition, and one under a table is the table's own (round 1 of
+    the review). The pairs a note is found by were read with the link's markup in, and the
+    first said ROR was defined again."""
+    for typed in (text, text.replace("[ROR](https://x.example)", "ROR")):
+        report = written(project, typed)
+        assert found(report, "abbreviation-redefined") == said, typed
+
+
+def test_a_link_s_definition_is_read_as_text(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps): a link's definition, `[ROR]: https://...`, which
+    pandoc does not print, is read as text, so its label is a use of a short form, and a
+    definition not used again in the text is not reported as unused."""
+    text = "The reporting odds ratio (ROR) was read."
+    assert reported(project, text) == [("unused", "ROR")]
+    assert reported(project, f"{text}\n\n[ROR]: https://x.example") == []
 
 
 def test_no_edit_writes_out_a_link_s_text(project: Path) -> None:

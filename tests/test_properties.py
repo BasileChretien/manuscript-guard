@@ -2375,18 +2375,23 @@ def test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed(
     text, so the text of a link after words that hold its letters is no definition, whichever
     shape the link takes, to an address, a section or a file, a reference, a collapsed one or
     a shortcut whose label the file defines in any case or a heading's title is, after another
-    link or not; nor is an image's. A definition beside a link is read as pandoc prints it,
-    with no link's markup in its long form, and a bracket whose label nothing defines
-    defines as before."""
+    link or not, in the text or in a heading under the Methods; nor is an image's, to a file
+    or an address. A definition beside a link is read as pandoc prints it, with no link's
+    markup in its long form, a reference's only by a label the file defines, and a bracket
+    whose label nothing defines defines as before, and so do brackets in a long form that
+    are no link's (round 1 of the review)."""
     text, expected = drawn
     read = _file(0, Path("main.md"), text, [], False)
     assert sorted(read.definitions) == expected, (read.definitions, text)
 
 
 def _a_link_s_text_defines(patch: pytest.MonkeyPatch) -> None:
-    """The rule before Basile's decision of 2026-11-28: no link is read apart, and a link's
-    text is a short form in square brackets after its long form."""
+    """The rule before Basile's decision of 2026-11-28: no link is read apart, a link's text
+    is a short form in square brackets after its long form, and no long form is refused for
+    holding a link's markup."""
     patch.setattr(language_gate, "link_text_spans", lambda text: [])
+    patch.setattr(language_gate, "_LINK_MARKUP", re.compile(r"(?!)"))
+    patch.setattr(language_gate, "holds_a_reference", lambda words, labels: False)
 
 
 def _only_an_inline_link_is_a_link(patch: pytest.MonkeyPatch) -> None:
@@ -2413,10 +2418,34 @@ def _a_long_form_may_hold_a_link_s_markup(patch: pytest.MonkeyPatch) -> None:
 
     patch.setattr(language_gate, "_unlinked", opened_only)
     patch.setattr(language_gate, "_LINK_MARKUP", re.compile(r"(?!)"))
+    patch.setattr(language_gate, "holds_a_reference", lambda words, labels: False)
 
 
 def _a_long_form_may_hold_markup_the_link_reader_missed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_LINK_MARKUP", re.compile(r"(?!)"))
+
+
+def _a_long_form_may_hold_a_reference_the_link_reader_missed(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(language_gate, "holds_a_reference", lambda words, labels: False)
+
+
+def _a_long_form_holding_brackets_after_brackets_is_refused(patch: pytest.MonkeyPatch) -> None:
+    """The refusal of round 0: `][` whatever the label, so `[1][2]` in a long form was one."""
+    patch.setattr(language_gate, "holds_a_reference", lambda words, labels: "][" in words)
+
+
+def _an_image_s_text_is_read(patch: pytest.MonkeyPatch) -> None:
+    """An image not hidden, so that the `[text](` the mask leaves of one to an address is read
+    as a short form in square brackets."""
+    patch.setattr(language_gate, "_IMAGE", re.compile(r"(?!)"))
+
+
+def _a_link_in_a_heading_defines(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate._in_titles
+    patch.setattr(language_gate, "_in_titles",
+                  lambda titles, links=(), labels=frozenset(): real(titles, (), labels))
 
 
 from generated import apart_forms  # noqa: E402
@@ -3512,7 +3541,8 @@ def _only_known_as_names_a_short_form(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_heading_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_in_titles", lambda titles, links=(): [])
+    patch.setattr(language_gate, "_in_titles",
+                  lambda titles, links=(), labels=frozenset(): [])  # fmt: skip
 
 
 def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
@@ -31513,6 +31543,23 @@ BROKEN = {
     ),
     "a long form may hold markup the link reader missed": (
         _a_long_form_may_hold_markup_the_link_reader_missed,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    # Round 1 of the review.
+    "a long form may hold a reference the link reader missed": (
+        _a_long_form_may_hold_a_reference_the_link_reader_missed,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "a long form holding brackets after brackets is refused": (
+        _a_long_form_holding_brackets_after_brackets_is_refused,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "an image's text is read": (
+        _an_image_s_text_is_read,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "a link in a heading defines": (
+        _a_link_in_a_heading_defines,
         test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
     ),
     "only known as and referred to as name a short form": (

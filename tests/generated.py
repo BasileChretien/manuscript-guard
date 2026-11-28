@@ -1118,8 +1118,11 @@ def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
 #: `{m}`, a long form a link's text is a word of, a square bracket after such a long form,
 #: and one after a link and a comma. A link to an address whose text runs across a line
 #: break, which the link reader does not find (DESIGN.md, Known gaps): the `](` the mask
-#: leaves stays, and no long form holds it. A bracket that is no link, its label defined
-#: nowhere, defines as before.
+#: leaves stays, and no long form holds it; nor a collapsed reference's, whose text the file
+#: defines as a label. A bracket that is no link, its label defined nowhere, defines as
+#: before, and so do brackets in a long form that are no link's, `[1][2]`. And from round 1
+#: of the review: an image to an address, whose text defines nothing, and a link in a
+#: heading, which `linked_definitions` puts under the Methods, where a heading defines.
 LINKED = (
     ("the quiet lake index [QLI]({t}) was read", "[QLI", "QLI", None),
     ("the remote wave survey [RWS][{l}] held", "[RWS", "RWS", None),
@@ -1138,17 +1141,24 @@ LINKED = (
     ("of [Mata4\nlifestudies](https://example.org/m), [MLS] held", "[MLS", "MLS", None),
     ("the hazard quiet ratio [HQR] held", "[HQR", "HQR", "hazard quiet ratio"),
     ("the hazard quiet zone [HQZ][nolabel] held", "[HQZ", "HQZ", "hazard quiet zone"),
+    ("the quiet lake [1][2] survey (QLS) held", "(QLS", "QLS", "quiet lake [1][2] survey"),
+    ("the dark [tall\nreed][] marsh count (DMC) held", "(DMC", "DMC", None),
+    ("the bright moon map ![BMM](https://example.org/m.png) held", "[BMM", "BMM", None),
+    ("## Reporting quiet ratio [RQR]({t})", "[RQR", "RQR", None),
 )  # fmt: skip
 #: A link's target: an address of each form the mask takes, a section and a file.
 LINKED_TARGETS = ("https://example.org/a", "<https://example.org/b>",
                   'https://example.org/c "A title"', "www.example.org/d", "doi:10.1000/e5",
                   "#methods", "notes.md")  # fmt: skip
 #: The labels a reference link gives, each with the ways its definition may write it, which
-#: pandoc matches: in another case, and with its spaces run together or not.
-LINKED_LABELS = {"l": ("Ref One", ("ref one", "REF  ONE", "Ref One")),
+#: pandoc matches: in another case, and with its spaces run together or not. No word of a
+#: label of two words is in capitals: a link's definition is read as text (DESIGN.md, Known
+#: gaps), and "[TALL reed]: ... title" was read as a pair.
+LINKED_LABELS = {"l": ("Ref One", ("ref one", "Ref  One", "ref One")),
                  "m": ("pm", ("pm", "PM")),
                  "NBR": ("NBR", ("nbr", "NBR", "Nbr")),
-                 "TFM": ("TFM", ("tfm", "TFM", "Tfm"))}  # fmt: skip
+                 "TFM": ("TFM", ("tfm", "TFM", "Tfm")),
+                 "DMC": ("tall\nreed", ("Tall  Reed", "tall reed", "Tall reed"))}  # fmt: skip
 #: Each piece of `LINKED` as a block the readings draw (`ABBREVIATION_BLOCKS`): to an address,
 #: and with the definition of each label it uses under it, in another case.
 def _linked_block(template: str) -> str:
@@ -1166,7 +1176,7 @@ LINKED_BLOCKS = tuple(_linked_block(template) for template, *_rest in LINKED)
 
 @st.composite
 def linked_definitions(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, str]]]:
-    """A manuscript with every piece of `LINKED`, in an order drawn, each target drawn from
+    """A Methods section with every piece of `LINKED`, in an order drawn, each target drawn from
     `LINKED_TARGETS`, and the definitions of the labels of `LINKED_LABELS` after them, in an
     order drawn and each written in a way drawn; and the definitions G14 owes it, where each
     short form stands, the short form and its long form, in order."""
@@ -1180,6 +1190,8 @@ def linked_definitions(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, str]]
             piece = piece.replace("{" + name + "}", LINKED_LABELS[name][0])
         pieces.append(piece)
     text, starts = _paragraphs(draw, pieces)
+    # Under the Methods, so that a heading may define (decision 29).
+    text, starts = "# Methods\n\n" + text, [start + len("# Methods\n\n") for start in starts]
     defined = [f"[{draw(st.sampled_from(spelt))}]: {draw(st.sampled_from(LINKED_TARGETS[:5]))}"
                for _label, spelt in LINKED_LABELS.values()]  # fmt: skip
     text += "\n".join(draw(st.permutations(defined))) + "\n"

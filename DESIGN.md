@@ -26176,18 +26176,32 @@ Open, recorded as each change landed:
     Pinned by `tests/test_language.py::test_the_capital_a_name_takes_opening_a_sentence_is_read_one_way_only`.
   - A short form in square brackets is read as a definition wherever the words before it
     spell it and pandoc prints the brackets, and a bracketed span's, `[ROR]{.mark}`, is
-    read so too, though pandoc prints no brackets round it. A link's text is not, whichever
-    shape the link takes, `[ROR](https://...)`, `[ROR][ref]`, `[ROR][]`, `[ROR]` where the
-    file defines the label, or a link to a file, and nor is an image's (Basile, 2026-11-28,
-    "A link defines nothing"); it is still a use. A bracket whose label nothing defines,
-    `[ROR][none]`, is printed with its brackets, and defines.
-    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other`.
+    read so too, though pandoc prints no brackets round it. A link's text is no short form in
+    square brackets, whichever shape the link takes, `[ROR](https://...)`, `[ROR][ref]`,
+    `[ROR][]`, `[ROR]` where the file defines the label, or a link to a file, in the text or
+    in a heading (Basile, 2026-11-28, "A link defines nothing"); it is still a use. An
+    image's text, to a file or an address, is not read at all. A bracket whose label nothing
+    defines, `[ROR][none]`, is printed with its brackets, and defines.
+    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other` and `tests/test_language.py::test_a_link_in_a_heading_defines_nothing`.
+  - Round brackets or a colon round a link's text are read as pandoc prints them, with no
+    link's markup, as the words before or after a link are: "reporting odds ratio
+    ([ROR](https://...))" defines ROR, as it did before, and so does "[ROR](https://...):
+    reporting odds ratio" in a note, which did not, and the note restates a definition or
+    is a table's own as it would be with no link (round 1 of the review).
+    Pinned by `tests/test_language.py::test_a_definition_beside_a_link_is_read_as_pandoc_prints_it` and `tests/test_language.py::test_a_colon_pair_round_a_link_s_text_in_a_note_reads_as_with_no_link`.
   - A link whose text runs across a line break is not found as a link's text
     (`text.inline.link_text_spans`), so its markup stays in what a long form is read from:
-    the `](` the mask leaves before an address. A long form holding `](` or `][` is none,
-    so "of [Qata4" over "lifesciences](https://...), [QLS]" on the next line defines
-    nothing, where pandoc prints "Qata4 lifesciences, [QLS]".
+    the `](` the mask leaves before an address, or a collapsed reference's `][]`. A long
+    form holding `](`, or `][label]` by a label the file defines, is none, so "of [Qata4"
+    over "lifesciences](https://...), [QLS]" on the next line defines nothing, where pandoc
+    prints "Qata4 lifesciences, [QLS]"; brackets that are no link's, "odds ratio [1][2]
+    (OR)", are kept as before. A full reference's label after such a text, defined, is read
+    as a shortcut link of its own, so the long form keeps the first bracket as typed.
     Pinned by `tests/test_language.py::test_a_long_form_holding_a_link_s_markup_is_none`.
+  - A link's definition, `[ROR]: https://...`, which pandoc does not print, is read as
+    text: its label is a use of a short form, so a definition the text does not use again
+    is not reported as unused.
+    Pinned by `tests/test_language.py::test_a_link_s_definition_is_read_as_text`.
   - The unit symbols exempt are the nine shipped. `MW`, `MJ`, `MV`, `MDa`, `TWh`, `IU` and
     `HU` are reported: several have a second meaning, and the list is the project's to
     extend.
@@ -31948,8 +31962,9 @@ Closed since, and why each mattered (an open gap goes above this line):
   both. A link defines nothing now, whichever shape it takes (Basile, 2026-11-28, "A link
   defines nothing"): each link's markup, found as pandoc finds a link, is taken out of what
   the definitions are read in, so a definition beside a link is read as printed,
-  "[European Open Science Cloud](https://...) (EOSC)", and no long form holds `](` or `][`.
-  Held by `tests/test_corruption.py::test_a_definition_made_a_link_is_no_definition`
+  "[European Open Science Cloud](https://...) (EOSC)", and no long form holds `](`, nor
+  `][label]` by a label the file defines.
+  Held by `tests/test_corruption.py::test_a_definition_made_a_link_is_no_definition`.
 
 - **A long form read across a bracket it does not open defined its short form (row 4 of
   window C, 2026-11-24).** It stood under "A long form before its short form takes no letter

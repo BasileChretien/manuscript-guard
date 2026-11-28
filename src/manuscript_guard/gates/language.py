@@ -81,7 +81,13 @@ from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import Heading, find_headings
-from manuscript_guard.text.inline import code_spans, equation_spans, link_text_spans
+from manuscript_guard.text.inline import (
+    code_spans,
+    equation_spans,
+    holds_a_reference,
+    link_labels,
+    link_text_spans,
+)
 from manuscript_guard.text.masking import (
     NUL,
     front_matter_end,
@@ -143,8 +149,10 @@ _PAREN = re.compile(r"\(([^()]{1,300})\)")
 # link defines nothing" (Basile, 2026-11-28; docx-meta-2 of the real-paper corpus), and its
 # brackets are taken out before this is looked for (`_unlinked`). Its text is still a use.
 _SQUARE = re.compile(r"\[([^\[\]]{1,300})\]")
-#: A link's markup, which pandoc does not print: no long form holds it (Basile, 2026-11-28).
-_LINK_MARKUP = re.compile(r"\]\(|\]\[")
+#: A link's markup before its target, which pandoc does not print: no long form holds it
+#: (Basile, 2026-11-28). A reference's, `][label]`, only where the file defines the label
+#: (`holds_a_reference`): `[1][2]` with no label 2 is printed as typed (round 1 of the review).
+_LINK_MARKUP = re.compile(r"\]\(")
 #: The label a reference link gives after its text, the `[ref]` of `[ROR][ref]`, or none.
 _LABEL_AFTER = re.compile(r"\[[^\[\]\n]*\]")
 # A count written as pandoc writes a subscript: the 2 of `CO~2~`.
@@ -625,8 +633,9 @@ def _long_form(short: str, before: str, wider: str = "") -> str | None:
     is, the bracket is passed over and its letters looked for before it, so the `S` of
     "Depression Scale (French version) (HADS)" is the one of "Scale". A long form that
     closes a bracket it does not open is none (`_unmatched`), and so is one that holds a
-    link's markup, `](` or `][`, which pandoc does not print: "Data4lifesciences](" before
-    the next link's text (Basile, 2026-11-28; docx-meta-2 of the real-paper corpus).
+    link's `](`, which pandoc does not print: "Data4lifesciences](" before the next link's
+    text (Basile, 2026-11-28; docx-meta-2 of the real-paper corpus). A reference's `][label]`
+    is refused where the file defines the label (`_definitions`).
     """
     searched = before
     while True:
@@ -1750,7 +1759,10 @@ def _one_word(short: str, words: list[str]) -> bool:
 
 
 def _definitions(
-    prose: str, typed: str | None = None, links: Iterable[tuple[int, int]] = ()
+    prose: str,
+    typed: str | None = None,
+    links: Iterable[tuple[int, int]] = (),
+    labels: frozenset[str] = frozenset(),
 ) -> list[tuple[int, str, str]]:
     """Every definition in `prose`: where its short form stands, the form it defines, and
     the long form. Both orders in round brackets, "reporting odds ratio (ROR)" and "ROR
@@ -1768,7 +1780,9 @@ def _definitions(
 
     `links` are where each link's text stands in `prose`, its brackets with it, as pandoc
     reads a link (`text.inline.link_text_spans`): all of it is read without their markup
-    (`_unlinked`), so a link defines nothing (Basile, 2026-11-28)."""
+    (`_unlinked`), so a link defines nothing (Basile, 2026-11-28). `labels` are the labels
+    the file defines (`text.inline.link_labels`): no long form holds a reference by one,
+    `][label]`, a reference link the link reader missed (round 1 of the review)."""
     prose = _unlinked(prose, links)
     found: list[tuple[int, str, str]] = []
     listed: list[tuple[int, str, str]] = []
@@ -1808,7 +1822,7 @@ def _definitions(
         if each[0] not in taken:
             taken.add(each[0])
             found.append(each)
-    return found
+    return [each for each in found if not holds_a_reference(each[2], labels)]
 
 
 def _unlinked(prose: str, links: Iterable[tuple[int, int]]) -> str:
@@ -2338,7 +2352,7 @@ def _file(
         initials=_initials(prose, _contributions(hidden, titled, statements)),
         title_page=title_page, front=_front(hidden, headings, abstract_title), undue=undue,
         titles=_titles(hidden, spans, named), headings=tuple(sorted(spans)), from_pdf=from_pdf,
-        links=tuple(link_text_spans(text)),
+        links=tuple(link_text_spans(text)), labels=link_labels(text),
     )  # fmt: skip
 
 
@@ -2404,16 +2418,18 @@ def _under_a_section(headings: Sequence[Heading], chain: Iterable[Section] = ())
 
 
 def _in_titles(
-    titles: Iterable[tuple[int, str]], links: Iterable[tuple[int, int]] = ()
+    titles: Iterable[tuple[int, str]],
+    links: Iterable[tuple[int, int]] = (),
+    labels: frozenset[str] = frozenset(),
 ) -> list[tuple[int, str, str]]:
     """The definitions in each heading of `titles` (`_titles`), at their places in the file,
     each read without the markup of the `links` in it, where in the file each link's text
-    stands (`_definitions`)."""
+    stands, and with the `labels` the file defines (`_definitions`)."""
     links = list(links)
     return [(start + at, short, long) for start, title in titles
             for at, short, long in _definitions(title, links=[
                 (low - start, high - start) for low, high in links
-                if start <= low and high <= start + len(title)])]  # fmt: skip
+                if start <= low and high <= start + len(title)], labels=labels)]  # fmt: skip
 
 
 def _markdown_tables(text: str) -> tuple[tuple[int, int], ...]:
@@ -2520,6 +2536,7 @@ def _assembled(
     *,
     titles: tuple[tuple[int, str], ...] = (),
     links: tuple[tuple[int, int], ...] = (),
+    labels: frozenset[str] = frozenset(),
     **more,
 ) -> _File:
     """A file read: its regions, its definitions, and the texts each reading reads in. A
@@ -2527,7 +2544,10 @@ def _assembled(
     where a sentence's would. `titles` are the headings' texts (`_titles`): a definition in
     a heading counts as one in the text does (decision 29, the author, 2026-11-16), "Force
     and electromyography (EMG)", though no use in a heading is read. `links` are where each
-    link's text stands, which defines nothing (`_definitions`)."""
+    link's text stands, which defines nothing, and `labels` the labels the file defines
+    (`_definitions`); a note's pairs are read without the links' markup too, so that a pair
+    round a link's text, "[ROR](https://...): reporting odds ratio", makes the note one as
+    it defines (round 1 of the review)."""
     ends = [*(region.start for region in regions[1:]), len(text)]
     spans = list(zip(regions, ends, strict=True))
     references = [(region.start, end) for region, end in spans if region.scope is None]
@@ -2539,9 +2559,9 @@ def _assembled(
               for span in glossaries for entry in glossary.entries(prose, raw, span)
               if _may_be_defined(entry.short)]  # fmt: skip
     entries = {at for at, _short, _long in listed}
-    headed = _in_titles(titles, links=links)
-    sentences = [*_definitions(prose, raw, links), *headed]
-    paired = _paired(prose, raw)
+    headed = _in_titles(titles, links=links, labels=labels)
+    sentences = [*_definitions(prose, raw, links, labels), *headed]
+    paired = _paired(_unlinked(prose, links), raw)
     # A designation and a name underscores join define nothing, whatever stands beside them.
     apart = _no_short_forms(raw)
     definitions = [each for each in (*(each for each in sentences if each[0] not in entries),

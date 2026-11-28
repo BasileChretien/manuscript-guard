@@ -9,6 +9,12 @@ The steps, in the order an audit takes them: `read` (the papers and the outputs)
 (their numbers, against the outputs and each other, and the reference lists read), `words`
 (G6 and G14), `lookup` (each reference asked of the registries, with how many of how many),
 and `report`. The page adds its own after them: the PDF, and the copy with comments.
+
+A comparison of two versions (`comparing.report.compare`) says its own steps, which share no
+key with an audit's: `versions` (both read, and the letter and the comments), `differences`
+(set side by side), `before` and `after` (each version audited), `letter` and `comments`
+(each held to the versions, where it is given), and `written` (the report). The two audits
+inside it say their steps too; the page, drawing a comparison's, passes over those.
 """
 
 from __future__ import annotations
@@ -21,6 +27,8 @@ STEP: Callable[[str, int, int], None] | None = None
 
 #: The steps an audit says, in order.
 STEPS = ("read", "numbers", "words", "lookup", "report")
+#: The steps a comparison of two versions says, in order.
+COMPARE_STEPS = ("versions", "differences", "before", "after", "letter", "comments", "written")
 
 
 def step(key: str, done: int = 0, total: int = 0) -> None:
@@ -29,4 +37,4 @@ def step(key: str, done: int = 0, total: int = 0) -> None:
         STEP(key, done, total)
 
 
-__all__ = ["STEP", "STEPS", "step"]
+__all__ = ["COMPARE_STEPS", "STEP", "STEPS", "step"]

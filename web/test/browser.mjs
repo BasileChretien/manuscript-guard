@@ -140,7 +140,9 @@ try {
     await put("against", against);
     for (const box of document.getElementById("form").querySelectorAll("input, select, textarea")) {
       if (box.type === "file") continue;
-      if (box.type === "checkbox") box.checked = Boolean(form[box.id]);
+      // "Check a paper", the page's first choice (compare.js): its value is the choice's own.
+      if (box.type === "radio") box.checked = box.value === "check";
+      else if (box.type === "checkbox") box.checked = Boolean(form[box.id]);
       else box.value = form[box.id] ?? "";
       box.dispatchEvent(new Event("change", { bubbles: true }));
     }
@@ -150,8 +152,74 @@ try {
     return window.mgLast;
   }, paper, against, form);
 
+  // A comparison, as "Compare a revision" runs it (compare.js): its choice made, the two
+  // versions, the letter and the comments chosen by their names, the start of the report
+  // asked for or not, and the run; what the page then shows, and the start of the report as
+  // text, read in the page (a Uint8Array does not come back out of Firefox whole).
+  const compareChosen = (chosen) => page.evaluate(async ({ before, after, letter, comments, draft }) => {
+    const $ = (id) => document.getElementById(id);
+    const put = async (id, names) => {
+      const files = new DataTransfer();
+      for (const name of names) {
+        const blob = await (await fetch("/__cases__/" + encodeURIComponent(name))).blob();
+        files.items.add(new File([blob], name));
+      }
+      $(id).files = files.files;
+      $(id).dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    $("modecompare").checked = true;
+    $("modecompare").dispatchEvent(new Event("change", { bubbles: true }));
+    await put("before", [before]);
+    await put("after", [after]);
+    await put("letter", letter ? [letter] : []);
+    await put("comments", comments ? [comments] : []);
+    $("draft").checked = Boolean(draft);
+    window.mgLast = null;
+    $("run").click();
+    while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
+    const last = window.mgLast;
+    return { error: last.error, code: last.code, out: last.out, err: last.err, sent: last.sent || [],
+      draft: last.draft ? new TextDecoder().decode(last.draft.data) : null,
+      ran: $("runtext").textContent, moving: !$("running").hidden,
+      report: $("report").textContent, shown: !$("astext").hidden, button: !$("savedraft").hidden,
+      paperBox: !$("checkparts").hidden };
+  }, chosen);
+  const unix = (said) => (typeof said === "string" ? said.replace(/\r\n/g, "\n") : said);
+  async function comparisonHeld(one) {
+    const result = await compareChosen(one.compare);
+    if (result.error) {
+      fail(`${one.name}: the comparison could not run: ${result.error}`);
+      return;
+    }
+    // What the command line printed, its notes, its exit code and the start of the report.
+    const said = JSON.parse(readFileSync(join(casesDir, one.expect), "utf-8"));
+    const wrong = ["out", "err", "code", "draft"].filter((part) => unix(said[part]) !== result[part]);
+    if (wrong.length) {
+      fail(`${one.name}: the page's ${wrong.join(", ")} not the command line's`);
+      console.error(`--- command line\n${said.out}${said.err}\n--- page\n${result.out}${result.err}`);
+    }
+    if (!result.shown || result.report !== result.out || result.paperBox) {
+      fail(`${one.name}: the report shown is not the text the comparison printed, or the `
+        + "paper's box is still shown");
+    }
+    if (!result.ran.startsWith("Compared ") || result.moving) {
+      fail(`${one.name}: after the run the page says "${result.ran}"${result.moving ? ", its steps still shown" : ""}`);
+    }
+    if (result.button !== Boolean(one.compare.draft)) {
+      fail(`${one.name}: the start of the report's button is ${result.button ? "" : "not "}shown`);
+    }
+    const elsewhere = result.sent.filter((entry) => !entry.url.startsWith(origin));
+    if (elsewhere.length) fail(`${one.name}: the comparison sent ${elsewhere.map((e) => e.url).join(", ")}`);
+    console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes, exit code and start of the report"}, `
+      + `${result.sent.length} requests`);
+  }
+
   const cases = JSON.parse(readFileSync(join(casesDir, hosted ? "hosted-cases.json" : "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
+    if (one.compare) {
+      await comparisonHeld(one);
+      continue;
+    }
     const result = await choose(one.paper, one.against || [], one.form || {});
     if (result.error) {
       fail(`${one.name}: the audit could not run: ${result.error}`);

@@ -145,6 +145,31 @@ the same PDF can differ from the page's, and each report names the `pdftotext` t
 (DESIGN.md, Known gaps). The page does not read figures or reproducibility packages: the
 command line reads those.
 
+## Comparing a revision
+
+"Compare a revision", the page's second choice at the top of its form, is
+[`compare`](commands.md) for a referee or an editor reading a revision (the author,
+2026-11-28: a second choice on the same page, every option of compare's, its report as
+text). It takes the version read first and the revised one, each a `.docx`, Markdown or a
+PDF, and where the reader has them the authors' response letter (`--response`) and the
+reader's own comments on the first version (`--comments`), each a `.docx`, Markdown or text.
+It sets the two versions side by side and audits each, as [refereeing.md](refereeing.md)
+says: the sections, the tables cell by cell, the figures' captions, the numbers, citations
+and bindings, the sentences that claim more, less or the opposite, the revision's findings
+each marked new or standing, the letter's quotations looked for in both versions, and each
+comment matched by what it quotes or names. Nothing in it says whether a comment was
+answered.
+
+Its report is the text the command line prints, shown in the page, with "Download the report
+as text": `compare` writes no PDF. "Also write the start of my report" is `--report-draft`,
+the findings and their places as Markdown with no opinion in it, and "Download the start of
+your report" saves it. Each version is read from a folder of its own, `v1/` and `v2/`, so that
+two versions a journal's system gives one name are both read, and the report names them so:
+`v1/paper.docx`. A LaTeX version is the command line's: the page compares no project.
+"Or try it with an example revision" compares the example paper with an earlier version of
+it, and a letter to reviewers who do not exist, written for the page (`web/example-before.md`,
+`web/example-letter.md`).
+
 ## How to see that nothing is uploaded
 
 Three ways, from the simplest:
@@ -249,7 +274,10 @@ of the `.docx`'s text, set by `tests/proof_pdf.py` in two columns with its lines
 an author in its Info dictionary, against its results and held to that journal's rules),
 then the same command as the page runs it in Node, each archive unpacked there first by
 `web.unpack_paper` as the page unpacks it (`parity.mjs --unpack`), and requires the same
-report and the same `--json`. There the command line reads the PDF with the page's own
+report and the same `--json`. So it does for three comparisons: the example revision with its
+letter, a reader's comments and the start of the report, whose text must be the same too
+(`parity.mjs --read`); a PDF beside the `.docx`; and two versions of one name, the letter a
+`.docx`, each version in the folder the page writes it in. There the command line reads the PDF with the page's own
 `pdftotext` and `pdfinfo`, the build the site serves run in Node (`web/test/program.mjs`),
 put first on its PATH as shell scripts, so that the two are compared given the same program;
 on Windows, which starts no shell script, the command line uses the `pdftotext` on PATH. In

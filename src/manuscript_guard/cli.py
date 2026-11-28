@@ -3062,6 +3062,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     """Two versions of a manuscript side by side, for an editor or a referee reading a
     revision (`comparing`). Exit 0 once the comparison ran, whatever it found; 2 where a
     file could not be read, or the report's file is there already."""
+    from manuscript_guard.auditing.progress import step
     from manuscript_guard.comparing import NOTICE
     from manuscript_guard.comparing.report import as_json, compare, render
     from manuscript_guard.comparing.versions import Unreadable
@@ -3079,6 +3080,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         found = compare(args.old, args.new, args.response, args.comments)
     except Unreadable as exc:
         return _audit_refused(args, f"manuscript-guard compare: {exc}")
+    step("written")
     said = as_json(found) if args.json else render(found, Path.cwd())
     if args.report_draft is not None:
         from manuscript_guard.auditing.draft import for_compare

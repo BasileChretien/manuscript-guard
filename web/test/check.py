@@ -13,7 +13,11 @@ project as a .zip and as a .tar.gz, which the command line is given as the folde
 and a PDF of the .docx's text against the results and held to that journal's rules), the
 command line's `audit` is run here, then the same command is run as the page runs it,
 in Node (`parity.mjs`): its report, what it says on stderr, its exit code and its `--json`
-must be the command line's. Where the copy with tracked changes is asked for, the command
+must be the command line's. So must each comparison (`compare`) "Compare a revision"
+runs: the example revision the page offers with its letter, comments and the start of the
+reader's report, whose text must be the command line's as well; a PDF beside the .docx; and
+two versions of one name, the letter a .docx, each version in a folder of its own as the page
+writes it (worker.js `compared`). Where the copy with tracked changes is asked for, the command
 line's `--tracked` says how many corrections it tracks, and the page's copy must track as
 many. Where the journal's form is filled, the command line is given the files `journal_form`
 makes of it, and the page must make the same. Then the site is opened in each browser named
@@ -142,6 +146,17 @@ PDF_SETTING = {"head": "Journal of Examples", "foot": "Page", "first_page": 1,
                "line_numbers": True, "author": "Ada Example"}
 #: The width of a column of the PDF, in characters of pandoc's plain text.
 PDF_COLUMNS = 50
+#: The start of the reader's report a comparison writes where it is asked for, under the name
+#: the page gives it (worker.js `DRAFT`); each version is in a folder of its own.
+DRAFT = "report-draft.md"
+VERSIONS = ("v1", "v2")
+#: The example revision the page offers (web/compare.js `EXAMPLE`), a reader's comments on its
+#: first version, and its letter as a .docx.
+EXAMPLE = ("example-before.md", "example-paper.md", "example-letter.md")
+MINE = "mine.md"
+COMMENTS = ('1. The sentence "Data were analysed at two study centres" does not say which.\n\n'
+            "2. Table 2 is missing.\n\n3. Please report the confidence outcome.\n")
+LETTER_DOCX = "letter.docx"
 
 
 def argument(name: str) -> str:
@@ -205,11 +220,14 @@ def pdf_of(docx: Path) -> bytes:
         raise SystemExit(f"the .docx's text cannot be set as a PDF: {exc}") from None
 
 
-def in_node(site: Path, folder: Path, arguments: list[str], unpack: str | None = None) -> dict:
+def in_node(site: Path, folder: Path, arguments: list[str], unpack: str | None = None,
+            read: str | None = None) -> dict:
     """The command as the page runs it, in Node; `unpack`, an archive the page is given,
-    unpacked there first as the page unpacks one (`parity.mjs --unpack`)."""
+    unpacked there first as the page unpacks one (`parity.mjs --unpack`); `read`, a file the
+    command writes, whose text is then given as "file" (`parity.mjs --read`)."""
     done = subprocess.run([NODE, str(TEST / "parity.mjs"), str(site), str(folder),
-                           *(["--unpack", unpack] if unpack else []), "--",
+                           *(["--unpack", unpack] if unpack else []),
+                           *(["--read", read] if read else []), "--",
                            *arguments], capture_output=True, text=True, encoding="utf-8",
                           timeout=900, check=False)  # fmt: skip
     if done.returncode != 0:
@@ -263,6 +281,65 @@ def compared(page: Path, folder: Path, cases: list, prefix: str) -> tuple[list[d
             case["tracked"] = int(counted.group(1))
         listed.append(case)
     return listed, failed
+
+
+def comparisons(page: Path, folder: Path, cases: list) -> tuple[list[dict], int]:
+    """Each comparison run by the command line here and by `page` in Node, and said the same
+    or not, the start of the reader's report too where it is asked for; the cases as
+    browser.mjs runs them, and how many were not the same. A case is its name, the two
+    versions, the letter and the comments or None, and whether the draft is asked for."""
+    listed, failed = [], 0
+    for number, (name, before, after, letter, comments, draft) in enumerate(cases):
+        arguments = ["compare", f"{VERSIONS[0]}/{before}", f"{VERSIONS[1]}/{after}",
+                     *(["--response", argument(letter)] if letter else []),
+                     *(["--comments", argument(comments)] if comments else [])]  # fmt: skip
+        asked = [*arguments, *(["--report-draft", DRAFT] if draft else [])]
+        written = folder / DRAFT
+        written.unlink(missing_ok=True)
+        said = native(folder, asked)
+        # Taken out of the folder before the page is given it, which would find it there.
+        said["draft"] = written.read_text(encoding="utf-8") if written.is_file() else None
+        written.unlink(missing_ok=True)
+        page_said = in_node(page, folder, asked, read=DRAFT if draft else None)
+        wrong = [*differences(said, page_said, False),
+                 *(["draft"] if said["draft"] != page_said.get("file") else []),
+                 *(f"--json {part}" for part in differences(
+                     native(folder, [*arguments, "--json"]),
+                     in_node(page, folder, [*arguments, "--json"]), True))]  # fmt: skip
+        if draft and said["draft"] is None:
+            wrong.append("no draft from the command line")
+        print(f"node, {name}: {'same' if not wrong else 'DIFFERENT: ' + ', '.join(wrong)}",
+              flush=True)  # fmt: skip
+        failed += bool(wrong)
+        expect = f"compare-{number}.json"
+        (folder / expect).write_text(json.dumps(said), encoding="utf-8")
+        listed.append({"name": name, "expect": expect,
+                       "compare": {"before": before, "after": after, "letter": letter,
+                                   "comments": comments, "draft": draft}})  # fmt: skip
+    return listed, failed
+
+
+def versions_in(folder: Path) -> list:
+    """The comparisons' files in `folder`: each version in the folder the page writes it in,
+    and beside them, by its own name, as the browser chooses it; the cases."""
+    for which in VERSIONS:
+        (folder / which).mkdir()
+    for name in EXAMPLE:
+        shutil.copyfile(TEST.parent / name, folder / name)
+    (folder / MINE).write_text(COMMENTS, encoding="utf-8", newline="\n")
+    subprocess.run(["pandoc", str(folder / EXAMPLE[2]), "-o", str(folder / LETTER_DOCX)],
+                   capture_output=True, timeout=300, check=True)  # fmt: skip
+    for which, names in ((VERSIONS[0], (EXAMPLE[0], PDF_PAPER, "paper.docx")),
+                         (VERSIONS[1], (EXAMPLE[1], "paper.docx"))):  # fmt: skip
+        for name in names:
+            shutil.copyfile(folder / name, folder / which / name)
+    return [
+        ("the example revision, its letter, comments and the start of a report", EXAMPLE[0],
+         EXAMPLE[1], EXAMPLE[2], MINE, True),
+        ("a PDF beside the .docx", PDF_PAPER, "paper.docx", None, None, False),
+        ("two versions of one name, the letter a .docx", "paper.docx", "paper.docx",
+         LETTER_DOCX, None, False),
+    ]
 
 
 def listed_files(page: Path) -> dict[str, str]:
@@ -371,7 +448,9 @@ def main(argv: list[str] | None = None) -> int:
                                  [(*case, made if "--journal" in case[3][0] else None)
                                   for case in cases], "expect")  # fmt: skip
         failed += wrong
-        (folder / "cases.json").write_text(json.dumps(listed), encoding="utf-8")
+        comparing, wrong = comparisons(args.site / AUDIT, folder, versions_in(folder))
+        failed += wrong
+        (folder / "cases.json").write_text(json.dumps([*listed, *comparing]), encoding="utf-8")
         if args.hosted:
             failed += same_code(args.site / AUDIT, args.hosted)
             cases = hosted_cases(args.hosted, folder, made["authors.yaml"])

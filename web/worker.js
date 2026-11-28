@@ -395,6 +395,59 @@ json.dumps(web.commented(PAPER, COPY, tracked=TRACKED))`));
     data: py.FS.readFile(file) };
 }
 
+// A comparison of two versions, as `manuscript-guard compare` runs it, for a referee or an
+// editor reading a revision (Basile, 2026-11-28: a second choice on the page, every option
+// of compare's, its report as text). Each version is written in a folder of its own, v1/
+// and v2/, so that two versions a journal's system gives one name are both read; the
+// letter and the comments beside them under the names they were chosen by, the draft of the
+// referee's report, where asked for, under the one name the page gives it.
+const VERSIONS = ["v1", "v2"];
+const DRAFT = "report-draft.md";
+
+function compared({ before, after, letter = null, comments = null, draft = false }) {
+  const [v1, v2] = [before, after].map((file) => names([file])[0]);
+  const own = names([letter, comments].filter(Boolean));
+  const taken = own.find((name) => VERSIONS.includes(name) || (draft && name === DRAFT));
+  if (taken) {
+    throw new Error(`a file chosen is named ${taken}, a name the page gives a file or a folder `
+      + "of its own: rename it");
+  }
+  py.runPython(`import os, shutil
+os.chdir("/")
+shutil.rmtree("/work", ignore_errors=True)
+for folder in ("/work/v1", "/work/v2"): os.makedirs(folder)
+os.chdir("/work")`);
+  py.FS.writeFile(`/work/v1/${v1}`, new Uint8Array(before.data));
+  py.FS.writeFile(`/work/v2/${v2}`, new Uint8Array(after.data));
+  for (const file of [letter, comments].filter(Boolean)) {
+    py.FS.writeFile("/work/" + file.name, new Uint8Array(file.data));
+  }
+  const args = ["compare", `v1/${v1}`, `v2/${v2}`];
+  if (letter) args.push("--response", argument(letter.name));
+  if (comments) args.push("--comments", argument(comments.name));
+  if (draft) args.push("--report-draft", DRAFT);
+  performance.clearResourceTimings();
+  py.globals.set("ARGS", py.toPy(args));
+  // Each step the comparison says as it starts (`auditing.progress.COMPARE_STEPS`).
+  py.globals.set("TOLD", told);
+  const start = now();
+  const result = JSON.parse(py.runPython(`import json
+from manuscript_guard import web
+from manuscript_guard.auditing import progress
+progress.STEP = TOLD
+try:
+    said = json.dumps(web.run(ARGS))
+finally:
+    progress.STEP = None
+said`));
+  py.globals.delete("ARGS");
+  py.globals.delete("TOLD");
+  const ms = now() - start;
+  const written = draft && fileOf("/work/" + DRAFT);
+  return { ...result, draft: written ? { name: DRAFT, data: written } : null, args, ms,
+    sent: requests(), refused: [...refused] };
+}
+
 // Requests the page's policy must refuse, made from this worker. None carries anything. One
 // counts as refused only where the browser reports refusing it under the policy: a request
 // can fail for other reasons (example.com answers no XMLHttpRequest from a page, and has no
@@ -436,7 +489,8 @@ self.onmessage = async ({ data: { id, type, payload } }) => {
   try {
     // "rules": a link's rules, held to the profile's schema as the form's are (app.js).
     const value = type === "boot" ? await boot() : type === "run" ? run(payload)
-      : type === "rules" ? formFiles(payload, null, []) : await probe();
+      : type === "compare" ? compared(payload)
+        : type === "rules" ? formFiles(payload, null, []) : await probe();
     self.postMessage({ id, value });
   } catch (error) {
     self.postMessage({ id, error: String((error && error.message) || error) });

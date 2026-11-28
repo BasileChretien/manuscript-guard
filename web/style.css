@@ -133,6 +133,24 @@ details.rules pre { max-height: 20rem; overflow: auto; margin: .5rem 0 0; }
 .ruleslink input { width: 100%; }
 .ruleslink input[hidden] { display: none; }
 .author { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; }
+/* What the page does (compare.js): two choices side by side, like tabs; each shows its own
+   boxes, and the two versions of a comparison stand side by side where there is room. */
+fieldset.mode { border: 0; padding: .25rem; margin: 0; display: flex; flex-wrap: wrap; gap: .25rem;
+  border-radius: 999px; background: color-mix(in srgb, var(--teal-soft) 55%, transparent);
+  width: fit-content; }
+fieldset.mode label { display: block; cursor: pointer; }
+fieldset.mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+fieldset.mode span { display: block; padding: .45rem 1.1rem; border-radius: 999px; font-weight: 600;
+  color: var(--teal); }
+fieldset.mode input:checked + span { background: var(--teal); color: var(--on-teal); }
+fieldset.mode input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--teal) 55%, transparent);
+  outline-offset: 2px; }
+fieldset.mode input:disabled + span { opacity: .55; cursor: default; }
+.parts { display: grid; gap: 1rem; }
+.parts[hidden] { display: none; }
+.versions { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+label.drop.small { padding: 1rem .8rem; }
+label.drop.small .field { font-size: 1rem; }
 summary { cursor: pointer; }
 input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible,
 label.drop:focus-within { outline: 3px solid color-mix(in srgb, var(--teal) 55%, transparent);

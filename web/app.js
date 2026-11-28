@@ -1,5 +1,6 @@
 // The page: start the checker, hand it the files the reader chooses, show what it says.
 // Nothing here sends anything anywhere; the checker runs in worker.js, in this browser.
+import { comparing } from "./compare.js";
 import { RULES, RULES_BYTES, RULES_CHARS, packed, shaped, unpacked } from "./rules.js";
 
 const $ = (id) => document.getElementById(id);
@@ -205,7 +206,8 @@ const booted = Promise.all([ask("boot"), hostLoaded]).then(([boot]) => {
     listRequests("Requests to any other host while loading:", boot.loaded);
   for (const id of ["journal", "paper", "tracked", "against", "english", "known", "noabstract",
     "noresults", "results", "lookup", "design", "wholenumbers", "binary", "nonnegative",
-    "mincount", "run", "example"]) {
+    "mincount", "run", "example", "modecheck", "modecompare", "before", "after", "letter",
+    "comments", "draft"]) {
     $(id).disabled = false;
   }
   // The authors' boxes among them, wherever a journal chosen has put them.
@@ -241,7 +243,8 @@ const carriesFiles = (event) => [...(event.dataTransfer?.types || [])].includes(
 // Only a box that can take a drop takes it; a disabled one, while the checker loads, does not
 // (round 2 of #633).
 const takesItsOwn = (target) => target instanceof Element
-  && target.closest("#against:not(:disabled), #known:not(:disabled)");
+  && target.closest("#against:not(:disabled), #known:not(:disabled), #letter:not(:disabled), "
+    + "#comments:not(:disabled)");
 for (const name of ["dragenter", "dragover"]) {
   dropBox.addEventListener(name, (event) => {
     if (!carriesFiles(event)) return;
@@ -306,24 +309,32 @@ const STEPS = {
 };
 // How long one reference takes to look up, before any has been.
 const PER_LOOKUP = 1.2;
-const running = { timer: null, started: 0, order: [], at: {}, now: null, done: 0, total: 0 };
+// The steps of the run under way and what each is called: an audit's, or a comparison's
+// (compare.js `COMPARE_STEPS`), whose two audits' own steps are then passed over.
+const running = { timer: null, started: 0, order: [], table: STEPS, at: {}, now: null, done: 0,
+  total: 0 };
 window.mgRunning = running;
 
 function runStarted(name, { lookup, docx, tracked = false }) {
   const order = ["read", "numbers", "words", ...(lookup ? ["lookup"] : []), "report", "pdf",
     ...(docx ? ["copy"] : []), ...(docx && tracked ? ["tracked"] : [])];
-  Object.assign(running, { order, at: {}, now: null, done: 0, total: 0, started: performance.now() });
+  stepsShown(`Checking ${name}…`, order, STEPS);
+}
+
+function stepsShown(said, order, table) {
+  Object.assign(running, { order, table, at: {}, now: null, done: 0, total: 0,
+    started: performance.now() });
   const list = $("steps");
   list.replaceChildren();
   for (const key of order) {
-    const item = add(list, "li", STEPS[key][0]);
+    const item = add(list, "li", table[key][0]);
     item.dataset.step = key;
     add(item, "span", "", "count");
   }
   $("running").hidden = false;
   $("runbar").hidden = false;
   $("runbar").value = 0;
-  $("runtext").textContent = `Checking ${name}…`;
+  $("runtext").textContent = said;
   $("eta").textContent = "working out the time left";
   // The steps, where the reader can see them: below the button, under the fold on a laptop.
   $("running").scrollIntoView({ block: "nearest", behavior: scrolling() });
@@ -331,13 +342,13 @@ function runStarted(name, { lookup, docx, tracked = false }) {
 }
 
 function stepped({ key, done, total }) {
-  if (!STEPS[key] || !running.order.includes(key)) return;
+  if (!running.table[key] || !running.order.includes(key)) return;
   const at = performance.now();
   if (running.now !== key) {
     if (running.now) running.at[running.now].ended = at;
     running.at[key] = { started: at };
     running.now = key;
-    $("runtext").textContent = `${STEPS[key][0]}…`;
+    $("runtext").textContent = `${running.table[key][0]}…`;
   }
   if (key === "lookup") Object.assign(running, { done, total });
   for (const item of $("steps").children) {
@@ -352,7 +363,8 @@ function stepped({ key, done, total }) {
 }
 
 // How long each step is expected to take, the lookups by how many there are.
-const expected = (key) => key === "lookup" ? PER_LOOKUP * (running.total || 20) : STEPS[key][1];
+const expected = (key) => key === "lookup" ? PER_LOOKUP * (running.total || 20)
+  : running.table[key][1];
 
 function showTimeLeft() {
   // Before the first step, nothing is done yet (the paper is still being handed over).
@@ -406,6 +418,8 @@ let pdf = null;
 let pdfAddress = null;
 function showReport(result, paper) {
   $("result").hidden = false;
+  $("save").dataset.name = "audit-report.txt";
+  $("again").textContent = "Check another paper";
   $("notes").hidden = !result.err;
   $("notes").textContent = result.err;
   const note = (said) => {
@@ -485,7 +499,7 @@ function outcome(view, inPdf = true) {
 function clearReport() {
   $("result").hidden = true;
   for (const id of ["savecommented", "savetracked", "savepdf", "openpdf", "pdfbox", "pdfnote",
-    "astext"]) {
+    "astext", "savedraft"]) {
     $(id).hidden = true;
   }
   $("report").textContent = "";
@@ -753,15 +767,39 @@ async function check(paper) {
   }
 }
 
+// An example that could not be loaded, said with no earlier steps or report left beside the
+// message, as if they were this one's (round 2 of #644).
+function notLoaded(said) {
+  clearReport();
+  $("steps").replaceChildren();
+  $("runbar").hidden = true;
+  $("eta").textContent = "";
+  $("running").hidden = false;
+  $("runtext").textContent = said;
+}
+
+// "Compare a revision", the page's second choice (compare.js).
+const compareMode = comparing({ $, ask, read, megabytes, say, stepsShown, runEnded, clearReport,
+  scrolling, listRequests, notLoaded });
+
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (compareMode.on()) {
+    await compareMode.submitted();
+    return;
+  }
   const paper = $("paper").files[0];
   if (paper) await check(paper);
 });
 
 // A short paper written for this page, with a few things to find in it, checked as a reader's
-// paper is, so that a first visit sees what a report looks like.
+// paper is, so that a first visit sees what a report looks like; with "Compare a revision"
+// chosen, the same paper beside an earlier version of it.
 $("example").addEventListener("click", async () => {
+  if (compareMode.on()) {
+    await compareMode.example();
+    return;
+  }
   // Not fetched at the start: a reader who turned the network off, as the page invites,
   // is told why nothing happens (round 1 of #644).
   let file;
@@ -770,15 +808,8 @@ $("example").addEventListener("click", async () => {
     if (!answer.ok) throw new Error(`the page answered ${answer.status}`);
     file = new File([await answer.blob()], "example-paper.md", { type: "text/markdown" });
   } catch (error) {
-    // No earlier steps or report left beside the message, as if they were this one's
-    // (round 2 of #644).
-    clearReport();
-    $("steps").replaceChildren();
-    $("runbar").hidden = true;
-    $("eta").textContent = "";
-    $("running").hidden = false;
-    $("runtext").textContent = `The example paper could not be loaded (${error.message}): `
-      + "it comes from this page's address, so it needs the network.";
+    notLoaded(`The example paper could not be loaded (${error.message}): `
+      + "it comes from this page's address, so it needs the network.");
     return;
   }
   await check(file);
@@ -787,7 +818,7 @@ $("example").addEventListener("click", async () => {
 $("again").addEventListener("click", () => {
   clearReport();
   $("form").scrollIntoView({ block: "start", behavior: scrolling() });
-  $("paper").focus();
+  $(compareMode.on() ? "before" : "paper").focus();
 });
 
 // Where the browser shows no PDF in a page: the report in a page of its own.
@@ -806,7 +837,8 @@ $("savepdf").addEventListener("click", () => {
 $("save").addEventListener("click", () => {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([$("report").textContent], { type: "text/plain" }));
-  link.download = "audit-report.txt";
+  // An audit's or a comparison's, as the one shown set it.
+  link.download = $("save").dataset.name || "audit-report.txt";
   link.click();
   URL.revokeObjectURL(link.href);
 });

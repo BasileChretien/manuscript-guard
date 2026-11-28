@@ -770,8 +770,8 @@ def test_what_is_not_the_paper_s_prose_is_not_read(block: str) -> None:
 def test_a_typed_table_is_read_with_the_prose(block: str) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a table typed into
     the manuscript is read with the prose, so its compact "n=12" in a header counts against
-    the text's; a fenced block is not read, nor one set off by four spaces, which pandoc
-    reads as code (#841)."""
+    the text's; a fenced block is not read, nor one set off by four spaces after a blank line
+    outside a list item (#841)."""
     prose = "# Results\n\nSome (n = 12) and more (n = 40), and (n = 3).\n\n"
     report = read(f"{prose}{block}\n\nDone.\n")
     assert told(report) == [

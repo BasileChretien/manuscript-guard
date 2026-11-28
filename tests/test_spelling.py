@@ -1144,25 +1144,31 @@ def test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word(project: Path) 
 @pytest.mark.parametrize(
     ("text", "words"),
     [
-        ("See <code>color</code> here.", ["color"]),
-        ("<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
-        ('<span class="x"\nstyle="color: red">The value</span> was high.', ["color"]),
-        # the other side: in backticks, in a fence, in a block set off by four spaces, which
-        # pandoc reads as code (#841), and a tag on one line are left alone
-        ("See `color` here.", []),
-        ("```\ncolor = tumor\n```\n\nDone.", []),
-        ("The value was high.\n\n    color = tumor\n\nDone.", []),
-        ('<span class="x" style="color: red">The value</span> was high.', []),
+        ("# Methods\n\nSee <code>color</code> here.", ["color"]),
+        ("# Methods\n\n<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
+        ('# Methods\n\n<span class="x"\nstyle="color: red">The value</span> was high.',
+         ["color"]),
+        # code indented inside a list item, which pandoc reads as the item's code (round 4
+        # of #841), and a block indented straight under a heading, with no blank line
+        ("# Methods\n\n- The value was high.\n\n        color = tumor", ["color", "tumor"]),
+        ("# Methods\n    color = tumor", ["color", "tumor"]),
+        # the other side: in backticks, in a fence, in a block set off by four spaces after
+        # a blank line outside a list item (#841), and a tag on one line are left alone
+        ("# Methods\n\nSee `color` here.", []),
+        ("# Methods\n\n```\ncolor = tumor\n```\n\nDone.", []),
+        ("# Methods\n\nThe value was high.\n\n    color = tumor\n\nDone.", []),
+        ('# Methods\n\n<span class="x" style="color: red">The value</span> was high.', []),
     ],
 )
-def test_only_code_pandoc_reads_as_code_is_left_alone(
+def test_code_in_backticks_a_fence_or_an_indented_block_is_left_alone(
     project: Path, text: str, words: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
-    code in backticks, in a fence or in a block set off by four spaces is left alone, but
-    `<code>color</code>`, the CSS inside a `<style>` block and a tag whose attributes run on to
-    a second line are read."""
-    _, found = written(project, f"# Methods\n\n{text}\n")
+    code in backticks, in a fence, or in a block set off by four spaces after a blank line
+    outside a list item is left alone; code indented inside a list item, a block indented
+    straight under a heading, `<code>color</code>`, the CSS inside a `<style>` block and a
+    tag whose attributes run on to a second line are read."""
+    _, found = written(project, f"{text}\n")
     assert reported(found) == words
 
 

@@ -626,9 +626,10 @@ types:
         # The comparisons an analysis makes ("Multiple comparisons", "Comparison of outcomes",
         # "### Comparisons") and one within the series ("Comparison with baseline values") are
         # not the series' own, which names what it is set against (rounds 1 and 2 of #849):
-        # other or previous series or studies, two words between at most ("other case
-        # series"), controls, historical data that is no data source (round 1 of #853).
-        heading: '(?i)\bcomparators?\b|\bcomparison (?:groups?|cohorts?|series)\b|\bcomparisons?\b.*\b(?:literature|published|historical|external|standard of care|controls?|(?:other|previous|prior|similar|reported)(?:\W+\w+){0,2}?\W+(?:series|stud(?:y|ies)|cohorts?|reports?|centres?|centers?|groups?))\b|\b(?:external|historical) (?:comparisons?|comparators?|controls?|cohorts?|series|groups?)\b|\bhistorical data\b(?!\s+sources?\b)|\bbenchmark|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?comparison(?:\s*\([^()]*\))?\W*$'
+        # other or previous series or studies, "case", "published" or "similar" between at
+        # most ("other case series"), controls after "with" or a control group, historical
+        # data that is no data source (rounds 1 and 2 of #853).
+        heading: '(?i)\bcomparators?\b|\bcomparison (?:groups?|cohorts?|series)\b|\bcomparisons?\b.*\b(?:literature|published|historical|external|standard of care|(?:with|to|against|versus|vs\.?)\s+(?:an?\s+|the\s+)?(?:\w+\s+)?(?:controls?|control (?:groups?|cohorts?|series))|(?:other|previous|prior|similar|reported)(?:\W+(?:case|published|similar))?\W+(?:series|stud(?:y|ies)|cohorts?|reports?|centres?|centers?|groups?))\b|\b(?:external|historical) (?:comparisons?|comparators?|controls?|cohorts?|series|groups?)\b|\bhistorical data\b(?!\s+sources?\b)|\bbenchmark|^\W*(?:(?:\d+(?:\.\d+)*|[A-Za-z]|[IVXivx]+)[.)]\s*|\d+(?:\.\d+)*\s+)?(?:the\s+)?comparison(?:\s*\([^()]*\))?\W*$'
         says: >-
           what the results are set against, published studies, the current standard of care
           or a historical group, and why it is comparable

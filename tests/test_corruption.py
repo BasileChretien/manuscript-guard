@@ -41151,6 +41151,19 @@ def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compa
         ("## External group", "comparison", True),
         ("## Historical data sources", "comparison", False),
         ("## Comparison with previous visits", "comparison", False),
+        # Round 2 of #853: words joined across what is no phrase, and the control of
+        # multiplicity, were taken; a control group with a word before it was not.
+        ("## Comparison of other outcomes between groups", "comparison", False),
+        ("## Comparison of prior treatment between groups", "comparison", False),
+        ("## Multiple comparisons and error control", "comparison", False),
+        ("## Statistical comparisons and control of multiplicity", "comparison", False),
+        ("## Comparison with previous visits by group", "comparison", False),
+        ("## Comparison with matched controls", "comparison", True),
+        ("## Comparison with previous published studies", "comparison", True),
+        # False passes main has too, written in Known gaps (round 2 of #853): a within-series
+        # comparison worded as an external one, and a source of historical data.
+        ("## Comparison with previous study visits", "comparison", True),
+        ("## Sources of historical data", "comparison", True),
         ("## Ethical approval", "consent and ethics", True),
         ("## Informed consent", "consent and ethics", True),
         ("## Ethics committee", "consent and ethics", True),

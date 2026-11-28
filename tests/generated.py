@@ -7951,7 +7951,9 @@ PLAN_HEADINGS = {
                    "Statistical comparisons", "Multiple comparisons",
                    "Comparison of outcomes between groups", "Comparison with baseline values",
                    "Comparison with other case series", "Comparison with a control group",
-                   "Historical group", "Historical data sources"),
+                   "Historical group", "Historical data sources",
+                   "Comparison of other outcomes between groups",
+                   "Multiple comparisons and error control"),
     "consent and ethics": ("Ethical approval", "Informed consent", "Ethics committee",
                            "Data protection"),
 }  # fmt: skip

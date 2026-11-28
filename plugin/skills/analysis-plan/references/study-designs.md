@@ -127,11 +127,12 @@ for case series: the paper follows PROCESS (2023), written for surgical case ser
 Kempen (2011), for uncontrolled case series in any field, and G5 accepts either. The plan
 is asked for all seven sections, the analysis being the counts and summaries the series
 will give. The sections cite PROCESS 2023. The comparison is found under a comparator,
-a comparison group, a comparison with the literature, with controls, or with published,
-other or previous studies or (case) series, historical or external controls or groups,
-historical data, a benchmark, or a heading that is "Comparison" whole;
-a comparison the analysis makes ("Multiple comparisons") or one within the series
-("Comparison with baseline values") is not it: name such a heading exactly,
+a comparison group, a comparison with the literature, with controls or a control group,
+or with published, other or previous studies or (case) series, historical or external
+controls or groups, historical data (not its sources), a benchmark, or a heading that is
+"Comparison" whole; a comparison the analysis makes ("Multiple comparisons", "Comparison
+of other outcomes between groups") or one within the series ("Comparison with baseline
+values") is not it: name such a heading exactly,
 `## Comparisons {#comparison}`, where it is.
 
 - **Case selection.** How the cases are found and chosen: from which records or referrals,

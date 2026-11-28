@@ -229,8 +229,10 @@ from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
 from manuscript_guard.deposit import counts as deposit_counts
+from manuscript_guard.gates import analyses_named as analyses_gate
 from manuscript_guard.gates import bound_comparisons as bound_comparisons_gate
 from manuscript_guard.gates import bound_units as bound_units_gate
+from manuscript_guard.gates import caption_marks as caption_marks_gate
 from manuscript_guard.gates import data_statement
 from manuscript_guard.gates import interpretation as interpretation_gate
 from manuscript_guard.gates import journal_quotes as journal_quotes_gate
@@ -11399,6 +11401,89 @@ def test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted(
             found[tag] = not rests
     assert found == {tag: counted for tag, counted in expected.items() if counted is not None}, (
         text, supplement)
+
+
+# ------------------------------------------------------------- a result the Discussion gives
+
+from generated import discussion_papers  # noqa: E402
+
+
+@holds(40, discussion_papers())
+def test_a_result_bound_in_the_discussion_is_read_as_the_discussion_s(
+    drawn: tuple[str, dict[str, str]],
+) -> None:
+    """G8 reads each results key the Discussion binds, its subsections and its Limitations
+    with it, at the key's line and under the title of the heading that names the Discussion,
+    however that heading is written: `discussion-not-reported` holds them to the Results. It
+    reads none the Abstract, the Introduction, the Methods, the Results, a conclusion under
+    the Discussion or a Limitations section of its own binds."""
+    text, expected = drawn
+    read = READINGS["discussion results"]()({"text": text})
+    lines = text.splitlines()
+    found: dict[str, str] = {}
+    for key, heading, line in read["discussed"]:
+        assert f"{{{{results.{key}}}}}" in lines[line - 1], (key, line, text)
+        found[key] = heading
+    assert found == expected, text
+    assert read["has results"], text
+
+
+# ------------------------------------------------- an analysis the Results name, and the Methods
+
+from generated import analysis_papers  # noqa: E402
+
+
+@holds(40, analysis_papers())
+def test_a_method_is_read_where_the_methods_and_the_results_name_it(
+    drawn: tuple[str, str, dict[str, set[tuple[str, str]]]],
+) -> None:
+    """G9 reads a method of its list where the Methods or the Results name it, the main
+    text's and the supplement's, a subsection of either with them, under each of its names:
+    in any case but a name in capitals, its words joined by a space, a hyphen, an en dash,
+    two hyphens or a line break, with or without "'s", a curly apostrophe as a straight one,
+    a plural, and the chi-squared test as maths. A name too loose for the Results, "the
+    Wilcoxon test", names each method it may be in the Methods and none in the Results. It
+    reads none a look-alike or a word of another field holds, a name in capitals written
+    small, or a binding, a citation, code or a comment, and none the Abstract, the
+    Introduction, the Discussion or another part of the supplement names. The methods the
+    Results name and the Methods never do are those `analysis-not-in-methods` warns of."""
+    text, supplement, expected = drawn
+    read = READINGS["analyses named"]()({"text": text, "supplement": supplement})
+    found: dict[str, set[tuple[str, str]]] = {}
+    for part, source in (("paper", text), ("supplement", supplement)):
+        lines = source.splitlines()
+        for method, line, kind in read[part]:
+            (tag,) = re.findall(r"\bt\d\d\b", lines[line - 1])
+            found.setdefault(tag, set()).add((method, kind))
+    assert found == expected, (text, supplement)
+    named = [one for ones in expected.values() for one in ones]
+    results = {method for method, part in named if part == "results"}
+    methods = {method for method, part in named if part == "methods"}
+    assert set(read["unexplained"]) == results - methods, (text, supplement)
+
+
+# ----------------------------------------------------- a caption that points at a line, G3
+
+from generated import caption_papers  # noqa: E402
+
+
+@holds(40, caption_papers())
+def test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names(
+    drawn: tuple[str, set[str]],
+) -> None:
+    """G3 warns of a caption, a legend opened with its display typed or bound, a table's and
+    an image's, that points at a line or a curve by where something stands against it, in any
+    case, and names no line any other way: not where a word after the mark says which it is,
+    a style stands before it, or the caption names a line before; and never of a paragraph
+    of the text, one that opens with a pointer among them."""
+    text, expected = drawn
+    read = READINGS["caption lines"]()({"text": text})
+    lines = text.splitlines()
+    found = set()
+    for line, _words in read["warned"]:
+        (tag,) = re.findall(r"\bt\d\d\b", lines[line - 1])
+        found.add(tag)
+    assert found == expected, text
 
 
 # --------------------------------------------------------------------------------- boxes
@@ -23963,6 +24048,139 @@ def _a_citation_typed_against_a_stop_cites_the_next_sentence(patch: pytest.Monke
     patch.setattr(interpretation_gate, "_trailing", lambda text, against: [])
 
 
+def _only_the_innermost_heading_names_the_discussion(patch: pytest.MonkeyPatch) -> None:
+    # A Limitations or a subsection under the Discussion would be read as nobody's.
+    patch.setattr(reported_gate.Walk, "_discussion", lambda self: (
+        self.chain[-1].title if self.chain and self._argues() and not self._in_results()
+        and reported_gate.names_discussion(self.chain[-1].title) else None))  # fmt: skip
+
+
+def _a_result_of_the_discussion_is_given_its_innermost_heading(patch: pytest.MonkeyPatch) -> None:
+    real = reported_gate.Walk._discussion
+    patch.setattr(reported_gate.Walk, "_discussion",
+                  lambda self: None if real(self) is None else self.chain[-1].title)
+
+
+def _a_section_that_names_no_part_is_the_discussion_s(patch: pytest.MonkeyPatch) -> None:
+    real = reported_gate.Walk._discussion
+    patch.setattr(reported_gate.Walk, "_discussion", lambda self: real(self) or (
+        self.chain[0].title if self.chain and self._place() is None else None))  # fmt: skip
+
+
+def _a_conclusion_under_the_discussion_is_the_discussion_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reported_gate, "names_conclusion", lambda title: False)
+
+
+def _rebuilt(patch: pytest.MonkeyPatch, **names: Any) -> None:
+    """Patch `gates/analyses_named.py` and have its methods read again, past their cache."""
+    for name, value in names.items():
+        patch.setattr(analyses_gate, name, value)
+    patch.setattr(analyses_gate, "methods", analyses_gate.methods.__wrapped__)
+
+
+def _a_method_s_words_are_joined_by_a_space_or_a_hyphen_only(patch: pytest.MonkeyPatch) -> None:
+    _rebuilt(patch, _JOIN=r"[ \-]+")
+
+
+def _a_method_is_read_in_the_case_it_is_listed_in(patch: pytest.MonkeyPatch) -> None:
+    _rebuilt(patch, _CAPITALS=re.compile(r".+"))
+
+
+def _a_method_named_in_capitals_is_read_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    _rebuilt(patch, _CAPITALS=re.compile(r"(?!)"))
+
+
+def _a_method_s_apostrophe_s_is_required(patch: pytest.MonkeyPatch) -> None:
+    _rebuilt(patch, _word=re.escape)
+
+
+def _a_method_is_read_in_a_binding_or_code(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(analyses_gate.claims, "readable", lambda text: text)
+
+
+def _the_discussion_is_read_as_the_results(patch: pytest.MonkeyPatch) -> None:
+    real = reported_gate.Walk.parts
+
+    def parts(self, sections):
+        starts, kinds = real(self, sections)
+        return starts, [kind or "results" for kind in kinds]
+
+    patch.setattr(reported_gate.Walk, "parts", parts)
+
+
+def _the_supplement_s_methods_name_no_method(patch: pytest.MonkeyPatch) -> None:
+    real = analyses_gate.supplement_kinds
+
+    def kinds(text: str):
+        starts, parts = real(text)
+        return starts, [None if part == "methods" else part for part in parts]
+
+    patch.setattr(analyses_gate, "supplement_kinds", kinds)
+
+
+def _a_method_the_methods_name_is_unexplained_still(patch: pytest.MonkeyPatch) -> None:
+    real = analyses_gate.unnamed_in_methods
+    patch.setattr(analyses_gate, "unnamed_in_methods",
+                  lambda found: real([one for one in found if one.part != "methods"]))
+
+
+def _nothing_after_a_mark_says_which_it_is(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(caption_marks_gate, "_POINTED", re.compile(
+        rf"(?<!\w){caption_marks_gate._PLACE}\s+(?:the|these|those|this|that)\s+"
+        rf"(?P<mark>{caption_marks_gate._MARK})(?!\w)", re.IGNORECASE))  # fmt: skip
+
+
+def _a_line_the_caption_names_before_is_unnamed_still(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(caption_marks_gate, "unnamed",
+                  lambda read: next(caption_marks_gate._POINTED.finditer(read), None))
+
+
+def _a_place_is_read_in_its_case(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(caption_marks_gate, "_POINTED", re.compile(caption_marks_gate._POINTED.pattern))
+
+
+def _a_legend_opened_with_a_ref_is_no_caption(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(caption_marks_gate, "_as_printed", lambda found: " " * len(found[0]))
+
+
+def _an_image_s_caption_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(caption_marks_gate, "_IMAGE", re.compile(r"(?!)(?P<caption>)"))
+
+
+def _a_line_s_equation_says_nothing_of_it(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #826: "above the line y = x" was warned of.
+    patch.setattr(caption_marks_gate, "_POINTED",
+                  caption_marks_gate.pointed(caption_marks_gate._SAYS_WHICH))
+
+
+def _the_area_under_the_curve_points_at_a_curve(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #826: "area under the curve" was warned of.
+    patch.setattr(caption_marks_gate, "_AREA", re.compile(r"(?!)"))
+
+
+def _a_name_too_loose_for_the_results_names_a_method_there(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(analyses_gate, "_LOOSE_PARTS", (analyses_gate.METHODS, analyses_gate.RESULTS))
+
+
+def _a_name_too_loose_for_the_results_names_nothing_in_the_methods(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    # The corpus: "the Wilcoxon test" in the Methods, "Wilcoxon signed-rank" in the Results.
+    patch.setattr(analyses_gate, "_LOOSE_PARTS", ())
+
+
+def _a_loose_name_counts_where_a_full_name_starts(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #826: "Wilcoxon signed-rank" in the Methods named Mann-Whitney's test too.
+    real = analyses_gate._loose
+    patch.setattr(analyses_gate, "_loose", lambda read, taken: real(read, set()))
+
+
+def _a_method_written_as_maths_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #826: a Methods' "$¦chi^2$ test" named nothing.
+    real = analyses_gate.pattern
+    _rebuilt(patch, pattern=lambda names: real([one for one in names if "\\" not in one]))
+
+
 def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -28913,6 +29131,98 @@ BROKEN = {
     "a citation typed against a stop cites the next sentence": (
         _a_citation_typed_against_a_stop_cites_the_next_sentence,
         test_only_a_claim_of_the_results_or_the_discussion_on_nothing_is_counted,
+    ),
+    "only the innermost heading names the Discussion": (
+        _only_the_innermost_heading_names_the_discussion,
+        test_a_result_bound_in_the_discussion_is_read_as_the_discussion_s,
+    ),
+    "a result of the Discussion is given its innermost heading": (
+        _a_result_of_the_discussion_is_given_its_innermost_heading,
+        test_a_result_bound_in_the_discussion_is_read_as_the_discussion_s,
+    ),
+    "a section that names no part is the Discussion's": (
+        _a_section_that_names_no_part_is_the_discussion_s,
+        test_a_result_bound_in_the_discussion_is_read_as_the_discussion_s,
+    ),
+    "a conclusion under the Discussion is the Discussion's": (
+        _a_conclusion_under_the_discussion_is_the_discussion_s,
+        test_a_result_bound_in_the_discussion_is_read_as_the_discussion_s,
+    ),
+    "a method's words are joined by a space or a hyphen only": (
+        _a_method_s_words_are_joined_by_a_space_or_a_hyphen_only,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method is read in the case it is listed in": (
+        _a_method_is_read_in_the_case_it_is_listed_in,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method named in capitals is read in any case": (
+        _a_method_named_in_capitals_is_read_in_any_case,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method's apostrophe s is required": (
+        _a_method_s_apostrophe_s_is_required,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method is read in a binding or code": (
+        _a_method_is_read_in_a_binding_or_code,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "the Discussion is read as the Results": (
+        _the_discussion_is_read_as_the_results,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "the supplement's Methods name no method": (
+        _the_supplement_s_methods_name_no_method,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method the Methods name is unexplained still": (
+        _a_method_the_methods_name_is_unexplained_still,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "nothing after a mark says which it is": (
+        _nothing_after_a_mark_says_which_it_is,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a line the caption names before is unnamed still": (
+        _a_line_the_caption_names_before_is_unnamed_still,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a place is read in its case": (
+        _a_place_is_read_in_its_case,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a legend opened with a ref is no caption": (
+        _a_legend_opened_with_a_ref_is_no_caption,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "an image's caption is not read": (
+        _an_image_s_caption_is_not_read,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a line's equation says nothing of it": (
+        _a_line_s_equation_says_nothing_of_it,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "the area under the curve points at a curve": (
+        _the_area_under_the_curve_points_at_a_curve,
+        test_a_caption_is_warned_of_where_it_points_at_a_line_it_never_names,
+    ),
+    "a name too loose for the Results names a method there": (
+        _a_name_too_loose_for_the_results_names_a_method_there,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a name too loose for the Results names nothing in the Methods": (
+        _a_name_too_loose_for_the_results_names_nothing_in_the_methods,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a loose name counts where a full name starts": (
+        _a_loose_name_counts_where_a_full_name_starts,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
+    ),
+    "a method written as maths is not read": (
+        _a_method_written_as_maths_is_not_read,
+        test_a_method_is_read_where_the_methods_and_the_results_name_it,
     ),
     "a ladder word a bare summary leaves out is more": (
         _a_ladder_word_a_bare_summary_leaves_out_is_more,

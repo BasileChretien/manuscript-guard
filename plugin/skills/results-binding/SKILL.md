@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked, rule-unchecked, mean-sd-skewed or comparison-contradicted. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, binding-in-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked, rule-unchecked, mean-sd-skewed, comparison-contradicted, discussion-not-reported or discussion-in-supplement. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -165,13 +165,8 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
   on PATH `check` passes it and says in a note (`tex-not-judged`) that the build judges it.
 - `manuscript/supplementary/` is checked the same way and built as its own document.
 
-In a LaTeX manuscript, a binding is one command: `\mg{results.key}`, `\mg{lit.key}`,
-`\mg{table.key}` inside the float you caption, `\mg[width=\linewidth]{figure.key}` with
-`\includegraphics`'s options, and `\mg{method.step}`. Point at a table or a figure with
-`\ref`. `manuscript-guard values` writes `mgvalues.sty` from the results, so that the `.tex`
-compiles in any editor with the numbers in: run it after the analysis and commit it; `check`
-fails a stale one. A number in a siunitx command, `\num{0.42}`, cannot be bound, since
-siunitx parses a number and a value prints as text: type the unit beside the binding.
+In a LaTeX manuscript a binding is one command, `\mg{results.key}`, and
+`manuscript-guard values` writes `mgvalues.sty`: [references/latex.md](references/latex.md).
 
 ## 3. Tables and figures come from results
 
@@ -211,6 +206,10 @@ em$table("by_group", columns, rows,
 A binding left in a caption, a header or a cell is refused as `binding-in-table`, by the
 emitter and by G2: bindings resolve only in the prose, so one in a table would print as
 braces.
+
+A table is read without the text: its `caption=` defines its symbols and columns and names
+its comparator, its test and its correction (the manuscript-writing skill's
+references/clarity.md).
 
 A figure script lives in `figures/`, reads the results, and types no data values. Numbers in
 the rendered figure must be result displays, conventions, or declared ticks in
@@ -283,6 +282,7 @@ checked like any other.
 | `interval-level-differs`, `spread-label-differs` | a warning: the level written beside an interval ("90% CI"), or the label beside a dispersion ("SE"), is not the one the analysis emitted. Write the one emitted, or bind what the text means |
 | `interval-level-undeclared` | a warning: an interval is quoted and its level was not emitted. Say it once: `Emitter(__file__, ci_level="95%")`, `mg_emitter(..., ci_level = "95%")` |
 | `family-uncorrected` | a warning: a family of more than one p value, and no `correction()` declared for it. "none" with a reason is a declaration |
+| `discussion-not-reported`, `discussion-in-supplement` | the Discussion binds a result the paper reports nowhere (a warning) or only in the supplement (a note). Report it in the Results, or point at the supplement's table there |
 
 ## If you are a model doing this
 

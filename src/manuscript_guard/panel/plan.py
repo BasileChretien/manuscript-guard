@@ -111,7 +111,9 @@ STARTER_PANELS: dict[int, tuple[dict, ...]] = {
         },
     ),
     # Deliberately nobody from round one: a second pass by the same remits mostly confirms
-    # itself. These two meet the paper as its readers will.
+    # itself. These three meet the paper as its readers will: an editor, a specialist, and a
+    # reader new to it with no statistical training. The last names no figure, which no model
+    # is sent (G11's `figures-not-seen`): the displays alone are a remit read by route A.
     2: (
         {
             "id": "desk-editor",
@@ -131,6 +133,21 @@ STARTER_PANELS: dict[int, tuple[dict, ...]] = {
             "whether the limitations are stated where a hurried reader will meet them.",
             "why": "The paper will be read by people in its field, who will act on what "
             "they take from it.",
+        },
+        {
+            "id": "plain-reader",
+            "role": "Reader from the field who is new to this paper and has no statistical "
+            "training",
+            "remit": "Whether the paper can be followed by someone who has not seen it and "
+            "has never studied statistics. Each term defined before or where it is first "
+            "used, the abstract included, and used in one sense only; each statistical method "
+            "given a plain one-sentence gloss where it first appears (what a ratio of 1 "
+            "means, what an interval is, what a correction or an adjustment does); each range "
+            "labelled; each test the Results use named in the Methods; each table readable "
+            "without the text, its symbols, columns, comparator and corrections said in its "
+            "caption or notes; and each claim said to hold by construction explained.",
+            "why": "Readers who check the numbers do not notice what an outsider cannot "
+            "follow, and most of the paper's readers are outsiders.",
         },
     ),
 }

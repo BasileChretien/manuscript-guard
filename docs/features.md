@@ -5,7 +5,7 @@
 
 Everything manuscript-guard is meant to do, by the stage of a paper it belongs to:
 one entry for each thing it promises, what does it, and the tests that prove it.
-Of the 82 entries, 77 work, 3 work in part, and 2 are planned.
+Of the 83 entries, 78 work, 3 work in part, and 2 are planned.
 
 The source is [features.yaml](features.yaml), which an agent tool reads before it
 changes a feature. `python tools/feature_map.py` draws this page and its picture from
@@ -15,7 +15,7 @@ skill and hook is in an entry, and every test an entry names is there.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/features-dark.svg">
   <img src="img/features-light.svg" width="880"
-       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 77 work, 3 work in part and 2 are planned.">
+       alt="The stages of a paper, and other people's papers beside them (Start, Plan, Analyse, Write, Cite, Check, Review, Submit, Other people's papers), each with the features that belong to it: 78 work, 3 work in part and 2 are planned.">
 </picture>
 
 ## Start
@@ -112,6 +112,7 @@ Hold the paper to the journal, the guideline and its own records.
 | **Declarations** | The paper makes the statements every paper makes, data availability, ethics, funding, competing interests, contributions and AI use, each saying what the authors' records say, and no heading is left with nothing under it. | works | [G4](gates.md) | [`test_disclosures.py`](../tests/test_disclosures.py)<br>[`test_ai_use.py`](../tests/test_ai_use.py)<br>[`test_statements.py`](../tests/test_statements.py) |
 | **[Reporting checklist](guidelines.md)** | Fetches the guideline's own checklist (STROBE, CONSORT, PRISMA and others), and holds each item to the sentence that answers it. | works | [`checklist`](commands.md#checking--audit), [`fetch`](commands.md#checking--audit), [`transcribe`](commands.md#checking--audit), [G5](gates.md), skill [`reporting-checklist`](agent-tools.md) | [`test_transcribe.py`](../tests/test_transcribe.py)<br>[`test_compliance.py`](../tests/test_compliance.py) |
 | **Claims kept to the results** | The abstract and the conclusions claim no more than the Results they sum up, and an estimate whose interval includes no effect is not stated as one. | works | [G8](gates.md) | [`test_claims.py`](../tests/test_claims.py)<br>[`test_intervals.py`](../tests/test_intervals.py) |
+| **[Understood by every reader](../plugin/skills/manuscript-writing/references/clarity.md)** | Asks for each term to be defined where it is first used, each method to be explained in plain words and each table and figure to stand alone, and warns where the Discussion gives a result the Results do not, the Results use a test the Methods never name, or a caption points at a line it never names. | works | [G3](gates.md), [G8](gates.md), [G9](gates.md), skill [`manuscript-writing`](agent-tools.md), skill [`review-panel`](agent-tools.md), skill [`figure-review`](agent-tools.md) | [`test_corruption.py::test_a_result_the_discussion_interprets_is_one_the_results_report`](../tests/test_corruption.py)<br>[`test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name`](../tests/test_corruption.py)<br>[`test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is`](../tests/test_corruption.py)<br>[`test_review_plan.py::test_the_second_starter_panel_reads_the_paper_as_an_outsider_would`](../tests/test_review_plan.py) |
 | **Arithmetic that holds** | Sums, ratios, flows of participants and P values agree with the numbers they come from, and one quantity is not reported under two names. | works | [G8](gates.md) | [`test_relations.py`](../tests/test_relations.py)<br>[`test_stats.py`](../tests/test_stats.py) |
 | **Edits that keep the numbers** | Checks that an edit changed only the wording, not a number or a citation, and warns where it made a sentence claim more. | works | [`reworded`](commands.md#checking--audit) | [`test_reworded.py`](../tests/test_reworded.py) |
 | **What a change reaches** | Lists the results, sentences, figures, Methods paragraphs and readings that depend on a file that changed. | works | [`impact`](commands.md#checking--audit) | [`test_corruption.py::test_impact_lists_what_an_analysis_script_makes_stale`](../tests/test_corruption.py)<br>[`test_corruption.py::test_impact_follows_results_into_results_and_a_deleted_file_to_its_readings`](../tests/test_corruption.py)<br>[`test_checking.py::test_impact_tells_a_main_text_methods_file_from_the_supplements`](../tests/test_checking.py) |

@@ -8577,6 +8577,82 @@ limit or a negation with no word of the ladder claims nothing to count, and a he
 sentence. A binding of a result, of a value from the literature or of a display's number is
 something to rest on; an anchor of the Methods, which points at the code, is not.
 
+## Every reader can follow the paper
+
+The gates hold a paper's numbers to its analysis and its claims to its results. None held that
+a reader could follow it. On a real manuscript, a census that 29 internal rounds had read for
+its numbers, its consistency and its claims, one round of three readers with clarity remits
+(the whole paper for a reader new to it, the statistics for a reader without statistical
+training, the tables and figures alone) found about fifty problems, eight of them major:
+terms used before they were defined or in two senses, the abstract's among them; methods
+named with no plain gloss, and a test of the Results that the Methods never named; ranges
+left unlabelled beside shares expected by chance, read as intervals; claims "by
+construction" never explained; a result the Discussion interpreted that only the supplement
+reported; captions that left symbols, columns, the comparator and the correction of the P
+values unsaid, and one that pointed at "the line"; and a figure that drew the weakest
+comparison where the text's headline used the strictest, so that the figure overstated the
+result.
+
+Most of these are judgements: whether a term is defined, whether a gloss says enough,
+whether a display reads alone. A rule that guessed would be wrong as often as right, so they
+go where judgements go:
+
+- guidance, in the manuscript-writing skill's `references/clarity.md` (each reader's needs,
+  glosses that work for a reader without statistical training, how to fit definitions into an
+  abstract under its word limit, and which defects `check` finds) and in the methods-writer,
+  results-binding and figure-review skills; the figure review's `caption-agrees` asks whether
+  the figure draws the comparison the text headlines;
+- remits, in the review-panel skill's `references/remits.md`: a reader new to the paper and
+  statistics for a reader without statistical training, by either route; the displays alone,
+  by route A only, a fresh agent sent the rendered figures and the tables as built and nothing
+  of the text; and the abstract alone, which also asks which words its reader cannot
+  understand from it;
+- a third reader in the second round's starter panel (`plain-reader`), new to the paper and
+  without statistical training, whose remit names no figure, since no model is sent one and
+  G11 would warn (`figures-not-seen`).
+
+Three shapes can be read with few false alarms, and are checked. Each is a warning, or a
+note, at every stage: a new rule starts as one, until what it says of real papers is known.
+
+- **A result the Discussion gives** (G8, `gates/reported.py`). The Discussion's bindings are
+  read with the walk a summary's are read with, and held as a summary's are held, but by the
+  main text alone: a key the Methods or the Results bind, one declared the same quantity, or
+  one a placed table or figure prints, is reported; one only the supplement reports is a note
+  (`discussion-in-supplement`); one nothing reports, a warning (`discussion-not-reported`).
+  Read only where the paper has a Results section: a review with none weighs the work of
+  others in its Discussion. A conclusion under the Discussion is a summary's, held once.
+- **An analysis the Results name and the Methods never do** (G9, `gates/analyses_named.py`).
+  A list (`data/statistical_methods.yaml`) holds tests, corrections, intervals, resampling
+  methods and models, each under every name papers use for it; one the Results name, the main
+  text's or the supplement's, that the Methods name under none of its names, the main text's
+  or the supplement's, is a warning (`analysis-not-in-methods`) at its first use. The text is
+  read as `claims` reads it, so not in a binding, a citation or code, and the sections as G8
+  finds them (`Walk.parts`).
+- **A caption that points at a line it never names** (G3, `gates/caption_marks.py`): "below
+  the line", "right of the curves", with nothing between "the" and the mark and nothing after
+  it that says which, its equation ("y = x") among what does, in a caption that names no
+  line or curve any other way (`caption-line-unnamed`). "The area under the curve" is a
+  measure, and points at nothing. The captions read are a Markdown file's legends and tables'
+  captions as G14 finds them, an image's, a LaTeX file's `\caption`, and the caption the
+  analysis emits for a table.
+
+Not checked, and why:
+
+- A term used before it is defined. A paper's own terms are on no list, and G14 reads short
+  forms only. Declaring the terms in `paper.yaml` would let a gate find the first use, but
+  not whether the sentence there defines it.
+- A method with no gloss. What counts as a gloss, a clause, an apposition, the sentence
+  before, cannot be read from its shape without many false alarms; the statistics reader
+  judges it, and `analysis-not-in-methods` holds the one part that is exact.
+- A display's short form that only the text defines. G14 holds a display's own definitions
+  to its own uses (Basile, 2026-11-21, "Table stands alone"), and a use in a display that
+  defines nothing to the text's definition (`language._loose`), so such a use is defined.
+  Asking each display to define every form it uses would add a finding to a reading the
+  author settled then, so it is left to the displays reader (Basile, 2026-11-27, "Leave to
+  the reader").
+- A figure that draws a weaker comparison than the text headlines: only a reader who looks at
+  the figure sees what it draws.
+
 ## The boxes a journal prints beside the abstract
 
 Journals print short texts beside the abstract: Elsevier's highlights, JAMA's key points, the
@@ -18454,6 +18530,46 @@ to fix is pinned until the fix lands, and the fix changes its test.
   one. Literature values (`lit.`) are not looked for: an abstract may give the background
   it rests on.
   Pinned by `tests/test_corruption.py::test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display`.
+- **A result the Discussion gives is looked for as a summary's is** (`gates/reported.py`,
+  `discussion-not-reported`). It takes that reading's limits: a display printed whole in a
+  placed table's cells or a figure's text reports a key by coincidence, and the supplement
+  reports a key it binds or prints anywhere. A paper with no Results heading is not read for
+  it at all. Pinned by
+  `tests/test_corruption.py::test_a_result_the_discussion_gives_is_looked_for_where_a_summary_s_is`.
+  - A result the Discussion interprets in words, with no number bound, is not seen, nor one
+    it binds under a second key the analysis emitted for it without `same_as`. Accepted.
+- **`analysis-not-in-methods` reads names from a list** (`data/statistical_methods.yaml`). A
+  method the list does not hold says nothing, and a name the Methods give only to say the
+  method was not used, or a surname standing alone ("Cox", "Holm"), counts as naming it.
+  Accepted.
+  - The Abstract, the Introduction and the Discussion are not read, since they name the
+    methods of other studies too. Pinned by
+    `tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name`.
+  - A heading that names the Results and the Discussion together, "Results and discussion",
+    is the Results', so a method of another study it names is held to this paper's Methods
+    (round 1 of #826). Accepted.
+  - A word another field uses for something else is read as the method where the list keeps
+    it: "E-value" in a sequence search, "imputed" genotypes. "Kappa" and "propensity" alone
+    name their methods in the Methods only for that reason, so a Results "(κ = 0.52)" is
+    not read; and a name too loose to say which method the Results used, "the Wilcoxon
+    test", names each it may be in the Methods, unless it opens a full name there, and none
+    in the Results, where it is not warned of. Pinned by
+    `tests/test_corruption.py::test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning`.
+  - An emitted table's caption is not read, nor a figure's text: a method named only there
+    is not looked for in the Methods. Accepted.
+- **`caption-line-unnamed` reads one shape** (`gates/caption_marks.py`): a line or a curve
+  pointed at by where something stands against it ("below the line"), with "the", "these",
+  "those", "this" or "that" directly before the mark. "The dashed line" names its style and
+  is not warned of, though nothing may say what it marks; a caption that names one line and
+  points at "the line" where two are drawn is not warned of either; and a band, a bar or an
+  area pointed at so is not read. Pinned by
+  `tests/test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is`.
+  - A Markdown figure's caption is read only as a legend that opens with its pointer, typed or
+    bound ("{{ref.figure.forest}}."), or as an image's; a paragraph under a figure that opens
+    otherwise is no caption to the build either. Accepted.
+- **The second starter round's plain reader reads no figure.** Its remit asks for tables that
+  stand alone and names no figure, since a model is sent none; the displays alone, figures
+  included, are a remit read by route A, which `review --run` never reads. Accepted.
 - **A paper with no Results heading reports under every heading that names no part.** A
   section of a review's own that is really an introduction ("The problem of arrests"), a
   discussion ("What this means for regulators") or a summary is read as reporting, so a

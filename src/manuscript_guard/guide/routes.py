@@ -110,7 +110,8 @@ ROUTES: dict[str, Route] = {
            "same-as-unresolved", "family-uncorrected", "p-against-interval",
            "ratio-interval-asymmetric", "spread-label-differs", "quality-not-run",
            "entry-unchecked", "rule-unchecked", "manuscript-empty", "p-decision-error",
-           "p-inconsistent", "summary-not-reported"),
+           "p-inconsistent", "summary-not-reported", "discussion-not-reported",
+           "discussion-in-supplement"),
     # A trial's table of baseline characteristics with P values: the script that emits it,
     # or the table typed, drops the column; no command does it.
     **_all("results-binding", None, "baseline-p-values"),
@@ -144,6 +145,8 @@ ROUTES: dict[str, Route] = {
            "typed-model-kind", "poisson-binary-variance", "unit-rows-independent"),
     # G12's, of the Methods: each package the analysis uses, named there and cited.
     **_all("methods-writer", None, "software-unnamed", "software-uncited"),
+    # An analysis the Results name and the Methods never do: the Methods say what it is.
+    **_all("methods-writer", None, "analysis-not-in-methods"),
     # -- the literature -------------------------------------------------------------------
     **_all("literature-verify", None, "literature-source-missing", "quote-",
            "value-not-in-quote", "quotation-", "statements-without-passage",
@@ -210,6 +213,8 @@ ROUTES: dict[str, Route] = {
     **_all("review-panel", ("review", "--design"), "design-"),
     # The sentences are listed by `explain <file>`, and the skill says how a reader is sent them.
     **_all("review-panel", None, "interpretation-sentences"),
+    # A caption that points at a line it never names: the figure's marks are said in it.
+    **_all("figure-review", None, "caption-line-unnamed"),
     **_all("reviewer-response", ("respond",), "point-unanswered", "claimed-change-",
            "anchor-unrecorded", "quoted-text-", "response-", "reply-unbound-number"),
     **_all("word-roundtrip", None, "comment-unanswered", "comments-", "docx-unreadable"),

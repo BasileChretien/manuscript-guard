@@ -5704,12 +5704,14 @@ def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
 
 
 def _unreported(root: Path) -> list[tuple[str, str, int]]:
-    """What G8 says of a summary: the key, the heading it was given under, the line."""
+    """What G8 says of a summary: the key, the heading it was given under, the line. Not what
+    it says of the Discussion (`_discussed`)."""
     from manuscript_guard.gates import check_reported
 
     project, _ = load_project(root)
     _, results, _, _ = load_namespace(project)
-    found = check_reported(project, results).findings
+    found = [f for f in check_reported(project, results).findings
+             if not f.code.startswith("discussion-")]  # fmt: skip
     assert all(f.severity == "warn" for f in found)
     return [
         (f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1], f.line) for f in found
@@ -5854,6 +5856,8 @@ def test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display(
     _swap(project, "\n\n# Data availability",
           "\n\n**Conclusions.** They were {{results.extra.own}}.\n\n# Data availability")
     assert _unreported(project) == []
+    # It is the Discussion's, and a result given there that nothing reports is warned of.
+    assert [code for code, *_ in _discussed(project)] == ["discussion-not-reported"]
     _swap(project, "**Conclusions.** They", "## Conclusions\n\nThey")
     assert _unreported(project) == [
         ("results.extra.own", "Conclusions", _line_of(project, "They were {{results.extra"))
@@ -5893,6 +5897,340 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     supplement.parent.mkdir(exist_ok=True)
     supplement.write_text("# Table S1\n\n{{results.case.n_serious}} serious.\n", encoding="utf-8")
     assert _unreported(project) == []
+
+
+# --------------------------- a result the Discussion gives that the paper's Results do not report
+
+
+def _reported_of(loaded):
+    """G8's check of what the summaries and the Discussion give, of a loaded project."""
+    from manuscript_guard.gates import check_reported
+
+    return check_reported(loaded, load_namespace(loaded)[1])
+
+
+def _discussed(root: Path) -> list[tuple[str, str, str, int]]:
+    """What G8 says of a result the Discussion binds: the code, the severity, the key and the
+    line, in the order the findings come."""
+    loaded, _ = load_project(root)
+    found = _reported_of(loaded).findings
+    return [(f.code, f.severity, f.message.split()[0], f.line)
+            for f in found if f.code.startswith("discussion-")]  # fmt: skip
+
+
+#: Where the example's Discussion says what disproportionality is not.
+_NOT_INCIDENCE = "Disproportionality is not incidence, and"
+
+
+def test_a_result_the_discussion_interprets_is_one_the_results_report(project: Path) -> None:
+    """The Discussion interprets the results, and gives none of its own. A key it binds that
+    the Results bind is nothing to say. One the paper reports only in its supplement is a
+    note, since a reader of the paper meets its interpretation and not the result; one the
+    paper reports nowhere, a warning, as a summary's is. A Limitations under the Discussion is
+    the Discussion's; a Conclusions under it is a summary, held as one and not twice."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _discussed(project) == []
+    _swap(project, _NOT_INCIDENCE,
+          "The ratio of {{results.ror.point}} sits beside the negative control's "
+          "{{results.control.negative.point}}, and {{results.case.n_serious}} cases were "
+          f"serious.\n{_NOT_INCIDENCE}")  # fmt: skip
+    line = _line_of(project, "sits beside the negative control")
+    control = ("discussion-in-supplement", "info", "results.control.negative.point", line)
+    assert _discussed(project) == [control]
+    _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")
+    serious = ("discussion-not-reported", "warn", "results.case.n_serious", line)
+    assert _discussed(project) == [control, serious]
+    report, _project, _chosen, _deferred = _run_gates(project)
+    codes = [f.code for f in report.findings if f.code.startswith("discussion-")]
+    assert codes == ["discussion-in-supplement", "discussion-not-reported"]
+    # Under a Limitations of the Discussion, the same, once for a key in a file; under its
+    # Conclusions, a summary's.
+    _emitted(project, extra__limit="0.123")
+    _swap(project, "Several limitations follow from the design.",
+          "## Limitations\n\nOf them, {{results.case.n_serious}} were serious, and "
+          "{{results.extra.limit}} were not. Several limitations follow from the design.")
+    limits = ("discussion-not-reported", "warn", "results.extra.limit",
+              _line_of(project, "Of them, {{results.case.n_serious}}"))  # fmt: skip
+    assert _discussed(project) == [control, serious, limits]
+    _swap(project, "## Limitations\n\n", "## Conclusions\n\n")
+    assert _discussed(project) == [control, serious]
+    loaded, _ = load_project(project)
+    summarised = [(f.message.split()[0], f.line)
+                  for f in _reported_of(loaded).findings if f.code == "summary-not-reported"]
+    assert summarised == [("results.case.n_serious", limits[3]),
+                          ("results.extra.limit", limits[3])]
+
+
+def test_a_result_the_discussion_gives_is_looked_for_where_a_summary_s_is(project: Path) -> None:
+    """As for a summary: a key declared the same quantity as one the Results bind is
+    reported, and so is one whose display a table or a figure the paper places prints. A
+    paper with no Results section is not read for this: its Discussion is where a review
+    weighs what others found."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["case.serious_again"] = dict(
+        document["values"]["case.n_serious"], same_as="case.n_serious")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    _swap(project, _NOT_INCIDENCE,
+          f"Of them, {{{{results.case.serious_again}}}} were serious.\n{_NOT_INCIDENCE}")
+    assert _discussed(project) == []
+    # 77 cases are printed in Table 2; with the Results' own sentence gone they still are.
+    _swap(project, "Hepatic injury was reported in\n{{results.case.n_cases}} of these",
+          "Hepatic injury was reported in\nsome of these")  # fmt: skip
+    _swap(project, "Of them, ", "Of {{results.case.n_cases}} cases, ")
+    assert _discussed(project) == []
+    for display in ("{{table.two_by_two}}", "{{table.baseline}}"):
+        _swap(project, display, "")
+    (found,) = _discussed(project)
+    assert found[:3] == ("discussion-not-reported", "warn", "results.case.n_cases")
+    _swap(project, "\n# Results\n", "\n# What the reports held\n")
+    assert _discussed(project) == []
+
+
+def test_a_latex_discussion_is_read_for_the_results_it_gives(project: Path) -> None:
+    """The same in LaTeX, in the printed view: a key the Discussion binds and the Results do
+    not is warned of at its `.tex` line."""
+    from manuscript_guard.gates import check_reported
+
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nx\n"
+        "\\section{Results}\nThe ROR was \\mg{results.ror.point}.\n\\section{Discussion}\n"
+        "The ROR of \\mg{results.ror.point} rests on \\mg{results.case.n_cases} cases.\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    loaded, _ = load_project(project)
+    found = [(f.code, f.message.split()[0], f.path.name, f.line)
+             for f in check_reported(loaded, load_namespace(loaded)[1]).findings]  # fmt: skip
+    assert found == [("discussion-not-reported", "results.case.n_cases", "main.tex", 8)]
+
+
+# ------------------------------------- an analysis the Results name that the Methods never do
+
+
+def _unexplained(root: Path) -> list[tuple[str, str, int]]:
+    """What G9 says of an analysis the Results name: the method, the file, the line."""
+    from manuscript_guard.gates.analyses_named import check_analyses_named
+
+    loaded, _ = load_project(root)
+    found = check_analyses_named(loaded).findings
+    assert all(f.severity == "warn" and f.code == "analysis-not-in-methods" for f in found)
+    return [(f.subject, f.path.name, f.line) for f in found]
+
+
+#: Where the example's Results give the adjusted estimate.
+_ADJUSTED = "can reconstruct it. Adjusted for age group and sex"
+
+
+def test_an_analysis_the_results_name_is_one_the_methods_name(project: Path) -> None:
+    """A reader who meets a test in the Results looks it up in the Methods. The example's
+    Results name none the Methods do not. A test the Results name and the Methods never do is
+    warned of at its first use, once, whatever the name it goes by there; the Methods naming
+    it under another of its names, in another case or with "'s" or not, is enough, and so are
+    the supplement's Methods. Named in the Abstract, the Introduction or the Discussion, or in
+    a binding's key, a citation or code, it is not read."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _unexplained(project) == []
+    _swap(project, _ADJUSTED, "can reconstruct it. The proportions differed by Fisher's "
+          "exact test, and again by a Fisher test. Adjusted for age group and sex")
+    line = _line_of(project, "differed by Fisher's")
+    assert _unexplained(project) == [("fisher-exact", "main.md", line)]
+    report, _project, _chosen, _deferred = _run_gates(project)
+    (found,) = [f for f in report.findings if f.code == "analysis-not-in-methods"]
+    assert found.gate == "G9" and "Fisher's exact test" in found.message
+    assert "and 1 more time after" in found.message
+    _swap(project, "# Methods\n", "# Methods\n\nProportions were compared by the FISHER "
+          "exact test.\n")  # fmt: skip
+    assert _unexplained(project) == []
+    # The Results' other names: a bootstrap, Mann–Whitney; the Methods' elsewhere.
+    _swap(project, "exact test, and again", "exact test, a bootstrapped interval, a "
+          "Mann\N{EN DASH}Whitney U test, and again")  # fmt: skip
+    line = _line_of(project, "a bootstrapped interval")
+    assert _unexplained(project) == [("mann-whitney", "main.md", line),
+                                     ("bootstrap", "main.md", line)]
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(text.replace("# Supplementary methods\n", "# Supplementary methods\n"
+                                       "\nThe interval was also found by the bootstrap, and "
+                                       "ranks compared by a Wilcoxon rank-sum test.\n"),
+                          encoding="utf-8")  # fmt: skip
+    assert _unexplained(project) == []
+    # Named only where it is not read: the Discussion, the Introduction, code, a citation.
+    _swap(project, _NOT_INCIDENCE, f"A jackknife would differ. {_NOT_INCIDENCE}")
+    _swap(project, "# Introduction\n", "# Introduction\n\nKaplan-Meier curves are common.\n")
+    _swap(project, "can reconstruct it. The", "can reconstruct it (`cox.fit()`, "
+          "[@fictionalClassSignal2019]). The")  # fmt: skip
+    assert _unexplained(project) == []
+
+
+def test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning(
+    project: Path,
+) -> None:
+    """Round 1 of #826 and the real-paper corpus: "kappa" in "kappa light chains" and
+    "propensity" in "reporting propensity" are words of other fields and name no method; a
+    Methods that writes the chi-squared test as maths, or calls a test "the Wilcoxon test",
+    names it, the second for both of Wilcoxon's tests. A bare "Wilcoxon" in the Results names
+    neither, and is not warned of."""
+    _swap(project, _ADJUSTED, "can reconstruct it. Free kappa light chains rose, the "
+          "reporting propensity fell, the counts differed by a chi-squared test, and the "
+          "titres by a Wilcoxon signed-rank test. Adjusted for age group and sex")  # fmt: skip
+    line = _line_of(project, "Free kappa light chains rose")
+    assert _unexplained(project) == [("chi-squared", "main.md", line),
+                                     ("wilcoxon-signed-rank", "main.md", line)]
+    _swap(project, "# Methods\n", "# Methods\n\nCounts were compared by a $\\chi^2$ test, and "
+          "titres by the Wilcoxon test.\n")  # fmt: skip
+    assert _unexplained(project) == []
+    _swap(project, "by the Wilcoxon test", "by ranks")
+    _swap(project, "by a Wilcoxon signed-rank test", "by a Wilcoxon test")
+    assert _unexplained(project) == []
+    # Round 2: a Wilcoxon test named whole names that test alone, and "kappa" alone in the
+    # Methods names the kappa statistic the Results name.
+    _swap(project, "titres by ranks", "titres by the Wilcoxon rank-sum test, and agreement "
+          "by kappa")  # fmt: skip
+    _swap(project, "by a Wilcoxon test", "by a Wilcoxon signed-rank test, and Cohen's kappa")
+    line = _line_of(project, "Free kappa light chains rose")
+    assert _unexplained(project) == [("wilcoxon-signed-rank", "main.md", line)]
+    # Round 3: and the other way round.
+    _swap(project, "Wilcoxon rank-sum test, and", "Wilcoxon signed-rank test, and")
+    _swap(project, "by a Wilcoxon signed-rank test, and Cohen",
+          "by a Wilcoxon rank-sum test, and Cohen")
+    assert _unexplained(project) == [("mann-whitney", "main.md", line)]
+
+
+def test_an_analysis_the_supplement_s_results_name_is_held_to_the_methods(project: Path) -> None:
+    """The supplement's Results are read as the main text's are, and a paper with no Methods
+    section is not read at all."""
+    supplement = project / "manuscript" / "supplementary" / "S3_results.md"
+    supplement.write_text("# Supplementary results\n\nThe estimates were Holm-corrected.\n",
+                          encoding="utf-8")
+    assert _unexplained(project) == [("holm", "S3_results.md", 3)]
+    _swap(project, "\n# Methods\n", "\n# How it was done\n")
+    assert _unexplained(project) == [("holm", "S3_results.md", 3)]  # the supplement's Methods
+    codes = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = codes.read_text(encoding="utf-8")
+    codes.write_text(text.replace("# Supplementary methods\n", "# Supplementary tables\n"),
+                     encoding="utf-8")
+    assert _unexplained(project) == []
+
+
+def test_a_latex_paper_s_results_are_read_for_the_analyses_they_name(project: Path) -> None:
+    """The same in LaTeX, read in the printed view: a test the Results name with LaTeX's en
+    dash, and the Methods do not, is warned of at its `.tex` line."""
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nCounts were compared "
+        "by a chi-squared test.\n\\section{Results}\nThey differed ($\\chi^2$ test), and by "
+        "a Kruskal--Wallis test.\n\\section{Discussion}\nA Cox model.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert _unexplained(project) == [("kruskal-wallis", "main.tex", 6)]
+
+
+# --------------------------------------------------- a caption that points at a line it never names
+
+
+def _unnamed_lines(root: Path) -> list[tuple[str, str | None, int | None]]:
+    """What G3 says of a caption that points at a line: the mark, the file, the line."""
+    from manuscript_guard.gates.caption_marks import check_caption_marks
+
+    loaded, _ = load_project(root)
+    found = check_caption_marks(loaded, load_namespace(loaded)[1]).findings
+    assert all(f.severity == "warn" and f.code == "caption-line-unnamed" for f in found)
+    return [(f.subject, f.path.name if f.path else None, f.line) for f in found]
+
+
+def test_a_caption_that_points_at_a_line_says_which_line_it_is(project: Path) -> None:
+    """A reader of the figure alone has to know which line "the line" is. A legend that
+    points at one by where the estimates stand, and names none, is warned of at the place;
+    one that names it, by its style or by what it marks, here or once before, is not, and
+    neither is a sentence of the text. An image's caption and a table's emitted caption are
+    read too."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _unnamed_lines(project) == []
+    # The legend as the results-binding skill writes it, opened with the figure's ref.
+    _swap(project, "{{figure.forest}}\n", "{{figure.forest}}\n\n{{ref.figure.forest}}. The "
+          "reporting odds ratio with its interval; estimates to the right of the line are "
+          "signals.\n")  # fmt: skip
+    legend = _line_of(project, "{{ref.figure.forest}}. The")
+    assert _unnamed_lines(project) == [("line", "main.md", legend)]
+    _swap(project, "{{ref.figure.forest}}. The", "**Figure 1.** The")
+    assert _unnamed_lines(project) == [("line", "main.md", legend)]
+    report, _project, _chosen, _deferred = _run_gates(project)
+    (found,) = [f for f in report.findings if f.code == "caption-line-unnamed"]
+    assert found.gate == "G3" and "'to the right of the line'" in found.message
+    for named in ("right of the line of no association", "right of the line (an odds ratio "
+                  "of 1)", "right of the dashed line", "right of the vertical line"):
+        _swap(project, "right of the line are signals", f"{named} are signals")
+        assert _unnamed_lines(project) == [], named
+        _swap(project, f"{named} are signals", "right of the line are signals")
+    # Round 1 of #826: a line named by its equation, and the area under a curve, which is
+    # a measure and no curve pointed at.
+    for named in ("above the line y = x", "above the line $y = x$",
+                  "right of the line and an area under the curve"):
+        _swap(project, "right of the line are signals", f"{named} are signals")
+        assert _unnamed_lines(project) == ([] if "y = x" in named
+                                           else [("line", "main.md", legend)]), named
+        _swap(project, f"{named} are signals", "right of the line are signals")
+    _swap(project, "ratio with its interval;", "ratio with its interval, the dashed line "
+          "marking no association;")  # fmt: skip
+    assert _unnamed_lines(project) == []
+    # A sentence of the text is no caption.
+    _swap(project, "so a reader\ncan reconstruct it.", "so a reader\ncan reconstruct it. "
+          "Estimates below the line are not signals.")  # fmt: skip
+    assert _unnamed_lines(project) == []
+    # An image's caption.
+    _swap(project, "{{figure.forest}}\n", "{{figure.forest}}\n\n![Journals above the curve "
+          "had more seats.](figures/forest.png)\n")  # fmt: skip
+    assert _unnamed_lines(project) == [("curve", "main.md",
+                                        _line_of(project, "![Journals above the curve"))]
+
+
+def test_a_table_s_emitted_caption_is_read_for_the_line_it_points_at(project: Path) -> None:
+    """The caption the analysis emits for a table is read as a typed one is, and named at the
+    results file that holds it."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["baseline"]["caption"] = "Reports by group; rows below the line are totals."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == [("line", fragment.name, None)]
+    # Round 1 of #826: a second table of the same results file is read too, and the area
+    # under the curve, in a model's table, points at no curve.
+    document["tables"]["two_by_two"]["caption"] = "Counts; rows above the line are cases."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == [("line", fragment.name, None)] * 2
+    for key in ("baseline", "two_by_two"):
+        document["tables"][key]["caption"] = ("Discrimination by model: area under the curve "
+                                              "and calibration slope.")  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == []
+
+
+def test_a_latex_caption_is_read_for_the_line_it_points_at(project: Path) -> None:
+    """A LaTeX file's `\\caption` is read inside its braces, at its `.tex` line; one in a
+    comment is not."""
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nx\n"
+        "\\begin{figure}\\caption{Journals below the line had fewer seats.}\\end{figure}\n"
+        "\\begin{figure}\\caption{Journals below the line of equal shares.}\\end{figure}\n"
+        "\\begin{figure}\\caption{Journals above the line~(y = x).}\\end{figure}\n"
+        "% \\caption{Journals above the curve.}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert _unnamed_lines(project) == [("line", "main.tex", 5)]
 
 
 def _overclaimed(root: Path) -> list:
@@ -17300,6 +17638,12 @@ _READS_LATEX = (
     # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
     # citation command is written as pandoc's.
     "check_software_cited",
+    # It reads the Methods and the Results of each document, a LaTeX one's in its printed
+    # view (`_latex_named`).
+    "check_analyses_named",
+    # It reads each caption: a LaTeX float's through `caption_spans`, a Markdown one's and
+    # an emitted table's as they print.
+    "check_caption_marks",
 )  # fmt: skip
 
 

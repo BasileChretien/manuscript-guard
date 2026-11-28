@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed, software-uncited, rrid-not-looked-up, rrid-unresolved or cell-line-problematic, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding, quality-not-reported, software-unnamed, software-uncited, rrid-not-looked-up, rrid-unresolved, cell-line-problematic or analysis-not-in-methods, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -51,6 +51,12 @@ Methods is not bound, the analysis is not emitting something it should. Add the 
 it reads naturally. "We removed duplicate reports by matching on report identifier" beats
 "Duplicate report removal was performed utilising identifier-based matching". The
 [manuscript-writing](../manuscript-writing/SKILL.md) skill covers the register.
+
+**Name every test the Results use, and gloss each method once.** Name here each test,
+correction, interval and model the Results name, what it was used for, and a plain gloss:
+"Fisher's exact test, a test of whether two proportions differ that holds for small counts".
+G9 warns of one the Methods never name (`analysis-not-in-methods`). More glosses: the
+manuscript-writing skill's references/clarity.md.
 
 ## Reconciling after a change
 
@@ -149,14 +155,9 @@ script. Name the code that did the work instead, without running it:
 em.code_step("model.stacked", "code/analysis.py", "fit_stacked", at="results-review8-v2")
 ```
 
-It is a step like any other to the anchors, G9 and the checking page. With git on PATH and a
-repository holding the file, it is refused unless the function's code at that commit or tag is
-the code in the working tree, and refused when git fails there; with git not on PATH, or no
-repository, it is recorded as unchecked. When the
-code is edited afterwards, `check` fails from `internal-review` (`method-code-changed`,
-`method-code-missing`).
 Before using it, read [references/code-steps.md](references/code-steps.md): what may be
-named, what happens without a repository, and what to do when the results are made again.
+named, how git checks it, what happens without a repository, and when `check` fails
+(`method-code-changed`, `method-code-missing`).
 
 ## Declaring the choices the code makes
 

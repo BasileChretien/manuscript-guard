@@ -83,7 +83,8 @@ G5 warns where a declared design has none of its
 guidelines: a trial is reported with CONSORT, a cohort study with STROBE, RECORD or TARGET, a
 case-control, cross-sectional or self-controlled study with STROBE or RECORD, a diagnostic
 accuracy study with STARD, a case report with CARE, a descriptive case series with PROCESS
-or Kempen, a disproportionality analysis with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
+or Kempen, a qualitative study with SRQR, or COREQ for interviews and focus groups (neither
+has a recipe yet), a disproportionality analysis with READUS-PV, a systematic review with PRISMA and a prediction model with TRIPOD;
 `study_type: other` is a design none of these is. MDAR and SAGER belong to no one design, so
 no design asks for them: a project that follows one names it in `reporting_guideline` beside
 its design's guideline. It warns too when the manuscript says it

@@ -179,6 +179,7 @@ that names none: choose the guideline that fits it with the author.
 | case-report | CARE | |
 | case-series | PROCESS (written for surgery), or Kempen (no recipe yet) | |
 | self-controlled | STROBE, RECORD (no guideline is written for the design) | |
+| qualitative | SRQR, or COREQ for interviews and focus groups, no recipe yet | |
 | disproportionality | READUS-PV | |
 | systematic-review | PRISMA | PRISMA-P |
 | prediction-model | TRIPOD | |

@@ -183,18 +183,20 @@ def test_an_undeclared_design_offers_each_design(tmp_path: Path) -> None:
 def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     tmp_path: Path,
 ) -> None:
-    """A narrative review or a qualitative study is none of the designs the table holds, and
-    the choice was asked of it at every run, since nothing it could set answered it."""
+    """A narrative review is none of the designs the table holds, and the choice was asked
+    of it at every run, since nothing it could set answered it."""
     (action,) = of(settled(tmp_path, study_type=None, stage="design"), "choose-study-type")
     other = action.choice.options[-1]
     assert other.id == "other" and other.label.startswith("None of these (")
     # Said beside it, so that an author whose study is one of them knows to choose it.
-    assert all(study in other.label for study in ("qualitative study", "narrative review"))
+    assert "narrative review" in other.label
     # A cross-sectional study is a design of the table since its first new one.
     assert "cross-sectional" not in other.label
     assert "case report" not in other.label
     # A descriptive case series is one since 2026-11-28 (Basile, 2026-11-27).
     assert "case series" not in other.label
+    # And a qualitative study since 2026-11-28 (Basile, 2026-11-28).
+    assert "qualitative study" not in other.label
     assert "seven sections every plan has" in other.effect
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
 

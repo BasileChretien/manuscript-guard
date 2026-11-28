@@ -23,8 +23,8 @@
       "description": "Name of a profile under profiles/journals/. Absent means no journal chosen yet, which disables the journal gate rather than failing it."
     },
     "study_type": {
-      "enum": ["cohort", "case-control", "cross-sectional", "diagnostic-accuracy", "case-report", "case-series", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model", "other"],
-      "description": "The study's design. G12 asks the analysis plan for the sections this design needs beyond the seven every plan has, and not for those of the seven it has no use for (a case report's analysis and deviations), and G5 says where none of the reporting guidelines for it is declared. Each design's sections cite the guideline item they come from (src/manuscript_guard/data/study_types.yaml). `other` is for a study none of these is (a narrative review, a qualitative study): the plan is asked for the seven only, and no guideline is asked for by the design. Absent, the plan is asked for the seven only, and `next` asks for the design."
+      "enum": ["cohort", "case-control", "cross-sectional", "diagnostic-accuracy", "case-report", "case-series", "qualitative", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model", "other"],
+      "description": "The study's design. G12 asks the analysis plan for the sections this design needs beyond the seven every plan has, and not for those of the seven it has no use for (a case report's analysis and deviations, a qualitative study's exposure, outcome and analysis), and G5 says where none of the reporting guidelines for it is declared. Each design's sections cite the guideline item they come from (src/manuscript_guard/data/study_types.yaml). `other` is for a study none of these is (a narrative review): the plan is asked for the seven only, and no guideline is asked for by the design. Absent, the plan is asked for the seven only, and `next` asks for the design."
     },
     "registration": {
       "type": "array",

@@ -1083,3 +1083,104 @@ def test_the_licence_summaries_name_every_non_commercial_guideline() -> None:
     assert [name for name in restricted if not is_covered(name, rows)] == []
     for path in LICENCE_SUMMARIES:
         assert summary_problems(text_of(path), rows) == [], path.name
+
+
+# ------------------------------------------------------------- the recipes the pages list
+
+#: The pages that list the shipped recipes or count them, each read as it writes them.
+RECIPE_PAGES = {
+    "skill": REPO / "plugin" / "skills" / "reporting-checklist" / "SKILL.md",
+    "guidelines": DOCS / "guidelines.md",
+    "attribution": REPO / "ATTRIBUTION.md",
+    "principles": DOCS / "principles.md",
+}
+#: Each count of them, with the page it is on and the recipes it counts.
+RECIPE_COUNTS = (
+    ("attribution", r"\bAll ([a-z-]+) recipes\b", "all"),
+    ("principles", r"\bRecipes ship for ([a-z-]+) checklists\b", "checklists"),
+)
+
+
+def shipped_recipes() -> dict[str, str]:
+    """Each shipped recipe's name, with the format it reads its document in."""
+    from manuscript_guard.paths import SHIPPED_RECIPES
+    from manuscript_guard.reporting import load_recipe
+
+    found = {}
+    for path in sorted(SHIPPED_RECIPES.glob("*.recipe.yaml")):
+        _recipe, meta = load_recipe(path)
+        found[meta["name"]] = meta["_layout"].get("format") or "docx-table"
+    return found
+
+
+def table_recipes(guidelines: str) -> list[str]:
+    """The recipes the first column of docs/guidelines.md's Reporting checklists table
+    names, several to a cell, each without the year some carry: "CONSORT (2025)"."""
+    table = guidelines.split("\n## Reporting checklists\n", 1)[-1].split("\n\n```", 1)[0]
+    cells = re.findall(r"^\| ([^|]+?) \|", table, re.MULTILINE)
+    return [re.sub(r"\s*\([^()]*\)$", "", name)
+            for cell in cells if cell != "Recipe" for name in cell.split(", ")]  # fmt: skip
+
+
+def recipe_problems(pages: dict[str, str], recipes: dict[str, str]) -> list[str]:
+    """What the pages say of the recipes that the recipes are not: the skill's list of their
+    names, the names of docs/guidelines.md's table, the count of all of them in
+    ATTRIBUTION.md, and in docs/principles.md the count of the checklists, the recipes that
+    are not a rating scale."""
+    words = {figures_script().in_words(number): number for number in range(100)}
+    counts = {"all": len(recipes),
+              "checklists": sum(kind != "pdf-scale" for kind in recipes.values())}  # fmt: skip
+    problems = []
+
+    def against(where: str, named: list[str]) -> None:
+        problems.extend(f"{where} does not name {name}"
+                        for name in sorted(set(recipes) - set(named)))  # fmt: skip
+        problems.extend(f"{where} names {name}, which no recipe is"
+                        for name in sorted(set(named) - set(recipes)))  # fmt: skip
+
+    listed = re.search(r"Recipes ship for (.+?)\. Name", " ".join(pages["skill"].split()))
+    against("the skill", [] if listed is None else
+            [name for part in listed.group(1).split(", ") for name in part.split(" and ")])
+    against("docs/guidelines.md", table_recipes(pages["guidelines"]))
+    for page, pattern, counted in RECIPE_COUNTS:
+        said = re.search(pattern, " ".join(pages[page].split()))
+        if said is None:
+            problems.append(f"{page} no longer counts them as {pattern!r} reads")
+        elif words.get(said.group(1)) != counts[counted]:
+            problems.append(f"{page} says {said.group(1)}; there are {counts[counted]}")
+    return problems
+
+
+def test_the_pages_name_and_count_the_recipes_that_ship() -> None:
+    """Round 1 of #851: PROCESS 2023 was added by hand to each list and count of the
+    recipes, with nothing to fail where one was left out, as the licence summaries have."""
+    recipes = shipped_recipes()
+    assert "PROCESS-2023" in recipes and recipes["SANRA"] == "pdf-scale", recipes
+    pages = {name: text_of(path) for name, path in RECIPE_PAGES.items()}
+    assert recipe_problems(pages, recipes) == []
+
+
+def test_a_page_that_leaves_a_recipe_out_or_miscounts_them_is_told_so() -> None:
+    """Each of the four is read: a name left out of the skill's list and of the table, and a
+    count one short on each page, is a problem each."""
+    recipes = shipped_recipes()
+    pages = {name: text_of(path) for name, path in RECIPE_PAGES.items()}
+    words = [figures_script().in_words(number) for number in range(100)]
+    every = len(recipes)
+    checklists = sum(kind != "pdf-scale" for kind in recipes.values())
+    stale = {
+        "skill": pages["skill"].replace("PROCESS-2023, ", ""),
+        "guidelines": pages["guidelines"].replace("| PROCESS-2023 | case series in surgery |\n",
+                                                  ""),
+        "attribution": pages["attribution"].replace(f"All {words[every]} recipes",
+                                                    f"All {words[every - 1]} recipes"),
+        "principles": pages["principles"].replace(f"ship for {words[checklists]} checklists",
+                                                  f"ship for {words[checklists - 1]} checklists"),
+    }  # fmt: skip
+    assert all(stale[name] != pages[name] for name in pages), "a page no longer reads as written"
+    assert recipe_problems(stale, recipes) == [
+        "the skill does not name PROCESS-2023",
+        "docs/guidelines.md does not name PROCESS-2023",
+        f"attribution says {words[every - 1]}; there are {every}",
+        f"principles says {words[checklists - 1]}; there are {checklists}",
+    ]

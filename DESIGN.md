@@ -17820,8 +17820,8 @@ already written.
 Cross-sectional studies (STROBE), case reports (CARE), case series, diagnostic accuracy studies
 (STARD 2015) and qualitative studies (SRQR, COREQ). Each section of each is read from its
 guideline's own page on the day of its pull request, as the file requires, and
-`choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
-have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
+`choose-study-type` offers the design. STROBE, STARD 2015, CARE 2013 (since 2026-11-27)
+and PROCESS 2023 (since 2026-11-28) have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
 (labelled "self-controlled design (case series or case-crossover)"); its label,
 "descriptive case series", says so. No guideline is written for case series in every
@@ -17872,7 +17872,7 @@ the study (answer 5).
 
 - The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
   PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
-  2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
+  2026-11-28, whose Table 3 gives its items and `PROCESS-2023` reads, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
   whose full text Europe PMC's service does not return, so its checklist was not read for
   this design; no guideline written for case series in any field was found. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
   site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
@@ -24098,6 +24098,16 @@ Open, recorded as each change landed:
   none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it. Accepted.
+- **G5 does not read a claim of having followed CARE or PROCESS.** A case report and a
+  case series have recipes, CARE-2013 and PROCESS-2023, but neither name is in
+  `CLAIMABLE`, so "the report follows the CARE guidelines" in a paper that declares
+  neither is not warned of. Both are also the names of other things, Hayes's PROCESS
+  macro, the CARE Measure of empathy, cohorts and trials, and three rounds of #851 each
+  found new ways a rule that reads them goes wrong: case ("the CARE Guidelines"), a
+  hyphen ("CARE-2013"), words between ("the CARE case report guidelines"), emphasis, and
+  a year that names a macro ("PROCESS (2022)"). So the rule is a change of its own, in a
+  pull request of its own (Basile, 2026-11-28, "Split the claim rule out"). Pinned by
+  `tests/test_compliance.py::test_a_claim_of_care_or_process_is_not_read`.
 - **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
@@ -24105,10 +24115,14 @@ Open, recorded as each change landed:
 - **A descriptive case series is held to a surgical guideline or to one with no recipe.**
   No guideline is written for case series in every field, so the design names PROCESS
   2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
-  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
-  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
-  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
-  open licence. So a paper that declares either is told its checklist is not retrieved.
+  and G5 accepts either. `PROCESS-2023` reads PROCESS 2023's Table 3 from Europe PMC's
+  full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. A paper
+  must declare it by that name: one that declares `PROCESS`, as the design names it and
+  the setup question offers it, finds no profile of that name and is told its checklist
+  is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one that
+  declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
+  text is not served by Europe PMC, and its article states no open licence, so a paper
+  that declares it is told its checklist is not retrieved.
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for
   the intervention (6g), the operator (6j) and the variation between operators (6k) a
   series outside surgery answers as not applying. Accepted.

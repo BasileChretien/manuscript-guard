@@ -24,14 +24,6 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
-  - reading: guideline claims
-    why: >-
-      G5 reads a claim to have followed PROCESS or CARE, in capitals beside a year or a
-      word that makes it the guideline ("PROCESS 2023", "the CARE guidelines"; round 2),
-      as it reads one of every guideline it names (`CLAIMABLE`): a case series and a case report have recipes
-      now, PROCESS-2023 and CARE-2013, and a paper that says it followed one and declares
-      none is told so (round 1 of #851). The reading is new, and the base's rule reads
-      neither name
   - reading: plan sections asked
     why: >-
       a descriptive case series is a design of `data/study_types.yaml`: a plan whose

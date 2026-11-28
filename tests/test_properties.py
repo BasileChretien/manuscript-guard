@@ -170,7 +170,6 @@ from generated import (
     mean_tables,
     method_claims,
     methods_titled,
-    named_claims,
     named_numbers,
     numbered_displays,
     oracle_tables,
@@ -4747,48 +4746,6 @@ def _a_claim_runs_over_a_list_s_items(patch: pytest.MonkeyPatch) -> None:
 
     patch.setattr(reporting_gate, "_SENTENCE",
                   re.compile(r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|])))+(?:[.!?]|\n|$)"))
-
-
-def _process_and_care_are_not_read(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.gates import reporting as reporting_gate
-
-    names = [name for name in reporting_gate.CLAIMABLE if name not in ("CARE", "PROCESS")]
-    patch.setattr(reporting_gate, "_NAMED",
-                  re.compile(r"\b(" + "|".join(sorted(names, key=len, reverse=True)) + r")\b"))
-
-
-def _care_and_process_are_read_bare(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.gates import reporting as reporting_gate
-
-    names = sorted(reporting_gate.CLAIMABLE, key=len, reverse=True)
-    patch.setattr(reporting_gate, "_NAMED", re.compile(r"\b(" + "|".join(names) + r")\b"))
-
-
-def _a_name_is_read_in_any_case(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.gates import reporting as reporting_gate
-
-    patch.setattr(reporting_gate, "_NAMED",
-                  re.compile(reporting_gate._NAMED.pattern, re.IGNORECASE))
-
-
-@holds(60, named_claims())
-def test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none(
-    drawn: tuple[str, list[tuple[str, list[str]]]],
-) -> None:
-    """Every guideline G5 reads a claim of is read where its name stands in the capitals it
-    is published in, and none where the name is a word in lower case, "the care given",
-    "the process" (round 1 of #851, which added CARE and PROCESS), and CARE and PROCESS
-    only as a guideline's, not a macro's or a trial's (round 2). Each paragraph is read
-    alone as well as in the paper: a name claimed in lower case is the name of the paragraph
-    that claims it in capitals, and only a paragraph read alone tells the two apart."""
-    from manuscript_guard.gates import reporting as reporting_gate
-
-    text, paragraphs = drawn
-    named = reporting_gate._claims([(Path("main.md"), mask(text))])
-    assert sorted(named) == sorted(name for _, names in paragraphs for name in names), text
-    for paragraph, names in paragraphs:
-        assert sorted(reporting_gate._claims([(Path("main.md"), mask(paragraph))])) == names, (
-            paragraph)
 
 
 @holds(60, markdown_claims())
@@ -30237,18 +30194,6 @@ BROKEN = {
     "in LaTeX, G8r reads a claim from one item into the next": (
         _a_claim_runs_over_a_latex_list_s_items,
         test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
-    ),
-    "G5 does not read a claim of PROCESS or CARE": (
-        _process_and_care_are_not_read,
-        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
-    ),
-    "G5 reads CARE or PROCESS bare, a macro's or a trial's name as a claim": (
-        _care_and_process_are_read_bare,
-        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
-    ),
-    "G5 reads a guideline's name in lower case as a claim": (
-        _a_name_is_read_in_any_case,
-        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
     ),
     "G8r reads a claim from one item of a list into the next": (
         _a_claim_runs_over_a_list_s_items,

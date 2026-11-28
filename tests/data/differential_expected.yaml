@@ -26,10 +26,12 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a descriptive case series is a design of `data/study_types.yaml`: a plan whose
-      paper.yaml names it is asked for its case selection, follow-up, comparison, and
-      consent and ethics, each from its PROCESS 2023 item, beside the seven every plan has,
-      where main read `study_type: case-series` as no design of its table and refused it
+      a qualitative study is a design of `data/study_types.yaml`: a plan whose paper.yaml
+      names it is asked for its sampling and saturation, data collection, analytic
+      approach, reflexivity, trustworthiness, and consent and ethics, each from its SRQR
+      item, and not for the exposure, the outcome or the analysis every other plan has
+      (Basile, 2026-11-28), where main read `study_type: qualitative` as no design of its
+      table and refused it
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,

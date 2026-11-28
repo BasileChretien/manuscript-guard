@@ -15667,6 +15667,18 @@ def test_a_case_series_is_registered_as_either_kind_of_study(project: Path) -> N
     assert _registration(project) == {}
 
 
+def test_a_qualitative_study_is_registered_as_either_kind_of_study(project: Path) -> None:
+    """A qualitative study on its own is registered as observational, and one nested in a
+    trial, a process evaluation, names the trial's registration, which is interventional.
+    Held to either, a correct paper would be told to correct its design; it is held to
+    neither, as a case series is."""
+    _paper_field(project, "study_type", "qualitative")
+    _register(project)
+    assert _registration(project) == {}
+    _register(project, record=_ctgov_record(study_type="interventional"))
+    assert _registration(project) == {}
+
+
 def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates))
@@ -41492,6 +41504,158 @@ def test_a_case_series_section_is_found_by_its_own_words(
     assert (section not in _plan_asked(project)) is found
 
 
+def test_a_qualitative_plan_is_asked_how_its_data_were_made_and_never_for_a_model(
+    project: Path,
+) -> None:
+    """A qualitative study took `other`, and its plan was asked for the seven sections
+    alone: an exposure, a main outcome and a model it has no use for, and never whom it
+    sampled and when it stopped, how the talk was collected and analysed, who the
+    researchers are, how the findings were tested or whether the participants consented.
+    Its plan is asked for those six, each with its SRQR item in the hint, and not for the
+    exposure, the outcome or the analysis, whether it holds them, leaves them out or
+    leaves them empty (Basile, 2026-11-28)."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="qualitative")
+    # The example's plan has "Sample size" and "Analysis", which find two of the six.
+    own = ["consent and ethics", "data collection", "reflexivity", "trustworthiness"]
+    assert _plan_asked(project) == own
+    report = check_design(load_project(project)[0])
+    hints = {f.message: f.hint for f in report.findings if f.code == "plan-section-missing"}
+    assert "(SRQR, item 9)" in hints["the plan says nothing about consent and ethics"]
+    assert "(SRQR, item 6; COREQ, items 1 to 8)" in hints[
+        "the plan says nothing about reflexivity"]
+    assert report.counts["design_expected"] == 10, report.counts
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert all(f"## {name}\n" in text for name in ("Exposure", "Outcome", "Analysis"))
+    plan.write_text(text.replace("## Exposure\n", "## Notes\n")
+                    .replace("## Outcome\n", "## More notes\n")
+                    .replace("## Analysis\n", "## Data analysis\n"), encoding="utf-8")
+    assert _plan_asked(project) == own
+    plan.write_text(text.replace("## Exposure\n", "## Exposure\n\nn/a\n\n## Notes\n")
+                    .replace("## Outcome\n", "## Outcome\n\nTBD\n\n## More notes\n"),
+                    encoding="utf-8")  # fmt: skip
+    report = check_design(load_project(project)[0])
+    assert not [f for f in report.findings if f.code == "plan-section-empty"], report.render()
+
+
+def test_a_qualitative_plan_is_not_asked_for_feasibility_results(project: Path) -> None:
+    """Every plan's Analysis, once found, asked for feasibility results: the cohort at each
+    step, the outcome's events, the missing values. A qualitative study counts none of
+    them, and its plan is not asked for that Analysis (`not_asked`), so its analytic
+    approach brings no such warning, while a cohort's plan, the same text, still does."""
+    _without_counts(project)
+    assert _feasibility_said(project, "design") == ["feasibility-not-run"]
+    _paper_has(project, study_type="qualitative")
+    assert _feasibility_said(project, "design") == []
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        # Headings of the Methods of open-access qualitative protocols and studies
+        # (Europe PMC, read on 2026-11-28), and near misses.
+        ("## Sampling strategy", "sampling and saturation", True),
+        ("## Recruitment and sampling", "sampling and saturation", True),
+        ("## Data saturation", "sampling and saturation", True),
+        ("## Participant selection", "sampling and saturation", True),
+        ("## Selection of interview participants", "sampling and saturation", True),
+        ("## Participants", "sampling and saturation", False),
+        ("## Identifying potential participants", "sampling and saturation", False),
+        ("## Semi-structured interviews", "data collection", True),
+        ("## Focus groups", "data collection", True),
+        ("## Topic guide for the focus groups", "data collection", True),
+        ("## Field notes", "data collection", True),
+        ("## Participant observation", "data collection", True),
+        ("## Data generation", "data collection", True),
+        ("## Design of IDI and FGD guides", "data collection", True),
+        ("## Topic list", "data collection", True),
+        ("## Interviewer characteristics", "data collection", False),
+        ("## Procedure", "data collection", False),
+        ("## Instruments", "data collection", False),
+        ("## Thematic analysis", "analytic approach", True),
+        ("## Analytical approach", "analytic approach", True),
+        ("## Coding", "analytic approach", True),
+        ("## Analysts’ perspectives and reflexivity", "analytic approach", False),
+        ("## Reviewing themes", "analytic approach", False),
+        ("## Reflexivity", "reflexivity", True),
+        ("## Research team and reflexivity", "reflexivity", True),
+        ("## Positionality", "reflexivity", True),
+        ("## Researcher characteristics", "reflexivity", True),
+        ("## Interviewer characteristics", "reflexivity", True),
+        ("## Researchers’ backgrounds", "reflexivity", True),
+        ("## Relationship with participants", "reflexivity", True),
+        ("## Study team", "reflexivity", False),
+        ("## Characteristics of participants", "reflexivity", False),
+        ("## Trustworthiness", "trustworthiness", True),
+        ("## Rigour", "trustworthiness", True),
+        ("## Rigor", "trustworthiness", True),
+        ("## Credibility and transferability", "trustworthiness", True),
+        ("## Member checking", "trustworthiness", True),
+        ("## Triangulation", "trustworthiness", True),
+        ("## Validity", "trustworthiness", False),
+        ("## Quality assurance", "trustworthiness", False),
+        ("## Ethics and dissemination", "consent and ethics", True),
+        ("## Ethical considerations", "consent and ethics", True),
+        ("## Confidentiality", "consent and ethics", False),
+        # False passes the words accept (DESIGN.md, Known gaps): a heading that names
+        # interviews, an analysis or the research team, whatever it is about.
+        ("## Analysis of interviews", "data collection", True),
+        ("## Selection of interview participants", "data collection", True),
+        ("## Methods and analysis", "analytic approach", True),
+        ("## Economic analysis", "analytic approach", True),
+        ("## Support from the research team", "reflexivity", True),
+    ],
+)  # fmt: skip
+def test_a_qualitative_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """A qualitative study's sections are found by words those sections alone use, taken
+    from the headings real qualitative protocols and studies give them and kept narrow
+    (DESIGN.md, Known gaps, "A design's sections are found by the words of their
+    headings"): "Interviewer characteristics" is the reflexivity and no data collection, a
+    bare "Participants" is the population, and a heading the words miss, "Procedure" or
+    "Validity", is answered by naming its section."""
+    _paper_has(project, study_type="qualitative")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    # The example's "Sample size" and "Analysis" find two of the six: out, so that each
+    # heading is the only one that could.
+    text = text.replace("## Sample size\n", "## Size\n").replace("## Analysis\n", "## Notes\n")
+    text = text.replace("## Sensitivity analyses\n", "## Other checks\n")
+    plan.write_text(text, encoding="utf-8")
+    assert section in _plan_asked(project)
+    plan.write_text(text + f"\n{heading}\n\nWhat it says.\n", encoding="utf-8")
+    assert (section not in _plan_asked(project)) is found
+
+
+@pytest.mark.parametrize(
+    ("heading", "found"),
+    [
+        ("## Study design", True),
+        ("## Qualitative design", True),
+        # SRQR's item 5 and COREQ's item 9 by their names: no "design" in them.
+        ("## Qualitative approach and research paradigm", False),
+        ("## Theoretical framework", False),
+        ("## Methodological orientation", False),
+    ],
+)  # fmt: skip
+def test_a_qualitative_design_is_found_by_every_plan_s_word_alone(
+    project: Path, heading: str, found: bool
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): a qualitative plan's design is every plan's, found by "design", so a
+    plan that names it under SRQR's or COREQ's words, its approach, paradigm or theory, is
+    told it lacks one, and answers it by naming the section (`{#design}`)."""
+    _paper_has(project, study_type="qualitative")
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Design\n" in text
+    plan.write_text(text.replace("## Design\n", f"{heading}\n"), encoding="utf-8")
+    assert ("design" not in _plan_asked(project)) is found
+
+
 @pytest.mark.parametrize(
     ("heading", "found"),
     [
@@ -41857,19 +42021,20 @@ def test_a_design_s_section_is_found_by_a_word_of_any_heading(project: Path) -> 
 def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> None:
     """A known gap (DESIGN.md, Known gaps, "A design's sections are found by the words of
     their headings"): the table's designs are named, and a design outside them, a
-    qualitative study, is no `study_type` of its own; `other` keeps the seven sections. A
+    narrative review, is no `study_type` of its own; `other` keeps the seven sections. A
     cross-sectional study was the example until it became the table's eighth design (DESIGN.md,
-    "One set of plan questions", its first new design)."""
+    "One set of plan questions", its first new design), and a qualitative study until it
+    became the twelfth (Basile, 2026-11-28)."""
     from manuscript_guard.gates.design import REQUIRED, required_for, study_types
 
     assert sorted(study_types()) == sorted([
         "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
-        "case-report", "case-series", "self-controlled", "disproportionality",
-        "systematic-review", "prediction-model"])
+        "case-report", "case-series", "qualitative", "self-controlled",
+        "disproportionality", "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
-    _paper_has(project, study_type="qualitative")
+    _paper_has(project, study_type="narrative-review")
     _project, report = load_project(project)
-    assert any("study_type" in f.message and "qualitative" in f.message
+    assert any("study_type" in f.message and "narrative-review" in f.message
                for f in report.failures), report.render()  # fmt: skip
 
 
@@ -41930,6 +42095,10 @@ def _guideline_said(root: Path) -> list[str]:
         ("case-series", ["PROCESS-2023"], False),
         ("case-series", ["Kempen-2011"], False),
         ("case-series", ["STROBE"], True),
+        # A qualitative study follows SRQR, or COREQ for interviews and focus groups.
+        ("qualitative", ["SRQR"], False),
+        ("qualitative", ["COREQ"], False),
+        ("qualitative", ["STROBE"], True),
         (None, [], False),
         # A design none of the table's has no guideline to be held to.
         ("other", [], False),

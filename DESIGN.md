@@ -17828,12 +17828,29 @@ of patients, not the self-controlled case series, which `self-controlled` alread
 field, so G5 takes PROCESS 2023, written for surgical case series, or Kempen 2011, for
 uncontrolled case series, and its sections cite PROCESS 2023 (Basile, 2026-11-27).
 
+A qualitative study is one design, `qualitative`, whether its data come from interviews,
+focus groups, observation or documents. G5 takes SRQR (O'Brien et al., Acad Med 2014),
+written for qualitative research of any kind, or COREQ (Tong et al., Int J Qual Health Care
+2007), for interviews and focus groups, and its six sections cite SRQR's items with COREQ's
+beside them (Basile, 2026-11-28). Neither paper states a licence, so both are cited by
+item: SRQR's items were read in its supplement, whose every page says the Association of
+American Medical Colleges holds its copyright, and COREQ's in the checklist EQUATOR links
+to. Their recipes follow, each in a pull request of its own, SRQR's first (Basile,
+2026-11-28). The sections' heading words were taken from the Methods headings of 171
+open-access qualitative protocols and studies at Europe PMC, gathered before the patterns
+were written, and kept narrow, as #853's three rounds on the case series' comparison
+taught: a heading they miss names its section exactly.
+
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
 #801, and case reports since 2026-11-27, their plans not asked for an analysis or
 deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27), and
 descriptive case series since 2026-11-28, whose plans are asked for all seven (Basile,
-2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+2026-11-27), and qualitative studies since 2026-11-28, whose plans are not asked for an
+exposure, an outcome or an analysis (`not_asked`; Basile, 2026-11-28): a qualitative study
+compares nothing, names no main outcome and fits no model, and its analysis is asked for as
+its analytic approach, so a plan that holds one is not asked for the feasibility results a
+model's analysis is. `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17870,7 +17887,9 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
+- Whether SRQR's and COREQ's papers state a licence: on 2026-11-28 both stood at OUP
+  behind a bot check, and Crossref and Europe PMC record none; their items were read
+  (above). A descriptive case series answers to
   PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
   2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
   whose full text Europe PMC's service does not return, so its checklist was not read for
@@ -20022,14 +20041,14 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Eleven designs are named, a descriptive case series the last added; a design
-  outside them (a narrative review, a qualitative study,
+  not. Twelve designs are named, a qualitative study the last added; a design
+  outside them (a narrative review,
   a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans qualitative
-  studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
+  from a draft" (above) planned the designs added since,
+  and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
   questionnaire, data collection): four rounds of review of #801 found looser patterns
@@ -20063,7 +20082,24 @@ Added by the adversarial review, verified and **not** fixed:
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
   sections, its check that the Population names the chosen data source, and the brief read
   the identifier. The Deviations cannot be so named: every other reader of it finds it by
-  its words, and one named under other words would be read by none of them. The self-controlled designs have no reporting guideline, and
+  its words, and one named under other words would be read by none of them. A qualitative
+  study's sections are found by words of the headings real qualitative protocols and
+  studies give them, kept narrow (Basile, 2026-11-28): a sample, sampling, recruitment,
+  saturation, participant selection; data collection or generation, interviews, focus
+  groups, FGDs, IDIs, KIIs, a topic or discussion guide or list, field notes or fieldwork,
+  observation; an analysis, analytic, coding, a codebook; reflexivity, positionality, the
+  research team, the researchers' or interviewers' characteristics, background, role or
+  training, the relationship with the participants; trustworthiness, rigour, credibility,
+  member checking, transferability, dependability, confirmability, triangulation, an
+  audit trail; consent, ethics. So a heading that names interviews is its data collection,
+  "Analysis of interviews" or "Selection of interview participants", one that names an
+  analysis is its analytic approach, as any finds every plan's analysis, "Methods and
+  analysis" or "Economic analysis", and "Support from the research team" is its
+  reflexivity, false passes; and "Procedure", "Instruments", "Reviewing themes", "Study
+  team" and "Validity" name none of them, false alarms the identifier answers. Its design
+  is every plan's, found by "design" alone, so a plan that names it under SRQR's
+  "Qualitative approach and research paradigm" or COREQ's "Theoretical framework" is
+  told it lacks one. The self-controlled designs have no reporting guideline, and
   their sections come from the methods literature. G5 holds the paper's guidelines to the
   design, and not the protocol's (SPIRIT, PRISMA-P). A guideline is matched by the start of
   its name, so a name that begins as another does ("STROBE-anything").
@@ -20077,6 +20113,9 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
   `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
+  `tests/test_corruption.py::test_a_qualitative_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_qualitative_design_is_found_by_every_plan_s_word_alone`,
+  `tests/test_corruption.py::test_a_qualitative_plan_is_asked_how_its_data_were_made_and_never_for_a_model`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
@@ -24112,6 +24151,15 @@ Open, recorded as each change landed:
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for
   the intervention (6g), the operator (6j) and the variation between operators (6k) a
   series outside surgery answers as not applying. Accepted.
+- **A qualitative study is held to guidelines with no recipe.** G5 accepts SRQR or COREQ
+  for the design, and neither has a recipe yet, so a paper that declares either is told
+  its checklist is not retrieved. SRQR's items are in its paper's supplement, whose pages
+  reserve the copyright to the Association of American Medical Colleges, so its recipe
+  will be one to download and use, not to share. COREQ's checklist, the PDF EQUATOR links
+  to, states no licence and sets its items in two columns that pdftotext reads out of
+  line, and its paper's own table stood at OUP behind a bot check on 2026-11-28. Each
+  recipe follows in a pull request of its own, SRQR's first (Basile, 2026-11-28).
+  Accepted.
 - **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
   checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
   under some, which no recipe option reads. Table 1 of the statement paper (Global

@@ -8105,6 +8105,15 @@ PLAN_HEADINGS = {
                    "External controls", "Statistical comparisons"),
     "consent and ethics": ("Ethical approval", "Informed consent", "Ethics committee",
                            "Data protection"),
+    "sampling and saturation": ("Sampling strategy", "Recruitment", "Data saturation",
+                                "Participant selection", "Participants"),
+    "data collection": ("Semi-structured interviews", "Focus groups", "Topic guide",
+                        "Field notes", "Interviewer characteristics"),
+    "analytic approach": ("Thematic analysis", "Data analysis", "Coding",
+                          "Analysts’ perspectives"),
+    "reflexivity": ("Research team and reflexivity", "Positionality",
+                    "Researcher characteristics", "Study team"),
+    "trustworthiness": ("Rigour", "Member checking", "Credibility", "Validity"),
 }  # fmt: skip
 #: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
 _SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")

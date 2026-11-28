@@ -236,7 +236,7 @@ def _either(names) -> str:
 #: The studies `other` stands for, said beside "None of these" as each design's `describes` is
 #: beside it, so that an author whose study is one of them knows to choose it
 #: (`gates/design.py`, OTHER).
-_OTHER_STUDIES = "a qualitative study, a narrative review, and any other study"
+_OTHER_STUDIES = "a narrative review and any other study"
 
 
 def _choose_study_type(state: State) -> list[Action]:

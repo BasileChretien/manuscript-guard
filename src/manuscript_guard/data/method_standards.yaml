@@ -232,6 +232,27 @@ standards:
       - Causality
       - Reporting
 
+  # The checklist PDF says it is licensed CC BY-NC-SA 4.0 and asks to be cited as CASP UK
+  # with the year and its address; it has no DOI. Its domains are the topics of its ten
+  # questions, in its own words.
+  casp-qualitative:
+    name: CASP Checklist for Qualitative Research
+    citation: Critical Appraisal Skills Programme (2024). CASP Checklist for Qualitative Research
+    url: https://casp-uk.net/casp-tools-checklists/qualitative-studies-checklist/
+    read_on: 2026-11-28
+    applies_to: [qualitative]
+    domains:
+      - Statement of the aims
+      - Qualitative methodology
+      - Research design
+      - Recruitment strategy
+      - Data collection
+      - Relationship between researcher and participants
+      - Ethical issues
+      - Data analysis
+      - Statement of findings
+      - Value of the research
+
   robis:
     name: ROBIS (risk of bias in systematic reviews)
     citation: Whiting P et al. J Clin Epidemiol 2016;69:225-234

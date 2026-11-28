@@ -141,6 +141,41 @@ a comparison with something, historical or external controls, or a heading that 
   approval, and how the patients' consent is obtained, or why it is not. (PROCESS 2023, 6b
   and 11)
 
+## qualitative
+
+A qualitative study, which explores people's experiences, views or practices through what
+they say or do, in interviews, focus groups, observation or documents, and analyses words
+rather than numbers. The paper follows SRQR (2014), written for any qualitative study, or
+COREQ (2007), for interviews and focus groups, and G5 accepts either. Neither states an
+open licence, so the sections cite their items. The plan is not asked for the exposure,
+the outcome or the analysis: a qualitative study compares nothing, measures no main
+outcome and fits no model, and its analysis is asked for as the analytic approach. It is
+still asked for the deviations, since a topic guide and a sample change as the study goes.
+The headings that find each section are those real qualitative protocols use; a heading
+they miss, "Procedure" for the data collection or "Validity" for the trustworthiness, names
+its section exactly: `## Procedure {#data-collection}`.
+
+- **Sampling and saturation.** Whom the study asks to take part and why, how they are
+  approached, how many are expected, and how the team will decide that no more are needed.
+  (SRQR, 8; COREQ, 10 to 13 and 22)
+- **Data collection.** How the data are collected, by interviews, focus groups,
+  observation or documents: by whom, where and for how long, with which topic guide, how
+  it is recorded, and how the guide may change as the study goes. (SRQR, 10 and 11; COREQ,
+  14, 15 and 17 to 21)
+- **Analytic approach.** How the recordings are transcribed and the data analysed: the
+  approach, such as thematic, framework or content analysis, how the data are coded and
+  themes developed, by how many people, and with what software. (SRQR, 13 and 14; COREQ, 24
+  to 27)
+- **Reflexivity.** Who the researchers are, their training, roles and relationship with
+  the participants, and how their own views and position may shape the data and the
+  analysis. (SRQR, 6; COREQ, 1 to 8)
+- **Trustworthiness.** What is done to make the findings credible, such as a second
+  coder, an audit trail, triangulation of sources or checking the findings with the
+  participants. (SRQR, 15; COREQ, 23 and 28)
+- **Consent and ethics.** Whether an ethics committee approves the study or waives its
+  approval, how each participant's consent is obtained, and how what they say is kept
+  confidential. (SRQR, 9)
+
 ## self-controlled
 
 No reporting guideline is written for self-controlled designs; the paper follows STROBE.

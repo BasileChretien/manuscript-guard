@@ -51,6 +51,9 @@ def test_a_design_sets_aside_only_sections_of_the_seven_and_says_why() -> None:
 
     seven = [name for name, _pattern, _purpose in REQUIRED]
     assert set(study_types()["case-report"]["not_asked"]) == {"analysis", "deviations"}
+    # Nor does a qualitative study compare, measure an outcome or fit a model (Basile,
+    # 2026-11-28): its analysis is its own section, the analytic approach.
+    assert set(study_types()["qualitative"]["not_asked"]) == {"exposure", "outcome", "analysis"}
     for design, entry in study_types().items():
         aside = entry.get("not_asked", {})
         assert set(aside) < set(seven), (design, aside)

@@ -653,6 +653,121 @@ types:
         url: https://doi.org/10.1097/JS9.0000000000000940
         read_on: 2026-11-28
 
+  # SRQR's items read in its supplement (links.lww.com/ACADMED/A218), which the AAMC
+  # holds the copyright of, and COREQ's in the checklist EQUATOR links to; neither paper
+  # gives a licence, so both are cited by item. Each section's heading words are those of
+  # the Methods headings of 171 open-access qualitative protocols and studies at Europe PMC,
+  # read on 2026-11-28, kept narrow: a heading they miss names its section exactly.
+  qualitative:
+    label: qualitative study
+    describes: >-
+      people's experiences, views or practices are explored through what they say or do,
+      in interviews, focus groups, observation or documents, and analysed as words rather
+      than numbers
+    guidelines: [SRQR, COREQ]
+    not_asked:
+      exposure: >-
+        a qualitative study explores how people experience or understand something, and
+        compares no treatment or exposure with another
+      outcome: >-
+        a qualitative study measures no outcome and names no main one: what it reports are
+        the themes or the account its analysis develops
+      analysis: >-
+        a qualitative study fits no statistical model, and its analysis is asked for in its
+        own words, as the analytic approach
+    sections:
+      - id: sampling and saturation
+        heading: '(?i)\bsampl(?:e|es|ing)\b(?!\s+bias)|\brecruit|\bsaturat|\bparticipant selection|\bselection of (?:the )?(?:interview |study )?participants'
+        says: >-
+          whom the study asks to take part and why, how they are approached, how many are
+          expected, and how the team will decide that no more are needed
+        ask: >-
+          Whom will you ask to take part, chosen how and why, and how will you decide that
+          you have enough participants?
+        explain: >-
+          A qualitative sample is chosen for what its members can tell, not to stand for a
+          population. Saying how they were chosen, and when sampling stopped, lets a reader
+          judge whose views the findings hold.
+        source: SRQR, item 8; COREQ, items 10 to 13 and 22
+        url: https://doi.org/10.1097/ACM.0000000000000388
+        read_on: 2026-11-28
+      - id: data collection
+        heading: '(?i)\bdata (?:collection|generation)\b|\binterview(?:s|ing)?\b|\b(?:FGDs?|IDIs?|KIIs?)\b|\bfocus[- ]groups?\b|\b(?:topic|discussion) (?:guides?|lists?)\b|\bfield ?(?:notes|work)\b|\bobservations?\b'
+        says: >-
+          how the data are collected, by interviews, focus groups, observation or
+          documents: by whom, where and for how long, with which topic guide, how it is
+          recorded, and how the guide may change as the study goes
+        ask: >-
+          How will you collect the data, who will lead the interviews or groups, with which
+          questions or topic guide, and how will you record them?
+        explain: >-
+          What people say depends on what they are asked, by whom and where. The topic
+          guide and the way the talk is recorded let a reader see how the data came about.
+        source: SRQR, items 10 and 11; COREQ, items 14, 15 and 17 to 21
+        url: https://doi.org/10.1097/ACM.0000000000000388
+        read_on: 2026-11-28
+      - id: analytic approach
+        heading: '(?i)\banaly(?:sis|ses|tic|tical|sing|zing|sed|zed)\b|\bcod(?:ing|ebooks?)\b'
+        says: >-
+          how the recordings are transcribed and the data analysed: the approach, such as
+          thematic, framework or content analysis, how the data are coded and themes
+          developed, by how many people, and with what software
+        ask: >-
+          How will you analyse what you collect: which approach, who will code the data,
+          and how will themes be developed from the codes?
+        explain: >-
+          Two teams can read the same transcripts differently. Naming the approach and the
+          steps from codes to themes lets a reader follow how the findings were reached.
+        source: SRQR, items 13 and 14; COREQ, items 24 to 27
+        url: https://doi.org/10.1097/ACM.0000000000000388
+        read_on: 2026-11-28
+      - id: reflexivity
+        heading: '(?i)\breflexiv|\bpositionality\b|\bresearch team\b|\b(?:researchers?|interviewers?|investigators?)(?:[''’]s?)? (?:characteristics|backgrounds?|roles?|positions?|training)\b|\brelationships? (?:with|to) (?:the )?participants\b'
+        says: >-
+          who the researchers are, their training, roles and relationship with the
+          participants, and how their own views and position may shape the data and the
+          analysis
+        ask: >-
+          Who will collect and analyse the data, what is their relationship with the
+          participants, and how might their own views shape what they find?
+        explain: >-
+          In qualitative research the researcher is part of how the data come about. A
+          clinician interviewing their own patients hears different things from a stranger,
+          and a reader needs to know which it was.
+        source: SRQR, item 6; COREQ, items 1 to 8
+        url: https://doi.org/10.1097/ACM.0000000000000388
+        read_on: 2026-11-28
+      - id: trustworthiness
+        heading: '(?i)\btrustworth|\brigou?r\b|\bcredibility\b|\bmember[- ]?check|\btransferability\b|\bdependability\b|\bconfirmability\b|\btriangulat|\baudit trail\b'
+        says: >-
+          what is done to make the findings credible, such as a second coder, an audit
+          trail, triangulation of sources or checking the findings with the participants
+        ask: >-
+          What will you do to show that the findings are sound, such as having a second
+          person code the data or checking the findings with the participants?
+        explain: >-
+          A qualitative study has no P value or interval to say how far its findings can be
+          trusted. Testing them against the data, and against other people's reading of it,
+          does that work.
+        source: SRQR, item 15; COREQ, items 23 and 28
+        url: https://doi.org/10.1097/ACM.0000000000000388
+        read_on: 2026-11-28
+      - id: consent and ethics
+        heading: '(?i)\bconsent|\bethic'
+        says: >-
+          whether an ethics committee approves the study or waives its approval, how each
+          participant's consent is obtained, and how what they say is kept confidential
+        ask: >-
+          Does the study need an ethics committee's approval, how will you obtain each
+          participant's consent, and how will you keep what they tell you confidential?
+        explain: >-
+          Participants may say things they would not want traced back to them. Journals ask
+          for the committee's approval and the consent, and a quote in the paper must not
+          identify the person who said it.
+        source: SRQR, item 9
+        url: https://doi.org/10.1097/ACM.0000000000000388
+        read_on: 2026-11-28
+
   self-controlled:
     label: self-controlled design (case series or case-crossover)
     describes: >-

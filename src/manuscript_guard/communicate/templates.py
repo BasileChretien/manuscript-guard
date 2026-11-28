@@ -37,6 +37,7 @@ BY_STUDY_TYPE = {
     "diagnostic-accuracy": "observational",
     "case-report": "observational",
     "case-series": "observational",
+    "qualitative": "observational",
     "self-controlled": "observational",
     "disproportionality": "observational",
     "systematic-review": "systematic-review",

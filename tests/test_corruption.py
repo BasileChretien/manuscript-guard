@@ -22352,6 +22352,42 @@ def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
     assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(("header", "printed"), [
+    ("nocite: '@*'\n", {"Zeta", "Alpha"}),
+    ('nocite: "@*"\n', {"Zeta", "Alpha"}),
+    ("nocite: |\n  @*\n", {"Zeta", "Alpha"}),
+    ("nocite: ['@zeta2001', '@*']\n", {"Zeta", "Alpha"}),
+    ("base: &every\n  nocite: '[@*]'\n<<: *every\n", {"Zeta", "Alpha"}),
+    ("nocite: '@zeta2001'\n", {"Zeta"}),
+    ("nocite: ['@zeta2001']\n", {"Zeta"}),
+    # Each string read as pandoc reads it on its own: joined, the code span the first opens
+    # would hide the second's citation (round 1 of #852).
+    ("nocite: ['`x', '@zeta2001`']\n", {"Zeta"}),
+    ("nocite: 'email@*'\n", set()),
+    ("title: 'nocite: @*'\n", set()),
+    ("nocite: ''\n", set()),
+])  # fmt: skip
+def test_the_offline_build_prints_the_works_the_header_s_nocite_names(
+    project: Path, header: str, printed: set[str]
+) -> None:
+    """The build stripped each file's front matter and wrote its own header from
+    `paper.yaml`, so a `nocite` there printed nothing, while G7 took `@*` for every entry
+    printed and warned of each. The offline build now carries the file's `nocite` into its
+    header, and prints what G7 says it prints: every entry for `@*`, the key named for one
+    key, and nothing more where no citation is read."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+
+    _with_entries(project, header=header)
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _report = load_namespace(loaded)
+    assembled, _assembly = assemble(loaded, namespace, results)
+    built = build_document(loaded, assembled, mode=OFFLINE)
+    xml = zipfile.ZipFile(built.output).read("word/document.xml").decode("utf-8")
+    text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", xml, re.DOTALL))
+    assert {name for name in ("Zeta", "Alpha") if f"{name}, " in text} == printed, text[-600:]
+
+
 @pytest.mark.parametrize(("snippet", "where", "printed"), [
     ("\\nocite{*}", "body", None),
     ("\\AtBeginDocument{\\nocite{*}}", "preamble", True),

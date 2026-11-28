@@ -4587,7 +4587,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
             pandoc=pandoc(),
             numbers=numbers,
         )
-        marked.append(Assembled(path=item.path, text=text))
+        marked.append(Assembled(path=item.path, text=text, nocite=item.nocite))
         marks.extend(found)
 
     build_dir = project.path("build")
@@ -4863,7 +4863,7 @@ def _latex_from_markdown(project, args: argparse.Namespace):
     # Citeproc formats offline, with the journal's style kept by `style` or the one given.
     style = _journal_style(project, argparse.Namespace(csl=args.csl, offline=True))
     try:
-        return build_from_markdown(project, assembled, engine=_latex_engine(project), csl=style)
+        packed = build_from_markdown(project, assembled, engine=_latex_engine(project), csl=style)
     except LatexMissing as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -4873,6 +4873,9 @@ def _latex_from_markdown(project, args: argparse.Namespace):
     except OSError as exc:
         print(f"manuscript-guard: the LaTeX is not built: {exc}", file=sys.stderr)
         return 2
+    # What writing it found and built it anyway: a journal template that prints no `\nocite`.
+    _print_assembly_warnings(packed.report, project)
+    return packed
 
 
 def _build_markdown_latex(project, report, args: argparse.Namespace) -> int:
@@ -5109,6 +5112,8 @@ def _said_offline_citations(project, result, supplement: Path | None) -> None:
     if supplement is not None:
         source = project.path("build") / f"{supplement.stem}.md"
         with contextlib.suppress(OSError):
+            # The text after the header: `outside_code` blanks the build's header with the
+            # rest of the metadata, so its `nocite` is no citation (round 1 of #852).
             text = outside_code(source.read_text(encoding="utf-8"))
             keys |= {use.citekey for use in find_citations(text, source)}
     if not keys:

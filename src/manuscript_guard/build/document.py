@@ -616,10 +616,104 @@ def _yaml_text(project, key: str, value: object, *, sent: bool = False) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
+def document_nocite(ordered) -> tuple[str, ...]:
+    """The strings the front matter of a document's files holds under `nocite`, in the files'
+    order, each once, as `assemble` read them for G7's reader (`front_matter_said`); blank
+    ones left out."""
+    said = (value.strip() for item in ordered for value in getattr(item, "nocite", ()))
+    return tuple(dict.fromkeys(value for value in said if value))
+
+
+def nocite_lines(nocite: tuple[str, ...], *, one_string: bool = False) -> list[str]:
+    """The header's `nocite` line for the strings a document's files declare, none where
+    they declare none.
+
+    Each file's front matter is stripped (`assemble.strip_front_matter`), and the header
+    pandoc reads is the build's, so a `nocite` there printed nothing while G7 took it for
+    printing. Each string is written between JSON's quotation marks, which YAML reads back
+    as the same text. As a list, the strings are read one by one, as pandoc reads them in
+    the files' own headers, and citeproc prints from it. Measured on pandoc 3.9, the LaTeX
+    writer writes no `\\nocite` for a list, so under natbib and biblatex (`one_string`) they
+    are written as one, parted by spaces. Joined, pandoc reads the citations of one string
+    as it reads them alone unless the string opens what the next closes: `[@a` and `@b]`
+    are still read as citations of both, while in `` `x `` and `` @b` `` the code span hides
+    `@b` (DESIGN.md, Known gaps)."""
+    if not nocite:
+        return []
+    written = " ".join(nocite) if one_string else list(nocite)
+    return [f"nocite: {json.dumps(written, ensure_ascii=False)}"]
+
+
+def _unread_keys():
+    """The keys pandoc 3.9 reads that `zotero.find_citations` does not, measured with
+    `-f markdown -t native`: one that opens with a digit or `_`, `@2019who` or `@_x`, its
+    punctuation inside it only, and a braced one, `@{zeta.2001}`, a brace inside it at one
+    depth. A braced key that holds a space, `@{a b}`, pandoc reads as text. The `@` is not
+    glued to a word, as `find_citations` reads it."""
+    from manuscript_guard.zotero.citations import _NOT_GLUED
+
+    return re.compile(
+        rf"(?=-?@){_NOT_GLUED}-?@(?:\{{(?P<braced>(?:[^\s{{}}]|\{{[^\s{{}}]*\}})+)\}}"
+        r"|(?P<key>[0-9_](?:\w|[:.#$%&\-+?<>~/](?=\w))*))"
+    )
+
+
+def nocite_asks(nocite, path: Path | None = None) -> tuple[bool, frozenset[str]]:
+    """Whether the strings a `nocite` holds ask for every entry, as G7 reads `@*`
+    (`printed_entries.asks_every`), and the keys they name, as the build reads a citation
+    (`zotero.find_citations`, outside code). A null, `~` or an address names none. A key
+    pandoc reads and that reader does not (`_unread_keys`) is a key too: the text's
+    citations are read by that reader, so such a key counts as one nothing cites, and the
+    live build warns of it and the offline one heads the list it prints in."""
+    from manuscript_guard.gates.printed_entries import asks_every
+    from manuscript_guard.zotero import find_citations
+
+    where = path or Path("nocite")
+    every = any(asks_every(said) for said in nocite)
+    read = [outside_code(said) for said in nocite]
+    keys = {use.citekey for text in read for use in find_citations(text, where)}
+    keys |= {found["braced"] or found["key"] for text in read
+             for found in _unread_keys().finditer(text)}  # fmt: skip
+    return every, frozenset(keys)
+
+
+def nocite_not_live(ordered, cited) -> Report:
+    """A warning for each file of a live build's document whose front matter declares a
+    `nocite` that asks for a work nothing in the text cites: every entry, or a key the
+    document's citations (`cited`) do not name. Better BibTeX's `zotero.lua` does not read
+    `nocite`, and the bibliography field Zotero fills lists only the works cited, so those
+    works are left out. A `nocite` of keys the text cites leaves nothing out."""
+    findings = []
+    for item in ordered:
+        every, keys = nocite_asks(document_nocite([item]), item.path)
+        uncited = sorted(keys - set(cited))
+        if not (every or uncited):
+            continue
+        what = ("every entry of references.bib" if every
+                else ", ".join(f"@{key}" for key in uncited) + ", which nothing cites")  # fmt: skip
+        findings.append(Finding(
+            gate=GATE,
+            code="nocite-not-live",
+            severity=WARN,
+            message=f"this file's front matter declares `nocite`, which asks for {what}, and a "
+            "live build leaves out the works nothing cites: Better BibTeX's filter does not "
+            "read `nocite`, and the bibliography field Zotero fills lists only the works cited",
+            path=item.path,
+            hint="`manuscript-guard build --offline` prints them; or cite each one in the text",
+        ))
+    return Report().with_findings(*findings)
+
+
 def _front_matter(
-    project, *, supplementary: bool = False, live: bool = False, sent: bool = False
+    project,
+    *,
+    supplementary: bool = False,
+    live: bool = False,
+    sent: bool = False,
+    nocite: tuple[str, ...] = (),
 ) -> str:
-    """A YAML header carrying the title and the Zotero settings the filter reads.
+    """A YAML header carrying the title and the Zotero settings the filter reads, and the
+    `nocite` of the document's files (`nocite_lines`).
 
     What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
     italics, and TeX outside `$` would be left out, which is why it is refused (`_yaml_text`).
@@ -660,6 +754,7 @@ def _front_matter(
         "  scannable-cite: false",
         "  author-in-text: true",
     ]
+    lines += nocite_lines(nocite)
     if live:
         lines += _word_lines(project)
     lines += ["---", ""]
@@ -746,8 +841,16 @@ def build_document(
 
     ordered = document_files(project, assembled, supplementary=supplementary)
     body = document_text(ordered, prologue, epilogue)
+    # Printed by citeproc only. Better BibTeX's filter does not read `nocite`, so a live
+    # build warns instead, below; the plain build `import` compares a live document with
+    # stands in for that build, and leaves the works out as it does.
+    nocite = document_nocite(ordered)
     header = _front_matter(
-        project, supplementary=supplementary, live=mode == LIVE, sent=sent
+        project,
+        supplementary=supplementary,
+        live=mode == LIVE,
+        sent=sent,
+        nocite=nocite if mode == OFFLINE else (),
     )
     source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations
@@ -805,8 +908,8 @@ def build_document(
             f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
         ]
         report = does_nothing(inert, read, built, output).merge(unknown)
-
         if mode == LIVE:
+            report = report.merge(nocite_not_live(ordered, keys))
             command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
             # A document with no citations gets no bibliography field (a supplement of tables),
             # and no heading over one. The heading goes first: the field takes the place of the
@@ -837,7 +940,11 @@ def build_document(
                 )
             # Before citeproc, which runs where it stands among the filters: the list is given
             # its place, under the author's heading of it where there is one, and its heading.
-            if cites:
+            # A document that cites nothing prints one where its files' `nocite` names a work.
+            # Only there: the filter runs before citeproc, and heads the `refs` div whether
+            # citeproc fills it or not, so a `nocite: null` was headed over an empty list.
+            every, named = nocite_asks(nocite)
+            if cites or every or named:
                 command += _references_filter(project, csl, citeproc=True)
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:

@@ -25,7 +25,7 @@ import posixpath
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.build.document import BuildError
@@ -39,6 +39,7 @@ from manuscript_guard.build.latex import (
     build_latex,
     recorded,
 )
+from manuscript_guard.findings import Report
 
 #: Where the folder is written in the build's copy, which each build replaces.
 STAGED = "submission"
@@ -83,6 +84,9 @@ class LatexPack:
     undefined: tuple[str, ...]
     #: Each document's compile, its PDF and what LaTeX left undefined in it (step 11).
     each: tuple[Compiled, ...] = ()
+    #: What writing the LaTeX out of Markdown found, which builds it all the same
+    #: (`latex_out.build_from_markdown`).
+    report: Report = field(default_factory=Report)
 
 
 def pack_latex(project, namespace, results, *, engine: str = "pdflatex") -> LatexPack:

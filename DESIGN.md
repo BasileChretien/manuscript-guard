@@ -24227,16 +24227,48 @@ Open, recorded as each change landed:
   none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it. Accepted.
-- **G5 does not read a claim of having followed CARE or PROCESS.** A case report and a
-  case series have recipes, CARE-2013 and PROCESS-2023, but neither name is in
-  `CLAIMABLE`, so "the report follows the CARE guidelines" in a paper that declares
-  neither is not warned of. Both are also the names of other things, Hayes's PROCESS
-  macro, the CARE Measure of empathy, cohorts and trials, and three rounds of #851 each
-  found new ways a rule that reads them goes wrong: case ("the CARE Guidelines"), a
-  hyphen ("CARE-2013"), words between ("the CARE case report guidelines"), emphasis, and
-  a year that names a macro ("PROCESS (2022)"). So the rule is a change of its own, in a
-  pull request of its own (Basile, 2026-11-28, "Split the claim rule out"). Pinned by
-  `tests/test_compliance.py::test_a_claim_of_care_or_process_is_not_read`.
+- **A trial named like a guideline is read as a claim of having followed it.** G5 reads a
+  guideline's name in capitals (`CLAIMABLE`) in a sentence with a word of claiming, and a
+  trial's acronym can be the same name: "as reported in the SPIRIT III trial" reads as a
+  claim of having followed SPIRIT, and a paper that declares no SPIRIT profile is warned,
+  as "as reported in the ARRIVE trial" is of ARRIVE. The author rewords a sentence warned
+  of, or the warning stays. Pinned by
+  `tests/test_corruption.py::test_a_trial_named_like_a_guideline_is_read_as_a_claim`.
+- **A claim of having followed CARE or PROCESS is read only beside a year or a word of a
+  guideline's.** A case report follows CARE and a case series PROCESS, whose recipes are
+  CARE-2013 and PROCESS-2023, and G5 reads a claim of either (`CLAIMABLE`). But both are
+  also the names of a trial, a scale, cohorts and Hayes's macro ("the PROCESS macro", "the
+  CARE Measure"), so each is read only where a year follows it, "PROCESS 2023",
+  "CARE-2013", or a word that makes it the guideline's, in any case, "the CARE
+  Guidelines": guideline, guidance, statement or checklist. The word may come after a
+  hyphen, Word's or an en dash among them, words of a case report or a series ("the CARE
+  case report guidelines"), a parenthesis or a citation ("the CARE (CAse REport)
+  guidelines"), or other names, in a chain or a list ("the CARE and STROBE and PRISMA
+  guidelines", "the CARE, STROBE, and PRISMA statements"); and the name may stand in stars
+  of emphasis (rounds 2 and 3 of #851, rounds 1 and 2 of #858). A name joined has "the"
+  before it only if the first has, however "the" is spaced (round 3), and a parenthesis or
+  a citation after it whenever the first has one, "the CARE (2013) and the STROBE [12]
+  statements": so neither Hayes's macro cited before a clause, "with PROCESS (Hayes, 2022)
+  and STROBE guidelines were followed", nor a clause after "and the", "used PROCESS and
+  the STROBE checklist was followed", is read as a claim of PROCESS. But "the CARE (CAse
+  REport) and STROBE guidelines" and "CARE and the STROBE guidelines" are not read as
+  claims of CARE either, nor a list that no "and", "or", "&" or "/" ends, "the CARE,
+  STROBE, PRISMA guidelines". And a clause after a name with neither, "Analyses used
+  PROCESS and STROBE guidelines were followed", or after the macro and a name each cited,
+  "with PROCESS [14] and STROBE [15] guidelines were followed", is read as a claim of
+  PROCESS, a false alarm. A claim that names one alone, "we followed CARE", is
+  not read, nor one where only a year in a parenthesis follows it, "according to PROCESS
+  (2023)", which is how Hayes's macro is cited, "with PROCESS (2022) for SPSS". Nor is one
+  of the guideline's criteria, "the PROCESS (2023) criteria", since "enrolled according to
+  the CARE criteria" are a trial's; nor a year a study follows, "the CARE 2019 cohort".
+  Nor one in underscores of emphasis, "the _CARE_ guidelines", as "the _STROBE_
+  guidelines" is not either; nor one joined to a single other name by a comma before "and"
+  or "or", "the CARE, or STROBE guidelines", since such a comma may end a clause, "Hayes's
+  PROCESS, and STROBE guidelines were followed". A list after the comma is still read as
+  one, so "Hayes's PROCESS, STROBE and CONSORT guidelines were followed" is a claim of
+  PROCESS, a false alarm. No paper of the real-paper corpus is read as claiming CARE or
+  PROCESS. Pinned by
+  `tests/test_corruption.py::test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word`.
 - **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
@@ -24246,10 +24278,10 @@ Open, recorded as each change landed:
   2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
   and G5 accepts either. `PROCESS-2023` reads PROCESS 2023's Table 3 from Europe PMC's
   full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. A paper
-  must declare it by that name: one that declares `PROCESS`, as the design names it and
-  the setup question offers it, finds no profile of that name and is told its checklist
-  is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one that
-  declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
+  must declare it by that name, as the setup question offers it (#856): one that declares
+  `PROCESS`, as the design names it, finds no profile of that name and is told its
+  checklist is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one
+  that declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
   text is not served by Europe PMC, and its article states no open licence, so a paper
   that declares it is told its checklist is not retrieved.
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for

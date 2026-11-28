@@ -124,7 +124,80 @@ def completion_path(project: Project, name: str) -> Path:
 CLAIMABLE = (
     "STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE",
     "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR", "CHEERS", "ENTREQ",
+    # A case report and a case series have recipes, CARE-2013 and PROCESS-2023, and are
+    # said to follow them (round 1 of #851). Both are words too, read in capitals only,
+    # and names of other things, read as a guideline only as `_AS_GUIDELINE` says.
+    "CARE", "PROCESS",
 )
+#: The names of `CLAIMABLE` that are also a macro's, a scale's, a cohort's or a trial's
+#: ("the PROCESS macro", "the CARE Measure", "the CARE trial"): read as a guideline only
+#: where a year follows it, "PROCESS 2023", "CARE-2013", or a word that makes it one,
+#: "the CARE guidelines" (round 2 of #851). The word may be in capitals, "the CARE
+#: Guidelines", and come after a hyphen, "CARE-guidelines", after words of a case report
+#: or a series, "the CARE case report guidelines", after other names, "the CARE and
+#: STROBE statements", or after a parenthesis, "the CARE (CAse REport) guidelines"; the
+#: name may be emphasised, "the **CARE** guidelines" (round 3). A year in a parenthesis
+#: alone is not the guideline's, "with PROCESS (2022) for SPSS" cites Hayes's macro, and
+#: "reporting" alone is a verb, "PROCESS reporting 5000 samples" (round 3). Round 1 of
+#: #858: each name may have "the" before it and a parenthesis or a citation after it, "the
+#: CARE (2013) and the STROBE [@strobe] statements", and a hyphen may be Word's or an en
+#: dash, "CARE–2013"; but a clause after a comma is no list, "Hayes's PROCESS, and STROBE
+#: guidelines were followed", nor are a trial's criteria or a cohort's year the guideline's,
+#: "enrolled according to the CARE criteria", "the CARE 2019 cohort". Round 2 of #858:
+#: names join in chains, "the CARE and STROBE and PRISMA guidelines", and a name joined has
+#: "the" before it only if the first has, and a parenthesis after it whenever the first
+#: has one, so that Hayes's macro cited, "with PROCESS (Hayes, 2022) and STROBE guidelines
+#: were followed", or a clause, "used PROCESS and the STROBE checklist was followed", is not
+#: read as a list.
+QUALIFIED = ("CARE", "PROCESS")
+#: The words that make one of `QUALIFIED` the guideline's name, in any case.
+_GUIDELINE_WORD = r"(?i:guidelines?|guidance|statements?|checklists?)\b"
+#: The words of a case report or a series that may stand between the name and the word.
+_BETWEEN = r"(?i:case|cases|clinical|surgical|reports?|reporting|series)\b"
+#: A hyphen as a paper types it: U+2010, Word's non-breaking U+2011, an en dash, and last
+#: the hyphen itself, which ends the class it goes into.
+_DASHES = chr(0x2010) + chr(0x2011) + chr(0x2013) + "-"
+#: A space or a hyphen between two words, with the stars of Markdown's emphasis round it.
+#: Each part below opens with the stars that close an emphasis, and none but this one,
+#: which a word follows, ends with stars, so that no two runs of stars stand side by side
+#: for the engine to share out.
+_GAP = rf"\**[\s{_DASHES}]+\**"
+#: A parenthesis or a citation after a name: "CARE (CAse REport)", "CARE [@gagnier2013]".
+_PARENTHESIS = r"(?:\**\s*(?:\([^()]*\)|\[[^\[\]]*\]))"
+#: What joins the name to another, "CARE and STROBE", "CARE/STROBE": not a comma.
+_JOIN = r"(?:(?:and|or)\b|&|/)"
+#: A year right after the name, unless a study follows it, "the CARE 2019 cohort".
+_NOT_A_STUDY = (r"(?!\**\s+(?i:cohorts?|trials?|study|studies|groups?|registry|registries|"
+                r"participants|patients)\b)")  # fmt: skip
+_YEAR = rf"\**[\s{_DASHES}](?:19|20)\d\d\b{_NOT_A_STUDY}"
+#: What ends the lookahead: a year, or the guideline's word after words between if any.
+_ENDING = rf"(?:{_YEAR}|(?:{_GAP}{_BETWEEN})*{_GAP}{_GUIDELINE_WORD})"
+
+
+def _joined(other: str) -> str:
+    """The others a name is joined to, each `other`: a chain, "CARE and STROBE and PRISMA",
+    "CARE/STROBE", or a list, "CARE, STROBE, and PRISMA", whose comma never comes first
+    before "and" or "or" (round 1 of #858)."""
+    return (rf"(?:(?:\**\s*{_JOIN}\s*{other})+"
+            rf"|(?:\**\s*,\s*{other})+\**\s*,?\s*{_JOIN}\s*{other})")  # fmt: skip
+
+
+def _as_guideline(the: bool) -> str:
+    """What must follow one of `QUALIFIED`, as a lookahead, with "the" before the name if
+    `the`. A name joined to it has "the" before it only if `the`, and a parenthesis after
+    it if any when the first has none, but always when the first has one (round 2 of
+    #858)."""
+    name = (r"(?:the\s+)?" if the else "") + r"\**[A-Z][A-Z0-9+-]+"
+    plain = _joined(rf"(?:{name}{_PARENTHESIS}?)")
+    cited = _joined(rf"(?:{name}{_PARENTHESIS})")
+    return rf"(?=(?:{plain}?|{_PARENTHESIS}{cited}?){_ENDING})"
+
+
+#: The lookahead after a name with no "the" before it, and after one with.
+_AS_GUIDELINE = _as_guideline(the=False)
+_AFTER_THE = _as_guideline(the=True)
+#: "the" before the name, the stars of an emphasis between if any.
+_THE_BEFORE = r"(?:(?<=\b[Tt]he[ \n])|(?<=\b[Tt]he[ \n]\*)|(?<=\b[Tt]he[ \n]\*\*))"
 
 #: Words that turn a mention of a guideline into a claim of having followed it.
 _CLAIMING = re.compile(
@@ -138,7 +211,20 @@ _CLAIMING = re.compile(
 #: about a guideline on the Methods section of essentially every observational paper, which
 #: teaches an author to stop reading its output. Guideline names are published in capitals
 #: and written that way; requiring the published casing costs nothing and removes the family.
-_NAMED = re.compile(r"\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) + r")\b")
+def _named(as_guideline: str, after_the: str) -> re.Pattern[str]:
+    """`CLAIMABLE`, longest first, each of `QUALIFIED` read only where `after_the` follows
+    it, after "the", or `as_guideline`."""
+
+    def one(name: str) -> str:
+        if name not in QUALIFIED:
+            return name
+        return rf"(?:{_THE_BEFORE}{name}{after_the}|{name}{as_guideline})"
+
+    names = sorted(CLAIMABLE, key=len, reverse=True)
+    return re.compile(r"\b(" + "|".join(one(name) for name in names) + r")\b")
+
+
+_NAMED = _named(_AS_GUIDELINE, _AFTER_THE)
 
 #: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
 #: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the
@@ -221,6 +307,14 @@ def _for_design(project: Project, declared: set[str], wanted: list | None = None
     )
 
 
+def _one_space(said: str) -> str:
+    """A sentence with each run of white space in it one space, so that "the" before CARE
+    or PROCESS is seen by `_THE_BEFORE`, a lookbehind of a fixed width, however it is
+    spaced: two spaces, a line break and an indent, a tab, a no-break space (round 3 of
+    #858)."""
+    return " ".join(said.split())
+
+
 def _claims(texts: list[tuple[Path, str]]) -> dict[str, Path]:
     """Each guideline a sentence of the texts says was followed, with the first file that
     says so."""
@@ -230,7 +324,7 @@ def _claims(texts: list[tuple[Path, str]]) -> dict[str, Path]:
             said = sentence.group(0)
             if not _CLAIMING.search(said):
                 continue
-            for name in _NAMED.findall(said):
+            for name in _NAMED.findall(_one_space(said)):
                 named.setdefault(name.upper(), path)
     return named
 

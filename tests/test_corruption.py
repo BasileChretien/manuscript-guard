@@ -19349,6 +19349,159 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
     assert found == ["CONSORT"], found
 
 
+@pytest.mark.parametrize(
+    ("cited", "name"),
+    [
+        ("As reported in the SPIRIT III trial, the stent lowered restenosis.", "SPIRIT"),
+        ("As reported in the ARRIVE trial, aspirin did not lower vascular events.", "ARRIVE"),
+    ],
+)
+def test_a_trial_named_like_a_guideline_is_read_as_a_claim(
+    project: Path, cited: str, name: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, rounds 1 and 2 of #851, round 1 of #858): a trial
+    whose acronym is a guideline's name, cited in a sentence with a word of claiming, is read
+    as a claim of having followed the guideline."""
+    from manuscript_guard.gates import check_reporting
+
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{cited}\n\n# Results\n",
+                                                    1), "utf-8")  # fmt: skip
+    found = [f.message.split(" followed ")[1].split(",")[0]
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == [name], found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "claimed"),
+    [
+        ("Mediation was tested following Hayes, with the PROCESS macro (Model 4) for SPSS.", []),
+        ("Patient-reported empathy was measured with the CARE Measure.", []),
+        ("Participants of the CARE cohort were followed for ten years.", []),
+        ("As reported in the CARE trial, pravastatin lowered coronary events.", []),
+        ("Mediation was tested following Hayes, with PROCESS (2022) for SPSS.", []),
+        ("As reported in the CARE (1996) trial, events fell.", []),
+        ("Mediation was run in PROCESS reporting 5000 bootstrap samples, following Hayes.", []),
+        ("Participants of the CARE case series were followed for a year.", []),
+        # Round 1 of #858: a clause after a comma is no list, and a trial's criteria and a
+        # cohort's or a trial's year are not the guideline's.
+        ("Mediation used Hayes's PROCESS, and STROBE guidelines were followed.", ["STROBE"]),
+        ("Patients were enrolled according to the CARE criteria.", []),
+        ("The CARE 2019 cohort was followed for five years.", []),
+        ("As reported in the CARE-2019 trial, events fell.", []),
+        # False passes the Known gaps name: a name alone, a year in a parenthesis alone, an
+        # emphasis in underscores, which no name of `CLAIMABLE` is read in, the guideline's
+        # criteria, and a name a comma and "or" join.
+        ("We followed CARE.", []),
+        ("This series was reported according to PROCESS (2023).", []),
+        ("The report follows the _CARE_ guidelines.", []),
+        ("The report follows the _STROBE_ guidelines.", []),
+        ("It was written to the PROCESS (2023) criteria.", []),
+        ("We followed the CARE, or STROBE guidelines.", ["STROBE"]),
+        # False alarms the Known gaps name: a list after a comma is read as one, and a name
+        # after "and" as joined, a citation after both names too.
+        ("Mediation used Hayes's PROCESS, STROBE and CONSORT guidelines were followed.",
+         ["CONSORT", "PROCESS", "STROBE"]),
+        ("Analyses used PROCESS and STROBE guidelines were followed.", ["PROCESS", "STROBE"]),
+        ("Mediation was run with PROCESS [14] and STROBE [15] guidelines were followed.",
+         ["PROCESS", "STROBE"]),
+        # Round 3 of #858: "the" before the name however it is spaced.
+        ("We followed the  CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the\n  CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        (f"We followed the{chr(0xA0)}CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the CARE, STROBE & PRISMA guidelines.", ["CARE", "PRISMA", "STROBE"]),
+        # Round 2 of #858: names join in chains; a name joined has "the" before it only if
+        # the first has, and a parenthesis after it whenever the first has one.
+        ("We followed the CARE and STROBE and PRISMA guidelines.", ["CARE", "PRISMA", "STROBE"]),
+        ("We followed the CARE/STROBE/PRISMA checklists.", ["CARE", "PRISMA", "STROBE"]),
+        ("Mediation was run with PROCESS (Hayes, 2022) and STROBE guidelines were followed.",
+         ["STROBE"]),
+        ("Mediation was run with PROCESS [14] and STROBE guidelines were followed.", ["STROBE"]),
+        ("Analyses used PROCESS and the STROBE checklist was followed.", ["STROBE"]),
+        # False passes the Known gaps name: a list that no "and", "or", "&" or "/" ends, a
+        # name joined that has "the" where the first has none, and one with no parenthesis
+        # where the first has one.
+        ("We followed the CARE, STROBE, PRISMA guidelines.", ["PRISMA", "STROBE"]),
+        ("We followed the CARE, STROBE guidelines.", ["STROBE"]),
+        ("The report follows CARE and the STROBE guidelines.", ["STROBE"]),
+        ("We followed the CARE (CAse REport) and STROBE guidelines.", ["STROBE"]),
+        ("The report follows the CARE (CAse REport) guidelines.", ["CARE"]),
+        ("We followed the CARE and STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the CARE, STROBE, and PRISMA statements.", ["CARE", "PRISMA", "STROBE"]),
+        ("This series was reported according to PROCESS 2020.", ["PROCESS"]),
+        # Round 1 of #858: "the" before a name joined, a parenthesis or a citation after
+        # each name, Word's hyphens and an en dash, and words between in capitals.
+        ("We followed the CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the CARE (2013) and STROBE (2007) statements.", ["CARE", "STROBE"]),
+        ("We followed the CARE [@gagnier2013] guidelines.", ["CARE"]),
+        ("We followed the CARE [12] and STROBE [13] checklists.", ["CARE", "STROBE"]),
+        (f"It was reported according to CARE{chr(0x2013)}2013.", ["CARE"]),
+        (f"It was reported according to CARE{chr(0x2011)}2013.", ["CARE"]),
+        (f"It was reported according to the PROCESS{chr(0x2010)}guideline.", ["PROCESS"]),
+        ("We followed the CARE Case Report Guidelines.", ["CARE"]),
+        ("This case report was prepared following the CARE Guidelines.", ["CARE"]),
+        ("We completed the CARE Checklist.", ["CARE"]),
+        ("It was reported according to the PROCESS Guideline.", ["PROCESS"]),
+        ("It was reported according to CARE-2013.", ["CARE"]),
+        ("It was reported according to PROCESS-2023.", ["PROCESS"]),
+        ("It was reported according to the CARE-guidelines.", ["CARE"]),
+        ("It was reported according to the CARE case report guidelines.", ["CARE"]),
+        ("It was reported following the **CARE** guidelines.", ["CARE"]),
+        ("Patients were followed as the PROCESS reporting guidance asks.", ["PROCESS"]),
+    ],
+)
+def test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word(
+    project: Path, sentence: str, claimed: list[str]
+) -> None:
+    """Round 2 of #851: CARE and PROCESS are also a cohort's, a scale's, a trial's and Hayes's
+    macro's names, and read bare, "following Hayes, with the PROCESS macro" was a claim of
+    having followed PROCESS. Each is read as the guideline beside a year or a word that
+    makes it one; a bare one is not, "We followed CARE", a false pass the Known gaps name.
+    Round 3: the word in capitals, "the CARE Guidelines", after a hyphen, words of a case
+    report, other names or a parenthesis, and an emphasised name are read; a year in a
+    parenthesis alone, "PROCESS (2022)", and "reporting" alone are not. Round 1 of #858:
+    "the" before a name joined, a citation, Word's hyphens and an en dash are read; a clause
+    after a comma, "criteria" and a study's year are not. Round 2 of #858: chains are read,
+    and a name joined has "the" before it only if the first has, and a parenthesis after it
+    whenever the first has one, so that Hayes's macro cited, "with PROCESS (Hayes, 2022)
+    and STROBE guidelines were followed", is not. Round 3: "the" is seen however it is
+    spaced."""
+    from manuscript_guard.gates import check_reporting
+
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{sentence}\n\n# Results\n",
+                                                    1), "utf-8")  # fmt: skip
+    found = sorted(f.message.split(" followed ")[1].split(",")[0]
+                   for f in check_reporting(load_project(project)[0]).findings
+                   if f.code == "guideline-claimed-not-declared")  # fmt: skip
+    assert found == claimed, found
+
+
+@pytest.mark.parametrize("declared", [False, True], ids=["undeclared", "declared"])
+def test_g5_reads_a_claim_of_process_or_care(project: Path, declared: bool) -> None:
+    """Round 1 of #851: a case series says it followed PROCESS and a case report CARE, each
+    with a recipe now (PROCESS-2023, CARE-2013), but G5 read neither name, so a paper that
+    said it followed one and declared none was not told. Their capitals are read, as every
+    guideline's are, and "the process" and "standard care" are not; a paper that declares
+    the recipes is told nothing."""
+    from manuscript_guard.gates import check_reporting
+
+    claims = ("This case series was reported according to the PROCESS 2023 guideline.\n\n"
+              "The report follows the CARE guidelines.\n\n"
+              "The process was reported according to the protocol, and patients followed "
+              "standard care.\n\n")  # fmt: skip
+    if declared:
+        _paper_has(project, reporting_guideline=["DEMO-OBS", "PROCESS-2023", "CARE-2013"])
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{claims}# Results\n", 1),
+                    "utf-8")  # fmt: skip
+    found = sorted(f.message.split(" followed ")[1].split(",")[0]
+                   for f in check_reporting(load_project(project)[0]).findings
+                   if f.code == "guideline-claimed-not-declared")  # fmt: skip
+    assert found == ([] if declared else ["CARE", "PROCESS"]), found
+
+
 _UNQUOTED_FUNDING = ("This work received no funding.", "Funding came from nowhere.")
 
 

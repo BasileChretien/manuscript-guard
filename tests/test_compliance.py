@@ -1510,22 +1510,6 @@ def test_an_ordinary_english_word_is_not_an_adherence_claim(project: Path, sente
     assert not claimed, claimed
 
 
-def test_a_claim_of_care_or_process_is_not_read(project: Path) -> None:
-    """A known gap (DESIGN.md, Known gaps, #851): CARE and PROCESS are not in `CLAIMABLE`,
-    so a paper that says it followed either and declares neither is not told. The rule
-    that reads them is a pull request of its own."""
-    from manuscript_guard.contracts import load_project
-    from manuscript_guard.gates import check_reporting
-
-    sentence = "The report follows the CARE guidelines and the PROCESS 2023 checklist."
-    path = project / "manuscript" / "main.md"
-    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{sentence}\n", encoding="utf-8")
-    projekt, _ = load_project(project)
-    claimed = [f.message for f in check_reporting(projekt).findings
-               if f.code == "guideline-claimed-not-declared"]  # fmt: skip
-    assert claimed == [], claimed
-
-
 def test_the_example_claims_no_guideline_it_has_not_completed(project: Path) -> None:
     """The template every new user copies must model the behaviour the gate asks for."""
     from manuscript_guard.contracts import load_project

@@ -170,6 +170,7 @@ from generated import (
     mean_tables,
     method_claims,
     methods_titled,
+    named_claims,
     named_numbers,
     numbered_displays,
     oracle_tables,
@@ -5049,6 +5050,193 @@ def _a_claim_runs_over_a_list_s_items(patch: pytest.MonkeyPatch) -> None:
 
     patch.setattr(reporting_gate, "_SENTENCE",
                   re.compile(r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|])))+(?:[.!?]|\n|$)"))
+
+
+def _process_and_care_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    names = [name for name in reporting_gate.CLAIMABLE if name not in ("CARE", "PROCESS")]
+    patch.setattr(reporting_gate, "_NAMED",
+                  re.compile(r"\b(" + "|".join(sorted(names, key=len, reverse=True)) + r")\b"))
+
+
+def _care_and_process_are_read_bare(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    names = sorted(reporting_gate.CLAIMABLE, key=len, reverse=True)
+    patch.setattr(reporting_gate, "_NAMED", re.compile(r"\b(" + "|".join(names) + r")\b"))
+
+
+def _a_name_is_read_in_any_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_NAMED",
+                  re.compile(reporting_gate._NAMED.pattern, re.IGNORECASE))
+
+
+def _care_and_process_read_with(patch: pytest.MonkeyPatch, old: str, new: str,
+                                *more: tuple[str, str]) -> None:
+    """CARE and PROCESS read where `_AS_GUIDELINE` or `_AFTER_THE`, with `old` in either
+    written as `new`, and each pair of `more` the same way, follows them."""
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patterns = [reporting_gate._AS_GUIDELINE, reporting_gate._AFTER_THE]
+    for was, now in ((old, new), *more):
+        assert any(was in pattern for pattern in patterns) and now != was, (was, now)
+        patterns = [pattern.replace(was, now) for pattern in patterns]
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(*patterns))
+
+
+def _names_join_one_to_one(patch: pytest.MonkeyPatch) -> None:
+    _care_and_process_read_with(patch, r")+|(?:\**\s*,\s*", r")|(?:\**\s*,\s*")
+
+
+def _a_parenthesis_on_the_first_name_lets_any_join(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    cited = r"[A-Z0-9+-]+" + reporting_gate._PARENTHESIS + ")"
+    _care_and_process_read_with(patch, cited, cited[:-1] + "?)")
+
+
+def _care_and_process_are_read_only_after_the(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    after_the = reporting_gate._AFTER_THE
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named("(?!)", after_the))
+
+
+def _white_space_is_read_as_written(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_one_space", lambda said: said)
+
+
+def _the_before_a_name_joined_is_read_after_any(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    after_the = reporting_gate._AFTER_THE
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(after_the, after_the))
+
+
+def _a_guideline_word_is_read_in_lower_case_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    word = reporting_gate._GUIDELINE_WORD
+    _care_and_process_read_with(patch, word, word.replace("(?i:", "(?:"))
+
+
+def _a_word_between_is_read_in_lower_case_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    between = reporting_gate._BETWEEN
+    _care_and_process_read_with(patch, between, between.replace("(?i:", "(?:"))
+
+
+def _a_hyphen_does_not_join_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    _care_and_process_read_with(patch, rf"[\s{reporting_gate._DASHES}]", r"\s")
+
+
+def _only_the_hyphen_itself_joins_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    _care_and_process_read_with(patch, reporting_gate._DASHES, "-")
+
+
+def _a_comma_joins_a_clause_to_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    _care_and_process_read_with(patch, reporting_gate._JOIN, r"(?:,?\s*(?:and|or)\b|&|/)")
+
+
+def _the_is_not_read_before_a_name_joined(patch: pytest.MonkeyPatch) -> None:
+    _care_and_process_read_with(patch, r"(?:the\s+)?", "")
+
+
+def _a_parenthesis_after_a_name_joined_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    after = r"[A-Z0-9+-]+" + reporting_gate._PARENTHESIS
+    _care_and_process_read_with(patch, after + "?", r"[A-Z0-9+-]+",
+                                (after + ")", r"[A-Z0-9+-]+)"))  # fmt: skip
+
+
+def _a_citation_after_the_name_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _care_and_process_read_with(patch, r"|\[[^\[\]]*\]", "")
+
+
+def _criteria_make_the_guideline(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    word = reporting_gate._GUIDELINE_WORD
+    _care_and_process_read_with(patch, word, word.replace("checklists?)", "checklists?|criteria)"))
+
+
+def _a_study_s_year_makes_the_guideline(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    _care_and_process_read_with(patch, reporting_gate._NOT_A_STUDY, "")
+
+
+def _no_word_stands_between_the_name_and_the_guideline_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    _care_and_process_read_with(patch, reporting_gate._BETWEEN, "(?!)")
+
+
+def _an_emphasised_name_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    _care_and_process_read_with(patch, r"\**", "")
+
+
+def _a_name_joined_to_others_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    alone = rf"(?={reporting_gate._PARENTHESIS}?{reporting_gate._ENDING})"
+    patch.setattr(reporting_gate, "_NAMED", reporting_gate._named(alone, alone))
+
+
+def _a_parenthesis_after_the_name_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    _care_and_process_read_with(patch, reporting_gate._PARENTHESIS, "(?:(?!))")
+
+
+def _a_year_in_a_parenthesis_makes_the_guideline(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    year = reporting_gate._YEAR
+    dashes = rf"[\s{reporting_gate._DASHES}]"
+    _care_and_process_read_with(patch, year, year.replace(dashes, dashes + r"\(?"))
+
+
+def _reporting_alone_makes_the_guideline(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    word = reporting_gate._GUIDELINE_WORD
+    _care_and_process_read_with(patch, word,
+                                word.replace("checklists?)", "checklists?|reporting)"))  # fmt: skip
+
+
+@holds(60, named_claims())
+def test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none(
+    drawn: tuple[str, list[tuple[str, list[str]]]],
+) -> None:
+    """Every guideline G5 reads a claim of is read where its name stands in the capitals it
+    is published in, and none where the name is a word in lower case, "the care given",
+    "the process" (round 1 of #851, which added CARE and PROCESS), and CARE and PROCESS
+    only as a guideline's, in every way a paper writes one, not alone nor as a macro's or a
+    trial's (rounds 2 and 3). Each paragraph is read alone as well as in the paper: a name
+    claimed in lower case is the name of the paragraph that claims it in capitals, and only
+    a paragraph read alone tells the two apart."""
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    text, paragraphs = drawn
+    named = reporting_gate._claims([(Path("main.md"), mask(text))])
+    assert sorted(named) == sorted({name for _, names in paragraphs for name in names}), text
+    for paragraph, names in paragraphs:
+        assert sorted(reporting_gate._claims([(Path("main.md"), mask(paragraph))])) == names, (
+            paragraph)
 
 
 @holds(60, markdown_claims())
@@ -30861,6 +31049,102 @@ BROKEN = {
     "in LaTeX, G8r reads a claim from one item into the next": (
         _a_claim_runs_over_a_latex_list_s_items,
         test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G5 does not read a claim of PROCESS or CARE": (
+        _process_and_care_are_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads CARE or PROCESS bare, a macro's or a trial's name as a claim": (
+        _care_and_process_are_read_bare,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads a guideline's name in lower case as a claim": (
+        _a_name_is_read_in_any_case,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads 'the CARE guidelines' but not 'the CARE Guidelines'": (
+        _a_guideline_word_is_read_in_lower_case_only,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE-2013 or CARE-guidelines": (
+        _a_hyphen_does_not_join_the_name,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read the CARE case report guidelines": (
+        _no_word_stands_between_the_name_and_the_guideline_s,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read the **CARE** guidelines": (
+        _an_emphasised_name_is_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE in the CARE and STROBE guidelines": (
+        _a_name_joined_to_others_is_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read the CARE (CAse REport) guidelines": (
+        _a_parenthesis_after_the_name_is_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads Hayes's PROCESS (2022) as the guideline": (
+        _a_year_in_a_parenthesis_makes_the_guideline,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads PROCESS reporting 5000 samples as the guideline": (
+        _reporting_alone_makes_the_guideline,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read the CARE Case Report guidelines": (
+        _a_word_between_is_read_in_lower_case_only,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE-2013 typed with Word's hyphen or an en dash": (
+        _only_the_hyphen_itself_joins_the_name,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads Hayes's PROCESS, and STROBE guidelines as a claim of PROCESS": (
+        _a_comma_joins_a_clause_to_the_name,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE in the CARE and the STROBE guidelines": (
+        _the_is_not_read_before_a_name_joined,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE in the CARE (2013) and STROBE (2007) statements": (
+        _a_parenthesis_after_a_name_joined_is_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read the CARE [@gagnier2013] guidelines": (
+        _a_citation_after_the_name_is_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads a trial's CARE criteria as the guideline": (
+        _criteria_make_the_guideline,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads the CARE 2019 cohort as the guideline": (
+        _a_study_s_year_makes_the_guideline,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not read CARE in the CARE and STROBE and PRISMA guidelines": (
+        _names_join_one_to_one,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads Hayes's PROCESS (2022) and STROBE guidelines as a claim of PROCESS": (
+        _a_parenthesis_on_the_first_name_lets_any_join,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads PROCESS and the STROBE checklist was followed as a claim of PROCESS": (
+        _the_before_a_name_joined_is_read_after_any,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads CARE or PROCESS only after the": (
+        _care_and_process_are_read_only_after_the,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 does not see the before CARE spaced twice": (
+        _white_space_is_read_as_written,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
     ),
     "G8r reads a claim from one item of a list into the next": (
         _a_claim_runs_over_a_list_s_items,

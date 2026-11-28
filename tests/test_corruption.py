@@ -18993,6 +18993,22 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
     assert found == ["CONSORT"], found
 
 
+def test_a_trial_named_like_a_guideline_is_read_as_a_claim(project: Path) -> None:
+    """A known gap (DESIGN.md, Known gaps, round 1 of #851): a trial whose acronym is a
+    guideline's name, cited in a sentence with a word of claiming, is read as a claim of
+    having followed the guideline."""
+    from manuscript_guard.gates import check_reporting
+
+    cited = "As reported in the CARE trial, pravastatin lowered coronary events.\n\n"
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{cited}# Results\n", 1),
+                    "utf-8")  # fmt: skip
+    found = [f.message.split(" followed ")[1].split(",")[0]
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == ["CARE"], found
+
+
 @pytest.mark.parametrize("declared", [False, True], ids=["undeclared", "declared"])
 def test_g5_reads_a_claim_of_process_or_care(project: Path, declared: bool) -> None:
     """Round 1 of #851: a case series says it followed PROCESS and a case report CARE, each

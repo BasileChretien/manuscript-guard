@@ -3984,15 +3984,17 @@ _CLAIM_SENTENCES = ("The report follows {}.", "It was reported according to the 
 
 
 @st.composite
-def named_claims(draw: st.DrawFn) -> tuple[str, list[str]]:
+def named_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, list[str]]]]:
     """A Markdown paper with a claim of every name of `CLAIMED_NAMES`, once in its capitals
     and once in lower case, each in a paragraph of its own and a sentence drawn, in an order
-    drawn; and the names G5 reads a claim of, those in capitals. A name in lower case is a
-    word, "the care given" or "the process" (round 1 of #851)."""
-    paragraphs = [draw(st.sampled_from(_CLAIM_SENTENCES)).format(written)
+    drawn; and each paragraph, with the name G5 reads a claim of in it: the name in
+    capitals, and none in lower case, where it is a word, "the care given" or "the
+    process" (round 1 of #851)."""
+    paragraphs = [(draw(st.sampled_from(_CLAIM_SENTENCES)).format(written),
+                   [name] if written == name else [])
                   for name in CLAIMED_NAMES for written in (name, name.lower())]  # fmt: skip
     order = draw(st.permutations(paragraphs))
-    return "\n\n".join(order) + "\n", sorted(CLAIMED_NAMES)
+    return "\n\n".join(text for text, _ in order) + "\n", list(order)
 
 
 @st.composite

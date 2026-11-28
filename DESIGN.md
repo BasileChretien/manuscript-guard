@@ -23942,6 +23942,15 @@ Open, recorded as each change landed:
   none of these addresses is stable. The
   checksum turns a moved or replaced document into a clear failure rather than a plausible
   wrong transcription, which is the best that can be done about it. Accepted.
+- **A trial named like a guideline is read as a claim of having followed it.** G5 reads a
+  guideline's name in capitals (`CLAIMABLE`) in a sentence with a word of claiming, and a
+  trial's acronym can be the same name: "as reported in the CARE trial" names a trial of
+  cholesterol and reads as a claim of having followed CARE, and a paper that declares no
+  CARE profile is warned. SPIRIT and ARRIVE are the names of trials too. CARE and PROCESS
+  were added on 2026-11-28 (round 1 of #851), after a measure on the real-paper corpus:
+  no paper of it names either in such a sentence, and G5's findings there were unchanged.
+  The author rewords such a sentence, or the warning stays. Pinned by
+  `tests/test_corruption.py::test_a_trial_named_like_a_guideline_is_read_as_a_claim`.
 - **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its

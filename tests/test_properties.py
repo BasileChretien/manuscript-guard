@@ -4766,16 +4766,21 @@ def _a_name_is_read_in_any_case(patch: pytest.MonkeyPatch) -> None:
 
 @holds(60, named_claims())
 def test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none(
-    drawn: tuple[str, list[str]],
+    drawn: tuple[str, list[tuple[str, list[str]]]],
 ) -> None:
     """Every guideline G5 reads a claim of is read where its name stands in the capitals it
     is published in, and none where the name is a word in lower case, "the care given",
-    "the process" (round 1 of #851, which added CARE and PROCESS)."""
+    "the process" (round 1 of #851, which added CARE and PROCESS). Each paragraph is read
+    alone as well as in the paper: a name claimed in lower case is the name of the paragraph
+    that claims it in capitals, and only a paragraph read alone tells the two apart."""
     from manuscript_guard.gates import reporting as reporting_gate
 
-    text, claimed = drawn
+    text, paragraphs = drawn
     named = reporting_gate._claims([(Path("main.md"), mask(text))])
-    assert sorted(named) == claimed, text
+    assert sorted(named) == sorted(name for _, names in paragraphs for name in names), text
+    for paragraph, names in paragraphs:
+        assert sorted(reporting_gate._claims([(Path("main.md"), mask(paragraph))])) == names, (
+            paragraph)
 
 
 @holds(60, markdown_claims())

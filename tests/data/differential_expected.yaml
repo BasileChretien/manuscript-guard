@@ -91,6 +91,12 @@ expected:
     why: >-
       the same, in a file the audit staged from a PDF (the entry for `abbreviations`); the
       entry it replaces, for a word a PDF breaks at a line's end, is spent
+  - reading: abbreviation edits
+    why: >-
+      the same (the entry for `abbreviations`): a definition the base did not read, one word
+      after the short form, "HCQ (hydroxychloroquine)", is one, so where the short form is
+      not used again its edit writes "hydroxychloroquine" in place of the pair; the entry it
+      replaces, for a long form closing a bracket it does not open, is spent
   - reading: audit abbreviations
     why: >-
       the audit gives G14's findings, so the same (the entry for `abbreviations`); the entry

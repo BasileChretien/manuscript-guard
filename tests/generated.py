@@ -1537,7 +1537,7 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     where the text uses it. In `abstract`, the text defines UFR, which only the title page
     uses again, and it is unused; the list of abbreviations at its end has UNICAEN, which
     only the title page uses, and it is used. In the papers with no title page, every
-    capital is read."""
+    capital is read, but a title typed as a heading or wholly in bold owes no definition."""
     end = draw(st.sampled_from(("\n", "\n", "\r\n")))
     title = draw(st.sampled_from(TITLE_PAGE_TITLES))
 
@@ -1622,9 +1622,10 @@ def title_pages(draw: st.DrawFn) -> dict[str, tuple[str, list[tuple[str, str]]]]
     methods = ("# Methods", body("the UR and the CHU paid for the survey"))
     for at, mention in enumerate(OPENING_MENTIONS):
         # With no title page, the title is read, and its PACES is undefined; a heading's
-        # words are not read for abbreviations anyway.
+        # words owe no definition anyway, and nor do a short paragraph's wholly in bold, a
+        # heading as Word papers type one (Basile, 2026-11-27, D5).
         heading = draw(st.sampled_from(TITLE_PAGE_TITLES))
-        shorts = ("CHU",) if heading.startswith("#") else ("CHU", "PACES")
+        shorts = ("CHU",) if heading.startswith(("#", "**")) else ("CHU", "PACES")
         found[f"mentions-{at}"] = (
             paper(heading, mention, *methods),
             [("abbreviation-undefined", short) for short in shorts],

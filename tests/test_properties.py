@@ -3164,8 +3164,9 @@ def _a_sign_s_long_form_need_not_be_the_words_whole(patch: pytest.MonkeyPatch) -
     Small Developmental Coordination Questionnaire" defines DCQ."""
     real = language_gate._spelt_after
 
-    def found(short: str, words: list[str]) -> str | None:
-        return real(short, words) or language_gate._read_back(short, " ".join(words))
+    def found(short: str, words: list[str], one_word: bool = False) -> str | None:
+        return (real(short, words, one_word=one_word)
+                or language_gate._read_back(short, " ".join(words)))
 
     patch.setattr(language_gate, "_spelt_after", found)
 
@@ -3174,9 +3175,9 @@ def _a_sign_s_long_form_is_one_word_or_more(patch: pytest.MonkeyPatch) -> None:
     """"CM: Cameroon", a country's code, read as a definition."""
     real = language_gate._spelt_after
 
-    def found(short: str, words: list[str]) -> str | None:
-        return real(short, words) or (words[0] if len(words) == 1
-                                       and language_gate._long_form(short, words[0]) else None)
+    def found(short: str, words: list[str], one_word: bool = False) -> str | None:
+        return real(short, words, one_word=one_word) or (
+            words[0] if len(words) == 1 and language_gate._long_form(short, words[0]) else None)
 
     patch.setattr(language_gate, "_spelt_after", found)
 

@@ -273,6 +273,29 @@ def _labels(text: str) -> set[str]:
     return labels | {_label(label) for _start, _end, label in _definitions(text)}
 
 
+def link_labels(text: str) -> frozenset[str]:
+    """The labels `text` defines, as pandoc matches them (`_labels`)."""
+    return frozenset(_labels(text))
+
+
+# A bracket and the label in the bracket after it, as a reference link writes them, the
+# first bracket's opening one where it is there to be read.
+_REFERENCE = re.compile(r"(?:\[([^\[\]\n]*))?\]\[([^\[\]\n]*)\]")
+
+
+def holds_a_reference(words: str, labels: frozenset[str]) -> bool:
+    """Whether `words` hold a reference link's markup, `][label]`, by a label of `labels`
+    (`link_labels`): by its own label, or, empty, by the text of the bracket before it, as
+    pandoc reads `[text][]`. `[1][2]` with no label 2 defined is no link's, and pandoc
+    prints its brackets."""
+    for found in _REFERENCE.finditer(words):
+        text, label = found.group(1, 2)
+        named = label if label.strip() else text
+        if named is not None and _label(named) in labels:
+            return True
+    return False
+
+
 def _is_link(found: re.Match[str], labels: set[str]) -> bool:
     """Whether pandoc reads the bracket `found` as a link's text. A target makes it one. A
     second bracket makes it a reference by that label, or, empty, holding a citation or a

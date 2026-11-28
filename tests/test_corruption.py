@@ -39538,6 +39538,27 @@ def test_a_statistic_after_a_colon_stands_in_for_a_deleted_definition_as_on_main
     ]
 
 
+@pytest.mark.parametrize("link", [
+    "[ROR](https://example.org/glossary#ror)",
+    "[ROR][glossary]",
+    "[ROR][]",
+    "[ROR]",
+])  # fmt: skip
+def test_a_definition_made_a_link_is_no_definition(project: Path, link: str) -> None:
+    """A revision links the short form to a glossary where the Introduction defines it, and
+    the bracket round it goes: pandoc prints "reporting odds ratio ROR". A link defines
+    nothing (Basile, 2026-11-28), whichever shape it takes, so ROR is undefined where it is
+    first used, the link's text."""
+    mended = with_ror_defined(project)
+    linked = mended.replace("ratio (ROR) of", f"ratio {link} of")
+    assert linked != mended
+    linked += "\n[glossary]: https://example.org/glossary\n[ROR]: https://example.org/ror\n"
+    main_md(project).write_text(linked, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(linked, link))
+    ]
+
+
 def test_an_estimate_after_words_that_begin_with_its_letters_is_still_undefined(
     project: Path,
 ) -> None:

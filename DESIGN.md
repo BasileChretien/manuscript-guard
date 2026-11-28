@@ -6256,10 +6256,12 @@ bracket holds the one form and nothing more, and never an entry of a list of abb
 which the list is to drop, nor a definition among the acknowledgements, which nothing is
 expected to use, nor one after "a" or "an", chosen for how the short form is said ("an
 SAE"), across spaces, line breaks, LaTeX ties and the marks of emphasis and quotation
-`*_"'` and curly quotes, nor a square bracket that runs on into a link, a reference or a
-span ("[ROR](https://...)"), nor the main text's where the supplementary material uses the
+`*_"'` and curly quotes, nor a square bracket that runs on into a span's attributes
+("[HR]{.smallcaps}"), nor the main text's where the supplementary material uses the
 form and does not define it, so leans on it, which is then not reported as unused either
-(rounds 1 to 3 of #645). A round bracket is no link's: in "the
+(rounds 1 to 3 of #645). A link's text defines nothing (Basile, 2026-11-28, "A link
+defines nothing"), so no edit meets one, a shortcut reference `[ROR]` among them, whose
+brackets an edit took out before. A round bracket is no link's: in "the
 number needed to treat (NNT)[@smith2020]" the bracket goes and the citation stays.
 Where the readings
 are not sure there is no edit, and the finding stays for the author: two forms used as
@@ -26224,10 +26226,33 @@ Open, recorded as each change landed:
     opening a sentence is not a defined `t-PA`, where `Hs-CRP` is `hs-CRP`.
     Pinned by `tests/test_language.py::test_the_capital_a_name_takes_opening_a_sentence_is_read_one_way_only`.
   - A short form in square brackets is read as a definition wherever the words before it
-    spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
-    `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since
-    its bracket is masked with its target.
-    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other`.
+    spell it and pandoc prints the brackets, and a bracketed span's, `[ROR]{.mark}`, is
+    read so too, though pandoc prints no brackets round it. A link's text is no short form in
+    square brackets, whichever shape the link takes, `[ROR](https://...)`, `[ROR][ref]`,
+    `[ROR][]`, `[ROR]` where the file defines the label, or a link to a file, in the text or
+    in a heading (Basile, 2026-11-28, "A link defines nothing"); it is still a use. An
+    image's text, to a file or an address, is not read at all. A bracket whose label nothing
+    defines, `[ROR][none]`, is printed with its brackets, and defines.
+    Pinned by `tests/test_language.py::test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other` and `tests/test_language.py::test_a_link_in_a_heading_defines_nothing`.
+  - Round brackets or a colon round a link's text are read as pandoc prints them, with no
+    link's markup, as the words before or after a link are: "reporting odds ratio
+    ([ROR](https://...))" defines ROR, as it did before, and so does "[ROR](https://...):
+    reporting odds ratio" in a note, which did not, and the note restates a definition or
+    is a table's own as it would be with no link (round 1 of the review).
+    Pinned by `tests/test_language.py::test_a_definition_beside_a_link_is_read_as_pandoc_prints_it` and `tests/test_language.py::test_a_colon_pair_round_a_link_s_text_in_a_note_reads_as_with_no_link`.
+  - A link whose text runs across a line break is not found as a link's text
+    (`text.inline.link_text_spans`), so its markup stays in what a long form is read from:
+    the `](` the mask leaves before an address, or a collapsed reference's `][]`. A long
+    form holding `](`, or `][label]` by a label the file defines, is none, so "of [Qata4"
+    over "lifesciences](https://...), [QLS]" on the next line defines nothing, where pandoc
+    prints "Qata4 lifesciences, [QLS]"; brackets that are no link's, "odds ratio [1][2]
+    (OR)", are kept as before. A full reference's label after such a text, defined, is read
+    as a shortcut link of its own, so the long form keeps the first bracket as typed.
+    Pinned by `tests/test_language.py::test_a_long_form_holding_a_link_s_markup_is_none`.
+  - A link's definition, `[ROR]: https://...`, which pandoc does not print, is read as
+    text: its label is a use of a short form, so a definition the text does not use again
+    is not reported as unused.
+    Pinned by `tests/test_language.py::test_a_link_s_definition_is_read_as_text`.
   - The unit symbols exempt are the nine shipped. `MW`, `MJ`, `MV`, `MDa`, `TWh`, `IU` and
     `HU` are reported: several have a second meaning, and the list is the project's to
     extend.
@@ -32010,6 +32035,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A link's text was read as a definition (docx-meta-2, 2026-11-28).** It stood under "G14
+  reads a definition by its shape": a short form in square brackets defined, a link's text
+  included, though pandoc prints no brackets round it. In docx-meta-2, a Word paper,
+  "infrastructures like [EOSC](http://...)" defined EOSC as "emerging national and
+  international data infrastructures like", and "[Data4lifesciences](https://...),
+  [DTL](https://...)" defined DTL as "Data4lifesciences](": four false
+  `abbreviation-redefined` findings, in `check` and in `audit`, where the glossary defined
+  both. A link defines nothing now, whichever shape it takes (Basile, 2026-11-28, "A link
+  defines nothing"): each link's markup, found as pandoc finds a link, is taken out of what
+  the definitions are read in, so a definition beside a link is read as printed,
+  "[European Open Science Cloud](https://...) (EOSC)", and no long form holds `](`, nor
+  `][label]` by a label the file defines.
+  Held by `tests/test_corruption.py::test_a_definition_made_a_link_is_no_definition`.
+
 - **A front matter's `nocite` printed nothing (2026-11-28).** It stood under "G7 takes a
   `nocite` of every entry for what the build prints, as typed": the build stripped each
   file's front matter and wrote its own header, so `nocite: '@*'` warned of each uncited
@@ -32282,8 +32321,9 @@ Closed since, and why each mattered (an open gap goes above this line):
   was placed in both (round 3 of #587). A link's target that is an address is masked now
   after its `(` up to its own `)`: brackets in the address one deep, a title in quotes or
   brackets, angle brackets round it, spaces between the brackets and the address. Its `](`
-  is left, as before, so `[ROR](https://...)` still defines ROR and the reference census
-  reads `[11](https://...)` as a link and not as citation 11. Any other link's target is
+  is left, as before, so the reference census reads `[11](https://...)` as a link and not
+  as citation 11 (and G14 read `[ROR](https://...)` through it as defining ROR, until a
+  link came to define nothing, 2026-11-28). Any other link's target is
   found where it is typed, to its first `)`, so a binding in it is hidden with it,
   `[the code]({{repo}}/tree/v2.1)`, and it no longer runs on past that `)`; a `](` already
   masked, in a comment say, starts none.

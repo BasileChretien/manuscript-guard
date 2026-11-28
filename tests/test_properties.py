@@ -696,8 +696,9 @@ def test_the_mask_hides_a_link_s_target_and_nothing_after_it(
     line is read, its stop too: the address was taken to the next space, the link's `)` and
     stop with it, and its target then ran on to the next `)` on the line, so a count after a
     link was read by no gate (round 3 of #587). The `](` of a link to an address is left,
-    which is how "reporting odds ratio [ROR](https://...)" defines ROR and a reference
-    census reads `[11](https://...)` as no citation."""
+    which is how a reference census reads `[11](https://...)` as no citation. (G14 once read
+    "reporting odds ratio [ROR](https://...)" through it as defining ROR; a link defines
+    nothing now, Basile, 2026-11-28.)"""
     text, after, hidden, brackets = drawn
     masked = mask(text)
     for start, end in after:
@@ -2363,6 +2364,61 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
             assert at not in defined, (short, text)
 
 
+from generated import linked_definitions  # noqa: E402
+
+
+@holds(60, linked_definitions())
+def test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed(
+    drawn: tuple[str, list[tuple[int, str, str]]],
+) -> None:
+    """Basile, 2026-11-28, "A link defines nothing": pandoc prints no brackets round a link's
+    text, so the text of a link after words that hold its letters is no definition, whichever
+    shape the link takes, to an address, a section or a file, a reference, a collapsed one or
+    a shortcut whose label the file defines in any case or a heading's title is, after another
+    link or not; nor is an image's. A definition beside a link is read as pandoc prints it,
+    with no link's markup in its long form, and a bracket whose label nothing defines
+    defines as before."""
+    text, expected = drawn
+    read = _file(0, Path("main.md"), text, [], False)
+    assert sorted(read.definitions) == expected, (read.definitions, text)
+
+
+def _a_link_s_text_defines(patch: pytest.MonkeyPatch) -> None:
+    """The rule before Basile's decision of 2026-11-28: no link is read apart, and a link's
+    text is a short form in square brackets after its long form."""
+    patch.setattr(language_gate, "link_text_spans", lambda text: [])
+
+
+def _only_an_inline_link_is_a_link(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate.link_text_spans
+    patch.setattr(language_gate, "link_text_spans", lambda text: [
+        span for span in real(text) if text.startswith("(", span[1])])  # fmt: skip
+
+
+def _a_shortcut_reference_is_never_a_link(patch: pytest.MonkeyPatch) -> None:
+    real = language_gate.link_text_spans
+    patch.setattr(language_gate, "link_text_spans", lambda text: [
+        span for span in real(text) if text[span[1] : span[1] + 1] in ("(", "[")])  # fmt: skip
+
+
+def _a_long_form_may_hold_a_link_s_markup(patch: pytest.MonkeyPatch) -> None:
+    """A link's text still no short form, its opening bracket taken out, but the rest of its
+    markup left in what a long form is read from, and no long form refused for holding it."""
+
+    def opened_only(prose: str, links: Any) -> str:
+        chars = list(prose)
+        for start, _end in links:
+            chars[start] = " "
+        return "".join(chars)
+
+    patch.setattr(language_gate, "_unlinked", opened_only)
+    patch.setattr(language_gate, "_LINK_MARKUP", re.compile(r"(?!)"))
+
+
+def _a_long_form_may_hold_markup_the_link_reader_missed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_LINK_MARKUP", re.compile(r"(?!)"))
+
+
 from generated import apart_forms  # noqa: E402
 
 
@@ -3456,7 +3512,7 @@ def _only_known_as_names_a_short_form(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_heading_defines_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_in_titles", lambda titles: [])
+    patch.setattr(language_gate, "_in_titles", lambda titles, links=(): [])
 
 
 def _dashed_with(patch: pytest.MonkeyPatch, old: str, new: str, count: int = 1) -> None:
@@ -9904,8 +9960,8 @@ def test_g14_writes_out_an_abbreviation_defined_and_not_used_again(
     put in its place, with the capital of a sentence it opens unless its first word keeps its
     own case; before a citation too. Not one used again, one whose bracket holds more, a
     funder's among the acknowledgements, one after "an" across whatever stands between, a
-    link's, or an entry of the list of abbreviations (rounds 1 and 2 of #645). Edited, the
-    manuscript is edited no further."""
+    span's, a link's, which defines nothing (Basile, 2026-11-28), or an entry of the list of
+    abbreviations (rounds 1 and 2 of #645). Edited, the manuscript is edited no further."""
     from manuscript_guard.gates import language as language_gate
 
     nothing = language_gate._Known(frozenset(), frozenset())
@@ -31438,6 +31494,27 @@ BROKEN = {
         _known_as_defines_whatever_its_words,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
+    # Basile, 2026-11-28, "A link defines nothing".
+    "a link's text defines": (
+        _a_link_s_text_defines,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "only an inline link is a link": (
+        _only_an_inline_link_is_a_link,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "a shortcut reference is never a link": (
+        _a_shortcut_reference_is_never_a_link,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "a long form may hold a link's markup": (
+        _a_long_form_may_hold_a_link_s_markup,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
+    "a long form may hold markup the link reader missed": (
+        _a_long_form_may_hold_markup_the_link_reader_missed,
+        test_a_link_defines_nothing_and_a_definition_beside_one_is_read_as_printed,
+    ),
     "only known as and referred to as name a short form": (
         _only_known_as_names_a_short_form,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
@@ -33446,7 +33523,7 @@ BROKEN = {
         _an_article_before_a_short_form_is_left_wrong,
         test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),
-    "a link's brackets are written out as a definition's": (
+    "a span's brackets are written out as a definition's": (
         _a_link_s_brackets_are_a_definition_s,
         test_g14_writes_out_an_abbreviation_defined_and_not_used_again,
     ),

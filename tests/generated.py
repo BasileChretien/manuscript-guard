@@ -1107,6 +1107,89 @@ def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     return text, found
 
 
+#: Links after a long form and around a definition (Basile, 2026-11-28, "A link defines
+#: nothing"; docx-meta-2 of the real-paper corpus), each with what finds its short form, the
+#: short form, and the long form it is defined with, or None. A link's text after words that
+#: hold its letters, of each shape pandoc reads as a link: to an address `{t}`, a reference by
+#: the label `{l}`, a collapsed one, a shortcut whose label the file defines, one whose label
+#: is a heading's title, to a file, and an image; one after another link, and one after the
+#: words a list of links follows, as docx-meta-2 had them. A definition beside a link, read
+#: as pandoc prints it: a round bracket after a link and after a reference by the label
+#: `{m}`, a long form a link's text is a word of, a square bracket after such a long form,
+#: and one after a link and a comma. A link to an address whose text runs across a line
+#: break, which the link reader does not find (DESIGN.md, Known gaps): the `](` the mask
+#: leaves stays, and no long form holds it. A bracket that is no link, its label defined
+#: nowhere, defines as before.
+LINKED = (
+    ("the quiet lake index [QLI]({t}) was read", "[QLI", "QLI", None),
+    ("the remote wave survey [RWS][{l}] held", "[RWS", "RWS", None),
+    ("the narrow band ratio [NBR][] held", "[NBR", "NBR", None),
+    ("the thin film model [TFM] held", "[TFM", "TFM", None),
+    ("## WCS\n\nthe wide crest scan [WCS] held", "[WCS", "WCS", None),
+    ("the grey cone ratio [GCR](notes.md) held", "[GCR", "GCR", None),
+    ("the bright star map ![BSM](x.png) held", "[BSM", "BSM", None),
+    ("with [Qata4lifesciences]({t}), [QLS]({t}) and more", "[QLS", "QLS", None),
+    ("data infrastructures like [DIL]({t}) and [Health-QX]({t})", "[DIL", "DIL", None),
+    ("the [Grey Owl Survey]({t}) (GOS) held", "(GOS", "GOS", "Grey Owl Survey"),
+    ("the [Pale Moth Index][{m}] (PMI) held", "(PMI", "PMI", "Pale Moth Index"),
+    ("the [silver]({t}) birch count (SBC) held", "(SBC", "SBC", "silver birch count"),
+    ("the [Dark Fern]({t}) Census [DFC] held", "[DFC", "DFC", "Dark Fern Census"),
+    ("of [Cata4lifestudies]({t}), [CLS] held", "[CLS", "CLS", "Cata4lifestudies"),
+    ("of [Mata4\nlifestudies](https://example.org/m), [MLS] held", "[MLS", "MLS", None),
+    ("the hazard quiet ratio [HQR] held", "[HQR", "HQR", "hazard quiet ratio"),
+    ("the hazard quiet zone [HQZ][nolabel] held", "[HQZ", "HQZ", "hazard quiet zone"),
+)  # fmt: skip
+#: A link's target: an address of each form the mask takes, a section and a file.
+LINKED_TARGETS = ("https://example.org/a", "<https://example.org/b>",
+                  'https://example.org/c "A title"', "www.example.org/d", "doi:10.1000/e5",
+                  "#methods", "notes.md")  # fmt: skip
+#: The labels a reference link gives, each with the ways its definition may write it, which
+#: pandoc matches: in another case, and with its spaces run together or not.
+LINKED_LABELS = {"l": ("Ref One", ("ref one", "REF  ONE", "Ref One")),
+                 "m": ("pm", ("pm", "PM")),
+                 "NBR": ("NBR", ("nbr", "NBR", "Nbr")),
+                 "TFM": ("TFM", ("tfm", "TFM", "Tfm"))}  # fmt: skip
+#: Each piece of `LINKED` as a block the readings draw (`ABBREVIATION_BLOCKS`): to an address,
+#: and with the definition of each label it uses under it, in another case.
+def _linked_block(template: str) -> str:
+    """A piece of `LINKED` to the first of `LINKED_TARGETS`, with the definition of each label
+    it uses under it, spelt the first of the ways `LINKED_LABELS` gives."""
+    piece = (template.replace("{t}", LINKED_TARGETS[0]).replace("{l}", LINKED_LABELS["l"][0])
+             .replace("{m}", LINKED_LABELS["m"][0]))  # fmt: skip
+    defined = [f"[{spelt[0]}]: {LINKED_TARGETS[0]}" for label, spelt in LINKED_LABELS.values()
+               if f"[{label}]" in piece]  # fmt: skip
+    return "\n\n".join([piece, *defined])
+
+
+LINKED_BLOCKS = tuple(_linked_block(template) for template, *_rest in LINKED)
+
+
+@st.composite
+def linked_definitions(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, str]]]:
+    """A manuscript with every piece of `LINKED`, in an order drawn, each target drawn from
+    `LINKED_TARGETS`, and the definitions of the labels of `LINKED_LABELS` after them, in an
+    order drawn and each written in a way drawn; and the definitions G14 owes it, where each
+    short form stands, the short form and its long form, in order."""
+    planted = draw(st.permutations(LINKED))
+    pieces = []
+    for template, *_rest in planted:
+        piece = template
+        while "{t}" in piece:
+            piece = piece.replace("{t}", draw(st.sampled_from(LINKED_TARGETS)), 1)
+        for name in ("l", "m"):
+            piece = piece.replace("{" + name + "}", LINKED_LABELS[name][0])
+        pieces.append(piece)
+    text, starts = _paragraphs(draw, pieces)
+    defined = [f"[{draw(st.sampled_from(spelt))}]: {draw(st.sampled_from(LINKED_TARGETS[:5]))}"
+               for _label, spelt in LINKED_LABELS.values()]  # fmt: skip
+    text += "\n".join(draw(st.permutations(defined))) + "\n"
+    found = [(start + piece.rindex(needle) + needle.index(short), short, long)
+             for start, piece, (_template, needle, short, long) in zip(starts, pieces, planted,
+                                                                       strict=True)
+             if long is not None]  # fmt: skip
+    return text, sorted(found)
+
+
 #: How a paper's title typed as a heading stands over its opening (round 1 of #698): a
 #: heading of the opening's level before it, the Introduction, the Background or the
 #: Abstract, and one a level above the opening. `{}` is the title.
@@ -2852,6 +2935,7 @@ ABBREVIATION_BLOCKS = tuple(
         *DISPLAY_PIECES,
         DISPLAYS_TEXT,
         DISPLAYS_AFTER,
+        *LINKED_BLOCKS,
     )
 )
 
@@ -2899,7 +2983,7 @@ def masked_blocks(
 
 #: The targets a link is written with, by kind: `{w}` a word of its address, `{n}` a number in
 #: its address or title, which pandoc does not print. Whether the target is an address, whose
-#: `](` the mask leaves (it is how "reporting odds ratio [ROR](https://...)" defines ROR).
+#: `](` the mask leaves (it is how a reference census reads `[11](https://...)` as a link).
 LINK_TARGETS = {
     "an address": ("(https://example.org/{w}/{n})", True),
     "an address with brackets": ("(https://example.org/wiki/{w}_({n}))", True),
@@ -10795,7 +10879,8 @@ WRITTEN_OUT = (("ROR", "reporting odds ratio"), ("PRR", "proportional reporting 
                ("SDR", "signal detection ratio"), ("EBGM", "empirical Bayes geometric mean"),
                ("OR", "odds ratio"), ("CFR", "case fatality rate"),
                ("IQR", "interquartile range"), ("SAE", "serious adverse event"),
-               ("AOR", "adjusted odds ratio"), ("CCI", "Charlson comorbidity index"))  # fmt: skip
+               ("AOR", "adjusted odds ratio"), ("CCI", "Charlson comorbidity index"),
+               ("LVEF", "left ventricular ejection fraction"))  # fmt: skip
 
 #: Abbreviations only the list of abbreviations gives, and the forms an entry of the list is
 #: written in, each read as a definition. Only the two with a bracket look like the text's,
@@ -10825,9 +10910,11 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
     before a citation, one also listed among the abbreviations, whose entry stays, and one
     defined in the text and again by a funder, whose sentence stays. Left as they are: one
     used again, one whose bracket holds more, a funder's, one after "an" in each shape,
-    which no edit puts right, a link's, and the entries of the list of abbreviations, one in
-    each form an entry is written in, which the list is to drop (rounds 1 and 2 of #645)."""
-    a, b, c, d, e, f, g, h, i, j, k, m, n = draw(st.permutations(WRITTEN_OUT))
+    which no edit puts right, a span's, whose square bracket runs on into its attributes, a
+    link's, which defines nothing (Basile, 2026-11-28, "A link defines nothing"), and the
+    entries of the list of abbreviations, one in each form an entry is written in, which the
+    list is to drop (rounds 1 and 2 of #645)."""
+    a, b, c, d, e, f, g, h, i, j, k, m, n, o = draw(st.permutations(WRITTEN_OUT))
     opening = d[1][:1].upper() + d[1][1:]
     kept, cited = draw(st.sampled_from(KEEPS_ITS_CASE)), draw(st.sampled_from(CITED_AFTER))
     pairs = [
@@ -10843,6 +10930,7 @@ def abbreviations_written_out(draw: st.DrawFn) -> tuple[str, str]:
         (f"the {f[1]} ({f[0]}) read, and {f[0]} was 2",) * 2,
         (f"the {g[1]} ({g[0]}; a measure) read",) * 2,
         (f"the {j[1]} [{j[0]}](https://example.org/{j[0]}) read",) * 2,
+        (f"the {o[1]} [{o[0]}]{{.smallcaps}} read",) * 2,
         (f"the {m[1]} ({m[0]}) read", f"the {m[1]} read"),
         (f"the {n[1]} ({n[0]}) read", f"the {n[1]} read"),
     ]  # fmt: skip

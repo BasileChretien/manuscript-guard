@@ -655,3 +655,69 @@ def test_the_audit_reads_each_shape_but_a_heading_in_a_pdf(tmp_path: Path, capsy
     paper.write_bytes(typeset(lines, columns=1, per_column=40, head="Journal of Things",
                               foot="Page", first_page=1))  # fmt: skip
     assert _audited(paper, capsys) == undefined
+
+
+# ------------------------------------------------------------ a link defines nothing
+
+#: How Word links a word to an address: a relationship to the address, outside the package.
+_LINK_RELATION = ('<Relationship Id="{id}" Type="http://schemas.openxmlformats.org/'
+                  'officeDocument/2006/relationships/hyperlink" Target="{url}" '
+                  'TargetMode="External"/>')  # fmt: skip
+
+
+def _linked_docx(path: Path, paragraphs: list[tuple[str, list[str | tuple[str, str]]]]) -> Path:
+    """A .docx of `paragraphs`, each its style and its pieces: plain text, or a link's text
+    and its address, which Word writes as a hyperlink to an outside relationship."""
+    body, relations = "", []
+    for style, pieces in paragraphs:
+        styled = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        runs = ""
+        for piece in pieces:
+            text = piece if isinstance(piece, str) else piece[0]
+            run = f'<w:r><w:t xml:space="preserve">{text.replace("&", "&amp;")}</w:t></w:r>'
+            if isinstance(piece, str):
+                runs += run
+                continue
+            ident = f"rId{100 + len(relations)}"
+            relations.append(_LINK_RELATION.format(id=ident, url=piece[1]))
+            runs += f'<w:hyperlink r:id="{ident}">{run}</w:hyperlink>'
+        body += f"<w:p>{styled}{runs}</w:p>"
+    parts = word_package(body)
+    parts["word/_rels/document.xml.rels"] = parts["word/_rels/document.xml.rels"].replace(
+        "</Relationships>", "".join(relations) + "</Relationships>")
+    parts["word/styles.xml"] = f"<w:styles {NS}>{STYLES}</w:styles>"
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, part in parts.items():
+            archive.writestr(name, part)
+    return path
+
+
+def test_the_audit_reads_no_definition_in_a_word_link_s_text(tmp_path: Path, capsys) -> None:
+    """docx-meta-2 of the real-paper corpus, made fictional (Basile, 2026-11-28, "A link
+    defines nothing"): two short forms its glossary defines stand later as the text of Word
+    hyperlinks after words that hold their letters, one after another link. pandoc writes
+    each as `[EDIC](http://...)`, whose text was read as a second meaning of each, "emerging
+    national ... infrastructures like" and "Data4lifestudies](". Neither is said now."""
+    from manuscript_guard.cli import main
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed")
+    paper = _linked_docx(tmp_path / "paper.docx", [
+        ("Heading1", ["Abbreviations"]),
+        ("", ["the European Data Infrastructure Commons (EDIC) and the Dutch Life Sciences hub "
+              "(DLS) were named."]),
+        ("Heading1", ["Introduction"]),
+        ("", ["Stewards need skills to be able to interact with emerging national and "
+              "international data infrastructures like ",
+              ("EDIC", "http://www.edic-portal.example"), " and ",
+              ("Health-QX", "https://www.health-qx.example"), "."]),
+        ("", ["Alignment with SARF, ", ("LQRDM", "https://www.lqrdm.example/en"), ", ZanMw, ",
+              ("Data4lifestudies", "https://data4lifestudies.example/"), ", ",
+              ("DLS", "https://www.dls.example/fair-data/"), ", ",
+              ("Health-QX", "https://www.health-qx.example"), " was sought. The EDIC and the "
+              "DLS met."]),
+    ])  # fmt: skip
+    assert main(["audit", str(paper), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    said = [f["message"] for f in report["findings"] if f["code"] == "abbreviation-redefined"]
+    assert said == [], said

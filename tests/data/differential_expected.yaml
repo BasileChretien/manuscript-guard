@@ -71,33 +71,31 @@ expected:
       in the real-paper corpus); the entry it replaces, decision 31's, is spent
   - reading: abbreviations
     why: >-
-      G14 reads four more shapes of definition and two more places that owe none, as the
-      Word papers of the real-paper corpus type them (Basile, 2026-11-27, decisions D2, D5,
-      D8, D10): a bracket of three pairs or more, "(strongly agree, SA; neutral answer, NA;
-      strongly disagree, SDA)", defines each pair where the base read the last alone; a
-      colon pair's long form is read past its commas, "DASS: Depression, Anxiety and Stress
-      Scale;"; a short form and its word before a semicolon after which the bracket points
-      to a display, "(LR hierarchy; Figure 1, Panel B)" and "(SSS DR3; see table 3)",
-      define; and one word after the short form, "HCQ (hydroxychloroquine)", does. A
-      paragraph wholly in bold of 150 characters or fewer and a citation's author typed as
-      text owe no definition, and a statistical abbreviation is not used before a later
-      definition. The inputs now hold those pieces and their lookalikes (tests/generated.py,
-      `DEFINING` and `NOT_DEFINING`). The entry it replaces, for a long form closing a
-      bracket it does not open, is spent
+      a link defines nothing (Basile, 2026-11-28, "A link defines nothing"; docx-meta-2 of
+      the real-paper corpus): pandoc prints no brackets round a link's text, so the text of a
+      link after words that hold its letters is no definition, whichever shape the link
+      takes, to an address or a file, a reference, a collapsed one or a shortcut whose label
+      the file defines or a heading's title is, "with [Qata4lifesciences](https://...),
+      [QLS](https://...)", where the base read QLS as defined, and it is a use; a definition
+      beside a link is read without the link's markup, "the [Dark Fern](https://...) Census
+      [DFC]" defining DFC as "Dark Fern Census", and no long form holds `](` or `][`. The
+      inputs now hold a piece of each shape (tests/generated.py, `LINKED`). The entry it
+      replaces, for the shapes of decisions D2, D5, D8 and D10, is spent
   - reading: abbreviations of a PDF's text
     why: >-
       the same, in a file the audit staged from a PDF (the entry for `abbreviations`); the
-      entry it replaces, for a word a PDF breaks at a line's end, is spent
+      entry it replaces, for decisions D2, D5, D8 and D10, is spent
   - reading: abbreviation edits
     why: >-
-      the same (the entry for `abbreviations`): a definition the base did not read, one word
-      after the short form, "HCQ (hydroxychloroquine)", is one, so where the short form is
-      not used again its edit writes "hydroxychloroquine" in place of the pair; the entry it
-      replaces, for a long form closing a bracket it does not open, is spent
+      the same (the entry for `abbreviations`): a link's text defines nothing, so no edit
+      writes one out, and a shortcut reference whose label the file defines or a heading's
+      title is, "the thin film model [TFM]" over `[tfm]: https://...`, keeps its brackets and
+      its link, which the base's edit took out; the entry it replaces, for one word after the
+      short form, is spent
   - reading: audit abbreviations
     why: >-
       the audit gives G14's findings, so the same (the entry for `abbreviations`); the entry
-      it replaces, for a long form closing a bracket it does not open, is spent
+      it replaces, for decisions D2, D5, D8 and D10, is spent
   - reading: abstract against results
     why: >-
       a number of the Abstract not found where the paper reports that the Introduction, its

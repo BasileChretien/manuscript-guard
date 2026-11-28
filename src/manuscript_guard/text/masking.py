@@ -514,8 +514,9 @@ _ADDRESS_START = r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)"
 # bare address runs to the next space, and it took the link's `)` and stop with it; the
 # link's target then ran on from its `](` to the next `)` on the line, and "Data (n = 1213"
 # after a link was read by no gate (round 3 of #587). The `](` is left, as the bare address
-# left it: "reporting odds ratio [ROR](https://...)" defines ROR (`gates/language.py`), and
-# a reference census reads `[11](https://...)` as a link and not as citation 11.
+# left it: a reference census reads `[11](https://...)` as a link and not as citation 11.
+# G14 finds the link where it is typed and reads it without its markup, so a link's text
+# defines nothing (Basile, 2026-11-28, "A link defines nothing"; `gates/language.py`).
 _LINK_ADDRESS = re.compile(
     r"(?<=\]\()[ \t]*"
     rf"(?:<{_ADDRESS_START}[^<>\n]*>|{_ADDRESS_START}[^()\s]*(?:\([^()\s]*\)[^()\s]*)*)"

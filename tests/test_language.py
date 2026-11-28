@@ -1485,11 +1485,25 @@ _UNDEFINED_ROR = [("undefined", "ROR")]
          "not used). The ROR and the PRR rose.", _UNDEFINED_ROR),
         ("The ratio was high (ROR, reporting odds ratio (crude)). The ROR rose.",
          _UNDEFINED_ROR),
-        # A short form in square brackets, a link's text included, but not a file's.
+        # A short form in square brackets defines, but a link's text does not, whichever
+        # shape the link takes (Basile, 2026-11-28, "A link defines nothing"): to an
+        # address, a reference, a collapsed one, a shortcut whose label the file defines in
+        # any case, and a file; nor an image's. A bracket whose label nothing defines is
+        # printed with its brackets, and defines.
+        ("The reporting odds ratio [ROR] was read. The ROR rose.", []),
         ("The reporting odds ratio [ROR][ref] was read. The ROR rose.\n\n"
-         "[ref]: https://example.org", []),
-        ("The reporting odds ratio [ROR](https://example.org) was read. The ROR rose.", []),
+         "[ref]: https://example.org", _UNDEFINED_ROR),
+        ("The reporting odds ratio [ROR](https://example.org) was read. The ROR rose.",
+         _UNDEFINED_ROR),
+        ("The reporting odds ratio [ROR][] was read. The ROR rose.\n\n"
+         "[ROR]: https://example.org", _UNDEFINED_ROR),
+        ("The reporting odds ratio [ROR] was read. The ROR rose.\n\n"
+         "[ror]: https://example.org", _UNDEFINED_ROR),
         ("The reporting odds ratio [ROR](glossary.md) was read. The ROR rose.", _UNDEFINED_ROR),
+        ("The reporting odds ratio ![ROR](x.png) was read. The ROR rose.", _UNDEFINED_ROR),
+        ("The reporting odds ratio [ROR][none] was read. The ROR rose.", []),
+        # A bracketed span's text, which pandoc prints with no brackets, defines still.
+        ("The reporting odds ratio [ROR]{.mark} was read. The ROR rose.", []),
     ],
 )  # fmt: skip
 def test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other(
@@ -1500,9 +1514,102 @@ def test_a_definition_is_read_by_the_shapes_g14_reads_and_no_other(
     "programmes, or ROR" define nothing, where "known as", "referred to as", "called" and
     "hereafter" do; `(ROR [@key])` defines nothing, where `(ROR; ...)` and `(ROR, ...)` do;
     of brackets inside brackets the inner is read and the outer not, and a long form in the
-    bracket holding a bracket is missed; and a short form in square brackets defines, a
-    reference link's or a URL link's text included, and not a link to a file."""
+    bracket holding a bracket is missed; and a short form in square brackets defines, where
+    pandoc prints the brackets, and a link's text of any shape does not (Basile, 2026-11-28,
+    "A link defines nothing")."""
     assert reported(project, text) == said
+
+
+#: docx-meta-2 of the real-paper corpus, a Word paper, made fictional: two short forms its
+#: glossary defines, each the text of a link the text gives after words that hold its
+#: letters, one of them a link's text after another link's. Read as definitions, each was a
+#: second meaning: EDIC as "emerging national ... infrastructures like", and DLS as
+#: "Data4lifestudies](".
+LINKED_AGAIN = (
+    "# Abbreviations\n\n"
+    "the European Data Infrastructure Commons (EDIC) and the Dutch Life Sciences hub (DLS) "
+    "were named.\n\n"
+    "# Introduction\n\n"
+    "Stewards need skills to be able to interact with emerging national and international "
+    "data infrastructures like [EDIC](http://www.edic-portal.example) and "
+    "[Health-QX](https://www.health-qx.example).\n\n"
+    "Alignment with SARF, [LQRDM](https://www.lqrdm.example/en), ZanMw, "
+    "[Data4lifestudies](https://data4lifestudies.example/), "
+    "[DLS](https://www.dls.example/fair-data/), [Health-QX](https://www.health-qx.example) "
+    "was sought. The EDIC and the DLS met.\n"
+)
+
+
+def test_a_link_s_text_after_words_that_hold_its_letters_defines_nothing(project: Path) -> None:
+    """Basile, 2026-11-28, "A link defines nothing": pandoc prints no brackets round a link's
+    text, so the text of a link is no short form in square brackets after its long form. The
+    two short forms the glossary defines, the text of links later on, are defined once, and
+    each link's text is a use: nothing is said of either."""
+    report = written(project, LINKED_AGAIN)
+    said = [f.message for f in report.findings if f.code.startswith("abbreviation-")
+            and f.message.split()[0] in ("EDIC", "DLS")]  # fmt: skip
+    assert said == [], said
+    read = _file(0, Path("main.md"), LINKED_AGAIN, [], False)
+    assert sorted((short, long) for _at, short, long in read.definitions
+                  if short in ("EDIC", "DLS")) == [
+        ("DLS", "Dutch Life Sciences hub"), ("EDIC", "European Data Infrastructure Commons")]
+
+
+@pytest.mark.parametrize(
+    ("text", "short", "long"),
+    [
+        # A round bracket after a link, its long form the link's text.
+        ("The [European Open Science Cloud](https://eosc.example) (EOSC) was read.", "EOSC",
+         "European Open Science Cloud"),
+        ("The [Northern Quiet Network][nq] (NQN) was read.\n\n[nq]: https://nq.example",
+         "NQN", "Northern Quiet Network"),
+        # A long form a link's text is a part of, read as pandoc prints it.
+        ("The [quiet](https://q.example) lake index (QLI) was read.", "QLI",
+         "quiet lake index"),
+        ("The [Quiet Lake](https://q.example) Survey [QLS] was read.", "QLS",
+         "Quiet Lake Survey"),
+        ("Of [Qata4lifesciences](https://q.example/), [QLS] was read.", "QLS",
+         "Qata4lifesciences"),
+    ],
+)  # fmt: skip
+def test_a_definition_beside_a_link_is_read_as_pandoc_prints_it(
+    text: str, short: str, long: str
+) -> None:
+    """A link defines nothing, but a definition after one is read (Basile, 2026-11-28): its
+    long form the link's text, or words a link's text is one of, without the link's markup,
+    which pandoc does not print. A long form never holds `](` or `][`."""
+    read = _file(0, Path("main.md"), text, [], False)
+    assert [(found, words) for _at, found, words in read.definitions] == [(short, long)]
+
+
+def test_a_long_form_holding_a_link_s_markup_is_none() -> None:
+    """A link whose text runs across a line break is not found as a link's text (DESIGN.md,
+    Known gaps), so its markup is left in what G14 reads: a long form holding `](` or `][` is
+    none, rather than one pandoc never prints, "Qata4 lifesciences](" (Basile, 2026-11-28).
+    One that closes a bracket it does not open inside it was none already (`_unmatched`)."""
+    text = "Of [Qata4\nlifesciences](https://q.example/), [QLS] was read."
+    read = _file(0, Path("main.md"), text, [], False)
+    assert read.definitions == []
+    assert _long_form("DLS", "with [Data4lifestudies]( ,") is None
+    assert _long_form("DLS", "with [Data4lifestudies][d] ,") is None
+
+
+def test_no_edit_writes_out_a_link_s_text(project: Path) -> None:
+    """A shortcut reference, `[ROR]` where a heading's title is the label, as pandoc reads
+    one, runs on into nothing, so the edit that writes out a definition not used again took
+    its brackets out and broke the link. A link defines nothing now (Basile, 2026-11-28), so
+    no edit meets one."""
+    from manuscript_guard.corrections import corrections
+    from manuscript_guard.gates.language import language_edits
+
+    text = "# Methods\n\n## ROR\n\nThe reporting odds ratio [ROR] was read.\n"
+    written(project, text)
+    assert [one.old for one in corrections(language_edits(load_project(project)[0]))
+            if "abbreviation-unused" in one.codes] == []
+    # The same bracket with no label defined is a definition, and its edit is made.
+    written(project, text.replace("## ROR\n\n", ""))
+    assert [one.old for one in corrections(language_edits(load_project(project)[0]))
+            if "abbreviation-unused" in one.codes] == ["reporting odds ratio [ROR]"]
 
 
 def test_a_long_form_matched_by_letters_may_start_early(project: Path) -> None:

@@ -306,7 +306,8 @@ manuscript-guard compare paper-v1.docx paper-v2.docx --response letter.docx --co
 
 `compare` sets the revised manuscript beside the version you read the first time. Both are
 read as `audit` reads a paper (a .docx, Markdown, a `.tex` with the files it inputs, or a
-PDF), and each line of the report is a fact with its place, never a verdict:
+PDF), and each line of the report is a fact with its place, never a verdict (the audit page
+runs it too, with every option below, under "Compare a revision": [audit-page.md](audit-page.md)):
 
 - **Sections**, matched by their titles as printed, without their numbers: the same, changed
   (with the words in each version), new, gone, or moved out of the order they stood in.

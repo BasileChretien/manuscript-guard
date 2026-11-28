@@ -74,6 +74,19 @@
     </div>
 
     <form id="form">
+      <!-- What the page does: check one paper (`audit`), or set a revision beside the version
+           before it (`compare`, compare.js). Each shows its own boxes. -->
+      <fieldset id="mode" class="mode">
+        <legend class="sr-only">What to do</legend>
+        <label><input id="modecheck" type="radio" name="mode" value="check" checked disabled
+          autocomplete="off">
+          <span>Check a paper</span></label>
+        <label><input id="modecompare" type="radio" name="mode" value="compare" disabled
+          autocomplete="off">
+          <span>Compare a revision</span></label>
+      </fieldset>
+      <p id="journalnote" class="note" role="status" hidden></p>
+      <div id="checkparts" class="parts">
       <!-- Shown on a page a journal's host built with its journals (web/build.py --host,
            app.js): the journal whose profile the paper is held to, as the host gave it. A link
            may choose one, ?journal=<slug>; of the address, this and a link's rules after
@@ -91,7 +104,6 @@
           <summary>Its rules, as the check reads them</summary>
           <pre id="journaltext"></pre></details>
       </div>
-      <p id="journalnote" class="note" role="status" hidden></p>
       <label class="drop">
         <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path class="fill-card stroke-teal" d="M12 4h17l9 9v29a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path class="stroke-teal" d="M29 4v9h9M24 34V20M18 26l6-6 6 6"/></svg>
         <span class="field">The paper</span>
@@ -301,6 +313,40 @@
             <input id="jfile" type="file" accept=".yaml,.yml,.json" disabled></label>
         </div>
       </details>
+      </div>
+
+      <!-- A revision set beside the version before it, as `manuscript-guard compare` sets it:
+           each line of its report a fact with its place, none a verdict (compare.js). -->
+      <div id="compareparts" class="parts" hidden>
+        <div class="versions">
+          <label class="drop small">
+            <span class="field">The version you read first</span>
+            <span class="help">A .docx, .md or .pdf: drop it here, or click to choose it.</span>
+            <span id="beforechosen" class="chosen" hidden></span>
+            <input id="before" name="before" type="file" accept=".docx,.md,.pdf" disabled></label>
+          <label class="drop small">
+            <span class="field">The revised version</span>
+            <span class="help">A .docx, .md or .pdf: drop it here, or click to choose it.</span>
+            <span id="afterchosen" class="chosen" hidden></span>
+            <input id="after" name="after" type="file" accept=".docx,.md,.pdf" disabled></label>
+        </div>
+        <label><span class="field">The authors' response letter <span class="help">(if you
+          have it)</span></span>
+          <span class="help">A .docx, .md or .txt. Each quotation of four words or more is looked
+            for in both versions, and each table, figure and section it names is said to have
+            changed or not.</span>
+          <input id="letter" type="file" accept=".docx,.md,.txt" disabled></label>
+        <label><span class="field">Your own comments on the version before <span
+          class="help">(if you want them matched)</span></span>
+          <span class="help">A .docx, .md or .txt, numbered or a paragraph each. Each is matched
+            to the revision by the passage it quotes or the table, figure or section it names,
+            and otherwise listed for you to read. Nothing says whether one was answered.</span>
+          <input id="comments" type="file" accept=".docx,.md,.txt" disabled></label>
+        <label class="tick"><input id="draft" type="checkbox" disabled>
+          <span><span class="field">Also write the start of my report</span>
+            <span class="help">The findings and their places, as a Markdown file (.md) with no
+              opinion in it, for you to write your report from.</span></span></label>
+      </div>
 
       <div class="go">
         <button id="run" type="submit" disabled>Check my paper</button>
@@ -328,6 +374,8 @@
         the findings as Word comments</button>
       <button id="savetracked" type="button" class="quiet" hidden>Download your paper with
         the corrections as tracked changes</button>
+      <!-- A comparison's: the start of the referee's report, where it was asked for. -->
+      <button id="savedraft" type="button" hidden>Download the start of your report</button>
       <button id="again" type="button" class="quiet">Check another paper</button>
     </div>
     <pre id="notes" hidden></pre>
@@ -337,7 +385,8 @@
     <p id="pdfnote" class="pdfnote" hidden>This browser shows a PDF in a page of its own.
       <button id="openpdf" type="button" hidden>Open the report</button></p>
     <!-- Where the PDF could not be made: the report as the command line prints it, which is
-         then the only report there is (round 1 of #644). -->
+         then the only report there is (round 1 of #644); and a comparison's report, which is
+         text alone. -->
     <div id="astext" class="astext" hidden>
       <button id="save" type="button" class="quiet">Download the report as text</button>
       <pre id="report"></pre>
@@ -401,6 +450,12 @@
         allow it will find what it needs on
         <a href="https://github.com/BasileChretien/manuscript-guard/blob/main/docs/editorial-office.md">a
         page for editorial offices</a>.</p>
+      <p>For a revision, choose "Compare a revision" at the top: the version you read first and
+        the revised one are set side by side, section by section, table by table and number by
+        number, and the revision is checked with each finding marked new or standing. With the
+        authors' response letter, each passage it quotes is looked for in both versions. Each
+        line of that report is a fact with its place; whether a change answers your comment
+        is yours to judge.</p>
     </details>
     <details>
       <summary>What did this page load and send?</summary>

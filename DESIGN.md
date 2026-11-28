@@ -31794,6 +31794,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The rules are not hidden from whoever has the link, nor from a browser extension: they
     are a journal's published instructions, and the authors' names are never in it. A
     browser does not send the part after `#` to the page's host. Accepted.
+- **A revision compared on the audit page names each version by the folder the page reads
+  it from.** *Compare a revision* (item 6 of the editor's list; Basile, 2026-11-28) runs
+  `compare` in the page, each version from a folder of its own, `v1/` and `v2/`, so that two
+  versions a journal's system gives one name are both read: its report and the start of
+  the report name `v1/paper.docx`, where the command line names each file from the folder
+  it is run in, or by its name alone outside it. A response letter or comments file named
+  `v1` or `v2`, or `report-draft.md` where the start of the report is asked for, is
+  refused, to be renamed. Pinned by
+  `tests/test_web.py::test_the_worker_gives_compare_each_version_in_a_folder_of_its_own`.
+  - Its report is the text alone: `compare` writes no PDF, and the page shows none (the
+    author, 2026-11-28). Accepted.
+  - A LaTeX version is not taken: `compare` reads a `.tex` with the files it inputs, and
+    the page unpacks no project for it, as it does for an audit. Accepted.
 - **The statements every paper makes are found by their headings and labels.** G4's check of
   empty headings and of the statements every paper makes (`gates/statements.py`, built
   2026-11-26 after a draft built its declarations as headings over comments) has these

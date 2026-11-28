@@ -5,23 +5,33 @@
 //
 //   node web/test/parity.mjs <site> <folder> -- audit paper.docx --against results.json --json
 //   node web/test/parity.mjs <site> <folder> --unpack project.zip -- audit project
+//   node web/test/parity.mjs <site> <folder> --read report-draft.md -- compare v1/a.md v2/b.md \
+//       --report-draft report-draft.md
 //
 // Every file and folder in <folder> is copied into the working folder first. With
 // `--unpack`, the archive named is then unpacked as the page unpacks one (worker.js
 // `unpacked`, `web.unpack_paper`): moved out of the working folder, the folder of its name
 // that <folder> holds removed, and the archive unpacked into one of that name, which the
-// command is then given.
+// command is then given. With `--read`, the text of the file named, which the command
+// wrote in the working folder, is given as "file" beside them, null where it wrote none.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const given = process.argv.slice(2);
-const unpack = given[2] === "--unpack" ? given[3] : null;
-const [site, folder, dashes, ...args] = unpack ? [...given.slice(0, 2), ...given.slice(4)] : given;
+const [site, folder] = given;
+const options = {};
+let at = 2;
+while (["--unpack", "--read"].includes(given[at])) {
+  options[given[at].slice(2)] = given[at + 1];
+  at += 2;
+}
+const [dashes, ...args] = given.slice(at);
+const unpack = options.unpack || null;
 if (!site || !folder || dashes !== "--" || !args.length) {
-  console.error("usage: node web/test/parity.mjs <site> <folder> [--unpack <archive>] -- "
-    + "<command> [arguments]");
+  console.error("usage: node web/test/parity.mjs <site> <folder> [--unpack <archive>] "
+    + "[--read <file>] -- <command> [arguments]");
   process.exit(2);
 }
 const root = resolve(site);
@@ -82,4 +92,10 @@ from manuscript_guard import web
 os.chdir("/work")
 json.dumps(web.run(ARGS))
 `);
-process.stdout.write(result);
+if (options.read) {
+  const written = fileOf("/work/" + options.read);
+  const said = { ...JSON.parse(result), file: written ? new TextDecoder().decode(written) : null };
+  process.stdout.write(JSON.stringify(said));
+} else {
+  process.stdout.write(result);
+}

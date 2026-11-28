@@ -971,6 +971,19 @@ features:
       which may read it otherwise than the pdftotext a reader has installed (DESIGN.md,
       Known gaps).
 
+  - id: audit-page-compare
+    stage: others
+    title: Compare in a web browser
+    says: >-
+      Sets a revision beside the version before it on the audit page, as compare does, with
+      the authors' response letter and the reader's own comments, and nothing is uploaded.
+    status: works
+    tests: [tests/test_web.py, tests/test_compare.py]
+    docs: docs/audit-page.md
+    limits: >-
+      Its report is text alone, with no PDF, and a LaTeX version is compared on the command
+      line only (DESIGN.md, Known gaps).
+
   - id: audit-page-hosted
     stage: others
     title: Audit page on a journal's site

@@ -8041,7 +8041,10 @@ _NAMING = ("{{#{0}}}", "{{.unnumbered #{0}}}", "{{#{1}}}")
 #: pattern, and a near miss or two, which name another section or none ("Standard deviation
 #: of the dose" is a statistic, "Case-control design" no case definition). A design added to
 #: the table adds its sections here (`tests/test_differential.py` holds that every one has
-#: some), or a pattern of it narrowed would be read the same on both sides.
+#: some), or a pattern of it narrowed would be read the same on both sides. Where a
+#: section has a heading its words find only through its hyphen, it comes first, the one
+#: Hypothesis draws most, so that a heading's Unicode hyphen not read as a hyphen is
+#: noticed under any seed (round 1 of #857).
 PLAN_HEADINGS = {
     "question": ("Research question", "Objectives", "Aims"),
     "design": ("Study design", "Questionnaire design"),
@@ -8058,7 +8061,7 @@ PLAN_HEADINGS = {
     "missing data": ("Missing values", "Handling missingness"),
     "sensitivity analyses": ("Subgroups", "Sensitivity analysis"),
     "interim analyses": ("Stopping rules", "Data monitoring", "Monitoring"),
-    "time zero and follow-up": ("Index date", "Follow up", "At-risk window", "Censoring"),
+    "time zero and follow-up": ("At-risk window", "Index date", "Follow up", "Censoring"),
     "confounding": ("Confounders", "Adjustment set"),
     "reference standard": ("Gold standard", "Reference test", "Index test",
                            "Reference standard for the target condition"),
@@ -8069,14 +8072,14 @@ PLAN_HEADINGS = {
     "sampling": ("Recruitment", "Study sample", "Survey weighting", "Sample size",
                  "Response rate"),
     "measurement": ("Questionnaire", "Measures", "Exposure assessment", "Outcome measures"),
-    "bias": ("Selection bias", "Non-response", "Biases"),
+    "bias": ("Non-response", "Selection bias", "Biases"),
     "cases": ("Case ascertainment", "Case", "Case-control design"),
     "controls": ("Control selection", "Controls", "Case-control design"),
     "matching": ("Matched sets",),
     "observation period": ("Observation window",),
     "risk windows": ("Exposure windows", "Control periods", "Focal window"),
     "washout": ("Wash-out", "Pre-exposure period", "Induction and lag"),
-    "time-varying adjustment": ("Age and season", "Calendar time", "Time-varying covariates"),
+    "time-varying adjustment": ("Time-varying covariates", "Age and season", "Calendar time"),
     "assumptions": ("Event-dependent exposure", "Assumption checks"),
     "deduplication": ("Duplicates", "Preprocessing", "Data cleaning"),
     "case definition": ("Case selection", "Drugs and events", "Event selection"),
@@ -8098,22 +8101,26 @@ PLAN_HEADINGS = {
     "patient perspective": ("The patient's perspective", "Patient’s view",
                             "Clinical perspective"),
     "informed consent": ("Consent for publication", "Patient consent", "Ethics approval"),
-    "case selection": ("Consecutive patients", "Recruitment", "Case identification",
-                       "Case-finding", "Case‑finding", "Patient selection"),
-    "follow-up": ("Follow up", "Loss to follow-up", "Follow‑up", "Length of observation"),
+    "case selection": ("Case-finding", "Consecutive patients", "Recruitment",
+                       "Case identification", "Case‑finding", "Patient selection"),
+    "follow-up": ("Loss to follow-up", "Follow up", "Follow‑up", "Length of observation"),
     "comparison": ("Comparison with published series", "Historical controls",
                    "External controls", "Statistical comparisons"),
     "consent and ethics": ("Ethical approval", "Informed consent", "Ethics committee",
                            "Data protection"),
     "sampling and saturation": ("Sampling strategy", "Recruitment", "Data saturation",
                                 "Participant selection", "Participants"),
-    "data collection": ("Semi-structured interviews", "Focus groups", "Topic guide",
-                        "Field notes", "Interviewer characteristics"),
+    # Three found only through their hyphen, "Focus-group", first, the heading Hypothesis
+    # draws most: so a plan heading's Unicode hyphen not read as one is noticed in
+    # qualitative plans too (round 1 of #857).
+    "data collection": ("Focus-group discussions", "Semi-structured interviews", "Focus groups",
+                        "Topic guide", "Field notes", "Interviewer characteristics"),
     "analytic approach": ("Thematic analysis", "Data analysis", "Coding",
                           "Analysts’ perspectives"),
-    "reflexivity": ("Research team and reflexivity", "Positionality",
-                    "Researcher characteristics", "Study team"),
-    "trustworthiness": ("Rigour", "Member checking", "Credibility", "Validity"),
+    "reflexivity": ("Researcher-participant relationship", "Research team and reflexivity",
+                    "Positionality", "Researcher characteristics", "Study team"),
+    "trustworthiness": ("Member-checking", "Rigour", "Member checking", "Credibility",
+                        "Validity"),
 }  # fmt: skip
 #: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
 _SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
@@ -8201,9 +8208,11 @@ def sectioned_plans(
         if kind != "named exactly" and "-" in heading:
             # A heading pasted from Word may hold its non-breaking hyphen (U+2011), or the
             # Unicode hyphen (U+2010), where the words have a hyphen, in a plan of any design
-            # (round 2 of #849, round 1 of #853).
-            heading = draw(st.sampled_from((heading, heading.replace("-", chr(0x2011)),
-                                            heading.replace("-", chr(0x2010)))))
+            # (round 2 of #849, round 1 of #853). The Unicode hyphens come first, the choice
+            # Hypothesis draws most: last, under some seeds no heading the words find only
+            # through its hyphen was drawn with one in 120 plans (round 1 of #857).
+            heading = draw(st.sampled_from((heading.replace("-", chr(0x2010)),
+                                            heading.replace("-", chr(0x2011)), heading)))
         parts.append(f"{mark} {heading}\n\n{draw(nothing if kind == 'empty' else said)}\n")
     parts += [f"{mark} {other}\n\n{draw(sentence)}\n"
               for other in draw(st.lists(st.sampled_from(_PLAN_OTHER), max_size=2, unique=True))]

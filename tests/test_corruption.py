@@ -18993,6 +18993,30 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
     assert found == ["CONSORT"], found
 
 
+@pytest.mark.parametrize("declared", [False, True], ids=["undeclared", "declared"])
+def test_g5_reads_a_claim_of_process_or_care(project: Path, declared: bool) -> None:
+    """Round 1 of #851: a case series says it followed PROCESS and a case report CARE, each
+    with a recipe now (PROCESS-2023, CARE-2013), but G5 read neither name, so a paper that
+    said it followed one and declared none was not told. Their capitals are read, as every
+    guideline's are, and "the process" and "standard care" are not; a paper that declares
+    the recipes is told nothing."""
+    from manuscript_guard.gates import check_reporting
+
+    claims = ("This case series was reported according to the PROCESS 2023 guideline.\n\n"
+              "The report follows the CARE guidelines.\n\n"
+              "The process was reported according to the protocol, and patients followed "
+              "standard care.\n\n")  # fmt: skip
+    if declared:
+        _paper_has(project, reporting_guideline=["DEMO-OBS", "PROCESS-2023", "CARE-2013"])
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{claims}# Results\n", 1),
+                    "utf-8")  # fmt: skip
+    found = sorted(f.message.split(" followed ")[1].split(",")[0]
+                   for f in check_reporting(load_project(project)[0]).findings
+                   if f.code == "guideline-claimed-not-declared")  # fmt: skip
+    assert found == ([] if declared else ["CARE", "PROCESS"]), found
+
+
 _UNQUOTED_FUNDING = ("This work received no funding.", "Funding came from nowhere.")
 
 

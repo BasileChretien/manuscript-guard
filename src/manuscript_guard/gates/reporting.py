@@ -124,6 +124,9 @@ def completion_path(project: Project, name: str) -> Path:
 CLAIMABLE = (
     "STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE",
     "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR", "CHEERS", "ENTREQ",
+    # A case report and a case series have recipes, CARE-2013 and PROCESS-2023, and are
+    # said to follow them (round 1 of #851). Both are words too, read in capitals only.
+    "CARE", "PROCESS",
 )
 
 #: Words that turn a mention of a guideline into a claim of having followed it.

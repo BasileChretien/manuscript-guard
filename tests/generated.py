@@ -3972,6 +3972,29 @@ _GUIDELINES_CLAIMED = ("STROBE", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIV
                        "COREQ", "STARD", "MOOSE", "CHEERS", "SRQR", "ENTREQ")  # fmt: skip
 
 
+#: Every guideline G5 reads a claim of (`CLAIMABLE`), written out here rather than taken
+#: from it, so that a name dropped from the rule fails the property that draws these.
+CLAIMED_NAMES = ("STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD",
+                 "ARRIVE", "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR",
+                 "CHEERS", "ENTREQ", "CARE", "PROCESS")  # fmt: skip
+#: Sentences that claim to have followed what they name, each with a word of `_CLAIMING`.
+_CLAIM_SENTENCES = ("The report follows {}.", "It was reported according to the {} guidelines.",
+                    "We adhered to the {} statement.", "The {} checklist is in the supplement.",
+                    "Patients followed {} pathways.")  # fmt: skip
+
+
+@st.composite
+def named_claims(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A Markdown paper with a claim of every name of `CLAIMED_NAMES`, once in its capitals
+    and once in lower case, each in a paragraph of its own and a sentence drawn, in an order
+    drawn; and the names G5 reads a claim of, those in capitals. A name in lower case is a
+    word, "the care given" or "the process" (round 1 of #851)."""
+    paragraphs = [draw(st.sampled_from(_CLAIM_SENTENCES)).format(written)
+                  for name in CLAIMED_NAMES for written in (name, name.lower())]  # fmt: skip
+    order = draw(st.permutations(paragraphs))
+    return "\n\n".join(order) + "\n", sorted(CLAIMED_NAMES)
+
+
 @st.composite
 def markdown_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     """A Markdown paper with a claim in every place of `MARKDOWN_CLAIM_PLACES`, in an order
@@ -21210,6 +21233,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "finding quotes": finding_quotes().map(lambda drawn: drawn[0]),
     "finding places": finding_places().flatmap(lambda drawn: st.sampled_from(drawn[0])),
     "checklist quotes": checklist_quotes().map(lambda drawn: drawn[0]),
+    "guideline claims": st.one_of(named_claims().map(lambda drawn: drawn[0]),
+                                  markdown_claims().map(lambda drawn: drawn[0])),
     "latex titles": latex_titles().flatmap(
         lambda cases: st.sampled_from([files for _kind, files, _titles in cases])),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),

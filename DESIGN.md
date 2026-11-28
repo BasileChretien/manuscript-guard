@@ -23950,9 +23950,13 @@ Open, recorded as each change landed:
   No guideline is written for case series in every field, so the design names PROCESS
   2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
   and G5 accepts either. `PROCESS-2023` reads PROCESS 2023's Table 3 from Europe PMC's
-  full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. Kempen
-  2011 has none: its full text is not served by Europe PMC, and its article states no
-  open licence, so a paper that declares it is told its checklist is not retrieved.
+  full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. A paper
+  must declare it by that name: one that declares `PROCESS`, as the design names it and
+  the setup question offers it, finds no profile of that name and is told its checklist
+  is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one that
+  declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
+  text is not served by Europe PMC, and its article states no open licence, so a paper
+  that declares it is told its checklist is not retrieved.
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for
   the intervention (6g), the operator (6j) and the variation between operators (6k) a
   series outside surgery answers as not applying. Accepted.

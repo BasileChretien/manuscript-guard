@@ -2783,6 +2783,20 @@ def _passages() -> Reading:
     return passages
 
 
+@reading("guideline claims")
+def _guideline_claims() -> Reading:
+    """The guidelines a Markdown file says it followed, each by the name G5 reads it under,
+    the file masked as `check` masks it (`gates/reporting.py`, `_claims`): what G5 holds to
+    `reporting_guideline:`."""
+    from manuscript_guard.gates.reporting import _claims
+    from manuscript_guard.text.masking import mask
+
+    def claims(text: str) -> list[str]:
+        return sorted(_claims([(MAIN, mask(text))]))
+
+    return claims
+
+
 @reading("passage claims")
 def _passage_claims() -> Reading:
     """How strongly each cited sentence of a Markdown file claims against the passage of

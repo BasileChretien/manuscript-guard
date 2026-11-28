@@ -24142,10 +24142,10 @@ Open, recorded as each change landed:
   2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
   and G5 accepts either. `PROCESS-2023` reads PROCESS 2023's Table 3 from Europe PMC's
   full text, under CC BY-NC-ND 4.0, a recipe to download and use, not to share. A paper
-  must declare it by that name: one that declares `PROCESS`, as the design names it and
-  the setup question offers it, finds no profile of that name and is told its checklist
-  is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one that
-  declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
+  must declare it by that name, as the setup question offers it (#856): one that declares
+  `PROCESS`, as the design names it, finds no profile of that name and is told its
+  checklist is not retrieved, the hint listing `PROCESS-2023` among the recipes, as one
+  that declares `CARE` or `STARD` is (round 1 of #851). Kempen 2011 has no recipe: its full
   text is not served by Europe PMC, and its article states no open licence, so a paper
   that declares it is told its checklist is not retrieved.
   The design's four sections cite PROCESS 2023, whose items on preparing the patient for

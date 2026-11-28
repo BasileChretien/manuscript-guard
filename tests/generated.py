@@ -4164,7 +4164,8 @@ def _a_year(draw: st.DrawFn) -> str:
 
 def _joined_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
     """The name joined to one to three others, "CARE, STROBE and PRISMA", and the others."""
-    others = draw(st.lists(st.sampled_from(_JOINED_TO), min_size=1, max_size=3, unique=True))
+    names = [name for name in _JOINED_TO if name != written.upper()]
+    others = draw(st.lists(st.sampled_from(names), min_size=1, max_size=3, unique=True))
     text = written
     for index, other in enumerate(others):
         joins = (" and ", " or ", ", and ", " & ", "/") if index == len(others) - 1 else (", ",)

@@ -153,16 +153,17 @@ try {
   }, paper, against, form);
 
   // A comparison, as "Compare a revision" runs it (compare.js): its choice made, the two
-  // versions, the letter and the comments chosen by their names, the start of the report
-  // asked for or not, and the run; what the page then shows, and the start of the report as
-  // text, read in the page (a Uint8Array does not come back out of Firefox whole).
+  // versions, the letter and the comments chosen by their paths in the cases folder, each
+  // under its own name, the start of the report asked for or not, and the run; what the page
+  // then shows, and the start of the report as text, read in the page (a Uint8Array does not
+  // come back out of Firefox whole).
   const compareChosen = (chosen) => page.evaluate(async ({ before, after, letter, comments, draft }) => {
     const $ = (id) => document.getElementById(id);
     const put = async (id, names) => {
       const files = new DataTransfer();
       for (const name of names) {
         const blob = await (await fetch("/__cases__/" + encodeURIComponent(name))).blob();
-        files.items.add(new File([blob], name));
+        files.items.add(new File([blob], name.split("/").pop()));
       }
       $(id).files = files.files;
       $(id).dispatchEvent(new Event("change", { bubbles: true }));

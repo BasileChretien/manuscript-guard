@@ -3095,7 +3095,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         from manuscript_guard.comparing.report import _pdfs
 
         text = for_compare(found, _flags_given(args, _COMPARE_FLAGS),
-                           _shown(Path.cwd(), _pdfs(found)))  # fmt: skip
+                           _shown(Path.cwd(), _pdfs(found), resolve=True))  # fmt: skip
         if not _write_draft(args, text, "compare"):
             return 2
     if args.out is None:

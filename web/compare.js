@@ -46,6 +46,9 @@ export function comparing(page) {
       : "Or try it with an example paper";
   }
   for (const id of ["modecheck", "modecompare"]) $(id).addEventListener("change", modeShown);
+  // The boxes of the choice the page starts with, whatever a browser restored of the last
+  // visit's form (round 1 of #854).
+  modeShown();
 
   // Each version chosen, said in its box; or dropped on it, as the paper is on its own.
   for (const [id, said] of [["before", "beforechosen"], ["after", "afterchosen"]]) {

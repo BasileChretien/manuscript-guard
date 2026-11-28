@@ -10,11 +10,12 @@ The steps, in the order an audit takes them: `read` (the papers and the outputs)
 (G6 and G14), `lookup` (each reference asked of the registries, with how many of how many),
 and `report`. The page adds its own after them: the PDF, and the copy with comments.
 
-A comparison of two versions (`comparing.report.compare`) says its own steps, which share no
-key with an audit's: `versions` (both read, and the letter and the comments), `differences`
-(set side by side), `before` and `after` (each version audited), `letter` and `comments`
-(each held to the versions, where it is given), and `written` (the report). The two audits
-inside it say their steps too; the page, drawing a comparison's, passes over those.
+A comparison of two versions says its own steps, which share no key with an audit's:
+`comparing.report.compare` says `versions` (both read, and the letter and the comments),
+`differences` (set side by side), `before` and `after` (each version audited), and `letter`
+and `comments` (each held to the versions, where it is given); `cli.cmd_compare` then says
+`written` (the report). The two audits inside it say their steps too; the page, drawing a
+comparison's, passes over those.
 """
 
 from __future__ import annotations

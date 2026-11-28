@@ -419,6 +419,23 @@ def test_compare_names_a_file_in_a_folder_with_forward_slashes(tmp_path: Path, c
                                                            "notes/letter.md")
 
 
+def test_the_start_of_the_report_names_two_versions_of_one_name_by_their_folders(
+        tmp_path: Path, capsys, monkeypatch) -> None:  # fmt: skip
+    """The start of the referee's report (`--report-draft`) names each file as the report
+    does, from the folder it is run in: two versions of one name, as the audit page writes
+    them (`v1/`, `v2/`), are `v1/paper.md` and `v2/paper.md`, not both `paper.md` (round 1
+    of #854: it named a file given by a relative path by its name alone)."""
+    write(tmp_path / "v1", "paper.md", OLD_PAPER)
+    write(tmp_path / "v2", "paper.md", NEW_PAPER)
+    monkeypatch.chdir(tmp_path)
+    assert main(["compare", "v1/paper.md", "v2/paper.md", "--report-draft", "draft.md"]) == 0
+    capsys.readouterr()
+    draft = (tmp_path / "draft.md").read_text(encoding="utf-8")
+    assert "- v1: v1/paper.md (Markdown)" in draft and "- v2: v2/paper.md (Markdown)" in draft
+    assert "v2/paper.md line" in draft
+    assert "- paper.md line" not in draft
+
+
 def test_the_report_goes_to_a_new_file_only(tmp_path: Path, capsys) -> None:
     old = write(tmp_path, "v1.md", OLD_PAPER)
     new = write(tmp_path, "v2.md", NEW_PAPER)

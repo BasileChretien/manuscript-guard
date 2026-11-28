@@ -714,6 +714,22 @@ def test_a_comparison_says_each_step_and_the_page_names_each() -> None:
     assert 'type === "compare" ? compared(payload)' in worker
 
 
+def test_the_page_shows_the_boxes_of_the_choice_it_starts_with() -> None:
+    """A browser may restore the last visit's form on reload, "Compare a revision" checked
+    among it, and say no change: the page would then show the paper's box and require it,
+    and its button would compare nothing (round 1 of #854). So the two choices restore
+    nothing (`autocomplete="off"`), and compare.js shows the boxes of the one checked as
+    it starts, as well as on each change."""
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    for choice in ("modecheck", "modecompare"):
+        tag = re.search(rf'<input id="{choice}"[^>]*>', page).group(0)
+        assert 'type="radio" name="mode"' in tag and 'autocomplete="off"' in tag
+    code = (WEB / "compare.js").read_text(encoding="utf-8")
+    body = code[code.index("export function comparing("):]
+    listened = body.index('$(id).addEventListener("change", modeShown);')
+    assert "\n  modeShown();\n" in body[listened:]
+
+
 def test_the_example_revision_shows_each_thing_a_letter_is_held_to(tmp_path: Path) -> None:
     """The example revision the page offers is the example paper beside an earlier version of
     it and a letter to invented reviewers (web/example-before.md, example-letter.md), served

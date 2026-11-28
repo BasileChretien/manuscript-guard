@@ -157,6 +157,8 @@ MINE = "mine.md"
 COMMENTS = ('1. The sentence "Data were analysed at two study centres" does not say which.\n\n'
             "2. Table 2 is missing.\n\n3. Please report the confidence outcome.\n")
 LETTER_DOCX = "letter.docx"
+#: The name two versions of one paper are given, as a journal's system may give both.
+ONE_NAME = "paper.md"
 
 
 def argument(name: str) -> str:
@@ -287,10 +289,13 @@ def comparisons(page: Path, folder: Path, cases: list) -> tuple[list[dict], int]
     """Each comparison run by the command line here and by `page` in Node, and said the same
     or not, the start of the reader's report too where it is asked for; the cases as
     browser.mjs runs them, and how many were not the same. A case is its name, the two
-    versions, the letter and the comments or None, and whether the draft is asked for."""
+    versions, each by its path in `folder`, the letter and the comments or None, and whether
+    the draft is asked for. The command line is given each version in the folder the page
+    writes it in, under its own name."""
     listed, failed = [], 0
     for number, (name, before, after, letter, comments, draft) in enumerate(cases):
-        arguments = ["compare", f"{VERSIONS[0]}/{before}", f"{VERSIONS[1]}/{after}",
+        arguments = ["compare", f"{VERSIONS[0]}/{Path(before).name}",
+                     f"{VERSIONS[1]}/{Path(after).name}",
                      *(["--response", argument(letter)] if letter else []),
                      *(["--comments", argument(comments)] if comments else [])]  # fmt: skip
         asked = [*arguments, *(["--report-draft", DRAFT] if draft else [])]
@@ -321,7 +326,9 @@ def comparisons(page: Path, folder: Path, cases: list) -> tuple[list[dict], int]
 
 def versions_in(folder: Path) -> list:
     """The comparisons' files in `folder`: each version in the folder the page writes it in,
-    and beside them, by its own name, as the browser chooses it; the cases."""
+    and beside them, by its own name, as the browser chooses it; the cases. Two versions of
+    one name are two files, the example's two, so that a page that read one twice would
+    not give the command line's report (round 1 of #854)."""
     for which in VERSIONS:
         (folder / which).mkdir()
     for name in EXAMPLE:
@@ -329,16 +336,18 @@ def versions_in(folder: Path) -> list:
     (folder / MINE).write_text(COMMENTS, encoding="utf-8", newline="\n")
     subprocess.run(["pandoc", str(folder / EXAMPLE[2]), "-o", str(folder / LETTER_DOCX)],
                    capture_output=True, timeout=300, check=True)  # fmt: skip
-    for which, names in ((VERSIONS[0], (EXAMPLE[0], PDF_PAPER, "paper.docx")),
+    for which, names in ((VERSIONS[0], (EXAMPLE[0], PDF_PAPER)),
                          (VERSIONS[1], (EXAMPLE[1], "paper.docx"))):  # fmt: skip
         for name in names:
             shutil.copyfile(folder / name, folder / which / name)
+    for which, name in zip(VERSIONS, EXAMPLE[:2], strict=True):
+        shutil.copyfile(folder / name, folder / which / ONE_NAME)
     return [
         ("the example revision, its letter, comments and the start of a report", EXAMPLE[0],
          EXAMPLE[1], EXAMPLE[2], MINE, True),
         ("a PDF beside the .docx", PDF_PAPER, "paper.docx", None, None, False),
-        ("two versions of one name, the letter a .docx", "paper.docx", "paper.docx",
-         LETTER_DOCX, None, False),
+        ("two versions of one name, the letter a .docx", f"{VERSIONS[0]}/{ONE_NAME}",
+         f"{VERSIONS[1]}/{ONE_NAME}", LETTER_DOCX, None, False),
     ]
 
 

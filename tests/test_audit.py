@@ -3448,3 +3448,87 @@ def test_a_paper_s_title_naming_methods_is_no_methods_over_a_results_name(
                      encoding="utf-8")  # fmt: skip
     read = audit([paper], []).abstract
     assert read is not None and read.compared
+
+
+# ------------------------------------------------- where a Word paper's list opens (2026-11-27)
+
+
+def test_a_list_s_title_in_a_block_quote_opens_it_under_a_line_of_marks_alone() -> None:
+    """docx-med-A3: pandoc writes the blank line between two quoted paragraphs of a Word
+    document as a line of `>` alone, so "> **11. REFERENCES**:" under one opens a list, as it
+    does under a blank line; the same title inside a quoted paragraph, under a line of words,
+    opens none."""
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    entry = "> 1. Doe A. Hydroxychloroquine (HCQ) in trials. BMJ. 2020;1:2."
+    text = f"# Discussion\n\n> It held.\n>\n> **11. REFERENCES**:\n>\n{entry}\n"
+    (listed,) = unmarked_reference_lists(text)
+    assert text.index(entry) < listed[1] and listed[0] <= text.index("> **11.")
+    text = f"# Discussion\n\n> It held, as\n> **11. REFERENCES**:\n>\n{entry}\n"
+    assert unmarked_reference_lists(text) == []
+    # A line of a carriage return alone, as a file written on Windows has it, is blank too.
+    text = "# Discussion\r\n\r\nIt held.\r\n\r\n**References**\r\n\r\n1. Doe A. Trials. 2020.\r\n"
+    assert len(unmarked_reference_lists(text)) == 1
+
+
+@pytest.mark.parametrize(
+    ("label", "listed"),
+    [("**Literature**", True), ("Literature", True), ("**LITERATURE:**", True),
+     ("**Literature review**", False), ("**Literature** was scarce.", False)],
+)  # fmt: skip
+def test_literature_alone_opens_a_reference_list(label: str, listed: bool) -> None:
+    """docx-socio-B3: "**Literature**" alone over the entries, as a German paper titles its
+    list, opens one; "Literature review" and a sentence that opens on the word do not."""
+    from manuscript_guard.text.reference_lists import unmarked_reference_lists
+
+    text = f"# Discussion\n\nIt held.\n\n{label}\n\n1. Doe A. Large language models (LLMs). 2020.\n"
+    assert bool(unmarked_reference_lists(text)) == listed
+
+
+@pytest.mark.parametrize(
+    ("titled", "under", "listed"),
+    [
+        # Over entries: authors and a year, a numbered style's, a number and authors.
+        ("**Literature**", "Almeida, F., & Smith, G. (2019). Word embeddings. arXiv.", True),
+        ("**Literature**", "1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.", True),
+        ("## 2. Literature", "[1] Doe HA, Roe MB. Trials of drugs.", True),
+        # Over prose, under a paragraph in bold and under a heading alike (Basile,
+        # 2026-11-28, "Only over entry-shaped lines"); and over a diagram's numbered items,
+        # docx-meta-2's Appendix 8.
+        ("**2. Literature**", "Large language models (LLMs) were studied.", False),
+        ("## 2. Literature", "Large language models (LLMs) were studied.", False),
+        ("Literature", "1. Explore the knowledge, skills and abilities of the function", False),
+    ],
+)  # fmt: skip
+def test_literature_opens_a_list_only_over_an_entry(titled: str, under: str, listed: bool) -> None:
+    """"Literature" alone titles a reference list only where the paragraph under it is shaped
+    like an entry (`reference_lists._shaped_as_an_entry`); over prose it is a section's
+    title, read as one by every reader of a list, `reference_lists` and the audit's cut."""
+    from manuscript_guard.audit import bibliography_spans
+    from manuscript_guard.text.reference_lists import reference_lists
+
+    text = f"# Discussion\n\nIt held.\n\n{titled}\n\n{under}\n\n# Methods\n\nThe LLMs ran.\n"
+    assert bool(reference_lists(text)) == listed
+    assert bool(bibliography_spans(text)) == listed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A quoted title over a line of the quote's marks alone, a blank line to pandoc.
+        "> **Literature**\n>\n> 1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.\n\n"
+        "Large language models (LLMs) were studied.\n",
+        # An ATX heading, one line, with its first entry straight under it.
+        "## Literature\n1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.\n"
+        "2. Roe MB. Drugs. BMJ. 2021;2:3.\n\nLarge language models (LLMs) were studied.\n",
+    ],
+    ids=["quoted", "heading"],
+)
+def test_literature_reads_the_paragraph_pandoc_puts_after_it(text: str) -> None:
+    """The paragraph after "Literature" is the one pandoc reads after it (round 2 of #841): a
+    line of `>` alone is a blank line in a block quote, as `_opens_a_paragraph` has it, and an
+    ATX heading's line is the whole heading, so an entry straight under it is that paragraph."""
+    from manuscript_guard.text.reference_lists import literature_over_prose
+
+    lines = text.split("\n")
+    assert not literature_over_prose(lines[0], lines, 0, marked=lines[0].startswith("#"))

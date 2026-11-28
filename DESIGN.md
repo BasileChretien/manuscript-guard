@@ -5523,6 +5523,33 @@ funding or of interests alone names no initials, since their capitals are instit
 often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
 those; Known gaps says where one is read as a contributions statement.
 
+**Where a Word paper's parts begin and end (Basile, 2026-11-27, after the loud
+`abbreviation-used-before-defined` findings judged false on the corpus's Word papers).** These
+are readings every gate that finds the part shares. A reference list's title in a block quote
+opens the list under a line of `>` alone as under a blank line, which is how pandoc writes the
+blank line between two quoted paragraphs of a Word document, "> **11. REFERENCES**:"; and
+"Literature" alone titles a list, as a German paper has it, where the paragraph under it is
+shaped like an entry (`text/reference_lists.py`; Basile, 2026-11-28, "Only over entry-shaped
+lines"; over prose it is a section's title), so that G14, G4's word counts, the recycling
+check and the gates that pass a list over read none of its entries. A heading set in bold
+as a whole, "### **Abstract**", names the Abstract, and only whole, so "### **Abstract
+reasoning tasks**" does not (`section_names.names_abstract`), for every reader of the
+Abstract. An APA manuscript repeats
+its title in bold to open its Introduction, with no heading: G14 ends the Abstract at a
+paragraph wholly in bold, in it and after some of its text, that repeats a paragraph of four
+words or more standing before it, the title as typed, inside the comment `init --from` sets
+the title page aside in or not, or a title typed as a heading, its attributes aside, or held
+in front matter as YAML reads it (decision D6; rounds 1 and 2 of #841), so the Introduction's definitions are the main text's; the
+title in bold as the Abstract's first paragraph opens it and ends nothing. A paper's
+Highlights, under "Highlights", "Research highlights", "Key points" or "Key messages", owe
+no definition, as a keywords section does, a journal printing them beside the Abstract
+(decision D4: the Abstract's definitions still do not serve the main text). And an indented
+code block, lines indented four spaces or a tab after a blank line, not inside a list item,
+its marker and how far its paragraphs are indented read as pandoc's fancy_lists reads them,
+nor inside a footnote or a table, is
+hidden as a fenced one is (`language._views`, which G15 and the code names
+share), so R pasted into a Word paper's appendix is no prose.
+
 **The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
 "INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
 defined). Its departments, units and institutions need no defining, and nothing on it is a
@@ -26483,10 +26510,13 @@ Open, recorded as each change landed:
   - A file's name written in a sentence and not set as code is read up to its last word:
     in "tumor-color.csv" the gate reads "tumor".
     Pinned by `tests/test_spelling.py::test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word`.
-  - Of code, only what is set in backticks or in a fence is left alone. A block set off
-    by four spaces is read, and so is `<code>color</code>`, the CSS inside a `<style>`
-    block, and a tag whose attributes run on to a second line.
-    Pinned by `tests/test_spelling.py::test_only_code_in_backticks_or_a_fence_is_left_alone`.
+  - Code in backticks or a fence, and a block set off by a blank line and four spaces after
+    a paragraph at the margin, outside a list item or a footnote (#841), are left alone.
+    Other indented code may be read, for instance code indented inside a list item or a
+    footnote, a block straight under a heading, or a block whose first line opens with `>`,
+    `+` or `|`. `<code>color</code>`, the CSS inside a `<style>` block, and a tag whose
+    attributes run on to a second line are read.
+    Pinned by `tests/test_spelling.py::test_code_in_backticks_a_fence_or_an_indented_block_is_left_alone`.
   - The title, the short title and the keywords come from `paper.yaml` and are not read.
     Nor is a caption written as an image's description, `![Color of each tumor](...)`;
     a table's caption under `Table:` is.
@@ -26632,9 +26662,7 @@ Open, recorded as each change landed:
     Pinned by `tests/test_notation.py::test_a_binding_in_a_sentence_is_a_number_whatever_it_holds`.
   - A table typed into the manuscript is read with the prose, so its own compact
     notation, "n=12" in a header, counts against the text's.
-    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
-  - A block set off by four spaces is read, as it is for the spelling.
-    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
+    Pinned by `tests/test_notation.py::test_a_typed_table_is_read_with_the_prose`.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**
@@ -30748,13 +30776,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The finding stands on the plan's item, not on the sentence of the manuscript, since a
     package unnamed has no sentence. Accepted.
 
-- **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
-  number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
-  scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
-  as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
-  so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
-  both (see "A title in a span named nothing"). Pinned by
-  `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
+- **A heading in bold is not the Methods.** `is_methods` matches a title as it is typed, so
+  `# **Methods**` is not the Methods to G2, where `# **Results**` is the Results
+  (`names_results` reads the title as printed, its emphasis taken off) and, since 2026-11-27,
+  `# **Abstract**` the Abstract (`names_abstract` takes off the emphasis around the whole
+  title, so "**Abstract** of the trial" names none; docx-educ-2). A span around the words is
+  taken off for both (see "A title in a span named nothing"). Pinned by
+  `tests/test_text.py::test_a_heading_in_bold_is_the_abstract_and_not_the_methods`.
   - A closing `#` or an attribute block inside a span's words is taken off as the
     heading's own: `# [C#]{.underline}` is titled "C" and `# [Results {-}]{.underline}`
     "Results", where pandoc prints "C#" and "Results {-}", the span's text. Pinned by
@@ -31377,6 +31405,42 @@ What papers converted from Word showed (see "What papers converted from Word sho
     one on fewer, as MNRAS sets its "MNRAS 000, 1-16 (2025)" at the foot of even pages only
     (tex-astro-ga-B2), is read as text. Pinned by
     `tests/test_g14_places.py::test_a_line_repeated_on_fewer_than_half_the_pages_is_read`.
+- **Where a Word paper's parts begin and end is read from how they are typed (Basile,
+  2026-11-27).** A list's title, a bold Abstract heading, the title again, Highlights and an
+  indented code block are each read by their typing, and a paper that types its part
+  otherwise is read as before. Accepted.
+  - "Literature" alone titles a list only where the paragraph under it is shaped like an
+    entry, authors and a year or a numbered style's (`audit.looks_like_reference`), or a
+    number then an author's surname and initials (Basile, 2026-11-28, "Only over
+    entry-shaped lines"): a list whose first entry has another shape, an organisation's web
+    page with no year, is read as prose, and a section of prose whose first paragraph opens
+    like an entry, "Smith, J. (2019). A study.", is passed over as a list. The paragraph
+    under it is the one pandoc reads there: after a blank line or a line of a quote's marks
+    alone, and under an ATX heading the next line (round 2 of #841). Pinned by
+    `tests/test_audit.py::test_literature_alone_opens_a_reference_list`,
+    `tests/test_audit.py::test_literature_opens_a_list_only_over_an_entry` and
+    `tests/test_audit.py::test_literature_reads_the_paragraph_pandoc_puts_after_it`.
+  - The title again ends the Abstract only in bold as a whole and repeating a paragraph of
+    four words or more before the Abstract, or a heading's title less its attributes, or
+    the front matter's as YAML reads it, word for word, case, emphasis and a closing stop or
+    colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
+    nothing, and the Abstract runs to the next heading as before. Pinned by
+    `tests/test_g14_places.py::test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract`.
+  - An indented paragraph is a code block unless it stands inside a list item, from its
+    marker's line to the next paragraph that is not indented, indented as far as the item's
+    text starts at the least, inside a footnote so read, or in a table; a block quote's own
+    indented code, `>     SE <- 1`, is read as text, and so is a code block indented inside a
+    list item, which pandoc reads as the item's code. Pinned by
+    `tests/test_language.py::test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read`.
+  - An item's marker is read as pandoc 3.9's fancy_lists reads it, checked against `pandoc -f
+    markdown -t json` (round 2 of #841): a bullet; a number, a letter or a roman numeral of one
+    case with a stop or a bracket, or in brackets; a capital letter with a stop only before two
+    spaces or a tab, so "C. elegans" and "I. The cells" open no item. A word of roman
+    letters opens one only where it is a numeral as pandoc's `romanNumeral` reads one, its
+    thousands, hundreds, tens and units in order: "mix. The cells" opens one, as in pandoc,
+    and "civil.", "dim.", "lil.", "ic." and "xm." none (round 3 of #841). An
+    `example_lists` marker, `(@)`, opens none. Pinned by
+    `tests/test_language.py::test_an_item_opens_as_pandoc_s_fancy_lists_open_one`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in
   scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
   "·") and a power, and a power alone, a number with a caret and a braced exponent or a

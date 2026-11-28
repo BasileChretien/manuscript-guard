@@ -79,12 +79,20 @@ from manuscript_guard.keys import NONE, Keyed
 from manuscript_guard.keys import placed as placed_in
 from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.policy import DRAFTING
+from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
-from manuscript_guard.text.masking import NUL, front_matter_end, kept_breaks, mask
+from manuscript_guard.text.masking import (
+    NUL,
+    front_matter_end,
+    front_matter_title,
+    kept_breaks,
+    mask,
+)
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
+    names_highlights,
     names_statement,
     section_name_alone,
 )
@@ -797,12 +805,110 @@ def _views(text: str) -> tuple[str, str]:
     masked = mask(text)
     code = code_spans(masked)
     unread = [(0, front_matter_end(text)), *(found.span() for found in _IMAGE.finditer(text))]
-    spans = [*code, *equation_spans(masked, code), *unread, *_rrids(masked)]
+    spans = [*code, *equation_spans(masked, code), *unread, *_rrids(masked),
+             *_indented_code(text)]
     kept = "".join(
         "\n" if char == NUL and text[index] == "\n" else char
         for index, char in enumerate(masked)
     )
     return _hide(kept, spans), _set_aside(_only(masked, code), unread)
+
+
+#: What indents a line of an indented code block, as pandoc's Markdown reads one.
+_CODE_INDENT = re.compile(r"(?: {4}|\t)")
+#: A roman numeral as pandoc's `romanNumeral` (Text.Pandoc.Parsing) reads one, in small
+#: letters: thousands, then hundreds, tens and units each in their order, not empty, so "mix"
+#: is one and "civil", "dim", "lil", "ic" and "xm" are none (round 3 of #841).
+_PANDOC_ROMAN = r"(?=[ivxlcdm])m*(?:cm)?d?(?:cd)?c*(?:xc)?l?(?:xl)?x*(?:ix)?v?(?:iv)?i*"
+#: The same in capitals, two letters at the least, a single capital being a letter's marker.
+_PANDOC_ROMAN_CAPITALS = r"(?=[IVXLCDM]{2})" + _PANDOC_ROMAN[len("(?=[ivxlcdm])"):].upper()
+#: A list item's first line, under which an indented paragraph is the item's and no code, its
+#: marker as pandoc's fancy_lists reads one (round 2 of #841): a bullet; a number, a letter or
+#: a roman numeral of one case, with a stop or a bracket after it or brackets round it, "a.",
+#: "iv.", "MIX.", "A)", "(1)"; and a capital letter with a stop only before two spaces or a
+#: tab, so "C. elegans" and "I. The cells" open no item, and "Mix." none. A word of roman
+#: letters is a numeral's only where pandoc reads one (`_PANDOC_ROMAN`), so "dim." opens none.
+_ITEM_LINE = re.compile(
+    rf"[ \t]*(?:[-*+]|(?:\d{{1,9}}|[a-z]|{_PANDOC_ROMAN}|{_PANDOC_ROMAN_CAPITALS})[.)]|[A-Z]\)"
+    rf"|[A-Z]\.(?= {{2}}|\t)"
+    rf"|\((?:\d{{1,9}}|[a-z]|[A-Z]|{_PANDOC_ROMAN}|{_PANDOC_ROMAN.upper()})\))[ \t]+"
+)
+#: A footnote's definition, under which an indented paragraph is the note's.
+_FOOTNOTE_LINE = re.compile(r"[ ]{0,3}\[\^[^\]\s]+\]:")
+#: Where a footnote's paragraphs after its first start, as pandoc reads them: four spaces in.
+_FOOTNOTE_COLUMN = 4
+
+
+def _keeps_the_item(line: str) -> bool:
+    """Whether an indented paragraph of a list item or a footnote, opening on `line`, keeps
+    the item open for the paragraphs after it, as pandoc writes an item of three paragraphs
+    or more, `-   x` over `····y` and `····z`: always."""
+    return bool(line)
+
+
+def _column(typed: str) -> int:
+    """How far in `typed` ends, a tab taken to the next stop of four, as pandoc counts."""
+    return len(typed.expandtabs(4))
+
+
+def _content_column(line: str) -> int | None:
+    """Where an item's or a footnote's text starts on its first `line`, which a later
+    paragraph is to be indented to at the least to be its: "-   x" is 4 in, "xii. x" 5, as
+    pandoc reads them (round 2 of #841); None where the line opens neither."""
+    item = _ITEM_LINE.match(line)
+    if item is not None:
+        return _column(line[: item.end()])
+    return _FOOTNOTE_COLUMN if _FOOTNOTE_LINE.match(line) else None
+
+
+def _indent(line: str) -> int:
+    """How far in `line`'s text starts (`_column`)."""
+    return _column(line[: len(line) - len(line.lstrip(" \t"))])
+
+
+def _indented_code(text: str) -> list[tuple[int, int]]:
+    """Where each indented code block runs, as pandoc's Markdown reads one (`CodeBlock`): lines
+    indented four spaces or a tab after a blank line, to the last such line before one that is
+    neither indented nor blank. Not inside a list item, from its first line to the first
+    paragraph after a blank line that is not indented, whatever its paragraphs; nor inside a
+    footnote so read; nor a table's line, a multiline table's row whose first cell is empty
+    among them (`text.tables.table_lines`); nor a block quote's. R pasted into a Word paper's
+    appendix, "SE<-as.vector(...)", is code, and no word of it is a sentence's (Basile,
+    2026-11-27; docx-psych-2; round 1 of #841)."""
+    lines = text.split("\n")
+    offsets, at = [], 0
+    for line in lines:
+        offsets.append(at)
+        at += len(line) + 1
+    tabled = table_lines(kept_breaks(text, mask(text)))
+    spans: list[tuple[int, int]] = []
+    # Where the open item's or footnote's text starts, which its paragraphs are indented to;
+    # None where none is open.
+    index, inside = 0, None
+    while index < len(lines):
+        line = lines[index]
+        blank_above = index == 0 or not lines[index - 1].strip()
+        if not line.strip() or not blank_above:
+            index += 1
+            continue
+        if _CODE_INDENT.match(line):
+            if inside is not None and _indent(line) >= inside:
+                inside = inside if _keeps_the_item(line) else None
+            elif index not in tabled and not line.lstrip().startswith(("|", "+", ">")):
+                # Code under an item ends the item, as pandoc ends the list there.
+                inside, stop = None, index
+                while stop < len(lines) and (not lines[stop].strip()
+                                             or _CODE_INDENT.match(lines[stop])):  # fmt: skip
+                    stop += 1
+                while stop > index and not lines[stop - 1].strip():
+                    stop -= 1
+                spans.append((offsets[index], offsets[stop - 1] + len(lines[stop - 1])))
+                index = stop
+                continue
+        else:
+            inside = _content_column(line)
+        index += 1
+    return spans
 
 
 def _rrids(text: str) -> list[tuple[int, int]]:
@@ -902,6 +1008,75 @@ def _set_apart(
         if at == len(regions) or regions[at].start > end:
             out.append(replace(current, start=end))
     return out + regions[at:]
+
+
+#: The fewest words a paragraph standing before the Abstract has to repeat the title.
+_TITLE_WORDS = 4
+#: What stands around a paragraph's words as typed and is no word of them: emphasis, an
+#: escape, and the marks of the comment `init --from` sets a title page aside in.
+_NOT_WORDS = re.compile(r"<!--|-->|[*_\\]")
+
+
+def _plain_paragraph(paragraph: str) -> str:
+    """A paragraph's words as a reader sees them, in one case, for one to be compared with
+    another: "**The Title: a study.**" is "the title: a study"."""
+    return " ".join(_NOT_WORDS.sub(" ", paragraph).split()).strip(" .:").casefold()
+
+
+#: A line that gives a title as an ATX heading: `# Title`, `# Title {.unnumbered}`.
+_TITLE_LINE = re.compile(r"[ \t]*#{1,6}[ \t]+(?P<title>\S.*?)[ \t#]*\Z")
+
+
+def _titles_before(typed: str) -> set[str]:
+    """What may be the paper's title in `typed`, the text before its Abstract, as plain words:
+    each paragraph of four words or more; each line that gives one as a heading, `# Title`,
+    read without its attributes as pandoc reads it, `{.unnumbered}`; and the front matter's
+    title as YAML reads it (`front_matter_title`), a block's, `title: >-` over its text, among
+    them (rounds 1 and 2 of #841)."""
+    found = {_plain_paragraph(each) for each in _BLANK_LINE.split(typed)}
+    for line in typed.split("\n"):
+        titled = _TITLE_LINE.fullmatch(line)
+        if titled is not None:
+            found.add(_plain_paragraph(strip_attributes(titled["title"]).rstrip(" \t#")))
+    header = front_matter_title(typed)
+    if header is not None:
+        found.add(_plain_paragraph(header[1]))
+    return {each for each in found if len(each.split()) >= _TITLE_WORDS}
+
+
+def _ends_the_abstract(paragraph: str, titles: set[str], read: bool) -> bool:
+    """Whether a paragraph of the Abstract, once some of its text is `read`, is the title
+    again in bold: wholly in bold and one of `titles`. The title in bold as the Abstract's
+    first paragraph opens it, and ends nothing (round 1 of #841)."""
+    return read and bool(_BOLD.fullmatch(paragraph)) and _plain_paragraph(paragraph) in titles
+
+
+def _title_again(prose: str, text: str, regions: list[_Region]) -> list[_Region]:
+    """`regions` with each Abstract's ended where a paragraph wholly in bold in it repeats a
+    paragraph of four words or more standing before the Abstract, the paper's title, as an
+    APA manuscript opens its Introduction with the title again and no heading; the main text
+    opens there (decision D6, the author, 2026-11-27; docx-educ-B1, docx-educ-C3). The title is
+    read as typed, inside the comment `init --from` sets a title page aside in or not."""
+    out = list(regions)
+    for index, region in enumerate(regions):
+        if region.scope != ABSTRACT:
+            continue
+        end = regions[index + 1].start if index + 1 < len(regions) else len(prose)
+        before = _titles_before(text[: region.start])
+        start, read = region.start, False
+        for gap in (*_BLANK_LINE.finditer(prose, region.start, end), None):
+            stop = end if gap is None else gap.start()
+            paragraph = prose[start:stop]
+            # The blanked heading leaves an empty paragraph, which is no text of the Abstract.
+            if paragraph.strip():
+                if _ends_the_abstract(paragraph, before, read):
+                    out.insert(out.index(region) + 1,
+                               _Region(start, BODY, region.quiet, region.statement))  # fmt: skip
+                    break
+                read = True
+            if gap is not None:
+                start = gap.end()
+    return out
 
 
 def _run_in_statements(hidden: str, headings: list[Heading]) -> list[tuple[int, int]]:
@@ -1139,7 +1314,10 @@ def _region(
     if references or any(section.is_references for section in chain):
         return _Region(start, None, True, True)
     quiet = any(_QUIET.search(section.title) for section in chain)
-    statement = quiet or any(names_statement(section.title) for section in chain)
+    # A paper's highlights owe no definition, as a keywords section does: a journal prints
+    # them beside the Abstract and not in the text (decision D4, the author, 2026-11-27).
+    statement = quiet or any(names_statement(section.title) or names_highlights(section.title)
+                             for section in chain)  # fmt: skip
     if supplementary:
         return _Region(start, SUPPLEMENT, quiet, statement)
     abstract = abstract or any(section.names_abstract(abstract_title) for section in chain)
@@ -1978,6 +2156,7 @@ def _file(
     if displays is not None:
         given = _lines_spanned(text, displays)
         displayed = lambda paired: given  # noqa: E731 - the same shape as above
+    regions = _title_again(prose, text, regions)
     return _assembled(
         order, path, text, hidden, prose, regions,
         captions=captions,

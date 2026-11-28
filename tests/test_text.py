@@ -802,17 +802,24 @@ def test_a_malformed_binding_in_a_comment_is_not_reported() -> None:
     assert not malformed
 
 
-def test_a_heading_in_bold_is_not_the_abstract_nor_the_methods() -> None:
-    """The limit DESIGN.md's Known gaps write down, as written: the Abstract's title is read
-    without its number and its span only, and the Methods' as typed, so a heading in bold is
-    neither, where a bold Results is the Results."""
+def test_a_heading_in_bold_is_the_abstract_and_not_the_methods() -> None:
+    """The limit DESIGN.md's Known gaps write down, as written: the Methods' title is read as
+    typed, so a heading in bold is not the Methods, where a bold Results is the Results, and
+    since 2026-11-27 a bold Abstract the Abstract (docx-educ-2): "**Abstract**",
+    "__Abstract__", "**1. Abstract**" name it, "**Abstract** of the trial" does not."""
     from manuscript_guard.classify import is_methods
     from manuscript_guard.text.section_names import names_abstract, names_results
     from manuscript_guard.text.sections import split_sections
 
     titles = {word: split_sections(f"# **{word}**\n\nThe ROR was 2.1.\n")[0].title
               for word in ("Abstract", "Results", "Methods")}  # fmt: skip
-    assert not names_abstract(titles["Abstract"]) and names_abstract("[Abstract]{.underline}")
+    assert names_abstract(titles["Abstract"]) and names_abstract("[Abstract]{.underline}")
+    for title in ("**Abstract**", "__Abstract__", "**1. Abstract**", "***Abstract:***"):
+        assert names_abstract(title), title
+    assert not names_abstract("**Abstract** of the trial")
+    # Round 1 of #841: in bold the title names it only whole.
+    assert not names_abstract("**Abstract reasoning tasks**")
+    assert not names_abstract("### **Abstract reasoning tasks**".lstrip("# "))
     assert names_results(titles["Results"])
     assert not is_methods([titles["Methods"]]) and is_methods(["Methods"])
 

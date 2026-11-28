@@ -127,6 +127,8 @@ ROUTES: dict[str, Route] = {
            "cited-out-of-order", "ref-number-unknown", "caption-names-another"),
     **_all("results-binding", ("values",), "values-file-", "value-not-printable"),
     **_all(None, ("build",), "document-stale", "document-unstamped"),
+    # A live build cannot print what a file's `nocite` names; the offline build does.
+    **_all(None, ("build", "--offline"), "nocite-not-live"),
     # -- the prose ------------------------------------------------------------------------
     **_all("manuscript-writing", None, "summary-claim-stronger"),
     **_all("manuscript-writing", None, "ai-", "vague-attribution", "model-artefact",

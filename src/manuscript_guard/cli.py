@@ -4580,7 +4580,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
             pandoc=pandoc(),
             numbers=numbers,
         )
-        marked.append(Assembled(path=item.path, text=text))
+        marked.append(Assembled(path=item.path, text=text, nocite=item.nocite))
         marks.extend(found)
 
     build_dir = project.path("build")

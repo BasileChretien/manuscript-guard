@@ -456,6 +456,92 @@ def test_a_live_build_zotero_was_slow_to_answer_for_says_so_in_its_report(
     assert "no-live-citations" in codes, "and the fields it got are counted"
 
 
+#: Two entries nothing in the example cites, for a `nocite` to print.
+_UNCITED = (
+    "\n@article{zeta2001,\n  author = {Zeta, Zoe}, title = {T}, year = {2001},\n}\n"
+    "\n@article{alpha2002,\n  author = {Alpha, Al}, title = {U}, year = {2002},\n}\n"
+)
+
+
+def _nocite_in(root: Path, relative: str, value: str) -> None:
+    """`references.bib` with `_UNCITED` beside its own, and `nocite: <value>` in the front
+    matter of `manuscript/<relative>`, given one where it has none."""
+    bib = root / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + _UNCITED, encoding="utf-8")
+    path = root / "manuscript" / relative
+    text = path.read_text(encoding="utf-8")
+    line = f"nocite: '{value}'\n"
+    text = text.replace("---\n", f"---\n{line}", 1) if text.startswith("---\n") else (
+        f"---\n{line}---\n\n{text}")  # fmt: skip
+    path.write_text(text, encoding="utf-8")
+
+
+def _printed(path: Path) -> set[str]:
+    """Which of `_UNCITED`'s authors the document prints in a reference."""
+    return {name for name in ("Zeta", "Alpha") if f"{name}, " in docx_text(path)}
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("value", "printed"), [("@*", {"Zeta", "Alpha"}),
+                                                ("@zeta2001", {"Zeta"})])  # fmt: skip
+def test_the_supplement_prints_what_its_own_files_nocite_names(
+    project: Path, value: str, printed: set[str]
+) -> None:
+    """Each document takes the `nocite` of its own files: a supplement file's prints in the
+    supplement and not in the main text."""
+    _nocite_in(project, "supplementary/S1_code_lists.md", value)
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    supplement = build_document(proj, assembled, mode=OFFLINE, supplementary=True)
+    assert _printed(supplement.output) == printed
+    main = build_document(proj, assembled, mode=OFFLINE)
+    assert _printed(main.output) == set()
+
+
+@needs_pandoc
+def test_the_main_text_s_nocite_is_not_the_supplement_s(project: Path) -> None:
+    _nocite_in(project, "main.md", "@*")
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    assert _printed(build_document(proj, assembled, mode=OFFLINE).output) == {"Zeta", "Alpha"}
+    supplement = build_document(proj, assembled, mode=OFFLINE, supplementary=True)
+    assert _printed(supplement.output) == set()
+
+
+@needs_pandoc
+def test_a_live_build_of_files_that_declare_nocite_warns_that_it_leaves_them_out(
+    project: Path, monkeypatch, tmp_path: Path
+) -> None:
+    """Better BibTeX's filter does not read `nocite`, and Zotero's bibliography field lists
+    the works cited only: a live build cannot print the works a `nocite` names, and says
+    so of each file that declares one, with the offline build that prints them. A filter
+    that makes no field stands in for Better BibTeX's."""
+    from manuscript_guard.build import document
+    from manuscript_guard.findings import WARN
+    from manuscript_guard.zotero import READY, Readiness, client
+
+    lua = tmp_path / "zotero.lua"
+    lua.write_text("return {}", encoding="utf-8")
+    monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
+    monkeypatch.setattr(document, "_zotero_version", lambda: None)
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(READY))
+
+    def warned(supplementary: bool = False) -> list:
+        proj, namespace, results, _lit = loaded(project)
+        assembled, _ = assemble(proj, namespace, results)
+        built = build_document(proj, assembled, mode=LIVE, supplementary=supplementary)
+        return [f for f in built.report.findings if f.code == "nocite-not-live"]
+
+    assert warned() == [], "no file declares one yet"
+    _nocite_in(project, "main.md", "@*")
+    (finding,) = warned()
+    assert finding.severity == WARN and finding.gate == "BUILD"
+    assert finding.path.resolve() == (project / "manuscript" / "main.md").resolve()
+    assert "live build leaves out" in finding.message, finding.message
+    assert "manuscript-guard build --offline" in finding.hint, finding.hint
+    assert warned(supplementary=True) == [], "the supplement's files declare none"
+
+
 @needs_pandoc
 @needs_zotero
 @pytest.mark.real_zotero

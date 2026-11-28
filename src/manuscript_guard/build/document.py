@@ -616,10 +616,59 @@ def _yaml_text(project, key: str, value: object, *, sent: bool = False) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
+def document_nocite(ordered) -> tuple[str, ...]:
+    """The strings the front matter of a document's files holds under `nocite`, in the files'
+    order, each once, as `assemble` read them for G7's reader (`front_matter_said`); blank
+    ones left out."""
+    said = (value.strip() for item in ordered for value in getattr(item, "nocite", ()))
+    return tuple(dict.fromkeys(value for value in said if value))
+
+
+def nocite_lines(nocite: tuple[str, ...]) -> list[str]:
+    """The header's `nocite` line for the strings a document's files declare, none where
+    they declare none.
+
+    Each file's front matter is stripped (`assemble.strip_front_matter`), and the header
+    pandoc reads is the build's, so a `nocite` there printed nothing while G7 took it for
+    printing. The strings are written as one, parted by spaces, between JSON's quotation
+    marks, which YAML reads back as the same text: measured on pandoc 3.9, citeproc reads a
+    list, but the LaTeX writer writes no `\\nocite` for one, and in one string it reads the
+    key of each citation as it reads it in the file's own header."""
+    if not nocite:
+        return []
+    return [f"nocite: {json.dumps(' '.join(nocite), ensure_ascii=False)}"]
+
+
+def nocite_not_live(ordered) -> Report:
+    """A warning for each file of a live build's document whose front matter declares a
+    `nocite`: Better BibTeX's `zotero.lua` does not read it, and the bibliography field
+    Zotero fills lists only the works cited, so the works it names that nothing cites are
+    left out."""
+    return Report().with_findings(*(
+        Finding(
+            gate=GATE,
+            code="nocite-not-live",
+            severity=WARN,
+            message="this file's front matter declares `nocite`, and a live build leaves out "
+            "the works it names that nothing cites: Better BibTeX's filter does not read "
+            "`nocite`, and the bibliography field Zotero fills lists only the works cited",
+            path=item.path,
+            hint="`manuscript-guard build --offline` prints them; or cite each one in the text",
+        )
+        for item in ordered if document_nocite([item])
+    ))
+
+
 def _front_matter(
-    project, *, supplementary: bool = False, live: bool = False, sent: bool = False
+    project,
+    *,
+    supplementary: bool = False,
+    live: bool = False,
+    sent: bool = False,
+    nocite: tuple[str, ...] = (),
 ) -> str:
-    """A YAML header carrying the title and the Zotero settings the filter reads.
+    """A YAML header carrying the title and the Zotero settings the filter reads, and the
+    `nocite` of the document's files (`nocite_lines`).
 
     What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
     italics, and TeX outside `$` would be left out, which is why it is refused (`_yaml_text`).
@@ -660,6 +709,7 @@ def _front_matter(
         "  scannable-cite: false",
         "  author-in-text: true",
     ]
+    lines += nocite_lines(nocite)
     if live:
         lines += _word_lines(project)
     lines += ["---", ""]
@@ -746,8 +796,16 @@ def build_document(
 
     ordered = document_files(project, assembled, supplementary=supplementary)
     body = document_text(ordered, prologue, epilogue)
+    # Printed by citeproc only. Better BibTeX's filter does not read `nocite`, so a live
+    # build warns instead, below; the plain build `import` compares a live document with
+    # stands in for that build, and leaves the works out as it does.
+    nocite = document_nocite(ordered)
     header = _front_matter(
-        project, supplementary=supplementary, live=mode == LIVE, sent=sent
+        project,
+        supplementary=supplementary,
+        live=mode == LIVE,
+        sent=sent,
+        nocite=nocite if mode == OFFLINE else (),
     )
     source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations
@@ -805,8 +863,8 @@ def build_document(
             f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
         ]
         report = does_nothing(inert, read, built, output).merge(unknown)
-
         if mode == LIVE:
+            report = report.merge(nocite_not_live(ordered))
             command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
             # A document with no citations gets no bibliography field (a supplement of tables),
             # and no heading over one. The heading goes first: the field takes the place of the
@@ -837,7 +895,8 @@ def build_document(
                 )
             # Before citeproc, which runs where it stands among the filters: the list is given
             # its place, under the author's heading of it where there is one, and its heading.
-            if cites:
+            # A document that cites nothing prints one where its files' `nocite` names works.
+            if cites or nocite:
                 command += _references_filter(project, csl, citeproc=True)
             command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
             if csl is not None:

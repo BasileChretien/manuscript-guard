@@ -31,7 +31,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from manuscript_guard.build.document import BuildError, MisreadError
+from manuscript_guard.build.document import (
+    BuildError,
+    MisreadError,
+    document_nocite,
+    document_text,
+)
 
 #: The longest pandoc is given to write one document.
 PANDOC_SECONDS = 300
@@ -106,18 +111,23 @@ def build_from_markdown(project, assembled, *, engine: str = "pdflatex",
                    + ["references.bib"])  # fmt: skip
     written, keys = [], set()
     for supplementary in (False, True):
-        body_markdown = _markdown(project, assembled, supplementary=supplementary)
-        if body_markdown is None:
+        ordered = _ordered(project, assembled, supplementary=supplementary)
+        if ordered is None:
             continue
+        body_markdown = document_text(ordered)
         name = SUPPLEMENT if supplementary else MAIN
         # The header too, which prints nothing without the template: citeproc writes the
-        # reference list in the document's language, as the standalone document has it.
-        header = _header(project, supplementary)
+        # reference list in the document's language, as the standalone document has it, and
+        # the works the files' `nocite` names in it.
+        header = _header(project, supplementary, document_nocite(ordered))
         body = _pandoc(project, header + body_markdown, _citing(project, cited))
         reading = _checked(body, body_markdown, cited, name)
         keys |= {found.key for found in reading.cited}
         whole = _pandoc(project, header + body_markdown,
                         ["--standalone", *_template(project), *_citing(project, cited)])
+        # Under natbib and biblatex the template writes the `\nocite`, outside the body:
+        # the `.bib` keeps the entries it names, `*` every one.
+        keys |= _nocited(whole)
         written_out = _pictures(project, whole, body, reading, folder, names)
         (folder / f"{name}.tex").write_text(written_out, encoding="utf-8", newline="")
         written.append(name)
@@ -143,7 +153,23 @@ def build_from_markdown(project, assembled, *, engine: str = "pdflatex",
 def _markdown(project, assembled, *, supplementary: bool) -> str | None:
     """The document's Markdown, assembled as the Word build's is; None for a supplement the
     manuscript does not have."""
-    from manuscript_guard.build.document import document_files, document_text
+    ordered = _ordered(project, assembled, supplementary=supplementary)
+    return None if ordered is None else document_text(ordered)
+
+
+def _nocited(whole: str) -> set[str]:
+    """The keys of each `\\nocite` in the document pandoc wrote, its template's included, as
+    the LaTeX reader reads them: `*` for every entry."""
+    from manuscript_guard.text.latex.mask import read
+
+    return {found.key for found in read(whole).cited
+            if whole.startswith("\\nocite", found.start)}  # fmt: skip
+
+
+def _ordered(project, assembled, *, supplementary: bool) -> list | None:
+    """The document's files, in the order the Word build sets them out; None for a
+    supplement the manuscript does not have, or a document of no files."""
+    from manuscript_guard.build.document import document_files
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     folder = project.path("manuscript")
@@ -152,9 +178,7 @@ def _markdown(project, assembled, *, supplementary: bool) -> str | None:
                                  for path in source_files(folder)):  # fmt: skip
         return None
     ordered = document_files(project, assembled, supplementary=supplementary)
-    if not ordered:
-        return None
-    return document_text(ordered)
+    return ordered or None
 
 
 def _pandoc(project, markdown: str, arguments: list[str]) -> str:
@@ -212,11 +236,11 @@ def _template(project) -> list[str]:
     return arguments
 
 
-def _header(project, supplementary: bool) -> str:
+def _header(project, supplementary: bool, nocite: tuple[str, ...] = ()) -> str:
     """The title, the keywords and, where the journal's review is not blind, the authors, for
-    the template to print."""
+    the template to print, and the `nocite` of the document's files (`nocite_lines`)."""
     from manuscript_guard.build.blinding import BLIND
-    from manuscript_guard.build.document import _yaml_text, document_language
+    from manuscript_guard.build.document import _yaml_text, document_language, nocite_lines
     from manuscript_guard.gates.journal import blinding
 
     paper = project.paper
@@ -234,7 +258,7 @@ def _header(project, supplementary: bool) -> str:
     if keywords:
         written = ", ".join(_yaml_text(project, "keywords", keyword) for keyword in keywords)
         lines.append(f"keywords: [{written}]")
-    lines += [f"lang: {document_language(project)}", "---", ""]
+    lines += [f"lang: {document_language(project)}", *nocite_lines(nocite), "---", ""]
     return "\n".join(lines)
 
 

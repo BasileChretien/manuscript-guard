@@ -3105,6 +3105,20 @@ each one nothing cites reaches the printed list, and is a warning of its own as 
   `manuscript/`, or in a YAML metadata block of its body (`masking.metadata_blocks`), which
   the build passes to pandoc as it stands (round 1 of #835).
 
+The build strips each file's front matter and writes its own header from `paper.yaml`, so
+it carries the `nocite` of the files that make up each document into that header: the main
+text's files for the paper, the supplement's for the supplement. The strings are read with
+G7's reader (`front_matter_said`), so the two agree on what a file declares, and written as
+one string, parted by spaces: pandoc 3.9's LaTeX writer writes no `\nocite` for a list,
+though citeproc reads one. The offline Word build and the LaTeX output print the works it
+names; under natbib and biblatex the template writes the `\nocite`, and the folder's `.bib`
+keeps the entries it names. A live build cannot: Better BibTeX's `zotero.lua` does not read
+`nocite`, and the bibliography field Zotero fills lists the works cited only. It warns of
+each file that declares one, `nocite-not-live`, and names `build --offline`. The plain build
+`import` compares a live document with stands in for the live build, and leaves the works
+out as it does, with no warning: its report is no one's to read, and the build that made the
+document warned (Basile, 2026-11-28, "Offline and LaTeX; live warns").
+
 A `\nocite{smith2019}`, or `nocite: '@smith2019'`, cites that key and asks for no other: the
 key is cited, and the note goes on listing the rest. An entry cited only as typed text keeps
 its own note, which says what `sync-bib` would do, and is not listed in the file's. The note
@@ -31581,11 +31595,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   Pinned by
   `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
 
-- **G7 takes a `nocite` of every entry for what the build prints, as typed.** A front
-  matter's `nocite: '@*'` keeps a warning for each entry nothing cites, though the build
-  writes its own header from `paper.yaml` and strips each file's, so pandoc never reads that
-  key and the document still prints only the works cited. Pinned by
-  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`.
+- **G7 takes a `nocite` of every entry for what the build prints, as typed, and a live
+  build prints only the works cited.** The offline build and the LaTeX output carry a front
+  matter's `nocite` into the header they write, and print what G7 says they print. A live
+  build cannot: Better BibTeX's filter does not read `nocite`, and Zotero's bibliography
+  field lists the works cited only. So `nocite: '@*'` keeps a warning for each entry nothing
+  cites, and a live document prints none of them; the build warns of it
+  (`nocite-not-live`), and `build --offline` prints them (Basile, 2026-11-28, "Offline and
+  LaTeX; live warns"). Pinned by
+  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`
+  and `tests/test_build.py::test_a_live_build_of_files_that_declare_nocite_warns_that_it_leaves_them_out`.
   - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
     inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
     keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX
@@ -31607,6 +31626,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     #835). Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A front matter's `nocite` printed nothing (2026-11-28).** It stood under "G7 takes a
+  `nocite` of every entry for what the build prints, as typed": the build stripped each
+  file's front matter and wrote its own header, so `nocite: '@*'` warned of each uncited
+  entry while the document printed only the works cited. The offline build and the LaTeX
+  output now carry the files' `nocite` into their header, each document its own files', and
+  the LaTeX folder's `.bib` keeps the entries it names. Pinned by
+  `tests/test_corruption.py::test_the_offline_build_prints_the_works_the_header_s_nocite_names`,
+  `tests/test_build.py::test_the_supplement_prints_what_its_own_files_nocite_names` and
+  `tests/test_latex_from_markdown.py::test_the_latex_carries_the_nocite_of_the_files_front_matter`.
 
 - **A long form read across a bracket it does not open defined its short form (row 4 of
   window C, 2026-11-24).** It stood under "A long form before its short form takes no letter

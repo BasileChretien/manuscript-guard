@@ -1315,13 +1315,19 @@ def test_the_browsers_hold_the_page_s_files_to_the_day_it_ran_a_case() -> None:
              {"made": {}, "days": first},
              {"made": after, "days": crossing}]  # fmt: skip
     module = json.dumps((WEB / "test" / "made.mjs").as_uri())
-    # A clock that turns midnight while the case runs, and the order things are asked in.
+    # A clock that turns midnight while the case runs, and the order things are asked in: the
+    # case said begun when it is called and ended when it has run, so that the day after it is
+    # read only once it has run, not while it runs.
     script = f"""import {{ dated, dayOf, madeHeld }} from {module};
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const asked = [], clock = [[2026, 11, 27], [2026, 11, 28]];
-const run = await dated(async () => (asked.push("today"), dayOf(clock.shift())),
-  async () => (asked.push("run"), "the result"));
+const run = await dated(async () => (asked.push("today"), dayOf(clock.shift())), async () => {{
+  asked.push("run");
+  await new Promise((wait) => setTimeout(wait, 10));
+  asked.push("ran");
+  return "the result";
+}});
 process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])], run, asked,
   JSON.parse(input).map((one) => madeHeld(one.made, one.byDay, one.days))]));
 """
@@ -1332,7 +1338,7 @@ process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])
     days, run, asked, held = json.loads(done.stdout)
     assert days == ["2026-01-05", "2026-11-28"]
     assert run == {"result": "the result", "days": crossing}
-    assert asked == ["today", "run", "today"]
+    assert asked == ["today", "run", "ran", "today"]
     assert held[:3] == ["", "", ""]
     assert held[3] == f"the page made {_js(before)} of the journal's form, not {_js(after)}"
     assert held[4] == f"the page made {_js(after)} of the journal's form, not {_js(before)}"
@@ -1352,7 +1358,7 @@ process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])
     assert 'const two = (n) => String(n).padStart(2, "0");' in app
     browser = (WEB / "test" / "browser.mjs").read_text(encoding="utf-8")
     assert "return [now.getFullYear(), now.getMonth() + 1, now.getDate()];" in browser
-    assert "await dated(today, () => choose(" in browser
+    assert "const { result, days } = await dated(today, () => choose(" in browser
     assert "madeHeld(result.made || {}, one.made, days)" in browser
 
 

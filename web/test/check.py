@@ -20,8 +20,8 @@ two different files of one name, the letter a .docx, with the start of the repor
 version in a folder of its own as the page writes it (worker.js `compared`). Where the copy
 with tracked changes is asked for, the command line's `--tracked` says how many corrections
 it tracks, and the page's copy must track as many. Where the journal's form is filled, the
-command line is given the files `journal_form` makes of it, and the page must make the same.
-Then the site is opened in each browser named
+command line is given the files `journal_form` makes of it, and the page must make the same,
+dated the day it runs the case. Then the site is opened in each browser named
 (`browser.mjs`): the landing page must load its style and pictures and ask no other host,
 and the audit page must start under its own policy, give the same report, notes and exit
 code for each case from the files as chosen, send nothing, and refuse every request "Test the
@@ -65,6 +65,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+from datetime import date, timedelta
 from pathlib import Path
 
 TEST = Path(__file__).resolve().parent
@@ -122,6 +123,9 @@ JOURNAL_FORM = {"name": "Journal of Examples", "url": "", "date": "",
 AUTHORS_FORM = {"authors": [{"given": "Ada", "family": "Example", "orcid": "", "email": ""}],
                 "affiliations": ["Department of Examples"]}
 JOURNAL = (["--journal", "journal.yaml", "--authors", "authors.yaml"], JOURNAL_BOXES)
+#: How many days a run may reach, from the one it starts on: a run ends within hours, so it
+#: crosses midnight once at most.
+DAYS = 2
 #: A LaTeX project as the page is given it, and the folder the command line is given, which
 #: is the one the page unpacks it into.
 ARCHIVED = {"project.zip": "project", "project.tar.gz": "project"}
@@ -251,7 +255,7 @@ def compared(page: Path, folder: Path, cases: list, prefix: str) -> tuple[list[d
     the cases as browser.mjs runs them, each with what the command line printed, and how many
     were not the same. A case is its name, the paper, the outputs, the options as the command
     line takes them and as the page's boxes are set, and the files the page must make of its
-    form, or None."""
+    form by the day it makes them (`form_files`), or None."""
     listed, failed = [], 0
     for number, (name, paper, against, (options, form), made) in enumerate(cases):
         arguments = ["audit", argument(ARCHIVED.get(paper, paper)),
@@ -392,6 +396,18 @@ def hosted_cases(hosted: Path, folder: Path, authors: str) -> list:
     return cases
 
 
+def form_files(first: date) -> dict[str, dict[str, str]]:
+    """The files the journal's form makes, as the page makes them on each day a run that
+    starts on `first` may reach, by the day as the page writes it. The page dates the
+    journal's instructions the day it runs a case, in this computer's own time, so a run
+    that crosses midnight makes the next day's (main's `web` job at #850's merge)."""
+    from manuscript_guard.journal_form import as_text, authors_of, profile_of
+
+    days = [(first + timedelta(days=n)).isoformat() for n in range(DAYS)]
+    return {day: {"journal.yaml": as_text(profile_of({**JOURNAL_FORM, "date": day})),
+                  "authors.yaml": as_text(authors_of(AUTHORS_FORM))} for day in days}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--site", type=Path, required=True, help="what web/build.py built")
@@ -428,15 +444,11 @@ def main(argv: list[str] | None = None) -> int:
           tempfile.TemporaryDirectory(prefix="mg-programs-") as programs):  # fmt: skip
         folder = Path(scratch)
         ENVIRONMENT = programs_for(args.site / AUDIT, Path(programs))
-        # The files the journal's form makes, as the page makes them today.
-        from datetime import date
-
-        from manuscript_guard.journal_form import as_text, authors_of, profile_of
-
-        made = {"journal.yaml": as_text(profile_of({**JOURNAL_FORM,
-                                                    "date": date.today().isoformat()})),
-                "authors.yaml": as_text(authors_of(AUTHORS_FORM))}
-        for name, text in made.items():
+        # The files the journal's form makes, as the page makes them on each day the run may
+        # reach; the command line is given the first day's.
+        made = form_files(date.today())
+        given = next(iter(made.values()))
+        for name, text in given.items():
             (folder / name).write_bytes(text.encode("utf-8"))
         # The LaTeX project as a folder, and as the archives a reader would drop: a .zip as
         # Overleaf writes one, and a .tar.gz of "./" names as arXiv's are.
@@ -463,7 +475,10 @@ def main(argv: list[str] | None = None) -> int:
         (folder / "cases.json").write_text(json.dumps([*listed, *comparing]), encoding="utf-8")
         if args.hosted:
             failed += same_code(args.site / AUDIT, args.hosted)
-            cases = hosted_cases(args.hosted, folder, made["authors.yaml"])
+            # A hosted journal's form is its own profile: the page makes only the authors'
+            # names, the same on any day.
+            cases = [(*case[:4], dict.fromkeys(made, case[4]))
+                     for case in hosted_cases(args.hosted, folder, given["authors.yaml"])]
             hosted, wrong = compared(args.hosted, folder, cases, "hosted")
             failed += wrong
             (folder / "hosted-cases.json").write_text(json.dumps(hosted), encoding="utf-8")

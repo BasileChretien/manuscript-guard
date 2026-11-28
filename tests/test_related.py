@@ -541,6 +541,24 @@ def test_a_section_of_the_plan_worded_otherwise_is_a_method(project: Path, earli
     assert _found(_check(project)) == [("related-method-explained", INFO)]
 
 
+@pytest.mark.parametrize("hyphen", [chr(0x2011), "-"], ids=["word-hyphen", "hyphen"])
+def test_a_reason_names_a_section_whose_heading_has_word_s_hyphen(
+    project: Path, earlier: Path, hyphen: str
+) -> None:
+    """Round 1 of #853: a plan heading's Unicode hyphen is read as a hyphen, and a reason
+    that named the section as the plan writes it, with Word's non-breaking hyphen, was
+    folded without that reading and named nothing. Either hyphen names it now."""
+    heading = f"## Follow{chr(0x2011)}up\n\n"
+    _plan(earlier, "## Outcome\n\n", heading + "Each patient seen once.\n\n## Outcome\n\n")
+    plan = project / "design" / "plan.md"
+    followed = heading + "Each patient seen twice.\n\n## Outcome\n\n"
+    plan.write_bytes(plan.read_bytes().replace(b"## Outcome\n\n", followed.encode()))
+    why = [{"plan_section": f"Follow{hyphen}up", "because": "a second visit was added"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    _take(project)
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+
+
 def test_a_plan_rewrapped_or_its_own_deviations_changed_reads_the_same(
     project: Path, earlier: Path
 ) -> None:

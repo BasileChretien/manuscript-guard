@@ -26,10 +26,11 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a descriptive case series is a design of `data/study_types.yaml`: a plan whose
-      paper.yaml names it is asked for its case selection, follow-up, comparison, and
-      consent and ethics, each from its PROCESS 2023 item, beside the seven every plan has,
-      where main read `study_type: case-series` as no design of its table and refused it
+      a heading's Unicode hyphens, U+2010 and Word's non-breaking U+2011, are read as a
+      hyphen in a plan of any design, so "Follow-up" or "Case-finding" written with one
+      is found (round 2 of #849, round 1 of #853); the generated plans write either in
+      about two in three headings that have a hyphen; the case-selection section cites
+      PROCESS 2023's items 6c to 6f; the entry it replaces, #849's, is spent
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,

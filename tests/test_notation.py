@@ -765,13 +765,16 @@ def test_what_is_not_the_paper_s_prose_is_not_read(block: str) -> None:
     "block",
     [
         "| Group (n=12) | Group (n=40) |\n|---|---|\n| 1 | 2 |",  # a table typed in
-        "    n=12 and n=40",  # a block set off by four spaces
     ],
 )
-def test_a_typed_table_and_an_indented_block_are_read_with_the_prose(block: str) -> None:
+def test_a_typed_table_is_read_with_the_prose(block: str) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's notation is counted"): a table typed into
     the manuscript is read with the prose, so its compact "n=12" in a header counts against
-    the text's, and so does a block set off by four spaces; a fenced one is not read."""
+    the text's. A fenced block is not read, nor a block set off by a blank line and four
+    spaces after a paragraph at the margin, outside a list item or a footnote (#841); other
+    indented code may be read, for instance code indented inside a list item or a footnote,
+    a block straight under a heading, or a block whose first line opens with `>`, `+` or
+    `|`."""
     prose = "# Results\n\nSome (n = 12) and more (n = 40), and (n = 3).\n\n"
     report = read(f"{prose}{block}\n\nDone.\n")
     assert told(report) == [
@@ -782,9 +785,10 @@ def test_a_typed_table_and_an_indented_block_are_read_with_the_prose(block: str)
         )
     ]
     assert report.findings[0].line == 5
-    report = read(f"{prose}```\nn=12 and n=40\n```\n\nDone.\n")
-    assert not report.findings, told(report)
-    assert report.counts["notation_signs"] == 3
+    for code in ("```\nn=12 and n=40\n```", "    n=12 and n=40"):
+        report = read(f"{prose}{code}\n\nDone.\n")
+        assert not report.findings, told(report)
+        assert report.counts["notation_signs"] == 3
 
 
 def test_the_front_matter_and_the_reference_list_are_not_read() -> None:

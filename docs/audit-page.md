@@ -10,7 +10,7 @@ The page is built from each release, so it runs the same version as `pip install
 manuscript-guard`, with the same checks, and says which at its top, with a link to what the
 release changed. CI holds its reports to the command line's, word for word (below). While
 it loads, a bar gives the share of what it fetches that has come, as a percentage (the build
-writes the total to `manifest.json`), and the page says which of its four steps
+writes the total to `manifest.json`), and the page says which of its five steps
 it is on; a step still under way after 90 seconds is said to be slow, with what to do, and
 the page keeps waiting. The paper can be chosen or dropped on its box, and the page says the
 name of the one taken; "Or try it with an example paper" checks a short invented paper that
@@ -24,7 +24,7 @@ attractive at all"), and what to know about it is under *Questions* at its foot.
 
 ## What it checks
 
-A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a `.tar.gz`, with the
+A `.docx`, Markdown or PDF paper, or a LaTeX project as a `.zip` or a `.tar.gz`, with the
 analysis outputs to compare its numbers with if the reader has them (`.json`, `.csv`, `.tsv`,
 `.txt`, `.yaml`). That is everything [`audit`](commands.md#checking--audit) reads in a paper
 of that kind:
@@ -135,8 +135,15 @@ is blind; a link may choose one, `?journal=<slug>`. It wears the host's name, lo
 and contact line, says "Run by manuscript-guard" and the release, and keeps the rest of this
 page as it is: its code is byte for byte this page's.
 
-It does not read PDFs, which need `pdftotext`, a program a browser cannot start. Nor does it
-read figures or reproducibility packages: the command line reads those.
+A PDF is read as the command line reads one ([refereeing.md](refereeing.md)), by the same
+code, with poppler's `pdftotext` and `pdfinfo` 26.11.0 built for WebAssembly: its pages and
+lines are its places, the line numbers it prints are read, its lines are rebuilt into
+paragraphs for G6 and G14, and in a blind review its Author field is read. That build is the
+npm package `@ai-ecoverse/wasm-poppler` 26.11.0-1, whatever `pdftotext` the reader has; the
+command line uses the one installed, poppler's of another release or Xpdf's, so its report on
+the same PDF can differ from the page's, and each report names the `pdftotext` that read it
+(DESIGN.md, Known gaps). The page does not read figures or reproducibility packages: the
+command line reads those.
 
 ## How to see that nothing is uploaded
 
@@ -200,10 +207,14 @@ run on a `.docx`.
 ## How it is built and checked
 
 The page's files are in [`web/`](../web/). Pyodide runs the manuscript-guard wheel in a Web
-Worker; pandoc.wasm, from the pandoc release CI pins, stands in for pandoc. The package has two
-places for this and no more: `from_word.runner`, which runs pandoc another way where it is
-set, and `lookup.http.default_transport`, which sends one XMLHttpRequest under Pyodide. Both
-are in `manuscript_guard.web`, with their tests in `tests/test_web.py`.
+Worker; pandoc.wasm, from the pandoc release CI pins, stands in for pandoc, and poppler's
+WebAssembly build for `pdftotext` and `pdfinfo`. The package has three places for this and no
+more: `from_word.runner`, which runs pandoc another way where it is set;
+`lookup.http.default_transport`, which sends one XMLHttpRequest under Pyodide; and
+`web.install_programs`, which puts `pdftotext` and `pdfinfo` on Pyodide's PATH and has its
+`subprocess.run` run them in WebAssembly (`web/poppler.mjs`), so that the code reading a PDF
+is the command line's, given the same program the same way. All three are in
+`manuscript_guard.web`, with their tests in `tests/test_web.py`.
 
 ```bash
 cd web && npm ci && cd ..
@@ -222,17 +233,27 @@ wheel and nothing downloaded, to look at.
 `web/build.py` puts every file the page loads into `_site/audit/`, from one origin, so that the
 policy names no other host: Pyodide from npm (held by `package-lock.json`), the packages
 `audit` imports (each held to the SHA-256 Pyodide's lock file gives), pandoc.wasm (held to
-`web/pins.json`), the shim that runs it, bundled, the wheel, and every licence. pandoc is
-GPL-2.0-or-later, and the page links to its source at the version served.
+`web/pins.json`), the shim that runs it, bundled, poppler's programs (from npm, held by
+`package-lock.json` to the package's SHA-512), the wheel, and every licence. pandoc is
+GPL-2.0-or-later, and the page links to its source at the version served. poppler is
+GPL-2.0-only or GPL-3.0-only: the page serves the package's licence and the notices of the
+libraries it is built with, and links to poppler 26.11.0's source and to the recipe that
+built the package, at the commit npm's provenance names (ATTRIBUTION.md).
 
 `web/test/check.py` runs the command line's `audit` on the worked example (the `.docx`
 against its results, the `.docx` alone, `main.md` alone, with a referee's options, in
 American English with the copy with tracked changes asked for, held to a journal's rules
-from its form with a double-blind review, and the LaTeX project of `tests/data/latex` as a
-`.zip` and as a `.tar.gz`, which the command line is given as the folder they hold), then the
-same command as the page runs it in Node, each archive unpacked there first by
+from its form with a double-blind review, the LaTeX project of `tests/data/latex` as a
+`.zip` and as a `.tar.gz`, which the command line is given as the folder they hold, and a PDF
+of the `.docx`'s text, set by `tests/proof_pdf.py` in two columns with its lines numbered and
+an author in its Info dictionary, against its results and held to that journal's rules),
+then the same command as the page runs it in Node, each archive unpacked there first by
 `web.unpack_paper` as the page unpacks it (`parity.mjs --unpack`), and requires the same
-report and the same `--json`; in each browser, the page's copy with
+report and the same `--json`. There the command line reads the PDF with the page's own
+`pdftotext` and `pdfinfo`, the build the site serves run in Node (`web/test/program.mjs`),
+put first on its PATH as shell scripts, so that the two are compared given the same program;
+on Windows, which starts no shell script, the command line uses the `pdftotext` on PATH. In
+each browser, the page's copy with
 tracked changes must track as many corrections as `--tracked` does, and the files the page
 makes of the journal's form must be the ones the command line was given. Then it opens the site in
 Chrome and in Firefox, served with no policy header as GitHub Pages serves it. The landing

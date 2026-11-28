@@ -158,6 +158,10 @@ COMMANDS = {
                    argv=("search", "")),
     # The empty project's stage is already `design`, which `set stage design` leaves with
     # exit 0; a journal, where the project has no profile and no shortlist, is refused.
+    # A project with nothing answered in design/setup.yaml is asked every question still
+    # blank, and `apply` refuses to write while one is open.
+    "setup": Zero("design/setup.yaml, the answers, and what paper.yaml and authors.yaml hold",
+                  exits=1, argv=("setup", "apply", "{project}")),
     "set": Zero("paper.yaml, and for target_journal the journal profiles and the shortlist",
                 exits=2, argv=("set", "target_journal", "any-journal", "--path", "{project}")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
@@ -329,6 +333,7 @@ LATEX = {
     "search": ("no manuscript", ("search", "hepatic injury")),
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "set": ("no manuscript", ("set", "stage", "design", "--path", "{project}")),
+    "setup": ("no manuscript", ("setup", "questions", "{project}")),
     "stages": ("no manuscript", ("stages",)),
     "report-issue": ("no manuscript", ("report-issue", "--list")),
     "style": ("no manuscript", ("style", "{project}")),

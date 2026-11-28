@@ -422,6 +422,21 @@ published since, a DOI or a PMID no registry has, and a registry that did not an
 does in a project. Only where no registry reported anything of any entry does it say how many
 entries were asked and how many a registry knew; an entry answered from the records kept
 counts as asked.
+Each entry's DOI is held to its title too (Basile, 2026-11-26): where the record Crossref or
+OpenAlex holds for the DOI is of a work whose title, with its subtitle, holds under half the
+searched words of the title the entry gives, the DOI is said to be another work's
+(`reference-title-differs`), with both titles. A real DOI with an invented title is the
+commonest fabricated citation, and its DOI alone looks right. It is a note, never a warning:
+on 100 published papers (2026-11-27), 1 of the 6 such notes two readers judged was right,
+and most of the others gave in English the title of a work written in Portuguese or
+Spanish, which no count of shared words tells from another work's. A title of fewer than
+three searched words is not compared, nor one the entry's reader took from the citation's
+tail (a link, a DOI, a year in brackets with a volume and pages), nor an entry that holds its
+record's title word for word outside the title read, nor one that says its title is a
+translation ("[Article in Spanish]"). Each registry's record is counted alone, and the
+finding quotes the one counted. An entry whose title its reader does not find, as often in a
+list that gives the title between commas, is not compared.
+The editor's report asks it of the authors, with its record (Basile, 2026-11-27).
 An entry with neither a DOI nor a PMID is listed at its place and sorted by its shape: a
 journal article, a book or a chapter; a web page or a legal or official text, listed as "no
 DOI expected" with what in it says so (an access date, a web address, "Arrêté", an official
@@ -886,9 +901,10 @@ stage; on fifteen real papers it did so for seven. `init --from` changes these t
   `sync-bib` would drop. A citation in the sentence, "Smith (2020) showed", is not read, and
   nor is any citation in a bracket with a piece not read, even where that piece is a real
   citation: "(Smith, 2020; Jones, in press)", "(Smith, 2020; Lee, 2017a,b)", "(Smith, 2020;
-  Jones 2020)". An entry cited only that way stays a warning that nothing cites it: give it
-  its key, and delete by hand an entry that really is not cited, since `sync-bib` would drop
-  them all.
+  Jones 2020)". An entry cited only that way is one `check` says nothing cites: listed in
+  the one note on `references.bib`, since the bibliography prints only the works cited, or a
+  warning of its own where the paper prints every entry. Give it its key, and delete by hand
+  an entry that really is not cited, since `sync-bib` would drop them all.
 
 Where the title page stays in the text, as when the document opens on its title in a
 heading style, G14 still does not read it for abbreviations: its authors' names, units and

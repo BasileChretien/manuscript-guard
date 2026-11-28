@@ -420,13 +420,16 @@ async function hostHeld(page, manifest) {
       options: [...document.getElementById("journal").options].map((option) => option.value),
       picker: visible(document.getElementById("journalpick")),
       // What the page keeps on a host's site: that nothing is uploaded and how to see it,
-      // the release, and the licences with pandoc's source.
+      // the release, and the licences with pandoc's and poppler's sources.
       private: visible(document.querySelector(".private"))
         && /never uploaded/.test(document.querySelector(".private").textContent),
       probe: Boolean(document.getElementById("probe")),
       sums: Boolean(document.querySelector('a[href="files.sha256"]')),
-      gpl: visible(document.querySelector('footer a[href="licences/pandoc-GPL-2.0.txt"]')),
+      gpl: visible(document.querySelector('footer a[href="licences/pandoc-GPL-2.0.txt"]'))
+        && visible(document.querySelector('footer a[href="licences/poppler-GPL-2.0.txt"]')),
       pandoc: document.getElementById("src-pandoc").getAttribute("href"),
+      poppler: [document.getElementById("src-poppler").getAttribute("href"),
+        document.getElementById("build-poppler").getAttribute("href")],
     };
   });
   if (!shown.title.includes(host.name) || !shown.kicker.startsWith(host.name)) {
@@ -445,7 +448,8 @@ async function hostHeld(page, manifest) {
       || JSON.stringify(shown.options) !== JSON.stringify(["", ...offered, "other"])) {
     fail(`the hosted page offers ${shown.picker ? shown.options.join(", ") : "no list"}, not ${offered.join(", ") || "none"}`);
   }
-  if (!shown.private || !shown.probe || !shown.sums || !shown.gpl || shown.pandoc !== manifest.sources.pandoc) {
+  if (!shown.private || !shown.probe || !shown.sums || !shown.gpl || shown.pandoc !== manifest.sources.pandoc
+      || shown.poppler.join(" ") !== `${manifest.sources.poppler} ${manifest.sources["poppler-build"]}`) {
     fail(`the hosted page lost what it must keep: ${JSON.stringify(shown)}`);
   }
   console.log(`host: "${shown.kicker}", accent ${shown.teal}, contact "${shown.contact}", ` +

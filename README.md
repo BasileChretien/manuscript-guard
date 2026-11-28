@@ -94,8 +94,8 @@ finding of the check, not something left for a reviewer to notice.
 **I have a manuscript.** `audit` checks a paper written some other way: its numbers against
 each other and against the analysis outputs you give it, its Abstract against its Results,
 its words and its reference list. The
-[audit page](https://basilechretien.github.io/manuscript-guard/audit/) runs it on a .docx in a
-web browser, and the paper is not uploaded ([how it works](docs/audit-page.md)).
+[audit page](https://basilechretien.github.io/manuscript-guard/audit/) runs it on a .docx or a
+PDF in a web browser, and the paper is not uploaded ([how it works](docs/audit-page.md)).
 At a terminal, with [uv](https://docs.astral.sh/uv/) and nothing else installed:
 
 ```bash
@@ -112,7 +112,9 @@ manuscript-guard next
 ```
 
 `init` writes the project, and `next` says what to do now, with the command to run, from the
-analysis plan on. [Install](#install) has what else a build needs, and
+analysis plan on. With Claude Code or Codex, say instead that you want to start a paper with
+manuscript-guard: the agent asks you each decision the project needs, in conversation, and
+writes the project from your answers ([Starting a paper in conversation](docs/setup.md)). [Install](#install) has what else a build needs, and
 [Quick start](#quick-start) the worked example.
 
 ## Who it is for
@@ -393,8 +395,8 @@ one line, fetching a Python if there is none:
 uvx manuscript-guard audit paper.docx
 ```
 
-Or, with no terminal at all, [the audit page](docs/audit-page.md) runs `audit` on a .docx in
-a web browser, and the paper is not uploaded.
+Or, with no terminal at all, [the audit page](docs/audit-page.md) runs `audit` on a .docx or a
+PDF in a web browser, and the paper is not uploaded.
 
 To build a .docx you also need [pandoc](https://pandoc.org/installing.html). Zotero, R, and
 `pdftotext` or pypdf for reading PDFs, are needed only for particular things, and the tool
@@ -438,8 +440,9 @@ number in the file and the rule that classified it.
 `manuscript-guard --help` lists the commands in groups, and [Commands](docs/commands.md) has
 each with what it does. Each takes `--help`.
 
-- **[Setup & Guide](docs/commands.md#setup--guide):** start a project (`init`), say what to
-  do now (`next`), and write a setting of `paper.yaml` (`set`).
+- **[Setup & Guide](docs/commands.md#setup--guide):** start a project (`init`), or start it
+  from the authors' answers (`setup`), say what to do now (`next`), and write a setting of
+  `paper.yaml` (`set`).
 - **[Checking & Audit](docs/commands.md#checking--audit):** run every gate (`check`), audit a
   paper written some other way (`audit`), and set a revision beside the version before it
   (`compare`).
@@ -529,6 +532,7 @@ everywhere.
 | [The guidelines](docs/guidelines.md) | the reporting checklists, ICMJE, the journal's instructions, the registration, text recycling, methods standards and the custodian's rules: what each check holds, and what it leaves to a reader |
 | [Working with co-authors](docs/co-authors.md) | edits and comments in Word, suggested edits as tracked changes, approvals, the marked-up revision, and the checker for what no gate can check |
 | [Journal profiles](docs/journal-profiles.md) | the journal's rules quoted from its page: the boxes beside the abstract, a graphical abstract, what may be shared |
+| [Starting a paper in conversation](docs/setup.md) | `setup`: the decisions a project needs at its start, put to the authors and written as they answered, blanks only |
 | [What to do next](docs/next.md) | `next`: the order it decides in, and its JSON for an agent |
 | [Principles](docs/principles.md) | what the check guarantees, and why it is built this way |
 | [Features](docs/features.md) | everything it is meant to do, on one picture of a paper's stages, each feature with what does it and the tests that prove it |

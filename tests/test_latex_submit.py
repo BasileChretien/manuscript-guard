@@ -559,3 +559,26 @@ def test_a_folder_that_needs_a_file_it_does_not_hold_is_refused(
     said = capsys.readouterr().err
     assert "does not compile alone" in said and "sty/mine" in said, said
     assert "logo" not in said, said
+
+
+@needs_latex
+@pytest.mark.parametrize(("where", "typed", "kept"), [
+    ("\\begin{document}", "\\AtBeginDocument{\\nocite{*}}", True),
+    ("\\section{Discussion}", "\\iffalse \\nocite{*} \\fi", False),
+])  # fmt: skip
+def test_the_pack_keeps_every_entry_where_tex_runs_a_nocite_of_every_entry(
+    project: Path, twin: Path, capsys: pytest.CaptureFixture[str], where: str, typed: str,
+    kept: bool,
+) -> None:
+    """Round 1 of #835: a `\\nocite{*}` in a hook is no citation the reader records, and TeX
+    runs it, so the `.aux` cites every entry and the pack's `references.bib` keeps them all,
+    as G7's warnings say. One in an `\\iffalse` block TeX never runs: the pack keeps only the
+    cited entries, though G7 warns of each (DESIGN.md, Known gaps)."""
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + "\n@article{uncitedOne2020,\n"
+                   "  author = {One, Ann}, title = {Not cited}, journal = {J}, year = {2020},\n}\n",
+                   encoding="utf-8")  # fmt: skip
+    _typed_before(twin, where, typed)
+    assert main(["submit", str(project), "--skip-checks"]) == 0, capsys.readouterr()
+    packed = project / "build" / "submission" / "latex" / "references.bib"
+    assert ("uncitedOne2020" in packed.read_text(encoding="utf-8")) == kept

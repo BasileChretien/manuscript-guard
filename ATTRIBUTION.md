@@ -442,6 +442,22 @@ in. Both are under the SIL Open Font License 1.1, whose texts are beside them in
 The render also uses HyperFrames (Apache-2.0) and GSAP (its own no-charge licence), installed by
 `npm ci` and not kept in the repository.
 
+## poppler, which the audit page reads a PDF with
+
+Not in the package or the repository: the audit page (`web/`, docs/audit-page.md) serves
+poppler's `pdftotext` and `pdfinfo` built for WebAssembly, from the npm package
+`@ai-ecoverse/wasm-poppler` 26.11.0-1, which `web/package-lock.json` holds to its SHA-512 and
+`npm ci` installs. It is poppler 26.11.0, by the Poppler developers, from Xpdf by Glyph &
+Cog, under **GPL-2.0-only OR GPL-3.0-only**, with the libraries it is built with (zlib,
+libjpeg-turbo, libpng, Little CMS, FreeType and OpenJPEG) and Emscripten's runtime, each under
+its own licence, as the package's notices give them. The page serves the package's licence
+and those notices in its `licences/` folder, as `poppler-GPL-2.0.txt` and
+`poppler-third-party-notices.txt`, and names the source in its `manifest.json`: poppler's
+release, <https://poppler.freedesktop.org/poppler-26.11.0.tar.xz>, and the recipe that built
+the package, with its patches, at the commit npm's provenance names,
+<https://github.com/ai-ecoverse/homescoop/tree/4b33930a018e0f768b5453dfdf052fa96b91072a/packages/poppler>
+(`web/pins.json`). The package's fonts are not served: reading a PDF's text needs none.
+
 # Ideas from other projects
 
 No code of the projects below is in this repository; what is taken is a design, a rule or a

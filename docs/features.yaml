@@ -63,6 +63,18 @@ features:
     tests: [tests/test_scaffold.py, tests/test_from_word.py]
     docs: docs/getting-started.md
 
+  - id: setup-conversation
+    stage: start
+    title: Start in conversation
+    says: >-
+      Puts to the authors, one question at a time, each decision a project needs at its
+      start, then writes the project exactly as they answered, filling only what is blank.
+    status: works
+    commands: [setup]
+    skills: [project-setup]
+    tests: [tests/test_setup.py]
+    docs: docs/setup.md
+
   - id: what-next
     stage: start
     title: Say what to do now
@@ -468,14 +480,21 @@ features:
     title: Citations that resolve
     says: >-
       Each citation leads to a reference with well-formed identifiers and the fields it
-      needs, no work is cited under two keys, and an entry nothing cites is warned of, or
-      noted where the paper cites it only as typed text in brackets.
+      needs, and no work is cited under two keys. The entries nothing cites are one note
+      for the file where the bibliography prints only the works cited, and a warning each
+      where it prints every entry; an entry cited only as typed text in brackets is a note
+      of its own.
     status: works
     gates: [G7]
     tests:
       - tests/test_corruption.py::test_a_malformed_identifier_fails_from_internal_review
       - tests/test_corruption.py::test_an_entry_cited_only_as_typed_text_is_a_note_with_what_sync_bib_would_do
       - tests/test_corruption.py::test_an_entry_nothing_cites_even_as_typed_text_stays_a_warning
+      - tests/test_corruption.py::test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print
+      - tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each
+      - tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings
+      - tests/test_corruption.py::test_a_metadata_block_in_the_body_asks_for_every_entry
+      - tests/test_properties.py::test_a_nocite_of_every_entry_is_told_from_one_of_single_keys
       - tests/test_zotero.py
 
   - id: zotero
@@ -665,6 +684,24 @@ features:
     status: works
     gates: [G8]
     tests: [tests/test_claims.py, tests/test_intervals.py]
+
+  - id: every-reader
+    stage: check
+    title: Understood by every reader
+    says: >-
+      Asks for each term to be defined where it is first used, each method to be explained in
+      plain words and each table and figure to stand alone, and warns where the Discussion
+      gives a result the Results do not, the Results use a test the Methods never name, or a
+      caption points at a line it never names.
+    status: works
+    gates: [G3, G8, G9]
+    skills: [manuscript-writing, review-panel, figure-review]
+    tests:
+      - tests/test_corruption.py::test_a_result_the_discussion_interprets_is_one_the_results_report
+      - tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name
+      - tests/test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is
+      - tests/test_review_plan.py::test_the_second_starter_panel_reads_the_paper_as_an_outsider_would
+    docs: plugin/skills/manuscript-writing/references/clarity.md
 
   - id: arithmetic
     stage: check
@@ -923,11 +960,16 @@ features:
     stage: others
     title: Audit in a web browser
     says: >-
-      Runs the audit on a .docx or Markdown paper in a web browser, and the paper is not
-      uploaded anywhere. A journal's rules typed once can be sent as a link that fills them in.
+      Runs the audit on a .docx, Markdown or PDF paper, or a LaTeX project, in a web
+      browser, and the paper is not uploaded anywhere. A journal's rules typed once can be
+      sent as a link that fills them in.
     status: works
     tests: [tests/test_web.py]
     docs: docs/audit-page.md
+    limits: >-
+      A PDF is read with the page's own pdftotext, poppler 26.11.0 built for WebAssembly,
+      which may read it otherwise than the pdftotext a reader has installed (DESIGN.md,
+      Known gaps).
 
   - id: audit-page-hosted
     stage: others
@@ -997,6 +1039,19 @@ features:
     status: works
     commands: [audit]
     tests: [tests/test_audit_registration.py]
+    docs: docs/audit.md
+
+  - id: audit-doi-title
+    stage: others
+    title: A DOI of another work
+    says: >-
+      With the lookups on, notes a reference whose DOI leads to a work with another title
+      than the one it gives: a wrong DOI, or a real DOI with an invented title. A note, with
+      what it was worth on published papers, since a title given in translation looks the
+      same.
+    status: works
+    commands: [audit]
+    tests: [tests/test_audit_doi_title.py]
     docs: docs/audit.md
 
   - id: editor-letter

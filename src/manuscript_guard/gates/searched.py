@@ -110,12 +110,17 @@ def search_words(title: str) -> list[str]:
     each word once, the short and the common left out. A British spelling stays as it is,
     since the journal may have printed it so; a word in another script than Latin is left
     out."""
-    text = lookups._TAGS.sub("", title)
+    return list(dict.fromkeys(folded_words(title)))[:MAX_SEARCH_WORDS]
+
+
+def folded_words(text: str) -> list[str]:
+    """`text`'s words folded as `search_words` folds a title's, in their order and each as
+    often as it comes, however many: for finding a title's words in a longer text."""
+    text = lookups._TAGS.sub("", text)
     text = lookups._MATHS.sub("", lookups._SIGN.sub("", lookups._COMMAND.sub(lookups._untex, text)))
     text = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", text).casefold())
     text = "".join(c for c in text if not unicodedata.combining(c))
-    words = [w for w in re.findall(r"[a-z0-9]+", text) if len(w) > 1 and w not in STOPWORDS]
-    return list(dict.fromkeys(words))[:MAX_SEARCH_WORDS]
+    return [w for w in re.findall(r"[a-z0-9]+", text) if len(w) > 1 and w not in STOPWORDS]
 
 
 def unsearchable(fields: dict[str, str]) -> str:
@@ -520,6 +525,7 @@ __all__ = [
     "Verdict",
     "Work",
     "first_family",
+    "folded_words",
     "judge",
     "same_journal",
     "search_words",

@@ -1,5 +1,5 @@
 {
-  "_": "What web/build.py downloads that npm does not pin, each held to its SHA-256. The pandoc version is CI's (MANUSCRIPT_GUARD_REQUIRE_PANDOC in .github/workflows/ci.yml), which tests/test_web.py holds. Pyodide's version is the one web/package.json names; the packages it loads are held to the hashes in its own pyodide-lock.json.",
+  "_": "What web/build.py downloads that npm does not pin, each held to its SHA-256, and where the source is of what npm pins. The pandoc version is CI's (MANUSCRIPT_GUARD_REQUIRE_PANDOC in .github/workflows/ci.yml), which tests/test_web.py holds. Pyodide's version is the one web/package.json names; the packages it loads are held to the hashes in its own pyodide-lock.json. poppler's programs are the npm package web/package.json names at this version, held by package-lock.json to its SHA-512: the source of the poppler release it is built from, and the recipe that built it, at the commit npm's provenance names.",
   "pandoc": {
     "version": "3.9.0.2",
     "wasm": {
@@ -20,5 +20,13 @@
       "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
     },
     "source": "https://github.com/pyodide/pyodide/tree/{version}"
+  },
+  "poppler": {
+    "package": "@ai-ecoverse/wasm-poppler",
+    "version": "26.11.0-1",
+    "upstream": "26.11.0",
+    "licence": "GPL-2.0-only OR GPL-3.0-only",
+    "source": "https://poppler.freedesktop.org/poppler-26.11.0.tar.xz",
+    "recipe": "https://github.com/ai-ecoverse/homescoop/tree/4b33930a018e0f768b5453dfdf052fa96b91072a/packages/poppler"
   }
 }

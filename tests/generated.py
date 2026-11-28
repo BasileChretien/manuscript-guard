@@ -1493,7 +1493,7 @@ TITLE_PAGE_LISTS = (
 #: The headings an abstract opens under, and a line that is only its name, in bold or not,
 #: and its name run in before its text.
 ABSTRACT_OPENINGS = ("# Abstract", "## ABSTRACT", "**Abstract**", "Abstract", "# Summary",
-                     "**Abstract:** ")  # fmt: skip
+                     "**Abstract:** ", "### **Abstract**")  # fmt: skip
 #: The first section of a paper with no abstract: a heading, numbered or not, and a line in
 #: bold, none of them an Abstract.
 SECTION_OPENINGS = ("# Introduction", "# Background", "## 1. Introduction", "# Main text",
@@ -1897,6 +1897,161 @@ def pointer_restated(draw: st.DrawFn) -> tuple[str, list[str]]:
                      f"and the {short} rose.")
     text = f"# Methods\n\n{methods}\n\n# Results\n\n" + " ".join(again) + "\n"
     return text, sorted(f"{short} is defined again" for _long, short in POINTER_FORMS)
+
+
+#: An Abstract's heading set in bold as a whole, as a Word heading also set in bold reads
+#: once converted (docx-educ-2; Basile, 2026-11-27): in asterisks or underscores, numbered,
+#: with a colon, in bold italics, at any level.
+BOLD_ABSTRACTS = ("# **Abstract**", "## __Abstract__", "### **1. Abstract**", "# ***Abstract:***",
+                  "## **ABSTRACT**")  # fmt: skip
+
+
+@st.composite
+def bold_abstracts(draw: st.DrawFn) -> list[tuple[str, int]]:
+    """A paper for each heading of `BOLD_ABSTRACTS`, its Abstract using a short form that only
+    the Methods define, and the Abstract's words drawn; and how many words its Abstract has."""
+    papers = []
+    for heading in BOLD_ABSTRACTS:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=12))
+        abstract = " ".join(words).capitalize() + " and the QAB rose."
+        # A section of the Methods whose title opens on the word, in bold, which is no
+        # Abstract (round 1 of #841).
+        text = (f"{heading}\n\n{abstract}\n\n# Methods\n\nThe quiet abstract base (QAB) was "
+                "read, and the QAB fell. The quiet abstract task (QAT) was set.\n\n### "
+                "**Abstract reasoning tasks**\n\nThe QAT rose.\n")  # fmt: skip
+        papers.append((text, len(abstract.split())))
+    return papers
+
+
+#: An APA manuscript's title, written as its Introduction repeats it in bold with no heading:
+#: in its case or in capitals, with a stop or a colon, in asterisks or underscores (decision
+#: D6, the author, 2026-11-27); and bold paragraphs in the Abstract that are not the title,
+#: a sub-heading and the title with words added.
+APA_TITLES = ("Exam success and the podcasts of a large course",
+              "Reading aloud and the vocabulary of second graders")  # fmt: skip
+APA_AGAIN = ("**{}**", "**{}.**", "__{}:__", "**{upper}**")
+APA_NOT_AGAIN = ("**Purpose**", "**{} in two years**")
+
+
+#: How the title stands before the Abstract: a paragraph, a heading, front matter; and a
+#: heading with its attributes, and front matter whose title is a YAML block (round 2 of
+#: #841).
+APA_TITLED = ("{}", "# {}", '---\ntitle: "{}"\n---', "# {} {{.unnumbered}}",
+              "---\ntitle: >-\n  {}\n---")  # fmt: skip
+
+
+@st.composite
+def apa_layouts(draw: st.DrawFn) -> list[tuple[str, list[tuple[str, str]]]]:
+    """An APA manuscript for each title of `APA_TITLES`, each way of `APA_TITLED` it stands
+    before the Abstract and each way of `APA_AGAIN` it is repeated (round 1 of #841): its
+    Abstract under a heading, opening on the title in bold, with a bold paragraph of each
+    kind of `APA_NOT_AGAIN` in it, in an order drawn, and a short form it uses and defines;
+    then the title again, the Introduction defining another short form, and the Methods using
+    both. And G14's findings, the Abstract's own definition being no definition for the main
+    text."""
+    papers = []
+    expected = [("abbreviation-undefined",
+                 "QRS is used once in the main text as G14 reads it, and not defined there; "
+                 "the abstract defines it, and is read apart from the paper")]
+    for title in APA_TITLES:
+        for titled in APA_TITLED:
+            for way in APA_AGAIN:
+                again = way.format(title, upper=title.upper())
+                lookalikes = [kind.format(title)
+                              for kind in draw(st.permutations(APA_NOT_AGAIN))]  # fmt: skip
+                abstract = [f"**{title}**", *lookalikes,
+                            "The quiet reading scale (QRS) was read, and the QRS rose.",
+                            "We read 40 classes."]  # fmt: skip
+                text = "\n\n".join([titled.format(title), "# Abstract", *abstract, again,
+                                     "The content acquisition podcasts (CAP) were played.",
+                                     "# Methods", "The CAP ran, and the QRS fell."]) + "\n"
+                papers.append((text, expected))
+    return papers
+
+
+#: The titles of a paper's highlights (decision D4), and one that names a section of its own.
+HIGHLIGHTS_TITLES = ("# Highlights", "## Research highlights", "# KEY POINTS",
+                     "## Key messages")  # fmt: skip
+HIGHLIGHTS_FORMS = (("agri-environment scheme", "AES"), ("basic payment scheme", "BPS"),
+                    ("single farm payment", "SFP"), ("young farmer grant", "YFG"))  # fmt: skip
+HIGHLIGHTS_OWN = "# Highlights of the trial"
+
+
+@st.composite
+def highlights_sections(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A paper whose Abstract is followed by a section of each title of `HIGHLIGHTS_TITLES`,
+    in an order drawn, each using a short form of `HIGHLIGHTS_FORMS` that the Introduction
+    defines later; and a section `HIGHLIGHTS_OWN` doing the same with one more: the short
+    forms used before their definition, only that one."""
+    titles = draw(st.permutations(HIGHLIGHTS_TITLES))
+    sections = [f"{title}\n\nThe {short} paid farmers." for title, (_long, short)
+                in zip(titles, HIGHLIGHTS_FORMS, strict=True)]  # fmt: skip
+    sections.insert(draw(st.integers(0, len(sections))),
+                    f"{HIGHLIGHTS_OWN}\n\nThe LFA paid farmers.")
+    defined = " ".join(f"The {long} ({short}) paid, and the {short} held."
+                       for long, short in (*HIGHLIGHTS_FORMS, ("less favoured area", "LFA")))
+    text = "# Abstract\n\nWe read 40 farms.\n\n" + "\n\n".join(sections) + (
+        f"\n\n# Introduction\n\n{defined}\n")
+    return text, ["LFA"]
+
+
+#: An indented code block in each way pandoc reads one, each holding a short form used and,
+#: after it, a pair that would define it (docx-psych-2's R, decision of 2026-11-27); and an
+#: indented paragraph that is no code: a list item's, and a line a paragraph wraps onto.
+#: Round 2 of #841, as pandoc 3.9 reads each: under a paragraph opening on a capital and a
+#: stop before one space, "C. elegans", or on a word of mixed case, "Mix.", which open no
+#: item; and under an item whose text starts five in, "xii. ", which four spaces do not reach.
+CODE_BLOCKS = ("    {s}<-as.vector(fit)\n    #{s}: Posterior Standard Deviation",
+               "\t{s} <- sd(x)\n\t# {s}: standard error",
+               "    {s} <- 1\n\n    # {s}: standard error of it",
+               "        {s}.mean <- mean(x)\n    # {s}: standard error",
+               "C. elegans strains were used.\n\n    {s} <- 1\n    # {s}: standard error",
+               "Mix. The cells were kept.\n\n    {s} <- 2\n    # {s}: standard error",
+               "xii. The cells were kept.\n\n    {s} <- 3\n    # {s}: standard error",
+               # Round 3 of #841: words of roman letters that are no numeral to pandoc,
+               # over code indented as far as such an item's text would start.
+               "civil. The cells grew.\n\n       {s} <- 4\n       # {s}: standard error",
+               "dim. The cells grew.\n\n     {s} <- 5\n     # {s}: standard error",
+               "ic. The cells grew.\n\n    {s} <- 6\n    # {s}: standard error")  # fmt: skip
+CODE_FORMS = ("SE", "SD", "SEM", "SER", "SXA", "SXB", "SXC", "SXD", "SXE", "SXF")
+NOT_CODE = (("- The {s} rose.\n\n    The quality standard error (QSE) was kept.", "QSE"),
+            ("The {s} rose, and\n    the quick standard deviation (QSD) was kept.", "QSD"),
+            # Round 1 of #841: an item's third paragraph; a lettered, a roman, a bracketed
+            # letter's and a bracketed number's item, as pandoc writes Word's lists; a
+            # footnote's second paragraph; and a multiline table's row whose first cell is
+            # empty.
+            ("-   The {s} rose.\n\n    It held.\n\n    The quick sample factor (QSF) was kept.",
+             "QSF"),
+            ("a.  The {s} rose.\n\n    The quick sample level (QSL) was kept.", "QSL"),
+            ("iv. The {s} rose.\n\n    The quick sample value (QSV) was kept.", "QSV"),
+            ("B)  The {s} rose.\n\n    The quick sample band (QSB) was kept.", "QSB"),
+            ("(2) The {s} rose.\n\n    The quick sample mark (QSM) was kept.", "QSM"),
+            # Round 2 of #841: a capital and a stop before two spaces, and a roman numeral in
+            # small letters whose item's text starts five in, its paragraph indented as far.
+            ("Q.  The {s} rose.\n\n    The quick sample quota (QSQ) was kept.", "QSQ"),
+            ("mix. The {s} rose.\n\n     The quick sample yield (QSY) was kept.", "QSY"),
+            ("It held.[^9]\n\n[^9]: The {s} rose.\n\n    The quick sample note (QSN) was "
+             "kept.", "QSN"),
+            ("The {s} rose.\n\n-------------------------------------\n  Group       Note\n"
+             "----------- -------------------------\n  one         It held.\n\n"
+             "              The quick sample table (QST) was kept.\n"
+             "-------------------------------------", "QST"))
+
+
+@st.composite
+def indented_code(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A Methods section with every block of `CODE_BLOCKS`, in an order drawn, each with a
+    short form of `CODE_FORMS`, and every indented paragraph of `NOT_CODE` with its own,
+    between paragraphs of words: G14 reads no word of the code, so nothing is said of it,
+    and the others are read, each short form used before the definition under it."""
+    forms = draw(st.permutations(CODE_FORMS))
+    # Each block after a paragraph of its own, as pandoc reads a block under a list item as
+    # the item's paragraph (round 1 of #841).
+    pieces = ["It was coded.\n\n" + block.format(s=short)
+              for block, short in zip(CODE_BLOCKS, forms, strict=True)]
+    pieces += [piece.format(s=short) for piece, short in NOT_CODE]
+    text, _starts = _paragraphs(draw, draw(st.permutations(pieces)))
+    return "# Methods\n\n" + text, sorted(short for _piece, short in NOT_CODE)
 
 
 #: Short forms the audit's list of journals' style guides holds
@@ -8078,12 +8233,20 @@ PLAN_HEADINGS = {
     "patient perspective": ("The patient's perspective", "Patient’s view",
                             "Clinical perspective"),
     "informed consent": ("Consent for publication", "Patient consent", "Ethics approval"),
+    "case selection": ("Consecutive patients", "Recruitment", "Case identification",
+                       "Patient selection"),
+    "follow-up": ("Follow up", "Loss to follow-up", "Length of observation"),
+    "comparison": ("Comparison with published series", "Historical controls",
+                   "External controls", "Statistical comparisons"),
+    "consent and ethics": ("Ethical approval", "Informed consent", "Ethics committee",
+                           "Data protection"),
 }  # fmt: skip
 #: What a section that says nothing holds, as G12 reads it (`_EMPTY` in `gates/design.py`).
 _SAYS_NOTHING = ("", "TBD", "n/a", "---", "...", "See below")
 #: Headings of no section, between the plan's own.
-#: Not "Timeline", which heads a case report's timeline.
-_PLAN_OTHER = ("Background", "Glossary", "Ethics", "References")
+#: Not "Timeline", which heads a case report's timeline, nor "Ethics", a case series's
+#: consent and ethics.
+_PLAN_OTHER = ("Background", "Glossary", "Funding", "References")
 #: How a plan is laid out: its title, then the level of its sections' headings.
 _PLAN_LAYOUTS = (("# Analysis plan\n\n", 2), ("", 2), ("", 1))
 
@@ -8344,6 +8507,107 @@ def registration_texts(
         text = _among(draw, [*order[:at], written, *order[at:]])
         given.append((written, kept, found, text))
     return plain, given
+
+
+#: Words a title is drawn from, each one `gates.searched.search_words` keeps: long enough and
+#: not common. The second set shares none with the first, for another work's title.
+_TITLED = ("weekly", "outcome", "counts", "regional", "cohort", "adults", "statin",
+           "therapy", "fracture", "incidence", "hospital", "registry", "mortality", "kidney")
+_UNTITLED = ("mitochondrial", "dynamics", "yeast", "membrane", "protein", "folding",
+             "plasmid", "spectrum", "lattice", "quantum", "thermal", "polymer")  # fmt: skip
+
+
+#: What an entry's reader took for a title on 100 PMC papers (2026-11-27), the citation's
+#: tail read wrong: a link, a DOI, a year in brackets with a volume and pages.
+_TAILS = ("Plant 8 (6) (2015) 871-884, https://doi.org/10.5555/given.1",
+          "Available from: https://doi.org/10.5555/GIVEN.1",
+          "Weekly Cohort Counts (2006) 84:673-6",
+          "Registry Data Outcome doi 10.5555/given.1")  # fmt: skip
+#: Journals abbreviated with full stops, whose name the entry's reader takes for the title
+#: of an entry that puts its title between commas ("Sci. China Life Sci.", 2026-11-27).
+_DOTTED_JOURNALS = ("Sci. China Life Sci.", "Proc. Natl Acad Sci.", "Eur. Heart Rhythm Rev.",
+                    "Clin. Data Sci Med.")  # fmt: skip
+#: How an entry says its title is a translation (`auditing.references._TRANSLATED`), and
+#: languages it names.
+_TRANSLATION_MARKERS = ("[Article in {}]", "(in {})", "(in {} with English abstract)",
+                        "[article in {}]", "[Article in English, {}]",
+                        "(in {} and English)")  # fmt: skip
+_LANGUAGES = ("Spanish", "Portuguese", "Japanese", "Chinese", "French", "German", "Turkish")
+
+
+@st.composite
+def doi_title_records(draw: st.DrawFn) -> list[tuple[str, str, str, str, bool]]:
+    """Entries giving a DOI, records it may hold, and whether `audit --lookup` says the DOI is
+    another work's (`auditing.references._title_differs`, item 7b), one of each kind. For an
+    entry giving a title of six to nine searched words: the same title; the title cased,
+    accented and punctuated otherwise, a word short; the title split into a title of one or
+    two words, too few to be looked for in the entry, and a subtitle; half its words, in
+    another order; the title a word short, its words joined by a registry's tags with no space
+    between ("Recombinant<i>Mycobacterium"); under half of its words among another work's;
+    and another work's title. An entry whose "title" is a citation's tail read wrong
+    (`_TAILS`), held to another work's title, which is never compared. An entry that puts its
+    title between commas before a journal abbreviated with full stops, whose name is read as
+    its title, held to its own title, which it holds word for word. And an entry that says
+    its title is a translation, held to another work's title. An entry whose title holds its
+    record's title and as many words again of another work's. An entry whose title is two
+    words and a volume and pages, held to another work's. An entry whose Crossref record is
+    another work's and whose OpenAlex record is its own. And one whose two records each hold
+    under half its words and both together half or more. An entry whose title is its
+    record's whole title, a colon and a subtitle the record does not hold, as long as the
+    title and more; one whose title is another work's main title, a colon and its own words;
+    one that says it is in English, held to another work's title; and one whose record keeps
+    a short title and its subtitle apart, given whole before a second colon. Each is (entry,
+    Crossref's title,
+    its subtitle, OpenAlex's title or "", whether it is said). Every example holds one of
+    each, so a rule broken for one kind is seen whatever the seed."""
+    words = draw(st.permutations(_TITLED))[:draw(st.integers(6, 9))]
+    title = " ".join(words).capitalize()
+    entry = f"1. Smith A, Lee B. {title}. J Test. 2020;12(3):45-56. doi:10.5555/given.1"
+    n = len(words)
+    split = draw(st.integers(1, 2))
+    other = draw(st.permutations(_UNTITLED))
+    folded = " ".join(w.upper() if i % 2 else w.replace("e", "é", 1) for i, w in enumerate(words))
+    # A word short, so that it is no exact match and its words are what decides.
+    tagged = "".join(w if i % 2 == 0 else f"<i>{w}</i>" for i, w in enumerate(words[:-1]))
+    tail = draw(st.sampled_from(_TAILS))
+    journal = draw(st.sampled_from(_DOTTED_JOURNALS))
+    commas = (f"[1] A. Smith, B. Lee, {title}, {journal} 56 (2013) 960-967, "
+              "https://doi.org/10.5555/given.1.")  # fmt: skip
+    marker = draw(st.sampled_from(_TRANSLATION_MARKERS)).format(draw(st.sampled_from(_LANGUAGES)))
+    translated = (f"1. Smith A, Lee B. {title} {marker}. J Test. 2020;12(3):45-56. "
+                  "doi:10.5555/given.1")  # fmt: skip
+    extended = " ".join([*words[:3], *other[:4]]).capitalize()
+    short = f"{words[0].capitalize()} {words[1]} 184:1845-56"
+    subtitled = f"{' '.join(words[:3]).capitalize()}: {' '.join([*words[3:], *other[:3]])}"
+    # A record of a short title and a subtitle kept apart, "COVID-19" and "lessons learned",
+    # given whole before a second colon and five words of another work's: 4 of 9 shared.
+    apart = (f"{' '.join(words[:2]).capitalize()}: {' '.join(words[2:4])}: "
+             f"{' '.join(other[:5])}")  # fmt: skip
+    # Another work's main title before the colon: held to the record like any other.
+    colon = f"{' '.join(other[:3]).capitalize()}: {' '.join(words[3:])}"
+    # Two records, each under half and both together half or more: ceil(n / 4) words each.
+    part = (n + 3) // 4
+    return [
+        (entry, title, "", "", False),
+        (entry, folded.rsplit(" ", 1)[0] + ", " + "a study", "", "", False),
+        (entry, " ".join(words[:split]), " ".join(words[split:]), "", False),
+        (entry, " ".join(reversed(words[: (n + 1) // 2])), "", "", False),
+        (entry, tagged, "", "", False),
+        (entry, " ".join([*words[: (n - 1) // 2], *other[: n - (n - 1) // 2]]), "", "", True),
+        (entry, " ".join(other[:n]), "", "", True),
+        (f"1. Smith A, Lee B. {tail}. doi:10.5555/given.1", " ".join(other[:n]), "", "", False),
+        (commas, title.upper(), "", "", False),
+        (translated, " ".join(other[:n]), "", "", False),
+        (entry.replace(title, extended), " ".join(words[:3]), "", "", True),
+        (entry.replace(title, short), " ".join(other[:n]), "", "", False),
+        (entry, " ".join(other[:n]), "", title, False),
+        (entry, " ".join([*words[:part], *other[:3]]), "",
+         " ".join([*words[part:2 * part], *other[3:6]]), True),
+        (entry.replace(title, subtitled), " ".join(words[:3]), "", "", False),
+        (entry.replace(title, colon), " ".join(words[:3]), "", "", True),
+        (entry.replace(f"{title}.", f"{title} (in English)."), " ".join(other[:n]), "", "", True),
+        (entry.replace(title, apart), " ".join(words[:2]), " ".join(words[2:4]), "", False),
+    ]
 
 
 #: Each way of writing a registration number that `NAMED_IN_TEXT` finds, with the number as
@@ -15395,6 +15659,240 @@ def interpretation_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, bool | N
     )
 
 
+#: Each place a paper binds a result, and whether G8 reads it as the Discussion's
+#: (`discussion-not-reported`). Every kind is in every example.
+DISCUSSION_KINDS = {
+    "discussion": True, "limitations under the discussion": True,
+    "a subsection of the discussion": True, "a second paragraph of the discussion": True,
+    "results": False, "a heading under the results": False, "methods": False,
+    "abstract": False, "introduction": False, "conclusions under the discussion": False,
+    "a limitations section of its own": False,
+}  # fmt: skip
+#: How a heading may name the Discussion (`section_names.names_discussion`).
+DISCUSSION_TITLES = ("Discussion", "5. Discussion", "General discussion", "DISCUSSION",
+                     "**Discussion**")  # fmt: skip
+
+
+@st.composite
+def discussion_papers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
+    """A paper with an Abstract, an Introduction, Methods, Results, a Discussion with a
+    subsection, a Limitations and a Conclusions of its own, and a Limitations section after it,
+    that binds a result of its own (`{{results.t07}}`) in each place of `DISCUSSION_KINDS`, in
+    an order drawn each time, run on in its paragraph or on lines of its own. And, for each key
+    G8 reads as the Discussion's, the title of the heading that names the Discussion."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    title = draw(st.sampled_from(DISCUSSION_TITLES))
+    parts: dict[str, list[str]] = {name: [] for name in (
+        "abstract", "introduction", "methods", "results", "secondary", "discussion", "second",
+        "subsection", "limitations", "conclusions", "own limitations")}  # fmt: skip
+    expected: dict[str, str] = {}
+    where = {"results": "results", "a heading under the results": "secondary",
+             "methods": "methods", "abstract": "abstract", "introduction": "introduction",
+             "discussion": "discussion", "a second paragraph of the discussion": "second",
+             "a subsection of the discussion": "subsection",
+             "limitations under the discussion": "limitations",
+             "conclusions under the discussion": "conclusions",
+             "a limitations section of its own": "own limitations"}  # fmt: skip
+    for kind in draw(st.permutations(tuple(DISCUSSION_KINDS))):
+        tag = next(tags)
+        words = [draw(st.sampled_from(_PLAIN)) for _ in range(draw(st.integers(0, 3)))]
+        parts[where[kind]].append(" ".join(["Of", *words, f"{{{{results.{tag}}}}}",
+                                            "were", "given."]))  # fmt: skip
+        if DISCUSSION_KINDS[kind]:
+            expected[tag] = title
+
+    def run(sentences: list[str]) -> str:
+        order = draw(st.permutations(sentences))
+        return "".join(one + draw(st.sampled_from((" ", "\n"))) for one in order).rstrip()
+
+    abstract = run(parts["abstract"])
+    if draw(st.booleans()):
+        abstract = f"## Background\n\nReports were given.\n\n## Results\n\n{abstract}"
+    limits = draw(st.sampled_from(("Limitations", "Strengths and limitations")))
+    return (
+        f"# Abstract\n\n{abstract}\n\n# Introduction\n\n{run(parts['introduction'])}\n\n"
+        f"# Methods\n\n{run(parts['methods'])}\n\n# Results\n\n{run(parts['results'])}\n\n"
+        f"## Secondary outcomes\n\n{run(parts['secondary'])}\n\n# {title}\n\n"
+        f"{run(parts['discussion'])}\n\n{run(parts['second'])}\n\n## Principal findings\n\n"
+        f"{run(parts['subsection'])}\n\n## {limits}\n\n{run(parts['limitations'])}\n\n"
+        f"## Conclusions\n\n{run(parts['conclusions'])}\n\n"
+        f"# Limitations\n\n{run(parts['own limitations'])}\n",
+        expected,
+    )
+
+
+#: Each way a name of a method may be written in the Results, and the method G9 reads it as
+#: (`gates/analyses_named.py`), or None for none. Every kind is in every example, each on a
+#: line of its own after its tag.
+ANALYSIS_FORMS = {
+    "as listed": "fisher-exact", "possessive dropped": "fisher-exact",
+    "curly possessive": "holm", "in capitals": "kruskal-wallis", "in lower case": "kaplan-meier",
+    "hyphen as a space": "mann-whitney", "hyphen as an en dash": "mann-whitney",
+    "hyphen as two": "kolmogorov-smirnov", "across a line": "logistic", "plural": "t-test",
+    "a name in capitals": "anova", "a name in capitals in lower case": None,
+    "a look-alike": None, "in a binding": None, "in a citation": None, "in code": None,
+    "in a comment": None, "in maths": "chi-squared", "a word of another field": None,
+    "a name too loose for the results": None,
+}  # fmt: skip
+#: What each form writes. `{tag}` stands before it on its line.
+ANALYSIS_WRITTEN = {
+    "as listed": ("Fisher's exact test",), "possessive dropped": ("Fisher exact test",),
+    "curly possessive": ("Holm\N{RIGHT SINGLE QUOTATION MARK}s correction",),
+    "in capitals": ("KRUSKAL-WALLIS",), "in lower case": ("kaplan-meier",),
+    "hyphen as a space": ("Mann Whitney",), "hyphen as an en dash": ("Mann\N{EN DASH}Whitney",),
+    "hyphen as two": ("Kolmogorov--Smirnov",), "across a line": ("logistic\nregression",),
+    "plural": ("t tests", "t-tests"), "a name in capitals": ("ANOVA",),
+    "a name in capitals in lower case": ("anova", "gee"),
+    "a look-alike": ("Holmes", "Waldorf", "Coxswain", "Spearmint", "Fisherman"),
+    "in a binding": ("{{results.bootstrap.ci}}",), "in a citation": ("[@holm1979]",),
+    "in code": ("`jackknife()`",), "in a comment": ("<!-- a Wilson interval -->",),
+    "in maths": ("a $\\chi^2$ test", "a $\\chi^{2}$ test"),
+    "a word of another field": ("kappa light chains", "NF-kappa B", "reporting propensity"),
+    "a name too loose for the results": ("a Wilcoxon test",),
+}  # fmt: skip
+#: Each place a name of a method may stand, and the part G9 reads it as: the Methods, the
+#: Results, or None for neither. The name is Fisher's exact test, Holm's or the bootstrap,
+#: drawn each time, but in the last place, which names both of Wilcoxon's tests in the Methods.
+ANALYSIS_PLACES = {
+    "methods": "methods", "results": "results", "a heading under the results": "results",
+    "a subsection of the methods": "methods", "abstract": None, "introduction": None,
+    "discussion": None, "the supplement's methods": "methods",
+    "the supplement's results": "results", "the supplement's tables": None,
+    "a name loose enough for the methods only": "methods",
+    "a full name the loose one opens": "methods", "another full name it opens": "methods",
+}  # fmt: skip
+#: What the Methods write in those two places, and the methods each names.
+ANALYSIS_LOOSE = {
+    "a name loose enough for the methods only": (
+        "the Wilcoxon test", ("mann-whitney", "wilcoxon-signed-rank")),
+    "a full name the loose one opens": ("the Wilcoxon rank-sum test", ("mann-whitney",)),
+    "another full name it opens": ("the Wilcoxon signed-rank test", ("wilcoxon-signed-rank",)),
+}  # fmt: skip
+#: The plain names a place is planted with, and their methods.
+ANALYSIS_PLAIN = (("Fisher's exact test", "fisher-exact"), ("Holm's correction", "holm"),
+                  ("a bootstrap", "bootstrap"))  # fmt: skip
+
+
+@st.composite
+def analysis_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, set[tuple[str, str]]]]:
+    """A paper with an Abstract, an Introduction, Methods (with a subsection),
+    Results (with a heading under them) and a Discussion, and a file of its supplement with
+    Methods, Results and tables of its own; each line of the Results holding a name of a method
+    written in each way of `ANALYSIS_FORMS`, and a plain name in each place of
+    `ANALYSIS_PLACES`, each line opening with a tag of its own ("t07"). And what G9 reads of
+    each tag: each method it names and the part, for those it reads."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    parts: dict[str, list[str]] = {name: [] for name in (
+        "abstract", "introduction", "methods", "pilot", "results", "secondary", "discussion",
+        "s methods", "s results", "s tables")}  # fmt: skip
+    expected: dict[str, set[tuple[str, str]]] = {}
+    for kind in draw(st.permutations(tuple(ANALYSIS_FORMS))):
+        tag = next(tags)
+        written = draw(st.sampled_from(ANALYSIS_WRITTEN[kind]))
+        parts["results"].append(f"{tag} compared by {written} here.")
+        if ANALYSIS_FORMS[kind] is not None:
+            expected[tag] = {(ANALYSIS_FORMS[kind], "results")}
+    where = {"methods": "methods", "results": "results",
+             "a heading under the results": "secondary",
+             "a subsection of the methods": "pilot", "abstract": "abstract",
+             "introduction": "introduction", "discussion": "discussion",
+             "the supplement's methods": "s methods", "the supplement's results": "s results",
+             "the supplement's tables": "s tables",
+             "a name loose enough for the methods only": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods"))),
+             "a full name the loose one opens": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods"))),
+             "another full name it opens": draw(st.sampled_from(
+                 ("methods", "pilot", "s methods")))}  # fmt: skip
+    for kind in draw(st.permutations(tuple(ANALYSIS_PLACES))):
+        tag = next(tags)
+        if kind in ANALYSIS_LOOSE:
+            name, named = ANALYSIS_LOOSE[kind]
+        else:
+            name, method = draw(st.sampled_from(ANALYSIS_PLAIN))
+            named = (method,)
+        parts[where[kind]].append(f"{tag} compared by {name} here.")
+        if ANALYSIS_PLACES[kind] is not None:
+            expected[tag] = {(method, ANALYSIS_PLACES[kind]) for method in named}
+
+    def run(lines: list[str]) -> str:
+        return "\n".join(draw(st.permutations(lines))) if lines else "The data were given."
+
+    abstract = run(parts["abstract"])
+    if draw(st.booleans()):
+        abstract = f"## Methods\n\nReports were given.\n\n## Results\n\n{abstract}"
+    return (
+        f"# Abstract\n\n{abstract}\n\n# Introduction\n\n{run(parts['introduction'])}\n\n"
+        f"# Methods\n\n{run(parts['methods'])}\n\n## Statistical analysis\n\n"
+        f"{run(parts['pilot'])}\n\n# Results\n\n{run(parts['results'])}\n\n"
+        f"## Secondary outcomes\n\n{run(parts['secondary'])}\n\n"
+        f"# Discussion\n\n{run(parts['discussion'])}\n",
+        f"# Supplementary methods\n\n{run(parts['s methods'])}\n\n"
+        f"# Supplementary results\n\n{run(parts['s results'])}\n\n"
+        f"# eTable 1. Counts\n\n{run(parts['s tables'])}\n",
+        expected,
+    )
+
+
+#: Each kind of paragraph a Markdown file holds, and whether G3 warns that it points at a line
+#: or a curve it never names (`caption-line-unnamed`). Every kind is in every example.
+CAPTION_KINDS = {
+    "a legend, pointed": True, "a legend, pointed in capitals": True,
+    "a legend, the curves pointed at": True, "a legend opened with a ref": True,
+    "an image's caption, pointed": True, "a table's caption, pointed": True,
+    "a legend, the line of something": False, "a legend, the line at a value": False,
+    "a legend, the line in brackets": False, "a legend, a style between": False,
+    "a legend, a line named before": False, "a legend, a line with no place": False,
+    "prose, pointed": False, "prose opened with a pointer": False,
+    "a legend, the line and its equation": False, "a legend, the area under the curve": False,
+}  # fmt: skip
+#: The words that say where something stands against a mark.
+CAPTION_PLACES = ("below", "above", "under", "to the left of", "right of", "beyond", "across")
+
+
+@st.composite
+def caption_papers(draw: st.DrawFn) -> tuple[str, set[str]]:
+    """A Markdown file holding a paragraph of each kind of `CAPTION_KINDS`, in an order drawn
+    each time, each tagged with a word of its own ("t07") on the line that points, a legend
+    opened with "Figure 2." or "**Table 3.**" as drawn. And the tags G3 warns of."""
+    tags = iter(f"t{at:02d}" for at in range(100))
+    paragraphs: list[str] = []
+    warned: set[str] = set()
+    for kind in draw(st.permutations(tuple(CAPTION_KINDS))):
+        tag = next(tags)
+        place = draw(st.sampled_from(CAPTION_PLACES))
+        opens = draw(st.sampled_from(("Figure 2.", "**Table 3.**", "Fig. 4:", "eFigure 1.")))
+        mark = draw(st.sampled_from(("line", "lines")))
+        said = {
+            "a legend, pointed": f"{opens} Points {tag} {place} the {mark} are kept.",
+            "a legend, pointed in capitals": f"{opens} POINTS {tag} {place.upper()} THE LINE.",
+            "a legend, the curves pointed at": f"{opens} Counts {tag} {place} the curves.",
+            "a legend opened with a ref": f"{{{{ref.figure.f{tag}}}}}. Points {tag} {place} "
+            f"the {mark} are kept.",
+            "an image's caption, pointed": f"![Points {tag} {place} the {mark}.](f{tag}.png)",
+            "a table's caption, pointed": f"| a | b |\n|---|---|\n| x | y |\n\nTable: Rows "
+            f"{tag} {place} the {mark} are totals.",
+            "a legend, the line of something": f"{opens} Points {tag} {place} the {mark} of "
+            "equal shares.",
+            "a legend, the line at a value": f"{opens} Points {tag} {place} the {mark} at 1.",
+            "a legend, the line in brackets": f"{opens} Points {tag} {place} the {mark} (y = x).",
+            "a legend, a style between": f"{opens} Points {tag} {place} the dashed {mark}.",
+            "a legend, a line named before": f"{opens} The dashed line marks equal shares; "
+            f"points {tag} {place} the {mark} are kept.",
+            "a legend, a line with no place": f"{opens} The {mark} {tag} is the fitted trend.",
+            "prose, pointed": f"The points {tag} {place} the {mark} were kept.",
+            "prose opened with a pointer": f"Figure 2 shows points {tag} {place} the {mark}.",
+            "a legend, the line and its equation": f"{opens} Points {tag} {place} the {mark}"
+            + draw(st.sampled_from((" y = x.", " $y = 2x$.", "~(y = x)."))),
+            "a legend, the area under the curve": f"{opens} Models {tag} by the "
+            + draw(st.sampled_from(("area under the curve.", "areas under the curves."))),
+        }[kind]
+        paragraphs.append(said)
+        if CAPTION_KINDS[kind]:
+            warned.add(tag)
+    return "\n\n".join(paragraphs) + "\n", warned
+
+
 #: Each way a post may say the paper is out, or seem to, and whether `said_published`
 #: reads it as this paper said out (round 2 of #470). Every kind is in every example.
 PUBLISHED_KINDS = {
@@ -16145,6 +16643,11 @@ REFERENCE_LINES = (
     # As Word's conversion writes a title in a block quote, numbered and in capitals, one
     # with a bookmark on it, a link, and one a hard line break opens (the real-paper corpus).
     "> **11. REFERENCES**:", "[**References**](#_Ref89712232)", "**\\\nReferences**",
+    # A title in a block quote under a line of `>` alone, as pandoc writes the blank line
+    # between two quoted paragraphs, and "Literature" alone (Basile, 2026-11-27); and a title
+    # under a line of a carriage return alone, as a file written on Windows has it (round 1
+    # of #841).
+    ">\n> **11. REFERENCES**:", "**Literature**", "\r\n**Bibliography**",
 )  # fmt: skip
 #: Lines that only look like one: a sentence, the word in small letters, the word with a full
 #: stop, brackets that are no span (escaped, or before braces that hold no attributes);
@@ -16157,6 +16660,10 @@ NOT_REFERENCE_LINES = (
     "\\[References\\]{.underline}", "[References]{see below}",
     "[**References**](#_Ref1) were read by two pharmacists.",
     "> References were read by two pharmacists.",
+    "**Literature review**", "**Literature** was scarce.",
+    # "Literature" titling a section of prose, in bold and as a heading (Basile, 2026-11-28,
+    # "Only over entry-shaped lines").
+    "**2. Literature**", "## 2. Literature",
 )  # fmt: skip
 IN_A_PARAGRAPH = "in a paragraph"
 IN_A_LIST = "in a list"
@@ -16265,8 +16772,45 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
         listed.append(piece)
         # A word no rule takes for a list's, so that a lookalike taken for one there hides
         # what is read here.
-        passed.append(piece.replace("References", "Remarks").replace("references", "remarks"))
+        passed.append(piece.replace("References", "Remarks").replace("references", "remarks")
+                      .replace("Literature", "Remarks"))
     return "".join(listed) + "\n", "".join(passed) + "\n"
+
+
+#: "Literature" titling a section, as a heading and in bold, and what stands under it: entries
+#: of each shape the rule knows, an entry straight under an ATX heading, a quoted list under a
+#: line of the quote's marks alone, and prose (Basile, 2026-11-28, "Only over entry-shaped
+#: lines"; round 2 of #841). Each kind, `{n}` its number and `{said}` a sentence, and whether
+#: a reference list opens at its first line.
+LITERATURE_KINDS = {
+    "a heading over prose": ("## {n}. Literature\n\n{said}", False),
+    "a heading over an author-year entry": (
+        "## {n}. Literature\n\nAlmeida, F., & Smith, G. (2019). Word embeddings. arXiv.", True),
+    "a heading over a numbered entry": (
+        "## {n}. Literature\n\n1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.", True),
+    "a heading with an entry straight under it": (
+        "## Literature\n[1] Doe HA, Roe MB. Trials of drugs.", True),
+    "a bold line over prose": ("**{n}. Literature**\n\n{said}", False),
+    "a quoted bold line over a quoted entry": (
+        "> **Literature**\n>\n> 1. Doe HA, Roe MB. Trials of drugs. BMJ. 2020;1:2.", True),
+}
+
+
+@st.composite
+def literature_sections(draw: st.DrawFn) -> tuple[str, list[int]]:
+    """A manuscript holding each of `LITERATURE_KINDS` in an order drawn, each closed by a
+    section's heading, and the 0-based lines where a reference list opens: those of the kinds
+    over an entry, and none over prose."""
+    filler = st.lists(st.sampled_from(FILLER), min_size=3, max_size=8)
+    pieces, opened = ["# Introduction", " ".join(draw(filler)).capitalize() + "."], []
+    for number, kind in enumerate(draw(st.permutations(list(LITERATURE_KINDS))), start=1):
+        shape, listed = LITERATURE_KINDS[kind]
+        said = " ".join(draw(filler)).capitalize() + "."
+        if listed:
+            opened.append(sum(piece.count("\n") + 2 for piece in pieces))
+        pieces += [shape.replace("{n}", str(number)).replace("{said}", said),
+                   f"# Section {number}", said]  # fmt: skip
+    return "\n\n".join(pieces) + "\n", opened
 
 
 # ------------------------------------------------- the audit's entries, intervals and markers
@@ -17199,6 +17743,75 @@ def typed_citations(draw: st.DrawFn) -> tuple[str, list[tuple[int, int, str | No
             text += filled.get(part, part)
         text += draw(st.sampled_from((". ", ".\n", "; ")))
     return text, found
+
+
+# ------------------------------------------- a bibliography that prints every entry, G7
+
+#: Each way a LaTeX file asks, or seems to ask, for every entry (`gates/printed_entries.py`):
+#: the file's text with `{keys}` for a `\nocite`'s keys, `{s}` for spaces, and whether it
+#: asks. `{keys}` holds `*` among one single key or more, parted by commas and spaces.
+NOCITE_TEX = (
+    ("\\nocite{s}{*}", True),
+    ("\\nocite{s}{{keys}}", True),
+    ("\\AtBeginDocument{\\nocite{s}{{keys}}}", True),
+    ("\\newcommand{\\every}{\\nocite{{keys}}}", True),
+    ("50\\%{s}\\nocite{{keys}}", True),
+    ("%{s}\\nocite{{keys}}", False),
+    ("a line\\\\%{s}\\nocite{{keys}}", False),
+    ("\\nocite{s}{{one}}", False),
+    ("\\nocitemeta{{keys}}", False),
+    ("\\cite{{one}} and \\nocite{s}{{one}}", False),
+)
+#: Each way a Markdown file's front matter asks, or seems to ask, pandoc for every entry:
+#: the file's text with `{q}` for a quotation mark and `{one}` for single keys.
+NOCITE_MARKDOWN = (
+    ("---\nnocite: {q}@*{q}\n---\n", True),
+    ("---\nnocite: |\n  {one}, @*\n---\n", True),
+    ("---\nnocite: [{q}{one}{q}, {q}@*{q}]\n---\n", True),
+    ("---\nbase: &every\n  nocite: {q}[@*]{q}\n<<: *every\n---\n", True),
+    ("---\nnocite: {q}{one}{q}\n---\n", False),
+    ("---\nnocite: {q}me@*{q}\n---\n", False),
+    ("---\nnote: {q}@*{q}\n---\n", False),
+    ("---\ntitle: A study\n---\n\nnocite: '@*'\n", False),
+    ("---\n\nnocite: '@*'\n---\n", False),
+    # A YAML metadata block of the body, which the build passes to pandoc as it stands
+    # (round 1 of #835); not one where no blank line comes before it, nor one in a fence.
+    ("---\ntitle: A study\n---\n\nText.\n\n---\nnocite: {q}@*{q}\n---\n", True),
+    ("Text.\n\n---\nnocite: [{q}{one}{q}, {q}@*{q}]\n...\n", True),
+    ("---\ntitle: A study\n---\n\nText.\n---\nnocite: {q}@*{q}\n---\n", False),
+    ("Text.\n\n```\n\n---\nnocite: {q}@*{q}\n---\n```\n", False),
+)
+
+
+@st.composite
+def nocite_files(draw: st.DrawFn) -> tuple[list[tuple[str, bool]], list[tuple[str, bool]]]:
+    """A LaTeX file for each way of `NOCITE_TEX` and a Markdown file for each of
+    `NOCITE_MARKDOWN`, each with whether it asks for every entry, filler before and after
+    it: one of every kind in each example, so that a rule broken for one fails under any
+    seed."""
+    words = st.lists(st.sampled_from(FILLER), max_size=4).map(" ".join)
+    named = st.sampled_from(("smith2019", "lee2020", "ab12"))
+    keys = st.lists(named, max_size=2, unique=True)
+    some = st.lists(named, min_size=1, max_size=2, unique=True)
+
+    def around(text: str) -> str:
+        return f"{draw(words)}\n{text}\n{draw(words)}\n"
+
+    tex = []
+    for shape, asks in NOCITE_TEX:
+        listed = draw(some)
+        listed.insert(draw(st.integers(0, len(listed))), "*")
+        parted = draw(st.sampled_from((",", ", ", " ,")))
+        filled = (shape.replace("{keys}", parted.join(listed))
+                  .replace("{one}", ",".join(draw(keys)) or "smith2019")
+                  .replace("{s}", draw(st.sampled_from(("", " ")))))  # fmt: skip
+        tex.append((around(filled), asks))
+    markdown = []
+    for shape, asks in NOCITE_MARKDOWN:
+        one = ", ".join(f"@{key}" for key in draw(keys)) or "@smith2019"
+        filled = shape.replace("{q}", draw(st.sampled_from(("'", '"')))).replace("{one}", one)
+        markdown.append((filled + f"\n{draw(words)}\n", asks))
+    return tex, markdown
 
 
 # --------------------------------------------- an entry cited only as typed text, G7
@@ -20953,6 +21566,196 @@ def rewrapped(text: str, every: int = 3) -> str:
     return "\n".join(wrapped(line) for line in text.split("\n"))
 
 
+# ------------------------------------------------------- what a figure script names by number
+
+#: R's colour names with digits that a figure script names a colour by: grey and gray from
+#: 0 to 100, and a colour of `grDevices::colors()` followed by 1 to 4, in any case.
+_R_GREYS = ("grey", "gray", "Grey", "GRAY")
+_R_NUMBERED = ("red", "steelblue", "darkslategray", "lightgoldenrod", "antiquewhite", "Tomato")
+#: The same words in a label that only looks like a colour's name: not in capitals, which the
+#: prose rules read as a code's name ("GRAY604", as "CYP2C19") and pass in any figure.
+_LABEL_GREYS = ("grey", "gray", "Grey")
+#: The names a generated script gives its variables: letters only, so that a name holds no
+#: number of its own, none the plotting vocabulary knows (`parts` was layout, by `^par`), and
+#: each line its own.
+_SCRIPT_NAMES = ("edges", "fits", "counts", "rows", "cells", "levels", "breaks_at", "pieces",
+                 "shown", "kept", "drawn", "made", "held", "found", "taken", "given", "seen",
+                 "read", "left", "used", "named", "built")  # fmt: skip
+
+
+def _script_line(draw: st.DrawFn, kind: str, r: bool, names: list[str]) -> tuple[str, list[str]]:
+    """One line of a generated figure script of the `kind` drawn, and the numbers G3 reports
+    in it, in order. `names` hands out a name no other line of the script has."""
+    name = names.pop()
+    n = str(draw(st.integers(1, 9)))
+    if kind == "colour":
+        if r:
+            word, shade = draw(st.one_of(
+                st.tuples(st.sampled_from(_R_GREYS), st.integers(0, 100)),
+                st.tuples(st.sampled_from(_R_NUMBERED), st.integers(1, 4))))  # fmt: skip
+            return f'p <- p + geom_line(colour = "{word}{shade}")', []
+        return f'ax.plot(x, y, color="C{draw(st.integers(0, 19))}")', []
+    if kind == "not a colour":
+        if r:
+            drawn = draw(st.one_of(
+                st.tuples(st.sampled_from(_LABEL_GREYS), st.integers(101, 999)),
+                st.tuples(st.sampled_from(_R_NUMBERED), st.integers(5, 9)),
+                st.tuples(st.just("C"), st.integers(0, 9)),
+                st.tuples(st.sampled_from(_LABEL_GREYS), st.integers(0, 100).map(
+                    lambda shade: f"{shade} reports"))).map(lambda pair: f"{pair[0]}{pair[1]}"))
+            return f'p <- p + labs(title = "{drawn}")', re.findall(r"\d+", drawn)
+        grey = f"{draw(st.sampled_from(_LABEL_GREYS))}{draw(st.integers(0, 100))}"
+        return f'ax.set_title("{grey}")', re.findall(r"\d+", grey)
+    if kind == "subscript":
+        forms = (["{x}[{n}]", "{x}[[{n}]]", "{x}[-{n}]", "{x}[{n}L]", "sort({x})[{n}]"] if r
+                 else ["{x}[{n}]", "{x}[-{n}]", "{x}[0][{n}]", "sorted({x})[{n}]"])  # fmt: skip
+        index = draw(st.sampled_from(forms)).format(x=name, n=n)
+        return (f"{name}_one <- {index}" if r else f"{name}_one = {index}"), []
+    if kind == "not a subscript":
+        if r:
+            form = draw(st.sampled_from(["{x}[length({x}) - {n}]", "{x}[{n}, {n}]"]))
+            line = f"{name}_one <- {form.format(x=name, n=n)}"
+            return line, [n, n] if ", " in form else [n]
+        form = draw(st.sampled_from(["{x} = [{n}]", "{x} = [[{n}]]", "{x} = [{n}, {n}]"]))
+        return form.format(x=name, n=n), [n, n] if ", " in form else [n]
+    zero = draw(st.sampled_from(["0", "0L"])) if r else "0"
+    if kind == "status":
+        if r:
+            form = draw(st.sampled_from([
+                '{x} <- system2("python", "x.py"); if ({x} != {z}) stop()',
+                '{x} <- system("make"); stopifnot({x} == {z})',
+                '{x} <- processx::run("python", "x.py")$status; if ({z} != {x}) stop()',
+                '{x} <- processx::run("python", "x.py"); if ({x}$status != {z}) stop()',
+                '{x} <- run("python", "x.py"); if ({z} != {x}$status) stop()',
+                # The runs of sys and callr (round 2 of #817).
+                '{x} <- sys::exec_internal("x"); if ({x}$status != {z}) stop()',
+                'if (callr::rcmd("build", ".")$status != {z}) stop()',
+                'if (system2("python", "x.py") != {z}) stop()']))  # fmt: skip
+            return form.format(x=name, z=zero), []
+        form = draw(st.sampled_from([
+            "{x} = subprocess.call(['x'])\nif {x} != 0:\n    raise SystemExit",
+            "{x} = subprocess.run(['x'])\nif {x}.returncode != 0:\n    raise SystemExit",
+            "{x} = subprocess.run(['x']).returncode\nassert 0 == {x}",
+            "if os.system('x') != 0:\n    raise SystemExit"]))  # fmt: skip
+        return form.format(x=name), []
+    if kind == "status in a body":
+        # Round 1 of #817: in R, assigned inside braces, a function's body, `local()` or
+        # `tryCatch()`. Round 2: in Python, assigned straight after a block's colon.
+        if r:
+            form = draw(st.sampled_from([
+                '{x}_check <- function() {{ {x} <- system2("x"); if ({x} != {z}) stop() }}',
+                'local({{ {x} <- system2("x"); if ({x} != {z}) stop() }})',
+                'tryCatch({{ {x} <- processx::run("x"); if ({x}$status != {z}) stop() }}, '
+                "error = stop)"]))  # fmt: skip
+            return form.format(x=name, z=zero), []
+        opener = draw(st.sampled_from(["try:", "if {x}_wanted:", "for {x}_one in {x}_all:",
+                                       "with open('x') as {x}_file:", "class {x}_kept:",
+                                       "def {x}_check():"]))  # fmt: skip
+        form = (opener + "\n    {x} = subprocess.call(['x'])\n    if {x} != 0:\n"
+                "        raise SystemExit")  # fmt: skip
+        if opener == "try:":
+            form += "\nexcept OSError:\n    raise"
+        return form.format(x=name), []
+    if kind == "a column or a keyword's list":
+        # Round 1 of #817: a column called status is no run's, and a list after a keyword is
+        # no subscript.
+        if r:
+            form = draw(st.sampled_from(["p <- ggplot({x}[{x}$status == {z}, ], aes(time))",
+                                         "{x}_one <- subset({x}, {x}$status != {z})"]))
+            return form.format(x=name, z=zero), [zero]
+        form = draw(st.sampled_from(["if {x} in [{n}]:\n    raise SystemExit",
+                                     "def {x}_of():\n    return [{n}]"]))  # fmt: skip
+        return form.format(x=name, n=n), [n]
+    if kind == "a field or type's subscript":
+        # Round 3 of #817: in R, a field named by a keyword of Python's, after `$` or `@`; in
+        # Python, `type`, a soft keyword, subscripted. An index in either.
+        if r:
+            field = draw(st.sampled_from(["class", "from", "return", "is", "def", "with"]))
+            sign = draw(st.sampled_from(["$", "@"]))
+            return f"{name}_one <- {name}{sign}{field}[{n}]", []
+        return f"{name}_one = type[{n}]", []
+    # Not a status: another name compared with zero, a status compared with another number,
+    # and a status assigned as a call's argument, which is the call's and not the script's.
+    if r:
+        form, said = draw(st.sampled_from([
+            ("if ({x} != {z}) stop()", [zero]),
+            ('{x} <- system2("python", "x.py"); if ({x} == {n}) stop()', [n]),
+            ('f({x} = system2("x")); if ({x} != {z}) stop()', [zero])]))  # fmt: skip
+        return form.format(x=name, z=zero, n=n), said
+    form, said = draw(st.sampled_from([
+        ("if {x} == 0:\n    raise SystemExit", ["0"]),
+        ("{x} = subprocess.call(['x'])\nif {x} == {n}:\n    raise SystemExit", [n]),
+        ("f({x}=subprocess.call(['x']))\nif {x} != 0:\n    raise SystemExit", ["0"])]))  # fmt: skip
+    return form.format(x=name, n=n), said
+
+
+#: The kinds of line a generated figure script holds: three that name a colour, an index or
+#: an exit status by a number, and beside each what only looks like it; and a status and a
+#: lookalike written as round 1 of #817 found them, each a kind of its own, so that every
+#: example holds one.
+FIGURE_SCRIPT_KINDS = ("colour", "not a colour", "subscript", "not a subscript", "status",
+                       "not a status", "status in a body",
+                       "a column or a keyword's list", "a field or type's subscript")  # fmt: skip
+
+
+@st.composite
+def figure_scripts(draw: st.DrawFn) -> list[tuple[str, str, list[str]]]:
+    """A figure script in R and one in Python, each with a line of every kind of
+    `FIGURE_SCRIPT_KINDS`, more where drawn, in an order drawn, each given as its suffix, its
+    text and the numbers G3 reports in it, in the order of its lines. Both languages in every
+    example, so that no seed draws only one of them."""
+    scripts = []
+    for r in (True, False):
+        kinds = list(FIGURE_SCRIPT_KINDS) + draw(
+            st.lists(st.sampled_from(FIGURE_SCRIPT_KINDS), max_size=4))
+        names = list(draw(st.permutations(_SCRIPT_NAMES)))
+        lines = [_script_line(draw, kind, r, names) for kind in draw(st.permutations(kinds))]
+        text = "\n".join(line for line, _said in lines) + "\n"
+        scripts.append((".R" if r else ".py", text, [n for _line, said in lines for n in said]))
+    return scripts
+
+
+#: An SVG's parts as G3 reads it: what holds text it draws (`<text>`, alone and in a group),
+#: and what holds text it never draws: a stylesheet (svglite writes one first), a script,
+#: metadata (matplotlib's), and the values of attributes.
+SVG_PARTS = ("text", "grouped text", "style", "script", "title", "attributes")
+
+
+@st.composite
+def svg_figures(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """An SVG with a part of every kind of `SVG_PARTS`, more where drawn, in an order drawn,
+    and the text it draws, in document order: what G3 reads of a figure as what it shows."""
+    parts = list(SVG_PARTS) + draw(st.lists(st.sampled_from(SVG_PARTS), max_size=4))
+    body, drawn = [], []
+    for part in draw(st.permutations(parts)):
+        number = f"{draw(st.integers(0, 99))}.{draw(st.integers(0, 99)):02d}"
+        word = draw(st.sampled_from(FILLER))
+        said = draw(st.sampled_from([number, f"{word} {number}", word]))
+        if part == "text":
+            body.append(f"<text x='{number}' y='1.50' style='font-size: {number}px;'>{said}</text>")
+            drawn.append(said)
+        elif part == "grouped text":
+            body.append(f"<g transform='translate({number}, 2)'><text>{said}</text></g>")
+            drawn.append(said)
+        elif part == "style":
+            css = (f"line, path {{ stroke: #000000; stroke-miterlimit: {number}; }}\n"
+                   f"text {{ font-size: {number}px; }}")  # fmt: skip
+            body.append(draw(st.sampled_from([
+                f"<style type='text/css'><![CDATA[\n{css}\n]]></style>",
+                f"<defs><style type='text/css'>{css}</style></defs>"])))  # fmt: skip
+        elif part == "script":
+            body.append(f"<script type='text/javascript'>var width = {number};</script>")
+        elif part == "title":
+            body.append(f"<title>{said}</title>")
+        else:
+            body.append(f"<rect x='{number}' width='{number}' height='100%' "
+                        f"style='stroke-width: {number}; fill: #FFFFFF;'/>")  # fmt: skip
+    svg = ("<?xml version='1.0' encoding='UTF-8' ?>\n"
+           "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720.00 360.00'>\n"
+           + "\n".join(body) + "\n</svg>\n")  # fmt: skip
+    return svg, drawn
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "pdf paragraphs": pdf_layouts().map(lambda drawn: {"pages": drawn["pages"],
                                                        "head": drawn["head"]}),
@@ -21035,6 +21838,18 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "interpretation sentences": interpretation_papers().map(
         lambda drawn: {"text": drawn[0], "supplement": drawn[1]}
     ),
+    "discussion results": st.one_of(
+        discussion_papers().map(lambda drawn: {"text": drawn[0]}),
+        summaries().map(lambda text: {"text": text}),
+    ),
+    "analyses named": st.one_of(
+        analysis_papers().map(lambda drawn: {"text": drawn[0], "supplement": drawn[1]}),
+        texts().map(lambda text: {"text": text}),
+    ),
+    "caption lines": st.one_of(
+        caption_papers().map(lambda drawn: {"text": drawn[0]}),
+        texts().map(lambda text: {"text": text}),
+    ),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
     "communicate anchors": st.one_of(
         communication_texts().map(lambda drawn: {"text": drawn[0]}),
@@ -21065,6 +21880,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "typed citations": st.one_of(typed_citations().map(lambda drawn: drawn[0]), texts()),
     "typed references": st.one_of(typed_reference_papers().map(lambda drawn: drawn[0]), texts()),
+    "every entry printed": nocite_files().flatmap(
+        lambda drawn: st.sampled_from(
+            [{"text": text, "latex": True} for text, _asks in drawn[0]]
+            + [{"text": text, "latex": False} for text, _asks in drawn[1]])),
     "cited as typed": st.one_of(
         typed_only_papers().map(lambda drawn: {"bib": drawn[0], "text": drawn[1]}),
         texts().map(lambda text: {"bib": "", "text": text}),
@@ -21088,6 +21907,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "audit registration numbers": st.one_of(
         registration_papers().map(lambda drawn: drawn[0]),
         texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
+    ),
+    "doi title differs": st.tuples(doi_title_records(), st.integers(0, 17)).map(
+        lambda drawn: dict(zip(("entry", "title", "subtitle", "openalex"),
+                               drawn[0][drawn[1]][:4], strict=True))
     ),
     "audit displays": st.one_of(
         legend_displays().map(lambda drawn: drawn[0]),
@@ -21356,4 +22179,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         for kind, design in (("markdown", "trial"), ("latex", "trial"),
                              ("markdown", drawn[0]["other"]))])),  # fmt: skip
     "software in the methods": software_methods().map(lambda drawn: drawn[0]),
+    "figure script numbers": figure_scripts().flatmap(lambda drawn: st.sampled_from(
+        [{"suffix": suffix, "text": text} for suffix, text, _said in drawn])),
+    "figure svg text": svg_figures().map(lambda drawn: drawn[0]),
 }

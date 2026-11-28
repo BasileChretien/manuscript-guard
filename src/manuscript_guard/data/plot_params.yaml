@@ -177,3 +177,25 @@ data_constructors:
   - DataFrame
   - Series
   - array
+
+# Colours named with digits, which a string names a colour by and does not draw: `colour =
+# "grey50"`, `fill = "steelblue4"`, `color="C0"`. A string is read as one only where it is the
+# whole name, its case aside, so "grey50 reports" is drawn words.
+colour_names:
+  # R (`grDevices::colors()`, R 4.6.1): grey0 to grey100, gray0 to gray100, and each of these
+  # followed by 1, 2, 3 or 4, as "red3" and "steelblue4". R reads a name in any case.
+  r_grey: [grey, gray]
+  r_numbered: [
+    antiquewhite, aquamarine, azure, bisque, blue, brown, burlywood, cadetblue, chartreuse,
+    chocolate, coral, cornsilk, cyan, darkgoldenrod, darkolivegreen, darkorange,
+    darkorchid, darkseagreen, darkslategray, deeppink, deepskyblue, dodgerblue, firebrick,
+    gold, goldenrod, green, honeydew, hotpink, indianred, ivory, khaki, lavenderblush,
+    lemonchiffon, lightblue, lightcyan, lightgoldenrod, lightpink, lightsalmon,
+    lightskyblue, lightsteelblue, lightyellow, magenta, maroon, mediumorchid, mediumpurple,
+    mistyrose, navajowhite, olivedrab, orange, orangered, orchid, palegreen, paleturquoise,
+    palevioletred, peachpuff, pink, plum, purple, red, rosybrown, royalblue, salmon,
+    seagreen, seashell, sienna, skyblue, slateblue, slategray, snow, springgreen,
+    steelblue, tan, thistle, tomato, turquoise, violetred, wheat, yellow
+  ]
+  # matplotlib's colours of its property cycle, "C0", "C1", ..., in a Python script only.
+  python_cycle: '^C[0-9]+$'

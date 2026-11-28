@@ -15,7 +15,8 @@ table, `KINDS` (Basile, 2026-11-25):
 The self-citation counts stand in the summary line at the top, in no part, so that they are
 never read as a problem. Each kind of the first three parts says how often its findings were
 right on the corpus of published papers (`docs/corpus.md`) where ten or more were judged, and
-that it was not yet measured where not (the author's answer of 2026-11-25). A kind is said in
+that it was not yet measured where not (the author's answer of 2026-11-25); a record of
+fewer, from another measure, is shown as too few to rate (2026-11-27). A kind is said in
 the editor's words, with no gate and no option; the full report is the same audit without
 `--editor`. Three codes are parted by what the finding holds rather than by the code alone:
 `over-header-n` by its severity, G6's `model-artefact` by its rule, and `document-holds` by
@@ -49,7 +50,8 @@ SCOPE = ("This check reads the paper's numbers, its words and its reference list
 #: A record is the findings judged true of those judged, among those the report gives as a
 #: warning or a failure, or, for a kind the audit gives as a note, among its notes.
 RUN = "main-cc1af1f14"
-#: How many judged findings a record needs before it is shown.
+#: How many judged findings a record needs before it is shown as a rate; one of fewer is
+#: shown as too few to rate it (Basile, 2026-11-27).
 SHOWN_FROM = 10
 #: How many notes of one kind of what the check read are listed without `--details`.
 READ_LISTED = 5
@@ -194,6 +196,14 @@ KINDS: tuple[Kind, ...] = (
     Kind("identifier-unknown", ASK,
          "A DOI or PubMed ID that no registry knows: a typo, or a reference that does not "
          "exist.", _codes("G7", "doi-unregistered", "pmid-unknown", "not-found-as-printed")),
+    # Item 7b (Basile, 2026-11-26): the commonest fabricated citation, a real DOI with an
+    # invented title. Right in 1 of the 6 two readers judged on 100 PMC papers (2026-11-27),
+    # the others mostly a title given in translation: asked of the authors (Basile,
+    # 2026-11-27, "Ask the authors").
+    Kind("doi-title-differs", ASK,
+         "A reference whose DOI leads to a work with another title: a wrong DOI, a work that "
+         "does not exist as cited, or, most often on published papers, a title given in "
+         "translation.", _codes("G7", "reference-title-differs"), record=(1, 6)),
     Kind("not-found-by-title", ASK,
          "An article with no DOI that Crossref could not find by its title and first author.",
          _codes("G7", "not-found-by-title")),
@@ -377,6 +387,8 @@ def record_said(kind: Kind) -> str:
     if kind.record is None:
         return "Not yet measured on published papers."
     true, judged = kind.record
+    if judged < SHOWN_FROM:
+        return f"Right in {true} of {judged} judged on published papers: too few to rate it."
     return f"Right in {true} of {judged} judged on published papers."
 
 

@@ -55,8 +55,8 @@ stage: design
 # target_journal: journal-of-examples
 
 # The study's design: the plan is asked for its sections, each from its guideline item.
-# One of cohort, case-control, cross-sectional, diagnostic-accuracy, case-report,
-# self-controlled, disproportionality, trial, systematic-review, prediction-model or other.
+# cohort, case-control, cross-sectional, diagnostic-accuracy, case-report, case-series,
+# self-controlled, disproportionality, trial, systematic-review, prediction-model, other.
 # study_type: cohort
 
 reporting_guideline: []
@@ -404,6 +404,79 @@ def init_project(root: Path, title: str = UNTITLED, *, latex: bool = False,
         )
     root = Path(root).resolve()
     created: list[Path] = []
+    title = checked_title(title, latex=latex)
+    latex_title = ""
+    if latex:
+        from manuscript_guard.build.latex_values import escaped
+
+        latex_title = escaped(title, "title")
+    from manuscript_guard.gates.numbers import source_files
+
+    manuscript = root / "manuscript"
+    # The files the gates read: a draft set aside under `_drafts/` is none (round 1 of step 12).
+    if latex and source_files(manuscript):
+        raise ContractError(f"{manuscript} holds a Markdown manuscript, and a LaTeX one beside "
+                            "it would be read by no gate; nothing was made")  # fmt: skip
+    files = dict(_FILES)
+    if latex:
+        del files["manuscript/main.md"]
+        files["manuscript/main.tex"] = LATEX_MANUSCRIPT
+    for name in _DIRS:
+        (root / name).mkdir(parents=True, exist_ok=True)
+
+    for name, template in files.items():
+        path = root / name
+        if path.exists():
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        written = _filled(template, title, english, latex_title)
+        # Not through format(): a paper's text holds braces of its own.
+        if name == "manuscript/main.md" and text is not None:
+            written = _header(title) + text
+        if name == "authors.yaml" and authors is not None:
+            written = authors
+        if name == "AGENTS.md" and latex:
+            written = _in_latex(written)
+        path.write_text(written, encoding="utf-8", newline="\n")
+        created.append(path)
+
+    keep = root / "results" / ".gitkeep"
+    if not keep.exists():
+        keep.write_text("", encoding="utf-8", newline="\n")
+
+    if latex:
+        created += _values_written(root)
+    return created
+
+
+def _filled(template: str, title: str, english: str | None, latex_title: str = "") -> str:
+    """A file `init` writes, with the title and the English in it.
+
+    The title is typed into `paper.yaml` as a JSON string, whose escapes are YAML's: between
+    quotation marks typed around it as it stood, a backslash in it began an escape, which
+    `check` refuses and the author never wrote, and a quotation mark ended it. The
+    manuscript's own header keeps the title as it stands, between the quotation marks that
+    give it back: see `_header`."""
+    return template.format(
+        title=title,
+        quoted=json.dumps(title, ensure_ascii=False),
+        header=_header(title),
+        latex_title=latex_title,
+        english=UNDECLARED if english is None else f"english_variant: {english}",
+    )
+
+
+def paper_text(title: str, english: str | None = None) -> str:
+    """The `paper.yaml` `init` writes for `title` and `english`, the title as `checked_title`
+    gives it: what `setup` edits before a project is made, to show what it would write."""
+    return _filled(PAPER, title, english)
+
+
+def checked_title(title: str, *, latex: bool = False) -> str:
+    """`title` as `init` writes it, or `ContractError` with why it cannot be one.
+
+    Refused before anything is made, so that `setup` can say so while the authors are still
+    answering, as `init` says it before it writes a file."""
     # On one line, and a tab as a space: what the build prints for each. Written into
     # `paper.yaml` as its escape, a tab before a letter is what `check` reports as a letter
     # lost, in a file the author did not type.
@@ -431,62 +504,14 @@ def init_project(root: Path, title: str = UNTITLED, *, latex: bool = False,
             f"the title is not taken, so nothing was made: {said}. Note that {KEEP_THE_TEX}"
         )
 
-    latex_title = ""
     if latex:
         from manuscript_guard.build.latex_values import NotPrintable, escaped
 
         try:
-            latex_title = escaped(title, "title")
+            escaped(title, "title")
         except NotPrintable as exc:
             raise ContractError(f"the title is not taken, so nothing was made: {exc}") from exc
-    from manuscript_guard.gates.numbers import source_files
-
-    manuscript = root / "manuscript"
-    # The files the gates read: a draft set aside under `_drafts/` is none (round 1 of step 12).
-    if latex and source_files(manuscript):
-        raise ContractError(f"{manuscript} holds a Markdown manuscript, and a LaTeX one beside "
-                            "it would be read by no gate; nothing was made")  # fmt: skip
-    files = dict(_FILES)
-    if latex:
-        del files["manuscript/main.md"]
-        files["manuscript/main.tex"] = LATEX_MANUSCRIPT
-    for name in _DIRS:
-        (root / name).mkdir(parents=True, exist_ok=True)
-
-    for name, template in files.items():
-        path = root / name
-        if path.exists():
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # The title is typed into `paper.yaml` as a JSON string, whose escapes are YAML's:
-        # between quotation marks typed around it as it stood, a backslash in it began an
-        # escape, which `check` refuses and the author never wrote, and a quotation mark
-        # ended it. The manuscript's own header keeps the title as it stands, between the
-        # quotation marks that give it back: see `_header`.
-        written = template.format(
-            title=title,
-            quoted=json.dumps(title, ensure_ascii=False),
-            header=_header(title),
-            latex_title=latex_title,
-            english=UNDECLARED if english is None else f"english_variant: {english}",
-        )
-        # Not through format(): a paper's text holds braces of its own.
-        if name == "manuscript/main.md" and text is not None:
-            written = _header(title) + text
-        if name == "authors.yaml" and authors is not None:
-            written = authors
-        if name == "AGENTS.md" and latex:
-            written = _in_latex(written)
-        path.write_text(written, encoding="utf-8", newline="\n")
-        created.append(path)
-
-    keep = root / "results" / ".gitkeep"
-    if not keep.exists():
-        keep.write_text("", encoding="utf-8", newline="\n")
-
-    if latex:
-        created += _values_written(root)
-    return created
+    return title
 
 
 def _values_written(root: Path) -> list[Path]:

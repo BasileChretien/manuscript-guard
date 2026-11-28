@@ -595,6 +595,73 @@ def _interpretation_sentences() -> Reading:
     return argued
 
 
+@reading("discussion results")
+def _discussion_results() -> Reading:
+    """The results keys a file binds in its Discussion, each with the title of the heading
+    that names the Discussion and its line, as G8 reads them (`discussion-not-reported`), and
+    whether the file has a Results section, without which they are not read."""
+    from manuscript_guard.gates.reported import DISCUSSION_CODE, Walk
+
+    def discussed(given: dict[str, Any]) -> dict[str, Any]:
+        assert DISCUSSION_CODE
+        walk = Walk(None)
+        walk.read(given["text"])
+        return {"discussed": [[one.key, one.heading, one.line] for one in walk.discussed],
+                "has results": walk.has_results}  # fmt: skip
+
+    return discussed
+
+
+@reading("analyses named")
+def _analyses_named() -> Reading:
+    """Each method of `data/statistical_methods.yaml` a file names in its Methods or its
+    Results, with its line and the part, and a file of its supplement's, as G9 reads them;
+    and the methods the Results name and the Methods never do (`analysis-not-in-methods`)."""
+    from manuscript_guard.gates.analyses_named import (
+        Named,
+        named_in,
+        paper_parts,
+        supplement_kinds,
+        unnamed_in_methods,
+    )
+    from manuscript_guard.gates.reported import Walk
+
+    def named(given: dict[str, Any]) -> dict[str, Any]:
+        found = {}
+        every = []
+        for part, text in (("paper", given["text"]), ("supplement", given.get("supplement", ""))):
+            starts, kinds = (paper_parts(text, Walk(None)) if part == "paper"
+                             else supplement_kinds(text))  # fmt: skip
+            read = named_in(text, starts, kinds)
+            found[part] = [[method, line, kind] for method, line, _at, _words, kind in read]
+            every += [Named(method, MAIN, line, at, words, kind)
+                      for method, line, at, words, kind in read]  # fmt: skip
+        found["unexplained"] = [one.method for one, _times in unnamed_in_methods(every)]
+        return found
+
+    return named
+
+
+@reading("caption lines")
+def _caption_lines() -> Reading:
+    """The line each caption of a Markdown file starts on, as G3 finds its captions, and for
+    each caption that points at a line or a curve it never names, the line of the place and
+    the words that point (`caption-line-unnamed`)."""
+    from manuscript_guard.gates.caption_marks import markdown_captions, unnamed
+
+    def pointed(given: dict[str, Any]) -> dict[str, Any]:
+        captions = markdown_captions(given["text"], MAIN, "the caption")
+        warned = []
+        for caption in captions:
+            found = unnamed(caption.read)
+            if found is not None:
+                line = caption.line + caption.typed.count("\n", 0, found.start())
+                warned.append([line, " ".join(caption.typed[found.start():found.end()].split())])
+        return {"captions": [caption.line for caption in captions], "warned": warned}
+
+    return pointed
+
+
 class _Shown:
     """A value as a reading of the boxes needs it: its display alone."""
 
@@ -836,6 +903,19 @@ def _cited_as_typed() -> Reading:
             return cited_as_typed([given["text"]], works_by(path))
 
     return cited
+
+
+@reading("every entry printed")
+def _every_entry_printed() -> Reading:
+    from manuscript_guard.gates.printed_entries import every_entry_printed
+
+    def printed(given: dict[str, Any]) -> bool:
+        """Whether a manuscript file asks for every entry of the bibliography, read as its
+        format is: what keeps G7's warnings for each entry nothing cites, where they are
+        otherwise one note."""
+        return every_entry_printed([given["text"]], latex=given["latex"])
+
+    return printed
 
 
 @reading("typed references")
@@ -1449,6 +1529,24 @@ def _registration_named() -> Reading:
         registry, kept = identify(given["id"])
         entry = Declared(given["id"], kept, registry, None, (), False, 0)
         return named_in(blank_comments(given["text"]), entry)
+
+    return read
+
+
+@reading("doi title differs")
+def _doi_title_differs() -> Reading:
+    from manuscript_guard.auditing.references import NUMBERED, Entry, _title_differs
+
+    def read(given: dict[str, str]) -> list[str]:
+        """What `audit --lookup` says of a numbered entry whose DOI's record Crossref holds
+        with the title and subtitle given (`auditing.references._title_differs`): the
+        message, or nothing where the record holds enough of the entry's title."""
+        entry = Entry("entry 1", 1, 1, dois=("10.5555/given.1",), text=given["entry"])
+        answers = {"crossref": {"status": "found", "title": given["title"],
+                                "subtitle": given["subtitle"] or None}}  # fmt: skip
+        if given.get("openalex"):
+            answers["openalex"] = {"status": "found", "title": given["openalex"]}
+        return [problem.message for problem in _title_differs(entry, answers, None, NUMBERED)]
 
     return read
 
@@ -3634,6 +3732,43 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 
 def _changed(before: dict[str, bytes], after: dict[str, bytes]) -> set[str]:
     return {name for name in {*before, *after} if before.get(name) != after.get(name)}
+
+
+# ------------------------------------------------------------------------- figures (G3)
+
+
+@reading("figure script numbers")
+def _figure_script_numbers() -> Reading:
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figure_source import check_figure_source
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        """What G3 says of a figure script's source, given as its suffix (`.R`, `.py`) and its
+        text: each finding with its line and what it says, the file named by its name alone,
+        and the counts."""
+        with tempfile.TemporaryDirectory() as folder:
+            script = Path(folder) / f"figure{given['suffix']}"
+            script.write_bytes(given["text"].encode("utf-8"))
+            told = _told(check_figure_source(script, Classifier.load()))
+        for finding in told["findings"]:
+            finding["path"] = finding["path"] and Path(finding["path"]).name
+        return told
+
+    return read
+
+
+@reading("figure svg text")
+def _figure_svg_text() -> Reading:
+    from manuscript_guard.gates.figures import _extract_text
+
+    def read(svg: str) -> str | None:
+        """The text of an SVG figure as G3 reads it for the numbers it draws."""
+        with tempfile.TemporaryDirectory() as folder:
+            figure = Path(folder) / "figure.svg"
+            figure.write_bytes(svg.encode("utf-8"))
+            return _extract_text(figure)
+
+    return read
 
 
 # -------------------------------------------------------------------------- the round trip

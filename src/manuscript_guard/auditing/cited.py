@@ -35,6 +35,7 @@ from typing import Any
 
 from manuscript_guard.auditing.references import BY_PLACE, NUMBERED, Census, Entry
 from manuscript_guard.auditing.sentences import View
+from manuscript_guard.findings import INFO
 
 #: The suffixes `--cited` writes, and what each is written as.
 FORMATS = {".md": "markdown", ".markdown": "markdown", ".html": "html", ".htm": "html"}
@@ -267,12 +268,17 @@ def registry_of(looked) -> Registry:
         found = answer.get("year") or next((years[k] for k in ("issued", "print", "online",
                                                                "posted") if k in years), None)
         year = year or (str(found) if found else "")
-    if looked.problems:
-        standing = "; ".join(p.message for p in looked.problems)
+    # A note of a title is said after the work's standing, as a note, with its record
+    # (round 1 of #846).
+    loud = [p for p in looked.problems if p.severity != INFO]
+    if loud:
+        standing = "; ".join(p.message for p in loud)
     elif looked.known:
         standing = "no registry said it was retracted, withdrawn or under concern"
     else:
         standing = "no registry that answered knows it"
+    standing += "".join(f"; a note: {p.message}" + (f" ({p.hint})" if p.hint else "")
+                        for p in looked.problems if p.severity == INFO)  # fmt: skip
     return Registry(title, year, standing)
 
 

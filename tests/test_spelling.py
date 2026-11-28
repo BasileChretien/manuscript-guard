@@ -1144,23 +1144,42 @@ def test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word(project: Path) 
 @pytest.mark.parametrize(
     ("text", "words"),
     [
-        ("The value was high.\n\n    color = tumor\n\nDone.", ["color", "tumor"]),
-        ("See <code>color</code> here.", ["color"]),
-        ("<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
-        ('<span class="x"\nstyle="color: red">The value</span> was high.', ["color"]),
-        # the other side: in backticks, in a fence, and a tag on one line are left alone
-        ("See `color` here.", []),
-        ("```\ncolor = tumor\n```\n\nDone.", []),
-        ('<span class="x" style="color: red">The value</span> was high.', []),
+        ("# Methods\n\nSee <code>color</code> here.", ["color"]),
+        ("# Methods\n\n<style>\np { color: red; }\n</style>\n\nThe value was high.", ["color"]),
+        ('# Methods\n\n<span class="x"\nstyle="color: red">The value</span> was high.',
+         ["color"]),
+        # other indented code, which pandoc reads as code: inside a list item or a footnote,
+        # straight under a heading, and a block whose first line opens with `>` (rounds 4
+        # and 5 of #841)
+        ("# Methods\n\n- The value was high.\n\n        color = tumor", ["color", "tumor"]),
+        ("# Methods\n\nThe ratio was low.[^1]\n\n[^1]: The note.\n\n        color = tumor",
+         ["color", "tumor"]),
+        ("# Methods\n    color = tumor", ["color", "tumor"]),
+        ("# Methods\n\nThe value was high.\n\n    > color = tumor", ["color", "tumor"]),
+        # prose to pandoc: a line indented straight under a paragraph is the paragraph's, and
+        # an item's paragraph indented four spaces is the item's (round 6 of #841)
+        ("# Methods\n\nThe value was high.\n    color = tumor\n\nDone.", ["color", "tumor"]),
+        ("# Methods\n\n- The value was high.\n\n    color = tumor", ["color", "tumor"]),
+        # the other side: in backticks, in a fence, in a block set off by a blank line and
+        # four spaces after a paragraph at the margin, outside a list item or a footnote
+        # (#841), and a tag on one line are left alone
+        ("# Methods\n\nSee `color` here.", []),
+        ("# Methods\n\n```\ncolor = tumor\n```\n\nDone.", []),
+        ("# Methods\n\nThe value was high.\n\n    color = tumor\n\nDone.", []),
+        ('# Methods\n\n<span class="x" style="color: red">The value</span> was high.', []),
     ],
 )
-def test_only_code_in_backticks_or_a_fence_is_left_alone(
+def test_code_in_backticks_a_fence_or_an_indented_block_is_left_alone(
     project: Path, text: str, words: list[str]
 ) -> None:
     """A known gap (DESIGN.md, Known gaps, "G14's spelling is a list of general English"):
-    a block set off by four spaces is read, and so is `<code>color</code>`, the CSS inside a
-    `<style>` block and a tag whose attributes run on to a second line."""
-    _, found = written(project, f"# Methods\n\n{text}\n")
+    code in backticks or a fence, and a block set off by a blank line and four spaces after a
+    paragraph at the margin, outside a list item or a footnote, are left alone. Other
+    indented code may be read, for instance code indented inside a list item or a footnote,
+    a block straight under a heading, or a block whose first line opens with `>`, `+` or
+    `|`; and `<code>color</code>`, the CSS inside a `<style>` block and a tag whose
+    attributes run on to a second line are read."""
+    _, found = written(project, f"{text}\n")
     assert reported(found) == words
 
 

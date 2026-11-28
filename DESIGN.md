@@ -606,6 +606,24 @@ The presentation list is deliberately narrow. `x`, `y`, `n` and `digits` are **n
 because allowing bare coordinates would allow `data.frame(x = c(1, 2, 3))` — data typed
 into a figure script, which gets its own error message.
 
+Three readings are neither drawn nor data, and pass whatever surrounds them, as the
+bisphosphonates paper's R figures showed (2026-11-26). A string that is, whole, one of R's
+colour names with digits in an R script (`"grey50"`, `"steelblue4"`: grey and gray 0 to 100,
+and a `grDevices::colors()` name followed by 1 to 4, in any case), or matplotlib's `"C0"`,
+`"C1"` and so on in a Python one, names a colour. A number that is the whole subscript of a
+bracket after a name, a call or another subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and
+not after a keyword (`x in [3]`, `return [3]`), unless the word is a field's (`d$class[1]`),
+is an index. A zero compared by `==` or `!=` with a process's exit status is the test of
+whether it failed: a name the script assigns, at the top level or inside braces (a
+function's body, `local({ })`, `tryCatch({ })`) but not as a call's argument, from
+`system2()`, `system()`, `os.system()` or `subprocess.call()`, or from a `.returncode` or a
+run's `$status`; a run being processx's `run()`, with its package or without, sys's
+`exec_internal()`, or callr's `rcmd()`, `rcmd_safe()` or `rscript()`; and any of those
+written in place. A `$status` of anything else, a data frame's column, is read as before.
+A rendered SVG's `<style>` and `<script>` draw nothing either, so their text is not read as
+the figure's (svglite writes `stroke-miterlimit: 10.00` in every one); the blind check still
+reads them, for a name.
+
 **The marks the script computes.** Labels drawn from the results say nothing about the marks.
 `sns.barplot` draws a bootstrap 95% interval of the mean unless told not to, with no seed;
 `stat_summary` draws a mean and its standard error, `geom_smooth` a fitted line and its
@@ -2141,7 +2159,7 @@ The result is compiled and packed by the code above, and checked three times:
 - An encoding set in a file of ASCII is held to the files of its tree, not to a file nothing
   inputs, which TeX does not read (2026-10-23).
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
-  in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
+  in a definition's body is not, and G7 says that its key is cited nowhere (round 1 of
   step 5).
 - `sync-bib` and `lookup` refuse a LaTeX manuscript the reader refuses anywhere, since the
   keys after the refusal are not read (round 1 of step 5; `lookup` since round 1 of #626,
@@ -2740,7 +2758,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     is refused, and one LaTeX found in its distribution is left as it was. A `.bib` the document
     names (`references.bib` from `literature/`, as the build puts it beside the entry) is cut
     to the cited entries, those their `crossref` and `xdata` name, and every `@string` and
-    `@preamble`; `\nocite{*}` keeps every entry. The cited keys are the reader's and those
+    `@preamble`; a `\nocite{*}` the reader or the `.aux` records keeps every entry. The cited keys are the reader's and those
     the build's `.aux` holds, so that a citation a macro makes keeps its entry, and keys are
     matched without case, as BibTeX matches them; biblatex's `xref`, `related` and
     `entryset` are followed too (round 1). A file the folder holds under another name than
@@ -3064,6 +3082,39 @@ verified. The schemas of both files now refuse a blank or all-space field (`sour
 `locator` and `quote` in the ledger; `source`, `locator`, `statement` and `attested_by`
 in `attested.yaml`), and a value that reaches the gates without a source all the
 same is `literature-source-missing` and counted as failed.
+
+**An entry nothing cites is one note for its file, where only the cited works print.**
+BibTeX, biblatex and pandoc's citeproc print the works a citation names and no other, unless
+told to print them all, so an entry of `references.bib` nothing cites never reaches the paper.
+On the tuning corpus at `main-c94aa0bcf`, a warning for each was 3,365 of `check`'s loud
+findings in 31 reports, 1,982 of them in one LaTeX paper, and they buried the rest. Such
+entries are now one note, `bib-entries-uncited`, which counts them among the file's entries,
+says that the bibliography prints only the works cited, and lists their keys; its key names
+the file (`G7|bib-entries-uncited|references.bib|-`), so it stays one finding however the
+list grows (Basile, 2026-11-27, "One note per .bib"). Where the paper prints every entry,
+each one nothing cites reaches the printed list, and is a warning of its own as before
+(`gates/printed_entries.py`):
+
+- in LaTeX, a `\nocite` whose keys, parted at commas, hold `*`, outside a comment, in any
+  file the main text's or the supplement's document inputs. It is read in the file as typed,
+  so one the reader records nowhere counts too: in a hook (`\AtBeginDocument{\nocite{*}}`),
+  in a definition, or past a part the reader refuses. One the reader does record cites every
+  entry, so none is uncited.
+- in Markdown, a `nocite` whose text, or a string in whose list, holds `@*`, its own or
+  merged in with `<<`, as pandoc reads it: in the front matter of a file under
+  `manuscript/`, or in a YAML metadata block of its body (`masking.metadata_blocks`), which
+  the build passes to pandoc as it stands (round 1 of #835).
+
+A `\nocite{smith2019}`, or `nocite: '@smith2019'`, cites that key and asks for no other: the
+key is cited, and the note goes on listing the rest. An entry cited only as typed text keeps
+its own note, which says what `sync-bib` would do, and is not listed in the file's. The note
+counts and lists entries alone: an `@string`, an `@preamble` or an `@comment` names no work,
+and is neither in it nor warned of. In a LaTeX paper an entry two cited entries name in
+`crossref`, or in biblatex's `xref`, is printed by BibTeX and biblatex (`min-crossrefs`,
+`mincrossrefs` and `minxrefs`, 2 by default), keys matched without case, so where only the
+works cited print it is left out of the note and not warned of; one a single cited entry
+names stays in it. Where every entry prints, it is warned of like any other. Pandoc's
+citeproc prints no such entry, so a Markdown paper's note lists it (round 1 of #835).
 
 **A reference's identifiers are read offline.** Nothing read `references.bib` but for its
 keys, so a DOI typed "1016/j.…" without its "10.", a PMID written "PMID: 12345678", an
@@ -5471,6 +5522,33 @@ hide every undefined AE, the adverse events, so "AEs were frequent" is still rep
 funding or of interests alone names no initials, since their capitals are institutions as
 often as people, and JAMA's "Additional contributions", its acknowledgements, is one of
 those; Known gaps says where one is read as a contributions statement.
+
+**Where a Word paper's parts begin and end (Basile, 2026-11-27, after the loud
+`abbreviation-used-before-defined` findings judged false on the corpus's Word papers).** These
+are readings every gate that finds the part shares. A reference list's title in a block quote
+opens the list under a line of `>` alone as under a blank line, which is how pandoc writes the
+blank line between two quoted paragraphs of a Word document, "> **11. REFERENCES**:"; and
+"Literature" alone titles a list, as a German paper has it, where the paragraph under it is
+shaped like an entry (`text/reference_lists.py`; Basile, 2026-11-28, "Only over entry-shaped
+lines"; over prose it is a section's title), so that G14, G4's word counts, the recycling
+check and the gates that pass a list over read none of its entries. A heading set in bold
+as a whole, "### **Abstract**", names the Abstract, and only whole, so "### **Abstract
+reasoning tasks**" does not (`section_names.names_abstract`), for every reader of the
+Abstract. An APA manuscript repeats
+its title in bold to open its Introduction, with no heading: G14 ends the Abstract at a
+paragraph wholly in bold, in it and after some of its text, that repeats a paragraph of four
+words or more standing before it, the title as typed, inside the comment `init --from` sets
+the title page aside in or not, or a title typed as a heading, its attributes aside, or held
+in front matter as YAML reads it (decision D6; rounds 1 and 2 of #841), so the Introduction's definitions are the main text's; the
+title in bold as the Abstract's first paragraph opens it and ends nothing. A paper's
+Highlights, under "Highlights", "Research highlights", "Key points" or "Key messages", owe
+no definition, as a keywords section does, a journal printing them beside the Abstract
+(decision D4: the Abstract's definitions still do not serve the main text). And an indented
+code block, lines indented four spaces or a tab after a blank line, not inside a list item,
+its marker and how far its paragraphs are indented read as pandoc's fancy_lists reads them,
+nor inside a footnote or a table, is
+hidden as a fenced one is (`language._views`, which G15 and the code names
+share), so R pasted into a Word paper's appendix is no prose.
 
 **The title page is not read** (Basile, 2026-11-12, after the audit of his paper reported
 "INSERM U1237", "UMR-S", "CHU de Caen Normandie", "PhIND" and "GIP Cyceron" as used and not
@@ -8562,6 +8640,82 @@ limit or a negation with no word of the ladder claims nothing to count, and a he
 sentence. A binding of a result, of a value from the literature or of a display's number is
 something to rest on; an anchor of the Methods, which points at the code, is not.
 
+## Every reader can follow the paper
+
+The gates hold a paper's numbers to its analysis and its claims to its results. None held that
+a reader could follow it. On a real manuscript, a census that 29 internal rounds had read for
+its numbers, its consistency and its claims, one round of three readers with clarity remits
+(the whole paper for a reader new to it, the statistics for a reader without statistical
+training, the tables and figures alone) found about fifty problems, eight of them major:
+terms used before they were defined or in two senses, the abstract's among them; methods
+named with no plain gloss, and a test of the Results that the Methods never named; ranges
+left unlabelled beside shares expected by chance, read as intervals; claims "by
+construction" never explained; a result the Discussion interpreted that only the supplement
+reported; captions that left symbols, columns, the comparator and the correction of the P
+values unsaid, and one that pointed at "the line"; and a figure that drew the weakest
+comparison where the text's headline used the strictest, so that the figure overstated the
+result.
+
+Most of these are judgements: whether a term is defined, whether a gloss says enough,
+whether a display reads alone. A rule that guessed would be wrong as often as right, so they
+go where judgements go:
+
+- guidance, in the manuscript-writing skill's `references/clarity.md` (each reader's needs,
+  glosses that work for a reader without statistical training, how to fit definitions into an
+  abstract under its word limit, and which defects `check` finds) and in the methods-writer,
+  results-binding and figure-review skills; the figure review's `caption-agrees` asks whether
+  the figure draws the comparison the text headlines;
+- remits, in the review-panel skill's `references/remits.md`: a reader new to the paper and
+  statistics for a reader without statistical training, by either route; the displays alone,
+  by route A only, a fresh agent sent the rendered figures and the tables as built and nothing
+  of the text; and the abstract alone, which also asks which words its reader cannot
+  understand from it;
+- a third reader in the second round's starter panel (`plain-reader`), new to the paper and
+  without statistical training, whose remit names no figure, since no model is sent one and
+  G11 would warn (`figures-not-seen`).
+
+Three shapes can be read with few false alarms, and are checked. Each is a warning, or a
+note, at every stage: a new rule starts as one, until what it says of real papers is known.
+
+- **A result the Discussion gives** (G8, `gates/reported.py`). The Discussion's bindings are
+  read with the walk a summary's are read with, and held as a summary's are held, but by the
+  main text alone: a key the Methods or the Results bind, one declared the same quantity, or
+  one a placed table or figure prints, is reported; one only the supplement reports is a note
+  (`discussion-in-supplement`); one nothing reports, a warning (`discussion-not-reported`).
+  Read only where the paper has a Results section: a review with none weighs the work of
+  others in its Discussion. A conclusion under the Discussion is a summary's, held once.
+- **An analysis the Results name and the Methods never do** (G9, `gates/analyses_named.py`).
+  A list (`data/statistical_methods.yaml`) holds tests, corrections, intervals, resampling
+  methods and models, each under every name papers use for it; one the Results name, the main
+  text's or the supplement's, that the Methods name under none of its names, the main text's
+  or the supplement's, is a warning (`analysis-not-in-methods`) at its first use. The text is
+  read as `claims` reads it, so not in a binding, a citation or code, and the sections as G8
+  finds them (`Walk.parts`).
+- **A caption that points at a line it never names** (G3, `gates/caption_marks.py`): "below
+  the line", "right of the curves", with nothing between "the" and the mark and nothing after
+  it that says which, its equation ("y = x") among what does, in a caption that names no
+  line or curve any other way (`caption-line-unnamed`). "The area under the curve" is a
+  measure, and points at nothing. The captions read are a Markdown file's legends and tables'
+  captions as G14 finds them, an image's, a LaTeX file's `\caption`, and the caption the
+  analysis emits for a table.
+
+Not checked, and why:
+
+- A term used before it is defined. A paper's own terms are on no list, and G14 reads short
+  forms only. Declaring the terms in `paper.yaml` would let a gate find the first use, but
+  not whether the sentence there defines it.
+- A method with no gloss. What counts as a gloss, a clause, an apposition, the sentence
+  before, cannot be read from its shape without many false alarms; the statistics reader
+  judges it, and `analysis-not-in-methods` holds the one part that is exact.
+- A display's short form that only the text defines. G14 holds a display's own definitions
+  to its own uses (Basile, 2026-11-21, "Table stands alone"), and a use in a display that
+  defines nothing to the text's definition (`language._loose`), so such a use is defined.
+  Asking each display to define every form it uses would add a finding to a reading the
+  author settled then, so it is left to the displays reader (Basile, 2026-11-27, "Leave to
+  the reader").
+- A figure that draws a weaker comparison than the text headlines: only a reader who looks at
+  the figure sees what it draws.
+
 ## The boxes a journal prints beside the abstract
 
 Journals print short texts beside the abstract: Elsevier's highlights, JAMA's key points, the
@@ -10094,6 +10248,76 @@ agent never reads the skill that says so. `rules_to_add` prints the same for a r
 whose own `AGENTS.md` lacks the rules, and `example/AGENTS.md` is the same file, byte for
 byte.
 
+## A paper started in conversation: `setup`
+
+An agent told to "use manuscript-guard" for a new paper had `init` and five `set` keys to
+work with, and the rest by hand: it asked what it remembered to ask, left out the
+registration or the data's folder, and wrote `authors.yaml` as it understood the names it was
+given. The author had to read commands to know what had been done. Starting a paper is now a
+conversation whose questions the package decides and whose answers the package writes
+(brief of 2026-11-27): the author makes every decision, in question boxes where the agent tool
+has them and as numbered questions where it does not, and never types or reads a command.
+
+**Basile's answers** (question boxes, 2026-11-27; each the recommendation but the fifth):
+
+| Question | Answer |
+|---|---|
+| 1. The deterministic part | a new command, `setup`: `questions` lists what is open for the folder, `apply` writes the project from the answers, blanks only |
+| 2. The skill that leads | project-setup, its guidance per question under `references/`; guide's `start` hands over to it |
+| 3. The answers | kept as `design/setup.yaml`, committed: a dated record nothing gates on, from which an interrupted conversation resumes |
+| 4. When they are written | all at once, after one read-back and one yes |
+| 5. The study's design, ten options for a box of four | the author describes the study, and the agent offers the three that fit best and "None of these" |
+| 6. The analysis language | recorded, and the machine checked for it; no starter script |
+| 7. Where the data are | each answer routed, and the data kept out of git where they may not be published |
+| 8. The journal | asked at setup, "later" allowed |
+| 9. The authors | names, affiliations and the corresponding author now; funding, interests, roles, statistician and ethics lead last, each skippable |
+| 10. Another language than English | allowed, with what holds said |
+| 11. A project under way | the same conversation, its blanks only |
+| 12. The repository | git, public or private, the workflow, each asked where it applies |
+
+**Questions.** `setup.ask(folder, answers)` is a pure function of what the folder holds
+(`setup.read_folder`: `paper.yaml`'s settings, whether `authors.yaml` is still the
+placeholder, the papers in the folder, the languages of `analysis/`, the repository, the
+profiles `set target_journal` takes) and of the answers so far. Each question is one decision,
+named by the place in `design/setup.yaml` its answer is written at (`language`, `data.where`),
+in a fixed order (`setup.questions.QUESTIONS`). It is open where neither settles it; it waits
+where it turns on another still open (the guidelines on the design, the roles on the authors,
+the data's folder on where the data are); it is known where the folder has decided it; and it
+is not asked where it does not apply. Its options are values that may be written there, each
+with what it changes, and an option is recommended only where the folder or a rule gives one:
+the one Word paper in the folder, the one guideline of a design, drafting for a paper written
+already. An answer is held to the schema (`setup.schema.json`) and then to what a schema
+cannot say (an ORCID iD's check digit, an author named for a role, a data folder inside the
+project and not one of the toolkit's own, a title `init` would refuse); one that fails keeps
+its question open with the reason.
+
+**Answers in a file.** The agent writes the answers with its file tools, so that no title, name
+or affiliation passes through a shell, whose quoting differs between PowerShell, `cmd.exe` and
+a POSIX shell; and the file is the record a later session resumes from.
+
+**Apply.** Nothing is written while a question is open. Then every edit of `paper.yaml` is run
+on the text it will be made from (the file as it is, or as `init` writes it,
+`scaffold.paper_text`) and read back, and `authors.yaml` is written as text and read back as the
+authors given and held to its schema, before anything touches the disk; one refused stops all
+of it with the files as they were, as do a Word paper with no pandoc to bring it in and a
+`paper.yaml` that `set` would refuse to replace (read-only, a link). Then, in order: `init`
+(or `init --from` a Word paper, whose authors' file is replaced by the answers', since it was
+made in the same run), so that a conversion refused writes nothing, then `git init`, the
+settings through `paper_edit` (`edit`, and `edit_child` and `edit_block`, which keep every
+comment as `set` does), the title in the manuscript's header where that is `init`'s own,
+`authors.yaml`, the journal's profile from the template, `.gitignore`,
+the workflow, and the date in the record. A setting held already is never replaced: it is kept
+and said, and a change is `set`'s, with its guard. `--dry-run` says the same list and writes
+nothing. Then the machine is asked for what the analysis language needs (`setup.tools`: R with
+`jsonlite`, `digest` and `manuscriptguard`, with a time limit), and the steps that follow are
+named with their skills (`setup.steps`), a step only a person may take (registering the vault)
+said to be theirs.
+
+**The skill.** project-setup runs the loop: `setup questions --json`, the questions put, the
+answers written, again until `ready`, the read-back from `apply --dry-run`, one yes, `apply`,
+then the steps handed on. guide hands a folder with no project to it rather than putting
+`next`'s `start` choice, whose options stay for an agent that has no skill.
+
 ## The commands are listed in six groups
 
 By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
@@ -10682,6 +10906,24 @@ other than the one run.
   - Before this run the command in `docs/agent-tools.md` found no case: `claude plugin eval`
     reads a suite only from inside the plugin. `tools/run_skill_evals.py` now runs it from
     a copy.
+- **2026-11-27, the default model of `claude` on the machine (the report names none),
+  Claude Code 2.1.310, the plugin of #844 at 031cea1, its tree clean.** One case,
+  route-project-setup, once, with the plugin only (`--ablation none`): $0.32 at API prices,
+  run under a subscription (Basile's choice, once its description changed).
+  - Routing: the skill fired.
+  - The judged outcome failed, three votes of three. The case grants no shell and no way to
+    write a file, so the reply said it could not run `setup questions` or write the answers;
+    it listed every decision it would put, the study's design asked by a description and
+    three designs among them, chose none, and described the loop. The criterion asked for
+    the questions put, or the command named, and the reply named the tool's questions
+    without the command. The criterion now passes a reply that says it cannot run commands
+    and lists the decisions as the questions it will put, deciding none.
+  - Run again on the same day with that criterion, at ea8096e ($0.31): the skill fired and
+    the outcome passed, three votes of three. The reply said it could not run commands, put
+    the first four questions (the title, the study described in the author's words for three
+    designs to be offered, how the paper is written, the English), named
+    `manuscript-guard setup questions --json` for the author to run in the meantime, and chose
+    none of them.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
 finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of
@@ -10696,8 +10938,8 @@ refused. What the project is made of, its bindings and its emitter calls, still 
 toolkit in use to either arm, as any project made with it would, so the difference between
 the arms is what a skill adds to a model reading such a project. Four routing cases still
 start empty, and so do the near misses and the requests no skill is for:
-- project-setup starts a project, and may give the `init` command where it has no shell to
-  run it;
+- project-setup starts a project in conversation, and where it has no shell says so and
+  lists the questions it will put (since #844);
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt
   gives none;
 - analysis-plan is about the plan before any analysis code, and the example has both.
@@ -11232,10 +11474,23 @@ hosting.
 
 Pyodide runs the wheel unchanged; its release ships every dependency built for WebAssembly,
 `rpds-py` included. On a `.docx`, `audit` starts a program in one place only, pandoc, for G6
-and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each release. So
-the package has two places for a page and no more: `from_word.runner`, which runs pandoc
-another way where it is set, and `lookup.http.default_transport`, which sends one
-XMLHttpRequest under Pyodide; `manuscript_guard.web` holds both. Every file comes from the
+and G14 (`from_word._pandoc`), and pandoc publishes a WebAssembly build of each release. On a
+PDF it starts poppler's `pdftotext`, in each order and with each word's place, and `pdfinfo`
+for the Author field, from three modules (`auditing.pdf`, `auditing.pdf_layout`,
+`proof.reading`), each through `subprocess.run`. The page runs poppler 26.11.0 built for
+WebAssembly, the npm package `@ai-ecoverse/wasm-poppler` pinned by its SHA-512 (Basile,
+2026-11-26, after a trial on 20 papers of the robustness sweep: its text was native poppler
+24.04's in layout order on 17, and the findings the same on 14 but for the version named).
+Rather than a seam in each of them, the page gives Pyodide the two programs as a
+computer has them: a file of each name first on PATH, which `shutil.which` finds, and a
+`subprocess.run` that runs either in WebAssembly, in a fresh instance each time, and gives
+back what it printed as `subprocess.run` would (`web.program_runner`). The code that reads a
+PDF is then the command line's, unchanged, and gives each program the arguments it gives it
+on a computer. So the package has three places for a page and no more: `from_word.runner`,
+which runs pandoc another way where it is set, `lookup.http.default_transport`, which sends
+one XMLHttpRequest under Pyodide, and `web.install_programs`, which is the only code that
+replaces `subprocess.run`, and only under Pyodide, where it starts nothing;
+`manuscript_guard.web` holds all three. Every file comes from the
 page's own origin, so that its Content-Security-Policy names no host but its own and the seven
 registries `--lookup` asks, and a test holds that list to `lookup.run.Services` and
 `auditing.registration.asked_at`.
@@ -17604,13 +17859,17 @@ guideline's own page on the day of its pull request, as the file requires, and
 `choose-study-type` offers the design. STROBE, STARD 2015 and, since 2026-11-27, CARE 2013
 have recipes; SRQR and COREQ need one each, with their licences read. A case series here is a descriptive series
 of patients, not the self-controlled case series, which `self-controlled` already covers
-(labelled "self-controlled design (case series or case-crossover)"); its label says so, and
-which guideline it answers to is read before its entry is written.
+(labelled "self-controlled design (case series or case-crossover)"); its label,
+"descriptive case series", says so. No guideline is written for case series in every
+field, so G5 takes PROCESS 2023, written for surgical case series, or Kempen 2011, for
+uncontrolled case series, and its sections cite PROCESS 2023 (Basile, 2026-11-27).
 
 `gates/design.py` named cross-sectional surveys, case series and reports, and qualitative
 studies among the studies `other` covers; the first of them is a design of its own since
 #801, and case reports since 2026-11-27, their plans not asked for an analysis or
-deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
+deviations, which a case report has no use for (`not_asked`; Basile, 2026-11-27), and
+descriptive case series since 2026-11-28, whose plans are asked for all seven (Basile,
+2026-11-27). `other` stays, for a narrative review and the rest. A project that chose `other` keeps it: nothing writes to its `paper.yaml`, and the author
 may `set study_type` to a new design.
 
 `choose-study-type` also gains a sentence beside each option saying what makes a study that
@@ -17647,8 +17906,11 @@ the study (answer 5).
 
 ### Not verified
 
-- The pages, items and licences of SRQR and COREQ, and which guideline a case series
-  answers to. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
+- The pages, items and licences of SRQR and COREQ. A descriptive case series answers to
+  PROCESS 2023 (Int J Surg 2023, PMC10720832, CC BY-NC-ND 4.0), read at Europe PMC on
+  2026-11-28, whose Table 3 gives its items, or to Kempen 2011 (Am J Ophthalmol, PMC3052978),
+  whose full text Europe PMC's service does not return, so its checklist was not read for
+  this design; no guideline written for case series in any field was found. CARE's checklist was read on its own page on 2026-11-27: thirteen items, the
   site showing a CC BY-NC badge beside a copyright page that reserves all rights, and the
   2013 article that publishes it CC BY-NC-ND 3.0 at Europe PMC (PMC3833570). STROBE's checklist for cross-sectional studies was read on its own page on
   2026-11-26 (#801): cited by item, its site giving a copyright line and no licence.
@@ -18331,6 +18593,46 @@ to fix is pinned until the fix lands, and the fix changes its test.
   one. Literature values (`lit.`) are not looked for: an abstract may give the background
   it rests on.
   Pinned by `tests/test_corruption.py::test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display`.
+- **A result the Discussion gives is looked for as a summary's is** (`gates/reported.py`,
+  `discussion-not-reported`). It takes that reading's limits: a display printed whole in a
+  placed table's cells or a figure's text reports a key by coincidence, and the supplement
+  reports a key it binds or prints anywhere. A paper with no Results heading is not read for
+  it at all. Pinned by
+  `tests/test_corruption.py::test_a_result_the_discussion_gives_is_looked_for_where_a_summary_s_is`.
+  - A result the Discussion interprets in words, with no number bound, is not seen, nor one
+    it binds under a second key the analysis emitted for it without `same_as`. Accepted.
+- **`analysis-not-in-methods` reads names from a list** (`data/statistical_methods.yaml`). A
+  method the list does not hold says nothing, and a name the Methods give only to say the
+  method was not used, or a surname standing alone ("Cox", "Holm"), counts as naming it.
+  Accepted.
+  - The Abstract, the Introduction and the Discussion are not read, since they name the
+    methods of other studies too. Pinned by
+    `tests/test_corruption.py::test_an_analysis_the_results_name_is_one_the_methods_name`.
+  - A heading that names the Results and the Discussion together, "Results and discussion",
+    is the Results', so a method of another study it names is held to this paper's Methods
+    (round 1 of #826). Accepted.
+  - A word another field uses for something else is read as the method where the list keeps
+    it: "E-value" in a sequence search, "imputed" genotypes. "Kappa" and "propensity" alone
+    name their methods in the Methods only for that reason, so a Results "(κ = 0.52)" is
+    not read; and a name too loose to say which method the Results used, "the Wilcoxon
+    test", names each it may be in the Methods, unless it opens a full name there, and none
+    in the Results, where it is not warned of. Pinned by
+    `tests/test_corruption.py::test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning`.
+  - An emitted table's caption is not read, nor a figure's text: a method named only there
+    is not looked for in the Methods. Accepted.
+- **`caption-line-unnamed` reads one shape** (`gates/caption_marks.py`): a line or a curve
+  pointed at by where something stands against it ("below the line"), with "the", "these",
+  "those", "this" or "that" directly before the mark. "The dashed line" names its style and
+  is not warned of, though nothing may say what it marks; a caption that names one line and
+  points at "the line" where two are drawn is not warned of either; and a band, a bar or an
+  area pointed at so is not read. Pinned by
+  `tests/test_corruption.py::test_a_caption_that_points_at_a_line_says_which_line_it_is`.
+  - A Markdown figure's caption is read only as a legend that opens with its pointer, typed or
+    bound ("{{ref.figure.forest}}."), or as an image's; a paragraph under a figure that opens
+    otherwise is no caption to the build either. Accepted.
+- **The second starter round's plain reader reads no figure.** Its remit asks for tables that
+  stand alone and names no figure, since a model is sent none; the displays alone, figures
+  included, are a remit read by route A, which `review --run` never reads. Accepted.
 - **A paper with no Results heading reports under every heading that names no part.** A
   section of a review's own that is really an introduction ("The problem of arrests"), a
   discussion ("What this means for regulators") or a summary is read as reporting, so a
@@ -19592,6 +19894,35 @@ Added by the adversarial review, verified and **not** fixed:
   as a difference, not as the environment: the dictionary is data.
   Pinned by `tests/test_corruption.py::test_a_typed_dictionary_release_fails_and_only_beside_its_name`
   and `tests/test_emit.py::test_a_release_file_that_does_not_open_with_a_version_is_refused`.
+- **G3's script check passes three readings by their form alone.** Pinned by
+  `tests/test_figures.py::test_a_string_that_is_no_colour_name_is_still_read`.
+  - A colour is known by its whole name and the script's language only: R's spelling with a
+    space (`"grey 50"`, which R reads) and a grey level matplotlib takes as a string
+    (`color="0.5"`) are read as drawn numbers, while a label that is, whole, one of R's names
+    (`labs(title = "red3")`) is taken for a colour and its number is not read. Pinned by
+    `tests/test_figures.py::test_a_colour_named_with_digits_draws_no_number`.
+  - An index is a whole literal subscript only: `edges[n - 1]`, `d[1, 2]` and a slice
+    (`edges[1:3]`) are read as numbers bound to nothing, and so is the subscript of a name
+    that is a keyword in either language and no field's (`from[1]` in R, whose `from` is
+    a keyword of Python's). A soft keyword
+    of Python's is read as a name, so `case [3]:` is taken for an index and its number is
+    not read: the tokens do not say whether `match` or `case` opens a statement (round 2
+    of #817). Pinned by
+    `tests/test_figures.py::test_a_number_beside_a_subscript_is_still_read` and
+    `tests/test_figures.py::test_a_number_that_is_a_whole_subscript_is_an_index`.
+  - An exit status is known by the calls that return one, by `.returncode`, and by the
+    `$status` of a run (processx's `run()`, sys's `exec_internal()`, callr's `rcmd()`,
+    `rcmd_safe()` and `rscript()`, sys's and callr's with their package written, so
+    `library(callr)` then `rcmd()` is no run): R's `system2(stdout = TRUE)` and
+    `system(intern = TRUE)`, which return the output, are taken for a status, and so is the
+    `$status` of a function of the script's own called `run`; while `Popen(...).wait()`, a
+    status returned by a function of the script's own, one assigned in a function's argument,
+    one in an annotated assignment (`rc: int = subprocess.call(...)`, read as assigning to
+    `int`, since the tokens hold no line breaks and a block's colon before `rc =` reads the
+    same way), a run kept by another call (`res <- tryCatch(processx::run(...))`) and one
+    kept in a list's item (`results[[i]]$status`) are not, and their zero is read. Pinned by
+    `tests/test_figures.py::test_a_zero_compared_with_an_exit_status_is_no_number` and
+    `tests/test_figures.py::test_a_zero_compared_with_anything_else_is_still_read`.
 - **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
   an SVG is accepted if it equals *any* results display, not the one that belongs at that
   position — so a forest plot labelled with the right value against the wrong outcome passes.
@@ -19727,13 +20058,13 @@ Added by the adversarial review, verified and **not** fixed:
 - **A design's sections are found by the words of their headings.** "Comparator" is any
   heading that holds the word, so a plan with "Choice of comparator drug" under its Exposure
   has the section, and one that answers the question under a heading of its own words has
-  not. Ten designs are named, a case report the last added; a design outside
-  them (a narrative review, a descriptive case series, a qualitative study,
+  not. Eleven designs are named, a descriptive case series the last added; a design
+  outside them (a narrative review, a qualitative study,
   a target trial emulation as a design of its own) takes
   `study_type: other`, which settles `next`'s choice of design and keeps the seven sections,
   with no guideline asked for by the design. A design is added only with sections that each
   cite their guideline item: "One set of plan questions, answered before the data or quoted
-  from a draft" (above) plans case series and qualitative
+  from a draft" (above) plans qualitative
   studies, and a narrative review, held to SANRA, could follow. A cross-sectional study's
   sampling and measurement are found only by words those sections alone use (sampling,
   recruitment, selection of participants, survey weights; measurement, instrument,
@@ -19755,7 +20086,14 @@ Added by the adversarial review, verified and **not** fixed:
   plan is not asked for its analysis or its deviations (`not_asked`), since it describes
   one patient's care, which followed no protocol (Basile, 2026-11-27); a plan of one changed
   after its first results is still told to say so under Deviations, which it may then
-  hold (round 1 of #840). The author answers such a false alarm, for any design and any section but
+  hold (round 1 of #840). A descriptive case series' sections are found by words they
+  alone use: case selection, identification or finding, consecutive, recruitment;
+  follow-up; a comparator, a comparison with, to or against something, a comparison
+  group, historical or external controls, a benchmark, or "Comparison" as the whole
+  heading; consent, ethics. So the comparisons an analysis makes, "Statistical
+  comparisons", "Multiple comparisons" or "Comparison of outcomes between groups", are
+  not its comparison, and a "Patient selection" or "Length of observation" heading names
+  none of them (round 1 of #849). The author answers such a false alarm, for any design and any section but
   the Deviations, by naming the section on the heading: its attribute block's identifier,
   the section's name with a hyphen for each space (`## Study sample {#sampling}`), makes it
   the section's whatever its words, and the warning says which identifier. G12's check of the plan's
@@ -19773,6 +20111,8 @@ Added by the adversarial review, verified and **not** fixed:
   `tests/test_corruption.py::test_the_patient_is_the_population_where_the_heading_is_the_patient_whole`,
   `tests/test_corruption.py::test_a_case_report_section_is_found_by_its_own_words`,
   `tests/test_corruption.py::test_a_case_report_plan_is_asked_for_its_consent_and_never_for_an_analysis`,
+  `tests/test_corruption.py::test_a_case_series_section_is_found_by_its_own_words`,
+  `tests/test_corruption.py::test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared`,
   `tests/test_properties.py::test_a_section_its_design_sets_aside_is_never_asked_whatever_the_plan_holds`,
   `tests/test_study_types.py::test_a_design_sets_aside_only_sections_of_the_seven_and_says_why`,
   `tests/test_corruption.py::test_the_deviations_are_found_by_their_words_and_never_named`,
@@ -23798,6 +24138,16 @@ Open, recorded as each change landed:
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its
   recipe would be one to download and use, not to share. Accepted.
+- **A descriptive case series is held to a surgical guideline or to one with no recipe.**
+  No guideline is written for case series in every field, so the design names PROCESS
+  2023, written for surgical case series, and Kempen 2011, for uncontrolled case series,
+  and G5 accepts either. Neither has a recipe: PROCESS 2023's Table 3 can be read with
+  the `jats-table` format, from Europe PMC's full text under CC BY-NC-ND 4.0, and is
+  planned; Kempen 2011's full text is not served by Europe PMC, and its article states no
+  open licence. So a paper that declares either is told its checklist is not retrieved.
+  The design's four sections cite PROCESS 2023, whose items on preparing the patient for
+  the intervention (6g), the operator (6j) and the variation between operators (6k) a
+  series outside surgery answers as not applying. Accepted.
 - **CARE's recipe reads the 2013 article's table, not the checklist on CARE's site.** The
   checklist file writes its sub-items as "a)", each on a row of its own with bullet rows
   under some, which no recipe option reads. Table 1 of the statement paper (Global
@@ -26200,10 +26550,13 @@ Open, recorded as each change landed:
   - A file's name written in a sentence and not set as code is read up to its last word:
     in "tumor-color.csv" the gate reads "tumor".
     Pinned by `tests/test_spelling.py::test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word`.
-  - Of code, only what is set in backticks or in a fence is left alone. A block set off
-    by four spaces is read, and so is `<code>color</code>`, the CSS inside a `<style>`
-    block, and a tag whose attributes run on to a second line.
-    Pinned by `tests/test_spelling.py::test_only_code_in_backticks_or_a_fence_is_left_alone`.
+  - Code in backticks or a fence, and a block set off by a blank line and four spaces after
+    a paragraph at the margin, outside a list item or a footnote (#841), are left alone.
+    Other indented code may be read, for instance code indented inside a list item or a
+    footnote, a block straight under a heading, or a block whose first line opens with `>`,
+    `+` or `|`. `<code>color</code>`, the CSS inside a `<style>` block, and a tag whose
+    attributes run on to a second line are read.
+    Pinned by `tests/test_spelling.py::test_code_in_backticks_a_fence_or_an_indented_block_is_left_alone`.
   - The title, the short title and the keywords come from `paper.yaml` and are not read.
     Nor is a caption written as an image's description, `![Color of each tumor](...)`;
     a table's caption under `Table:` is.
@@ -26349,9 +26702,7 @@ Open, recorded as each change landed:
     Pinned by `tests/test_notation.py::test_a_binding_in_a_sentence_is_a_number_whatever_it_holds`.
   - A table typed into the manuscript is read with the prose, so its own compact
     notation, "n=12" in a header, counts against the text's.
-    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
-  - A block set off by four spaces is read, as it is for the spelling.
-    Pinned by `tests/test_notation.py::test_a_typed_table_and_an_indented_block_are_read_with_the_prose`.
+    Pinned by `tests/test_notation.py::test_a_typed_table_is_read_with_the_prose`.
   - The hook that runs after a manuscript file is saved does not run this reading. Accepted.
 
 - **G14 reads a name from the code by its shape, and a key or a variable by its spelling.**
@@ -28069,18 +28420,22 @@ Open, recorded as each change landed:
   not hold is gone; the file's header says to import it into Zotero first. An entry no
   citation was made a key of is `reference-uncited` to G7: a note that `sync-bib` would drop
   it where the manuscript cites it as typed text in brackets, as exactly its names and year
-  (Basile, 2026-11-23 and 2026-11-24), and otherwise a warning, whose hint says to give a
-  citation in words its key, to delete the entry by hand only if the work really is not
-  cited, and not to use `sync-bib` for that. Accepted.
+  (Basile, 2026-11-23 and 2026-11-24). Otherwise it is cited nowhere: one of the entries the
+  file's one note `bib-entries-uncited` lists, where the bibliography prints only the works
+  cited, and a warning of its own where it prints every entry (Basile, 2026-11-27, "One note
+  per .bib"; "An entry nothing cites is one note for its file" above). Either hint says to
+  give a citation in words its key, to delete the entry by hand only if the work really is
+  not cited, and not to use `sync-bib` for that. Accepted.
 - **G7 counts a typed citation for an entry only in brackets, as exactly its names and
   year.** A citation in the sentence, "Smith (2020) showed", is not read at all (Basile,
   2026-11-24): what stands before the bracket cannot be told from a longer name ("Garcia
   Smith", "zur Smith"). In brackets, a part, the bracket's content or one `;`-separated piece
   of it where every piece is text, a comma and a year, counts where it is the entry's
   names as the import renders them, a comma and the year, with only a page or further years
-  after it. Every other citation leaves the entry a warning that nothing cites it, though a
-  reader sees that something does, and whose hint says to give such a citation its key,
-  since `sync-bib` would drop the entry: a piece beside one that is no citation ("*d* =
+  after it. Every other citation leaves the entry cited nowhere, though a reader sees that
+  something does: listed in the file's note, or a warning where the list prints every entry,
+  either with a hint that says to give such a citation its key, since `sync-bib` would drop
+  the entry: a piece beside one that is no citation ("*d* =
   0.17; Smith, 2020", "BDI; Smith, 2020"), words before the name
   ("e.g., Smith, 2020", "ABC, Smith, 2020", "A. Smith, 2020"), no comma before the year, the
   names in another order than the list's ("Smith, Lee & Jones" for Smith, Jones and Lee),
@@ -28829,6 +29184,47 @@ What papers converted from Word showed (see "What papers converted from Word sho
   to a skill, so a person-only code among them (an attestation that is thin, say) makes
   every warning of that skill `who: author`, those an agent may put right among them.
   Pinned by `tests/test_guide.py::test_one_person_only_warning_makes_its_group_the_authors`.
+
+- **That the answers in `design/setup.yaml` are the authors' is the skill's guidance, not a
+  check.** `setup` decides which questions are open and writes only what the file holds; that
+  an agent asked each one, rather than wrote what it guessed of a name or a design, nothing
+  can see. The read-back and the one yes before `apply` are the skill's too. Accepted.
+- **The three designs offered are the agent's pick.** `study_type` carries `shortlist: 3`
+  (Basile, 2026-11-27): the agent chooses which three of the designs to show from the author's
+  description of the study, and a poor reading shows three that do not fit. "None of these"
+  lists the rest, so the author can still choose any of them.
+  Pinned by `tests/test_setup.py::test_the_study_design_is_offered_whole_for_a_shortlist_of_three`.
+- **A blank is read narrowly.** A setting is blank where `paper.yaml` does not hold it or holds
+  `init`'s own value (no title or `Untitled manuscript`, `stage: design`, no guideline), and
+  `authors.yaml` where it is missing or still `init`'s placeholder as YAML reads it. An
+  `authors.yaml` a person began, one placeholder field left in it, is not blank and is not
+  asked. A title is written into a project under way only where the manuscript's header is
+  `init`'s own or there is none: one typed by hand keeps the placeholder in `paper.yaml`. An
+  answer that differs from a setting held is kept and said, never written.
+  Pinned by `tests/test_setup.py::test_a_project_under_way_has_only_its_blanks_filled`,
+  `tests/test_setup.py::test_filled_authors_are_kept_and_not_asked`
+  and `tests/test_setup.py::test_a_manuscript_with_a_title_of_its_own_keeps_the_placeholder_in_paper_yaml`.
+- **A failure part-way through `apply` leaves what was written before it.** The settings and
+  the authors' file are worked out and read back first, so a setting refused writes nothing;
+  but `init` itself, `git init` or a disk that fills stop it where they happen, and it says
+  what was written before. Accepted.
+- **R is looked for as `verify` looks for it.** `MANUSCRIPT_GUARD_RSCRIPT`, then the first
+  `Rscript` on PATH; an R installed elsewhere, as on Windows where the installer puts none on
+  PATH, is said to be missing.
+  Pinned by `tests/test_setup.py::test_no_rscript_is_said`.
+- **Another language is declared by declaring no English.** `language: other` writes no
+  `english_variant`, which `check` reads as a paper in an English not declared: G14 holds it to
+  the English its spellings show, and G6 reads it as English. `apply` says so; nothing turns
+  the writing checks off for it.
+  Pinned by `tests/test_setup.py::test_another_language_declares_no_english_and_says_what_holds`.
+- **A journal's profile is named by the journal's name, folded.** "BMJ Open" is `bmj-open`; a
+  letter outside ASCII is folded to the nearest ASCII one (`Thérapie` is `therapie`), a name
+  with none is refused, and two journals whose names fold alike share a profile unless the
+  answer gives a `slug`.
+  Pinned by `tests/test_setup.py::test_a_journal_s_profile_is_named_by_its_name_folded`.
+- **`setup` asks nothing of the keywords, a short title, the review panel's models or the AI
+  use.** They are settings of `paper.yaml` and `authors.yaml` too, asked by the skills that need
+  them at the stage they are needed (journal-profile, review-panel, submission-pack). Accepted.
 
 - **That the guide asks before it runs is the skill's guidance, not a check.** The skill
   and `AGENTS.md` tell an agent to show a command, to put a choice to the author and to wait
@@ -30067,10 +30463,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `tests/test_web.py::test_a_page_s_lookup_sends_a_key_only_where_its_environment_names_one`.
   - *Browsers checked.* CI opens the page in Chrome and Firefox. Safari, and any phone, are
     not checked. Accepted.
-  - *What it reads.* A `.docx` or Markdown paper, or a LaTeX project as a `.zip` or a
+  - *What it reads.* A `.docx`, Markdown or PDF paper, or a LaTeX project as a `.zip` or a
     `.tar.gz`, outputs beside it, and a journal's profile and the authors' names, from its
-    form or from a file. PDFs (`pdftotext`), figures, packages, `--cited` and `--report-draft`
-    are the command line's. Accepted.
+    form or from a file. Figures, packages, `--cited` and `--report-draft` are the command
+    line's. Accepted.
+  - *The page's `pdftotext` is not the reader's.* The page reads a PDF with poppler 26.11.0
+    built for WebAssembly, whatever the reader has installed; the command line reads it with
+    the `pdftotext` on PATH, poppler's of another release, or Xpdf's, which gives no word's
+    place. The text each reads can differ, and with it the report: on 20 papers of the
+    robustness sweep (2026-11-26) the layout order was poppler 24.04's on 17, the drawing
+    order (`-raw`) differed by poppler 26.11's own changes, and the findings were the same on
+    14, the version named aside. Each report names the `pdftotext` that read it. CI's
+    word-for-word check gives the command line the page's own build, run in Node, so it holds
+    the page to the command line's code, not to a reader's `pdftotext`. A PDF whose text
+    needs poppler-data's character maps (a CJK font with no map of its own to Unicode) gives
+    no text for it on the page, where a poppler with poppler-data installed reads it. And a
+    PDF whose reading needs more than the 2 GiB of memory the build can take stops the
+    program on the page, where one on a computer may go on, and the page says it as the
+    command line says a program that failed, or one that ran past its timeout (below).
+    Which build the page runs is held by
+    `tests/test_web.py::test_the_pages_pdftotext_is_the_build_the_lock_pins_with_its_source`;
+    what it reads otherwise is not. Accepted.
+  - *A program on the page is not stopped at its timeout.* The page cannot stop pdftotext
+    or pdfinfo under way, which runs to its end in the checker's thread; one that took longer
+    than the command line waits for it (`proof.reading.PDFTOTEXT_SECONDS` for a reading, 30
+    seconds for `pdftotext -v`, `auditing.pdf.PDFINFO_SECONDS` for pdfinfo) is said, once it
+    ends, as the command line says one it stopped. Pinned by
+    `tests/test_web.py::test_a_run_longer_than_its_timeout_is_said_as_one_once_it_ends`.
   - *An archive is unpacked into the browser's memory*, so it is refused past 1 GiB
     unpacked (`web.PAGE_MAX_BYTES`), where a package's `.zip` is taken up to 16 GiB; a
     browser may run out of memory below that, and then says so as its own error. Pinned by
@@ -30086,9 +30505,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     results, `main.md`, the `.docx` and results under names outside ASCII and under names
     that start with "-", the `.docx` against two outputs whose names the page once made
     one, with a referee's options, in American English with the copy with tracked changes,
-    held to a journal's rules from the form with a double-blind review, and a LaTeX project
-    as a `.zip` and as a `.tar.gz` held to the folder they hold), in Node and in two
-    browsers. A paper that Pyodide's Python 3.14 reads otherwise than the command
+    held to a journal's rules from the form with a double-blind review, a LaTeX project
+    as a `.zip` and as a `.tar.gz` held to the folder they hold, and a PDF of the `.docx`'s
+    text set by `tests/proof_pdf.py`, against the results and held to that journal's rules),
+    in Node and in two browsers. The PDF is one typeset in a standard font with every
+    character mapped: a PDF a journal's system made is not in it. A paper that Pyodide's Python 3.14 reads otherwise than the command
     line's Python would differ there unseen; none is known. Accepted.
   - *Lookups from the page are not in that check.* CI opens no connection to a registry, so
     no case ticks the box. That the seven registries answer a page (CORS) was tested by hand,
@@ -30395,13 +30816,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The finding stands on the plan's item, not on the sentence of the manuscript, since a
     package unnamed has no sentence. Accepted.
 
-- **A heading in bold is not the Abstract.** `names_abstract` reads a title without its
-  number and nothing else, so `# **Abstract**` is not the abstract to G4's counts, G14's
-  scope or the audit, where `# **Results**` is the Results (`names_results` reads the title
-  as printed, its emphasis taken off). Likewise `is_methods` matches a title as it is typed,
-  so `# **Methods**` is not the Methods to G2. A span around the words is taken off for
-  both (see "A title in a span named nothing"). Pinned by
-  `tests/test_text.py::test_a_heading_in_bold_is_not_the_abstract_nor_the_methods`.
+- **A heading in bold is not the Methods.** `is_methods` matches a title as it is typed, so
+  `# **Methods**` is not the Methods to G2, where `# **Results**` is the Results
+  (`names_results` reads the title as printed, its emphasis taken off) and, since 2026-11-27,
+  `# **Abstract**` the Abstract (`names_abstract` takes off the emphasis around the whole
+  title, so "**Abstract** of the trial" names none; docx-educ-2). A span around the words is
+  taken off for both (see "A title in a span named nothing"). Pinned by
+  `tests/test_text.py::test_a_heading_in_bold_is_the_abstract_and_not_the_methods`.
   - A closing `#` or an attribute block inside a span's words is taken off as the
     heading's own: `# [C#]{.underline}` is titled "C" and `# [Results {-}]{.underline}`
     "Results", where pandoc prints "C#" and "Results {-}", the span's text. Pinned by
@@ -31085,6 +31506,42 @@ What papers converted from Word showed (see "What papers converted from Word sho
     one on fewer, as MNRAS sets its "MNRAS 000, 1-16 (2025)" at the foot of even pages only
     (tex-astro-ga-B2), is read as text. Pinned by
     `tests/test_g14_places.py::test_a_line_repeated_on_fewer_than_half_the_pages_is_read`.
+- **Where a Word paper's parts begin and end is read from how they are typed (Basile,
+  2026-11-27).** A list's title, a bold Abstract heading, the title again, Highlights and an
+  indented code block are each read by their typing, and a paper that types its part
+  otherwise is read as before. Accepted.
+  - "Literature" alone titles a list only where the paragraph under it is shaped like an
+    entry, authors and a year or a numbered style's (`audit.looks_like_reference`), or a
+    number then an author's surname and initials (Basile, 2026-11-28, "Only over
+    entry-shaped lines"): a list whose first entry has another shape, an organisation's web
+    page with no year, is read as prose, and a section of prose whose first paragraph opens
+    like an entry, "Smith, J. (2019). A study.", is passed over as a list. The paragraph
+    under it is the one pandoc reads there: after a blank line or a line of a quote's marks
+    alone, and under an ATX heading the next line (round 2 of #841). Pinned by
+    `tests/test_audit.py::test_literature_alone_opens_a_reference_list`,
+    `tests/test_audit.py::test_literature_opens_a_list_only_over_an_entry` and
+    `tests/test_audit.py::test_literature_reads_the_paragraph_pandoc_puts_after_it`.
+  - The title again ends the Abstract only in bold as a whole and repeating a paragraph of
+    four words or more before the Abstract, or a heading's title less its attributes, or
+    the front matter's as YAML reads it, word for word, case, emphasis and a closing stop or
+    colon aside: a title re-worded or shortened in the Introduction, or not in bold, ends
+    nothing, and the Abstract runs to the next heading as before. Pinned by
+    `tests/test_g14_places.py::test_a_bold_paragraph_that_only_shares_the_title_s_words_ends_no_abstract`.
+  - An indented paragraph is a code block unless it stands inside a list item, from its
+    marker's line to the next paragraph that is not indented, indented as far as the item's
+    text starts at the least, inside a footnote so read, or in a table; a block quote's own
+    indented code, `>     SE <- 1`, is read as text, and so is a code block indented inside a
+    list item, which pandoc reads as the item's code. Pinned by
+    `tests/test_language.py::test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read`.
+  - An item's marker is read as pandoc 3.9's fancy_lists reads it, checked against `pandoc -f
+    markdown -t json` (round 2 of #841): a bullet; a number, a letter or a roman numeral of one
+    case with a stop or a bracket, or in brackets; a capital letter with a stop only before two
+    spaces or a tab, so "C. elegans" and "I. The cells" open no item. A word of roman
+    letters opens one only where it is a numeral as pandoc's `romanNumeral` reads one, its
+    thousands, hundreds, tens and units in order: "mix. The cells" opens one, as in pandoc,
+    and "civil.", "dim.", "lil.", "ic." and "xm." none (round 3 of #841). An
+    `example_lists` marker, `(@)`, opens none. Pinned by
+    `tests/test_language.py::test_an_item_opens_as_pandoc_s_fancy_lists_open_one`.
 - **An Abstract's power is found only as the same number in the same notation.** A number in
   scientific notation, an optional sign, a mantissa, a times sign (`\times`, `\cdot`, "×",
   "·") and a power, and a power alone, a number with a caret and a braced exponent or a
@@ -31330,6 +31787,53 @@ What papers converted from Word showed (see "What papers converted from Word sho
     whether it happened or was planned, and a registration after a start that was only
     planned is not late (round 1 of #827). A trial ISRCTN registered late is not said. Pinned
     by `tests/test_audit_registration.py::test_an_isrctn_number_is_asked_of_isrctn_and_its_dates_shown_never_judged`.
+- **A DOI is said to be another work's where the entry gives its title in translation.**
+  Under `--lookup`, an entry whose DOI's record, at Crossref or OpenAlex, holds under half
+  the searched words of the title the entry gives is said to cite another work
+  (`reference-title-differs`, item 7b; Basile, 2026-11-26). A paper in English that gives in
+  English the title of a work written in Portuguese or Spanish, as a Brazilian or Spanish
+  journal's own English title, shares no words with the record, which holds the title as
+  the work was written. On 100 openly licensed PMC papers (2026-11-27), two readers judged
+  the 9 findings the check first made: 1 was right, an entry whose DOI is of the same
+  authors' paper on another protein; 5 gave a title in translation and 3 took a journal's
+  name or a publisher for the title. Two that hold their record's title word for word and
+  one marked as a translation are now passed over, and the check, run again on those
+  papers, was right in 1 of the 6 it still makes there, the false ones from 3 papers: a
+  note, never a warning, each with that record (`TITLE_RECORD`), as Basile asked of a check
+  right under half the time. Accepted.
+  - An entry that says its title is a translation, "[Article in Spanish]", "(in Japanese
+    with English abstract)", is not compared; one that does not say so is, which is most of
+    them. Pinned by `tests/test_audit_doi_title.py::test_an_entry_that_says_its_title_is_a_translation_is_not_compared`.
+  - An entry that holds its record's title word for word outside the title its reader took
+    it to give is not said; within that title the record's title is never looked for, so
+    that an invented title holding the real one and more is held to the record (round 1 of
+    #846). One whose title, up to one of its colons (":", not a full-width one), folds as a
+    title search folds a title to what the record's title, alone or with its subtitle, folds
+    to, where that form holds at least three different searched words with a letter
+    (`TITLE_WORDS`), is passed over, whatever follows the colon: so is an invented subtitle
+    after the real title (rounds 2 to 8, `_with_subtitle`).
+    One whose reader took the journal for its title and whose record
+    is not in it word for word is said, and quotes the journal's name as the title given:
+    an entry giving a work's Spanish title, whose record at OpenAlex is its English one, was
+    said with "Rev Panam Salud Publica" as its title. Accepted.
+  - A fabricated title that shares half the searched words of the DOI's work, or more, is
+    not said: the share was chosen so that a title cut short or split into a subtitle is
+    not said either. Pinned by `tests/test_audit_doi_title.py::test_a_title_the_record_holds_most_of_is_not_said`.
+  - Only Crossref's and OpenAlex's records are compared, each alone, and the finding quotes
+    the one that shares the most. A DOI only DataCite or doi.org knows, and a PMID, are not
+    held to a title. Accepted.
+  - An entry whose title its reader does not find is not compared. In a list that gives
+    the title between commas, `by_title.cited` takes for the title what follows the first
+    full stop after a word that is no initial: where that is the citation's tail, "A. Smith,
+    B. Lee, A title, Mol. Plant 8
+    (6) (2015) 871-884", it is passed over, and where the journal's name has no full stop
+    it finds no title. Where it is the rest of a journal's name, "Sci. China Life Sci.",
+    the entry is held to its record under that name, and said unless the record's title
+    stands in it word for word (round 1 of #846). Accepted.
+  - Its record, 6 judged, is under the 10 the editor's report rates a kind by
+    (`auditing.editor.SHOWN_FROM`): the report shows it as too few to rate, and puts the kind
+    under "Ask the authors", not "Look at before you decide" (Basile, 2026-11-27). Pinned by
+    `tests/test_audit_doi_title.py::test_the_editor_s_report_asks_it_of_the_authors_with_its_record`.
 - **A link with a journal's rules is as long as its rules, and anyone who holds it reads
   them.** The audit page's *Copy a link with these rules* (item 4 of the editor's list;
   Basile, 2026-11-26) packs the journal form's values into the link after `#rules=`,
@@ -31395,6 +31899,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
   (round 2 of #836: telling the two apart needs the packages every file of the tree loads).
   Pinned by
   `tests/test_corruption.py::test_a_provided_short_intertext_is_the_authors_where_mathtools_gives_it_too`.
+
+- **G7 takes a `nocite` of every entry for what the build prints, as typed.** A front
+  matter's `nocite: '@*'` keeps a warning for each entry nothing cites, though the build
+  writes its own header from `paper.yaml` and strips each file's, so pandoc never reads that
+  key and the document still prints only the works cited. Pinned by
+  `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`.
+  - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
+    inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
+    keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX
+    pack, which keeps the entries the reader and the build's `.aux` cite, keeps only the
+    cited ones. One in a hook TeX runs is in the `.aux`, and the pack keeps every entry, as
+    the warnings say. Pinned by
+    `tests/test_corruption.py::test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings`
+    and `tests/test_latex_submit.py::test_the_pack_keeps_every_entry_where_tex_runs_a_nocite_of_every_entry`.
+  - The `crossref` rule counts the cited entries that name an entry directly: one named
+    only through a chain of `crossref`s, or by `xdata`, stays in the note, though BibTeX
+    or biblatex may print it. Accepted.
+  - The rule adds `crossref` and `xref` into one count, takes `xref` in a BibTeX paper too,
+    which BibTeX does not know, and takes 2 for the threshold whatever `min-crossrefs`,
+    `mincrossrefs` or `minxrefs` the paper sets. Where the paper's bibliography counts
+    otherwise, the note may leave out an entry nothing prints, or list one that prints, as
+    with `mincrossrefs=1` and one cited entry naming it (round 2 of #835). Accepted.
+  - A metadata block in the body counts though it stands in an HTML comment, which pandoc
+    reads as raw HTML and not as metadata, so such a paper keeps the warnings (round 2 of
+    #835). Accepted.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -279,7 +279,7 @@ def latex_places(
                 " " if any(start <= at < end for start, end in listed) else character
                 for at, character in enumerate(text))))  # fmt: skip
         elif path.suffix.lower() in (".pdf", ".svg"):
-            text = _extract_text(path)
+            text = _extract_text(path, drawn_only=False)
             if text:
                 places.append((f"a figure ({path.name})", text))
     return places
@@ -530,7 +530,7 @@ def _figures(project: Project) -> list[tuple[str, str]]:
     for key in keys:
         for suffix in (".svg", ".pdf"):
             path = project.path("figures") / f"{key}{suffix}"
-            text = _extract_text(path) if path.is_file() else None
+            text = _extract_text(path, drawn_only=False) if path.is_file() else None
             if text:
                 places.append((f"a figure ({path.name})", text))
     return places

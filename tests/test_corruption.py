@@ -793,6 +793,46 @@ def test_a_minus_sign_in_a_figure_is_the_hyphen_of_its_sidecar(
     assert _unbound_in_the_figure(project) == ["\N{MINUS SIGN}0.7"]
 
 
+def test_a_number_typed_beside_a_colour_an_index_or_a_status_is_caught(project: Path) -> None:
+    """G3 lets through the digits of a colour's name, a number that is a whole subscript and
+    the zero an exit status is compared with (the bisphosphonates paper, 2026-11-26). A result
+    typed beside each, on the same line, is still a number the script draws or holds."""
+    script = project / "figures" / "forest.py"
+    text = script.read_text(encoding="utf-8")
+    planted = (
+        '    ax.set_title("ROR 3.84", color="C0")\n'
+        "    scaled = [estimate][0] * 3.85\n"
+        "    status = subprocess.call(['true'])\n"
+        "    if status != 0 and estimate > 3.86:\n"
+        "        raise SystemExit(status)\n"
+    )
+    opening = "    fig, ax = plt.subplots("
+    changed = text.replace(opening, planted + opening, 1)
+    assert changed != text, "the fixture's figure call changed; update this test"
+    script.write_text(changed, encoding="utf-8")
+    projekt, _ = load_project(project)
+    found = sorted(f.message.split("'")[1] for f in check_figures(projekt, load_namespace(
+        projekt)[1]).findings if f.code.startswith("figure-source-"))  # fmt: skip
+    assert found == ["3.84", "3.85", "3.86"]
+
+
+def test_a_number_drawn_in_an_svg_with_a_stylesheet_is_caught(project: Path) -> None:
+    """An SVG's `<style>` is not read for numbers any more, so svglite's `stroke-miterlimit:
+    10.00` is no number the figure draws. A number edited into a label of the same figure is
+    still one, and so is one in a `<text>` written after the stylesheet."""
+    svg = project / "figures" / "forest.svg"
+    text = svg.read_text(encoding="utf-8")
+    text = text.replace(
+        '<style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>',
+        '<style type="text/css">*{stroke: #000000; stroke-miterlimit: 10.00; width: 7.77}'
+        "</style>\n  <text>6.66</text>",
+        1,
+    )
+    text = re.sub(r">(\d+\.\d+) \(", ">7.70 (", text, count=1)
+    svg.write_text(text, encoding="utf-8")
+    assert _unbound_in_the_figure(project) == ["6.66", "7.70"]
+
+
 def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     script = project / "figures" / "forest.py"
     text = script.read_text(encoding="utf-8")
@@ -5664,12 +5704,14 @@ def test_a_demonstration_says_so_on_its_title_page(project: Path) -> None:
 
 
 def _unreported(root: Path) -> list[tuple[str, str, int]]:
-    """What G8 says of a summary: the key, the heading it was given under, the line."""
+    """What G8 says of a summary: the key, the heading it was given under, the line. Not what
+    it says of the Discussion (`_discussed`)."""
     from manuscript_guard.gates import check_reported
 
     project, _ = load_project(root)
     _, results, _, _ = load_namespace(project)
-    found = check_reported(project, results).findings
+    found = [f for f in check_reported(project, results).findings
+             if not f.code.startswith("discussion-")]  # fmt: skip
     assert all(f.severity == "warn" for f in found)
     return [
         (f.message.split()[0], re.search(r"under '([^']*)'", f.message)[1], f.line) for f in found
@@ -5814,6 +5856,8 @@ def test_a_number_a_summary_gives_is_looked_for_by_its_key_and_by_its_display(
     _swap(project, "\n\n# Data availability",
           "\n\n**Conclusions.** They were {{results.extra.own}}.\n\n# Data availability")
     assert _unreported(project) == []
+    # It is the Discussion's, and a result given there that nothing reports is warned of.
+    assert [code for code, *_ in _discussed(project)] == ["discussion-not-reported"]
     _swap(project, "**Conclusions.** They", "## Conclusions\n\nThey")
     assert _unreported(project) == [
         ("results.extra.own", "Conclusions", _line_of(project, "They were {{results.extra"))
@@ -5853,6 +5897,340 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     supplement.parent.mkdir(exist_ok=True)
     supplement.write_text("# Table S1\n\n{{results.case.n_serious}} serious.\n", encoding="utf-8")
     assert _unreported(project) == []
+
+
+# --------------------------- a result the Discussion gives that the paper's Results do not report
+
+
+def _reported_of(loaded):
+    """G8's check of what the summaries and the Discussion give, of a loaded project."""
+    from manuscript_guard.gates import check_reported
+
+    return check_reported(loaded, load_namespace(loaded)[1])
+
+
+def _discussed(root: Path) -> list[tuple[str, str, str, int]]:
+    """What G8 says of a result the Discussion binds: the code, the severity, the key and the
+    line, in the order the findings come."""
+    loaded, _ = load_project(root)
+    found = _reported_of(loaded).findings
+    return [(f.code, f.severity, f.message.split()[0], f.line)
+            for f in found if f.code.startswith("discussion-")]  # fmt: skip
+
+
+#: Where the example's Discussion says what disproportionality is not.
+_NOT_INCIDENCE = "Disproportionality is not incidence, and"
+
+
+def test_a_result_the_discussion_interprets_is_one_the_results_report(project: Path) -> None:
+    """The Discussion interprets the results, and gives none of its own. A key it binds that
+    the Results bind is nothing to say. One the paper reports only in its supplement is a
+    note, since a reader of the paper meets its interpretation and not the result; one the
+    paper reports nowhere, a warning, as a summary's is. A Limitations under the Discussion is
+    the Discussion's; a Conclusions under it is a summary, held as one and not twice."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _discussed(project) == []
+    _swap(project, _NOT_INCIDENCE,
+          "The ratio of {{results.ror.point}} sits beside the negative control's "
+          "{{results.control.negative.point}}, and {{results.case.n_serious}} cases were "
+          f"serious.\n{_NOT_INCIDENCE}")  # fmt: skip
+    line = _line_of(project, "sits beside the negative control")
+    control = ("discussion-in-supplement", "info", "results.control.negative.point", line)
+    assert _discussed(project) == [control]
+    _swap(project, "{{results.case.n_serious}} were flagged", "some were flagged")
+    serious = ("discussion-not-reported", "warn", "results.case.n_serious", line)
+    assert _discussed(project) == [control, serious]
+    report, _project, _chosen, _deferred = _run_gates(project)
+    codes = [f.code for f in report.findings if f.code.startswith("discussion-")]
+    assert codes == ["discussion-in-supplement", "discussion-not-reported"]
+    # Under a Limitations of the Discussion, the same, once for a key in a file; under its
+    # Conclusions, a summary's.
+    _emitted(project, extra__limit="0.123")
+    _swap(project, "Several limitations follow from the design.",
+          "## Limitations\n\nOf them, {{results.case.n_serious}} were serious, and "
+          "{{results.extra.limit}} were not. Several limitations follow from the design.")
+    limits = ("discussion-not-reported", "warn", "results.extra.limit",
+              _line_of(project, "Of them, {{results.case.n_serious}}"))  # fmt: skip
+    assert _discussed(project) == [control, serious, limits]
+    _swap(project, "## Limitations\n\n", "## Conclusions\n\n")
+    assert _discussed(project) == [control, serious]
+    loaded, _ = load_project(project)
+    summarised = [(f.message.split()[0], f.line)
+                  for f in _reported_of(loaded).findings if f.code == "summary-not-reported"]
+    assert summarised == [("results.case.n_serious", limits[3]),
+                          ("results.extra.limit", limits[3])]
+
+
+def test_a_result_the_discussion_gives_is_looked_for_where_a_summary_s_is(project: Path) -> None:
+    """As for a summary: a key declared the same quantity as one the Results bind is
+    reported, and so is one whose display a table or a figure the paper places prints. A
+    paper with no Results section is not read for this: its Discussion is where a review
+    weighs what others found."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["case.serious_again"] = dict(
+        document["values"]["case.n_serious"], same_as="case.n_serious")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    _swap(project, _NOT_INCIDENCE,
+          f"Of them, {{{{results.case.serious_again}}}} were serious.\n{_NOT_INCIDENCE}")
+    assert _discussed(project) == []
+    # 77 cases are printed in Table 2; with the Results' own sentence gone they still are.
+    _swap(project, "Hepatic injury was reported in\n{{results.case.n_cases}} of these",
+          "Hepatic injury was reported in\nsome of these")  # fmt: skip
+    _swap(project, "Of them, ", "Of {{results.case.n_cases}} cases, ")
+    assert _discussed(project) == []
+    for display in ("{{table.two_by_two}}", "{{table.baseline}}"):
+        _swap(project, display, "")
+    (found,) = _discussed(project)
+    assert found[:3] == ("discussion-not-reported", "warn", "results.case.n_cases")
+    _swap(project, "\n# Results\n", "\n# What the reports held\n")
+    assert _discussed(project) == []
+
+
+def test_a_latex_discussion_is_read_for_the_results_it_gives(project: Path) -> None:
+    """The same in LaTeX, in the printed view: a key the Discussion binds and the Results do
+    not is warned of at its `.tex` line."""
+    from manuscript_guard.gates import check_reported
+
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nx\n"
+        "\\section{Results}\nThe ROR was \\mg{results.ror.point}.\n\\section{Discussion}\n"
+        "The ROR of \\mg{results.ror.point} rests on \\mg{results.case.n_cases} cases.\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    loaded, _ = load_project(project)
+    found = [(f.code, f.message.split()[0], f.path.name, f.line)
+             for f in check_reported(loaded, load_namespace(loaded)[1]).findings]  # fmt: skip
+    assert found == [("discussion-not-reported", "results.case.n_cases", "main.tex", 8)]
+
+
+# ------------------------------------- an analysis the Results name that the Methods never do
+
+
+def _unexplained(root: Path) -> list[tuple[str, str, int]]:
+    """What G9 says of an analysis the Results name: the method, the file, the line."""
+    from manuscript_guard.gates.analyses_named import check_analyses_named
+
+    loaded, _ = load_project(root)
+    found = check_analyses_named(loaded).findings
+    assert all(f.severity == "warn" and f.code == "analysis-not-in-methods" for f in found)
+    return [(f.subject, f.path.name, f.line) for f in found]
+
+
+#: Where the example's Results give the adjusted estimate.
+_ADJUSTED = "can reconstruct it. Adjusted for age group and sex"
+
+
+def test_an_analysis_the_results_name_is_one_the_methods_name(project: Path) -> None:
+    """A reader who meets a test in the Results looks it up in the Methods. The example's
+    Results name none the Methods do not. A test the Results name and the Methods never do is
+    warned of at its first use, once, whatever the name it goes by there; the Methods naming
+    it under another of its names, in another case or with "'s" or not, is enough, and so are
+    the supplement's Methods. Named in the Abstract, the Introduction or the Discussion, or in
+    a binding's key, a citation or code, it is not read."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _unexplained(project) == []
+    _swap(project, _ADJUSTED, "can reconstruct it. The proportions differed by Fisher's "
+          "exact test, and again by a Fisher test. Adjusted for age group and sex")
+    line = _line_of(project, "differed by Fisher's")
+    assert _unexplained(project) == [("fisher-exact", "main.md", line)]
+    report, _project, _chosen, _deferred = _run_gates(project)
+    (found,) = [f for f in report.findings if f.code == "analysis-not-in-methods"]
+    assert found.gate == "G9" and "Fisher's exact test" in found.message
+    assert "and 1 more time after" in found.message
+    _swap(project, "# Methods\n", "# Methods\n\nProportions were compared by the FISHER "
+          "exact test.\n")  # fmt: skip
+    assert _unexplained(project) == []
+    # The Results' other names: a bootstrap, Mann–Whitney; the Methods' elsewhere.
+    _swap(project, "exact test, and again", "exact test, a bootstrapped interval, a "
+          "Mann\N{EN DASH}Whitney U test, and again")  # fmt: skip
+    line = _line_of(project, "a bootstrapped interval")
+    assert _unexplained(project) == [("mann-whitney", "main.md", line),
+                                     ("bootstrap", "main.md", line)]
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(text.replace("# Supplementary methods\n", "# Supplementary methods\n"
+                                       "\nThe interval was also found by the bootstrap, and "
+                                       "ranks compared by a Wilcoxon rank-sum test.\n"),
+                          encoding="utf-8")  # fmt: skip
+    assert _unexplained(project) == []
+    # Named only where it is not read: the Discussion, the Introduction, code, a citation.
+    _swap(project, _NOT_INCIDENCE, f"A jackknife would differ. {_NOT_INCIDENCE}")
+    _swap(project, "# Introduction\n", "# Introduction\n\nKaplan-Meier curves are common.\n")
+    _swap(project, "can reconstruct it. The", "can reconstruct it (`cox.fit()`, "
+          "[@fictionalClassSignal2019]). The")  # fmt: skip
+    assert _unexplained(project) == []
+
+
+def test_a_word_of_another_field_or_a_name_the_methods_give_loosely_is_no_warning(
+    project: Path,
+) -> None:
+    """Round 1 of #826 and the real-paper corpus: "kappa" in "kappa light chains" and
+    "propensity" in "reporting propensity" are words of other fields and name no method; a
+    Methods that writes the chi-squared test as maths, or calls a test "the Wilcoxon test",
+    names it, the second for both of Wilcoxon's tests. A bare "Wilcoxon" in the Results names
+    neither, and is not warned of."""
+    _swap(project, _ADJUSTED, "can reconstruct it. Free kappa light chains rose, the "
+          "reporting propensity fell, the counts differed by a chi-squared test, and the "
+          "titres by a Wilcoxon signed-rank test. Adjusted for age group and sex")  # fmt: skip
+    line = _line_of(project, "Free kappa light chains rose")
+    assert _unexplained(project) == [("chi-squared", "main.md", line),
+                                     ("wilcoxon-signed-rank", "main.md", line)]
+    _swap(project, "# Methods\n", "# Methods\n\nCounts were compared by a $\\chi^2$ test, and "
+          "titres by the Wilcoxon test.\n")  # fmt: skip
+    assert _unexplained(project) == []
+    _swap(project, "by the Wilcoxon test", "by ranks")
+    _swap(project, "by a Wilcoxon signed-rank test", "by a Wilcoxon test")
+    assert _unexplained(project) == []
+    # Round 2: a Wilcoxon test named whole names that test alone, and "kappa" alone in the
+    # Methods names the kappa statistic the Results name.
+    _swap(project, "titres by ranks", "titres by the Wilcoxon rank-sum test, and agreement "
+          "by kappa")  # fmt: skip
+    _swap(project, "by a Wilcoxon test", "by a Wilcoxon signed-rank test, and Cohen's kappa")
+    line = _line_of(project, "Free kappa light chains rose")
+    assert _unexplained(project) == [("wilcoxon-signed-rank", "main.md", line)]
+    # Round 3: and the other way round.
+    _swap(project, "Wilcoxon rank-sum test, and", "Wilcoxon signed-rank test, and")
+    _swap(project, "by a Wilcoxon signed-rank test, and Cohen",
+          "by a Wilcoxon rank-sum test, and Cohen")
+    assert _unexplained(project) == [("mann-whitney", "main.md", line)]
+
+
+def test_an_analysis_the_supplement_s_results_name_is_held_to_the_methods(project: Path) -> None:
+    """The supplement's Results are read as the main text's are, and a paper with no Methods
+    section is not read at all."""
+    supplement = project / "manuscript" / "supplementary" / "S3_results.md"
+    supplement.write_text("# Supplementary results\n\nThe estimates were Holm-corrected.\n",
+                          encoding="utf-8")
+    assert _unexplained(project) == [("holm", "S3_results.md", 3)]
+    _swap(project, "\n# Methods\n", "\n# How it was done\n")
+    assert _unexplained(project) == [("holm", "S3_results.md", 3)]  # the supplement's Methods
+    codes = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = codes.read_text(encoding="utf-8")
+    codes.write_text(text.replace("# Supplementary methods\n", "# Supplementary tables\n"),
+                     encoding="utf-8")
+    assert _unexplained(project) == []
+
+
+def test_a_latex_paper_s_results_are_read_for_the_analyses_they_name(project: Path) -> None:
+    """The same in LaTeX, read in the printed view: a test the Results name with LaTeX's en
+    dash, and the Methods do not, is warned of at its `.tex` line."""
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nCounts were compared "
+        "by a chi-squared test.\n\\section{Results}\nThey differed ($\\chi^2$ test), and by "
+        "a Kruskal--Wallis test.\n\\section{Discussion}\nA Cox model.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert _unexplained(project) == [("kruskal-wallis", "main.tex", 6)]
+
+
+# --------------------------------------------------- a caption that points at a line it never names
+
+
+def _unnamed_lines(root: Path) -> list[tuple[str, str | None, int | None]]:
+    """What G3 says of a caption that points at a line: the mark, the file, the line."""
+    from manuscript_guard.gates.caption_marks import check_caption_marks
+
+    loaded, _ = load_project(root)
+    found = check_caption_marks(loaded, load_namespace(loaded)[1]).findings
+    assert all(f.severity == "warn" and f.code == "caption-line-unnamed" for f in found)
+    return [(f.subject, f.path.name if f.path else None, f.line) for f in found]
+
+
+def test_a_caption_that_points_at_a_line_says_which_line_it_is(project: Path) -> None:
+    """A reader of the figure alone has to know which line "the line" is. A legend that
+    points at one by where the estimates stand, and names none, is warned of at the place;
+    one that names it, by its style or by what it marks, here or once before, is not, and
+    neither is a sentence of the text. An image's caption and a table's emitted caption are
+    read too."""
+    from manuscript_guard.cli import _run_gates
+
+    assert _unnamed_lines(project) == []
+    # The legend as the results-binding skill writes it, opened with the figure's ref.
+    _swap(project, "{{figure.forest}}\n", "{{figure.forest}}\n\n{{ref.figure.forest}}. The "
+          "reporting odds ratio with its interval; estimates to the right of the line are "
+          "signals.\n")  # fmt: skip
+    legend = _line_of(project, "{{ref.figure.forest}}. The")
+    assert _unnamed_lines(project) == [("line", "main.md", legend)]
+    _swap(project, "{{ref.figure.forest}}. The", "**Figure 1.** The")
+    assert _unnamed_lines(project) == [("line", "main.md", legend)]
+    report, _project, _chosen, _deferred = _run_gates(project)
+    (found,) = [f for f in report.findings if f.code == "caption-line-unnamed"]
+    assert found.gate == "G3" and "'to the right of the line'" in found.message
+    for named in ("right of the line of no association", "right of the line (an odds ratio "
+                  "of 1)", "right of the dashed line", "right of the vertical line"):
+        _swap(project, "right of the line are signals", f"{named} are signals")
+        assert _unnamed_lines(project) == [], named
+        _swap(project, f"{named} are signals", "right of the line are signals")
+    # Round 1 of #826: a line named by its equation, and the area under a curve, which is
+    # a measure and no curve pointed at.
+    for named in ("above the line y = x", "above the line $y = x$",
+                  "right of the line and an area under the curve"):
+        _swap(project, "right of the line are signals", f"{named} are signals")
+        assert _unnamed_lines(project) == ([] if "y = x" in named
+                                           else [("line", "main.md", legend)]), named
+        _swap(project, f"{named} are signals", "right of the line are signals")
+    _swap(project, "ratio with its interval;", "ratio with its interval, the dashed line "
+          "marking no association;")  # fmt: skip
+    assert _unnamed_lines(project) == []
+    # A sentence of the text is no caption.
+    _swap(project, "so a reader\ncan reconstruct it.", "so a reader\ncan reconstruct it. "
+          "Estimates below the line are not signals.")  # fmt: skip
+    assert _unnamed_lines(project) == []
+    # An image's caption.
+    _swap(project, "{{figure.forest}}\n", "{{figure.forest}}\n\n![Journals above the curve "
+          "had more seats.](figures/forest.png)\n")  # fmt: skip
+    assert _unnamed_lines(project) == [("curve", "main.md",
+                                        _line_of(project, "![Journals above the curve"))]
+
+
+def test_a_table_s_emitted_caption_is_read_for_the_line_it_points_at(project: Path) -> None:
+    """The caption the analysis emits for a table is read as a typed one is, and named at the
+    results file that holds it."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["baseline"]["caption"] = "Reports by group; rows below the line are totals."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == [("line", fragment.name, None)]
+    # Round 1 of #826: a second table of the same results file is read too, and the area
+    # under the curve, in a model's table, points at no curve.
+    document["tables"]["two_by_two"]["caption"] = "Counts; rows above the line are cases."
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == [("line", fragment.name, None)] * 2
+    for key in ("baseline", "two_by_two"):
+        document["tables"][key]["caption"] = ("Discrimination by model: area under the curve "
+                                              "and calibration slope.")  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert _unnamed_lines(project) == []
+
+
+def test_a_latex_caption_is_read_for_the_line_it_points_at(project: Path) -> None:
+    """A LaTeX file's `\\caption` is read inside its braces, at its `.tex` line; one in a
+    comment is not."""
+    folder = project / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nx\n"
+        "\\begin{figure}\\caption{Journals below the line had fewer seats.}\\end{figure}\n"
+        "\\begin{figure}\\caption{Journals below the line of equal shares.}\\end{figure}\n"
+        "\\begin{figure}\\caption{Journals above the line~(y = x).}\\end{figure}\n"
+        "% \\caption{Journals above the curve.}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    assert _unnamed_lines(project) == [("line", "main.tex", 5)]
 
 
 def _overclaimed(root: Path) -> list:
@@ -15277,6 +15655,18 @@ def test_a_cross_sectional_study_registered_as_interventional_differs(project: P
     assert _registration(project) == {"registration-design-differs": "warn"}
 
 
+def test_a_case_series_is_registered_as_either_kind_of_study(project: Path) -> None:
+    """Round 1 of #849: a case series was held to an observational registration, but a
+    prospective series of an intervention given by protocol is registered as an
+    interventional study (ClinicalTrials.gov's single group), so a correct paper was told
+    to correct its design. Like a diagnostic accuracy study, it is held to neither."""
+    _paper_field(project, "study_type", "case-series")
+    _register(project)
+    assert _registration(project) == {}
+    _register(project, record=_ctgov_record(study_type="interventional"))
+    assert _registration(project) == {}
+
+
 def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates))
@@ -17248,6 +17638,12 @@ _READS_LATEX = (
     # It reads the Methods as G9 does, a LaTeX document's in its printed view, where a
     # citation command is written as pandoc's.
     "check_software_cited",
+    # It reads the Methods and the Results of each document, a LaTeX one's in its printed
+    # view (`_latex_named`).
+    "check_analyses_named",
+    # It reads each caption: a LaTeX float's through `caption_spans`, a Markdown one's and
+    # an emitted table's as they print.
+    "check_caption_marks",
 )  # fmt: skip
 
 
@@ -21279,11 +21675,16 @@ _TYPED_ONLY_BIB = """
 
 def _uncited(root: Path, typed: str, bib: str = _TYPED_ONLY_BIB) -> dict:
     """G7's `reference-uncited` findings by key, the manuscript holding `typed` and
-    `references.bib` the entries of `bib` beside its own."""
+    `references.bib` the entries of `bib` beside its own. Its header asks pandoc for every
+    entry (`nocite: '@*'`), where each entry nothing cites reaches the paper and is a warning
+    of its own: what these tests tell apart is that warning from the note on an entry cited
+    only as typed text. Where only the cited works print, the warnings are one note
+    (`_one_note`)."""
     path = root / "literature" / "references.bib"
     path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
     main = main_md(root)
-    main.write_text(main.read_text(encoding="utf-8") + f"\n{typed}\n", encoding="utf-8")
+    text = main.read_text(encoding="utf-8").replace("---\n", "---\nnocite: '@*'\n", 1)
+    main.write_text(text + f"\n{typed}\n", encoding="utf-8")
     found = [f for f in _g7(root).findings if f.code == "reference-uncited"]
     return {re.search(r"@(\w+)", f.message).group(1): f for f in found}
 
@@ -21813,9 +22214,14 @@ def test_no_hint_sends_one_entry_s_removal_through_sync_bib(project: Path) -> No
 
 
 def test_the_warning_s_hint_gives_a_latex_paper_its_own_command(project: Path) -> None:
-    """A LaTeX manuscript cites by command, so the key is offered as one."""
+    """A LaTeX manuscript cites by command, so the key is offered as one. Its list prints
+    every entry, by a `\\nocite{*}` in a hook, which the reader records as no citation."""
     entry = _twin(project)
     _into_results(entry, "A claim.")
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}",
+                                  "\\AtBeginDocument{\\nocite{*}}\n\\begin{document}", 1),
+                     encoding="utf-8")  # fmt: skip
     path = project / "literature" / "references.bib"
     path.write_text(path.read_text(encoding="utf-8") + _TYPED_ONLY_BIB, encoding="utf-8")
     (found,) = [f for f in _g7(project).findings if f.code == "reference-uncited"
@@ -21839,6 +22245,244 @@ def test_a_latex_manuscript_keeps_its_warning(project: Path) -> None:
     assert typed_only(loaded, ["imaginary2018"]) == {}
 
 
+# The entries nothing cites, where the bibliography prints only the works cited: one note
+# for the file (Basile, 2026-11-27, "One note per .bib").
+
+_NOWHERE_BIB = _one_entry("zeta2001", "Zeta, Zoe") + _one_entry("alpha2002", "Alpha, Al")
+
+
+def _one_note(root: Path) -> list:
+    """G7's findings on the entries of `references.bib` no citation key points to."""
+    from manuscript_guard.gates.citations import UNCITED_ENTRIES
+
+    return [f for f in _g7(root).findings if f.code in ("reference-uncited", UNCITED_ENTRIES)]
+
+
+def _with_entries(root: Path, bib: str = _NOWHERE_BIB, *, header: str = "",
+                  typed: str = "") -> None:  # fmt: skip
+    """`references.bib` with the entries of `bib` beside its own, the manuscript's header
+    with `header` in it and its text with `typed` after it."""
+    path = root / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + bib, encoding="utf-8")
+    main = main_md(root)
+    text = main.read_text(encoding="utf-8").replace("---\n", f"---\n{header}", 1)
+    main.write_text(text + f"\n{typed}\n", encoding="utf-8")
+
+
+def test_the_entries_nothing_cites_are_one_note_where_only_cited_works_print(
+    project: Path,
+) -> None:
+    """Pandoc's citeproc prints only the works cited, so an entry nothing cites never
+    reaches the paper: the file's such entries are one note, which counts them, says why
+    none is printed and lists their keys. Its key names the file and no sentence. An entry
+    cited only as typed text keeps its own note and is not listed."""
+    from manuscript_guard.findings import INFO
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 3
+    _with_entries(project, _NOWHERE_BIB + _one_entry("imaginary2018", "Imaginary, Anne", 2018),
+                  typed="A claim (Imaginary, 2018).")  # fmt: skip
+    found = _one_note(project)
+    (note,) = [f for f in found if f.code == "bib-entries-uncited"]
+    assert note.severity == INFO and note.path.name == "references.bib", note
+    said = (f"2 of the {held} entries of references.bib are cited nowhere, and the "
+            "bibliography prints only the works cited, so none of them reaches the paper: "
+            "@alpha2002, @zeta2001")  # fmt: skip
+    assert note.message == said, note.message
+    assert 'cites one of these works in words, as in "Smith (2020) showed"' in note.hint
+    assert "as in [@alpha2002], or the work is not printed" in note.hint, note.hint
+    assert "do not use `sync-bib` for this" in note.hint, note.hint
+    said = note.as_dict()
+    assert said["key"] == "G7|bib-entries-uncited|references.bib|-" and "key_from" not in said
+    (typed,) = [f for f in found if f.code == "reference-uncited"]
+    assert typed.severity == INFO and "@imaginary2018" in typed.message, typed
+    assert "cites only as typed text" in typed.message, typed.message
+
+
+def test_one_entry_cited_nowhere_is_said_in_the_singular(project: Path) -> None:
+    _with_entries(project, _one_entry("zeta2001", "Zeta, Zoe"))
+    (note,) = _one_note(project)
+    assert re.match(r"1 of the \d+ entries of references\.bib is cited nowhere, ",
+                    note.message), note.message  # fmt: skip
+    assert note.message.endswith("so it does not reach the paper: @zeta2001"), note.message
+
+
+@pytest.mark.parametrize("header", [
+    "nocite: '@*'\n",
+    'nocite: "@*"\n',
+    "nocite: |\n  @*\n",
+    "nocite: ['@zeta2001', '@*']\n",
+    "base: &every\n  nocite: '[@*]'\n<<: *every\n",
+])  # fmt: skip
+def test_a_list_that_prints_every_entry_keeps_a_warning_for_each(
+    project: Path, header: str
+) -> None:
+    """`nocite` holding `@*` asks pandoc for every entry of the file, its own or merged into
+    the header, so each entry nothing cites reaches the printed list: a warning each, as
+    before, and no note."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, header=header)
+    found = _one_note(project)
+    said = {f.message: f.severity for f in found}
+    if header.startswith("nocite: ['@zeta2001'"):
+        # A key under `nocite:` is a citation of it, and it is not uncited.
+        assert said == {"references.bib holds @alpha2002, which nothing cites": WARN}, said
+    else:
+        assert said == {"references.bib holds @alpha2002, which nothing cites": WARN,
+                        "references.bib holds @zeta2001, which nothing cites": WARN}, said
+
+
+@pytest.mark.parametrize("header", [
+    "nocite: '@zeta2001'\n",
+    "nocite: 'email@*'\n",
+    "title: 'nocite: @*'\n",
+    "nocite: ''\n",
+])  # fmt: skip
+def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
+    project: Path, header: str
+) -> None:
+    """A `nocite` of one key cites that key, and the rest of the list still prints only the
+    works cited: the note stays, without the key `nocite` names. Nor is `@*` read in an
+    address, in another key's value or in the body."""
+    _with_entries(project, header=header, typed="The header said nocite: '@*' once.")
+    (note,) = _one_note(project)
+    assert note.code == "bib-entries-uncited", note
+    listed = "@alpha2002" if "zeta2001" in header else "@alpha2002, @zeta2001"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
+
+
+@pytest.mark.parametrize(("snippet", "where", "printed"), [
+    ("\\nocite{*}", "body", None),
+    ("\\AtBeginDocument{\\nocite{*}}", "preamble", True),
+    ("\\newcommand{\\every}{\\nocite{alpha2002,*}}", "preamble", True),
+    ("\\iffalse \\nocite{*} \\fi", "body", True),
+    ("\\begin{lstlisting}\n\\nocite{*}\n\\end{lstlisting}", "body", True),
+    ("% \\nocite{*}", "body", False),
+    ("\\nocite{zeta2001}", "body", False),
+])  # fmt: skip
+def test_a_latex_paper_s_nocite_of_every_entry_keeps_the_warnings(
+    project: Path, snippet: str, where: str, printed: bool | None
+) -> None:
+    """`\\nocite{*}` the reader records cites every entry, so none is uncited. One it does
+    not record, in a hook or a definition, still makes BibTeX print them all: a warning
+    each. So does one in an `\\iffalse` block or a listing, which TeX never runs (DESIGN.md,
+    Known gaps). In a comment, or of single keys, it asks for no other entry, and the rest
+    are one note, whose hint cites by command."""
+    from manuscript_guard.findings import WARN
+
+    entry = _twin(project)
+    if where == "preamble":
+        text = entry.read_text(encoding="utf-8")
+        entry.write_text(text.replace("\\begin{document}", snippet + "\n\\begin{document}", 1),
+                         encoding="utf-8")  # fmt: skip
+    else:
+        _into_results(entry, snippet)
+    path = project / "literature" / "references.bib"
+    path.write_text(path.read_text(encoding="utf-8") + _NOWHERE_BIB, encoding="utf-8")
+    found = _one_note(project)
+    if printed is None:
+        assert found == [], found
+    elif printed:
+        assert sorted((f.code, f.severity, f.message) for f in found) == [
+            ("reference-uncited", WARN, f"references.bib holds @{key}, which nothing cites")
+            for key in ("alpha2002", "zeta2001")], found  # fmt: skip
+    else:
+        (note,) = found
+        assert note.code == "bib-entries-uncited", note
+        assert "\\cite{" in note.hint and "[@" not in note.hint, note.hint
+        assert ("@zeta2001" in note.message) == ("zeta2001" not in snippet), note.message
+
+
+@pytest.mark.parametrize(("typed", "printed"), [
+    ("\n---\nnocite: '@*'\n---\n", True),
+    ("\n---\ntitle: Kept\nnocite: [ '@*' ]\n...\n", True),
+    # Not a block: no blank line before it, or inside a fence.
+    ("Text.\n---\nnocite: '@*'\n---\n", False),
+    ("\n```\n\n---\nnocite: '@*'\n---\n```\n", False),
+])  # fmt: skip
+def test_a_metadata_block_in_the_body_asks_for_every_entry(
+    project: Path, typed: str, printed: bool
+) -> None:
+    """Round 1 of #835: the build strips the front matter, and passes a YAML metadata block
+    of the body to pandoc as it stands (`masking.metadata_blocks`). Its `nocite: '@*'` makes
+    citeproc print every entry, so each entry nothing cites is a warning; text that is no
+    such block asks for nothing."""
+    from manuscript_guard.findings import WARN
+
+    _with_entries(project, typed=typed)
+    found = _one_note(project)
+    if printed:
+        assert sorted((f.code, f.severity) for f in found) == [
+            ("reference-uncited", WARN), ("reference-uncited", WARN)], found  # fmt: skip
+    else:
+        assert [f.code for f in found] == ["bib-entries-uncited"], found
+
+
+def test_the_note_counts_and_lists_the_entries_alone(project: Path) -> None:
+    """Round 1 of #835: an `@string`, an `@preamble` and an `@comment` name no work, so the
+    note neither counts nor lists them, and nothing warns of them."""
+    from manuscript_guard.gates.citations import bib_keys
+
+    held = len(bib_keys(load_project(project)[0])) + 1
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@STRING{lancet = "Lancet"}\n'
+                           '@preamble{"\\newcommand{\\noop}[1]{}"}\n'
+                           "@comment{jabref-meta: databaseType:bibtex;}\n"
+                           + _one_entry("zeta2001", "Zeta, Zoe"))  # fmt: skip
+    (note,) = _one_note(project)
+    assert note.message == (f"1 of the {held} entries of references.bib is cited nowhere, and "
+                            "the bibliography prints only the works cited, so it does not "
+                            "reach the paper: @zeta2001"), note.message  # fmt: skip
+
+
+def test_where_every_entry_prints_no_string_or_comment_is_warned_of(project: Path) -> None:
+    """Round 2 of #835: where `nocite` asks for every entry, each entry nothing cites is
+    warned of, and an `@string` or an `@comment`, which names no work, is not."""
+    _with_entries(project, '\n@string{jama = "JAMA"}\n@comment{jabref-meta: x;}\n'
+                           + _one_entry("zeta2001", "Zeta, Zoe"),
+                  header="nocite: '@*'\n")  # fmt: skip
+    said = sorted(f.message for f in _one_note(project))
+    assert said == ["references.bib holds @zeta2001, which nothing cites"], said
+
+
+_CROSSREF_BIB = """
+@inproceedings{a2019,
+  author = {Ant, Ann}, title = {A}, year = {2019}, crossref = {proc2019},
+}
+@inproceedings{b2019,
+  author = {Bee, Bo}, title = {B}, year = {2019}, crossref = {Proc2019},
+}
+@inproceedings{c2020,
+  author = {Cee, Cy}, title = {C}, year = {2020}, xref = {proc2020},
+}
+@proceedings{proc2019,
+  title = {Proceedings 2019}, year = {2019},
+}
+@proceedings{proc2020,
+  title = {Proceedings 2020}, year = {2020},
+}
+"""
+
+
+@pytest.mark.parametrize("latex", [True, False])
+def test_an_entry_two_cited_entries_crossref_is_printed_in_latex(
+    project: Path, latex: bool
+) -> None:
+    """Round 1 of #835: BibTeX and biblatex print an entry that two cited entries name in
+    `crossref` (`min-crossrefs`, biblatex's `mincrossrefs` and `minxrefs`, 2 by default), so
+    a LaTeX paper's note leaves it out, without warning of it, keys matched without case. An
+    entry one cited entry names is not printed, and stays in the note. Pandoc's citeproc
+    prints neither, so a Markdown paper's note lists both."""
+    if latex:
+        entry = _twin(project)
+        _into_results(entry, "A claim \\cite{a2019, b2019, c2020}.")
+        path = project / "literature" / "references.bib"
+        path.write_text(path.read_text(encoding="utf-8") + _CROSSREF_BIB, encoding="utf-8")
+    else:
+        _with_entries(project, _CROSSREF_BIB, typed="A claim [@a2019; @b2019; @c2020].")
+    (note,) = _one_note(project)
+    listed = "@proc2020" if latex else "@proc2019, @proc2020"
+    assert note.message.endswith(f"the paper: {listed}"), note.message
 
 
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:
@@ -40770,6 +41414,84 @@ def test_a_case_report_section_is_found_by_its_own_words(
     assert (section not in _plan_asked(project)) is found
 
 
+def test_a_case_series_plan_is_asked_how_its_cases_were_found_followed_and_compared(
+    project: Path,
+) -> None:
+    """A descriptive case series took `other`, and its plan was asked for the seven sections
+    alone: never how its cases were found, how long they were followed, what its results are
+    set against, or whether an ethics committee and the patients agreed. Its plan is asked
+    for those four, each with its PROCESS 2023 item in the hint, and still for the analysis
+    and the deviations every plan has (Basile, 2026-11-27)."""
+    from manuscript_guard.gates import check_design
+
+    _paper_has(project, study_type="case-series")
+    series = ["case selection", "comparison", "consent and ethics", "follow-up"]
+    assert _plan_asked(project) == series
+    hints = {f.message: f.hint for f in check_design(load_project(project)[0]).findings
+             if f.code == "plan-section-missing"}  # fmt: skip
+    assert "(PROCESS 2023 checklist, items 6b and 11)" in hints[
+        "the plan says nothing about consent and ethics"]
+    assert "(PROCESS 2023 checklist, items 6c and 6f)" in hints[
+        "the plan says nothing about case selection"]
+    report = check_design(load_project(project)[0])
+    assert report.counts["design_expected"] == 11, report.counts
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Analysis\n" in text and "## Deviations from the plan\n" in text
+    plan.write_text(text.replace("## Analysis\n", "## Notes\n")
+                    .replace("## Deviations from the plan\n", "## Since the start\n"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == sorted([*series, "analysis", "deviations"])
+
+
+@pytest.mark.parametrize(
+    ("heading", "section", "found"),
+    [
+        ("## Consecutive patients", "case selection", True),
+        ("## Recruitment", "case selection", True),
+        ("## Case identification", "case selection", True),
+        ("## Selection of cases", "case selection", True),
+        # Round 1 of #849: a hyphen after "case", and "consecutively", were not read.
+        ("## Case-finding", "case selection", True),
+        ("## Case-identification", "case selection", True),
+        ("## Consecutively treated patients", "case selection", True),
+        ("## Patient selection", "case selection", False),
+        ("## Follow up", "follow-up", True),
+        ("## Loss to follow-up", "follow-up", True),
+        ("## Length of observation", "follow-up", False),
+        ("## Comparison with published series", "comparison", True),
+        ("## Historical controls", "comparison", True),
+        ("## External controls", "comparison", True),
+        ("## Comparator", "comparison", True),
+        ("## 3. Comparison", "comparison", True),
+        ("## Comparisons with the literature", "comparison", True),
+        ("## Statistical comparisons", "comparison", False),
+        # Round 1 of #849: an analysis's comparisons were taken for the external one.
+        ("## Correction for multiple comparisons", "comparison", False),
+        ("## Subgroup comparisons", "comparison", False),
+        ("## Comparison of outcomes between groups", "comparison", False),
+        ("## Historical background", "comparison", False),
+        ("## Ethical approval", "consent and ethics", True),
+        ("## Informed consent", "consent and ethics", True),
+        ("## Ethics committee", "consent and ethics", True),
+        ("## Data protection", "consent and ethics", False),
+    ],
+)  # fmt: skip
+def test_a_case_series_section_is_found_by_its_own_words(
+    project: Path, heading: str, section: str, found: bool
+) -> None:
+    """A case series' sections are found by words those sections alone use, as the other
+    designs' are (DESIGN.md, Known gaps, "A design's sections are found by the words of
+    their headings"): "Statistical comparisons" is the analysis and no comparison, and a
+    "Patient selection" or "Historical background" names none of them."""
+    _paper_has(project, study_type="case-series")
+    assert section in _plan_asked(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + f"\n{heading}\n\nWhat it says.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert (section not in _plan_asked(project)) is found
+
+
 @pytest.mark.parametrize(
     ("heading", "found"),
     [
@@ -41142,8 +41864,8 @@ def test_the_table_s_designs_are_named_and_another_is_other(project: Path) -> No
 
     assert sorted(study_types()) == sorted([
         "trial", "cohort", "case-control", "cross-sectional", "diagnostic-accuracy",
-        "case-report", "self-controlled", "disproportionality", "systematic-review",
-        "prediction-model"])
+        "case-report", "case-series", "self-controlled", "disproportionality",
+        "systematic-review", "prediction-model"])
     assert required_for("other") == REQUIRED
     _paper_has(project, study_type="qualitative")
     _project, report = load_project(project)
@@ -41204,6 +41926,10 @@ def _guideline_said(root: Path) -> list[str]:
         ("cohort", ["CONSORT"], True),
         ("prediction-model", ["TRIPOD+AI"], False),
         ("disproportionality", ["READUS-PV"], False),
+        # A case series follows PROCESS, written for surgery, or Kempen: either counts.
+        ("case-series", ["PROCESS-2023"], False),
+        ("case-series", ["Kempen-2011"], False),
+        ("case-series", ["STROBE"], True),
         (None, [], False),
         # A design none of the table's has no guideline to be held to.
         ("other", [], False),
@@ -41433,6 +42159,97 @@ def test_a_statistical_abbreviation_a_pdf_s_legend_defines_later_is_not_used_bef
         found = [each for each in _rebuilt_said(run, "SD")
                  if each[0] == "abbreviation-used-before-defined"]
         assert found == said, run.language
+
+
+# --------------------------------------------------------------------------------------
+# Where a Word paper's parts begin and end (2026-11-27): a reference list titled in a block
+# quote or "Literature", an Abstract titled in bold or ended by the title again, Highlights,
+# and R pasted as an indented block. Each edit below is one a Word paper makes: the false
+# alarm it gave goes, and the true finding beside it stays.
+
+_PYTHON_PARAGRAPH = "The analysis was run in Python"
+
+
+@pytest.mark.parametrize(
+    "title", ["> Notes.\n>\n> **11. REFERENCES**:\n>\n> ", "**Literature**\n\n"],
+    ids=["a title in a block quote", "Literature"],
+)
+def test_a_typed_reference_list_s_titles_define_nothing(project: Path, title: str) -> None:
+    """docx-med-A3, docx-socio-B3: a reference list titled in a block quote under a line of
+    `>`, or "**Literature**", is passed over, so a definition in an entry's title defines
+    nothing and the Methods' earlier use is asked about, not used before it; a definition in a
+    quoted paragraph of the text still is one."""
+    mended = with_ror_defined(project)
+    text = mended.replace(_PYTHON_PARAGRAPH, f"The HIE was read.\n\n{_PYTHON_PARAGRAPH}", 1)
+    text = text.replace("# Data availability", f"{title}1. Doe A. Hepatic injury events (HIE) "
+                        "in trials. BMJ. 2020;1:2.\n\n# Data availability", 1)  # fmt: skip
+    main_md(project).write_text(text, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(text, "The HIE"))]
+    quoted = text.replace("> Notes.", "> The hepatic injury events (HIE) were noted.").replace(
+        "**Literature**", "> The hepatic injury events (HIE) were noted.\n\n**Literature**")
+    main_md(project).write_text(quoted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(quoted, "The HIE"))]
+
+
+def test_an_abstract_titled_in_bold_is_read_apart(project: Path) -> None:
+    """docx-educ-2: "# **Abstract**", a Word heading also set in bold, names the Abstract, so
+    the Abstract's use of ROR owes its own definition and is not used before the
+    Introduction's; a use in the Introduction above the definition still is."""
+    mended = with_ror_defined(project)
+    bold = mended.replace("# Abstract", "# **Abstract**", 1).replace(
+        "**Background.** ", "**Background.** The ROR was read. ", 1)
+    main_md(project).write_text(bold, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(bold, "The ROR was read"))]
+    early = bold.replace("# Introduction\n\n", "# Introduction\n\nThe ROR was raised.\n\n", 1)
+    main_md(project).write_text(early, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(early, "The ROR was read")),
+        ("abbreviation-used-before-defined", line_of(early, "The ROR was raised"))]
+
+
+def test_an_abstract_ends_at_the_title_repeated_in_bold(project: Path) -> None:
+    """Decision D6 (docx-educ-B1): the Introduction opened by the title again in bold, with no
+    heading, as APA has it, is the main text, so its definition of ROR covers the Methods' use;
+    the Abstract still owes its own."""
+    title = "Hepatic injury with example-drug in a synthetic database"
+    mended = with_ror_defined(project)
+    apa = mended.replace("# Abstract", f"{title}\n\n# Abstract", 1).replace(
+        "# Introduction", f"**{title}**", 1)
+    main_md(project).write_text(apa, encoding="utf-8")
+    assert language_findings(project) == []
+    used = apa.replace("**Background.** ", "**Background.** The ROR was read. ", 1)
+    main_md(project).write_text(used, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(used, "The ROR was read"))]
+
+
+def test_a_paper_s_highlights_owe_no_definition(project: Path) -> None:
+    """Decision D4 (docx-ecol-B1): "# Highlights" between the Abstract and the Introduction
+    owes no definition, so its ROR is no use before the Introduction's definition; a section
+    of the paper's own there, "# Background", still owes one."""
+    mended = with_ror_defined(project)
+    for heading, said in (("# Highlights", []),
+                          ("# Background", ["abbreviation-used-before-defined"])):
+        text = mended.replace("# Introduction", f"{heading}\n\nThe ROR of example-drug was high."
+                              "\n\n# Introduction", 1)  # fmt: skip
+        main_md(project).write_text(text, encoding="utf-8")
+        assert [code for code, _line in language_findings(project)] == said, heading
+
+
+def test_r_pasted_as_an_indented_block_is_no_prose(project: Path) -> None:
+    """docx-psych-2: R pasted into the Methods as an indented code block, "SE<-as.vector(fit)"
+    over "#SE: Posterior Standard Deviation", holds no use and no definition; the same lines
+    as a list item's indented paragraph are read."""
+    code = "    SE<-as.vector(fit)\n    #SE: standard error of the fit\n\n"
+    text = with_ror_defined(project).replace(_PYTHON_PARAGRAPH, code + _PYTHON_PARAGRAPH, 1)
+    main_md(project).write_text(text, encoding="utf-8")
+    assert language_findings(project) == []
+    item = text.replace(code, "- The SE was kept.\n\n    SE: standard error\n\n", 1)
+    main_md(project).write_text(item, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(item, "- The SE was kept"))]
 
 
 # --------------------------------------------------------------------------------------
@@ -45383,3 +46200,28 @@ def test_an_audit_says_a_trial_registered_after_it_started(
     said = json.loads(capsys.readouterr().out)["findings"]
     late = [f["message"] for f in said if f["code"] == "registration-late"]
     assert len(late) == 1 and late[0].startswith("NCT04446611"), late
+
+
+def test_an_audit_says_a_reference_whose_doi_is_another_work_s(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Corrupted: a reference gives a real DOI with an invented title, the commonest
+    fabricated citation. `audit --lookup` must say its DOI is of another work, with both
+    titles (`auditing.references._title_differs`, item 7b)."""
+    from test_audit_doi_title import GIVEN, Registries, _paper
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.lookup import http
+    from manuscript_guard.lookup import run as lookup
+
+    table = Registries()
+    table.records["10.5555/given.1"] = ("Mitochondrial dynamics in budding yeast", "")
+    monkeypatch.setattr(http, "default_transport", table)
+    paced = lookup.Pacer
+    monkeypatch.setattr(lookup, "Pacer", lambda: paced(sleep=lambda seconds: None))
+    paper = tmp_path / "paper.md"
+    paper.write_text(_paper(), encoding="utf-8")
+    main(["audit", str(paper), "--lookup", "--json"])
+    said = [f["message"] for f in json.loads(capsys.readouterr().out)["findings"]
+            if f["code"] == "reference-title-differs"]  # fmt: skip
+    assert len(said) == 1 and GIVEN in said[0] and "Mitochondrial dynamics" in said[0], said

@@ -87,7 +87,9 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.gates.analyses_named import check_analyses_named
 from manuscript_guard.gates.baseline import check_baseline
+from manuscript_guard.gates.caption_marks import check_caption_marks
 from manuscript_guard.gates.controls import check_controls
 from manuscript_guard.gates.currency import check_currency
 from manuscript_guard.gates.custodian import (
@@ -216,6 +218,8 @@ def _gate_run(
             ("G3", lambda: check_figure_alt(project, namespace, chosen)),
             ("G3", lambda: check_figure_colours(project)),
             ("G3", lambda: check_placed(project)),
+            # A caption that points at a line it never names, in the manuscript or emitted.
+            ("G3", lambda: check_caption_marks(project, results)),
             ("G10", lambda: check_figure_reviews(project, content_digest)),
             ("G7", lambda: check_citations(project, literature)),
             ("G7", lambda: check_literature_chain(project, literature)),
@@ -248,6 +252,9 @@ def _gate_run(
             ("G8r", lambda: check_reporting(project, namespace, results, chosen)),
             ("G6", lambda: check_writing(project, results, submission=at_submission)),
             ("G9", lambda: check_methods(project, namespace, results)),
+            # Its own, since it reads the manuscript: an analysis the Results name and the
+            # Methods never do.
+            ("G9", lambda: check_analyses_named(project)),
             ("G12", lambda: check_design(project, results, chosen).merge(
                 check_design_rounds(project, submission=at_submission))),
             # A check of its own, since it reads the manuscript: one that cannot be read stops
@@ -3594,6 +3601,29 @@ def cmd_next(args: argparse.Namespace) -> int:
     else:
         print(guide.render(state, actions, every=args.all))
     return 0
+
+
+def cmd_setup(args: argparse.Namespace) -> int:
+    """`setup questions`: what is still open, writing nothing, exit 0. `setup apply`: the
+    project written from the answers, exit 0; 1 where a question is open or an answer cannot
+    be written, with the files as they were; 2 where the folder cannot be set up at all."""
+    from manuscript_guard import setup as setting_up
+    from manuscript_guard.setup.folder import SetupRefused
+
+    try:
+        if args.verb == "questions":
+            folder = setting_up.read_folder(args.path)
+            asked = setting_up.ask(folder, setting_up.load_answers(folder.root))
+            print(setting_up.asked_json(asked) if args.json else setting_up.asked_text(asked))
+            return 0
+        applied = setting_up.apply_answers(args.path, dry_run=args.dry_run)
+    except SetupRefused as exc:
+        print(f"manuscript-guard setup: {exc}", file=sys.stderr)
+        return 2
+    root = str(Path(args.path).resolve())
+    print(setting_up.applied_json(applied, root) if args.json
+          else setting_up.applied_text(applied))  # fmt: skip
+    return 0 if applied.ok else 1
 
 
 def cmd_stages(args: argparse.Namespace) -> int:
@@ -7167,7 +7197,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 #: command is in one group, but `hook`: an agent tool calls it and an author never does.
 COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Setup & Guide",
-     ("init", "next", "set", "stages", "journal", "style", "install-skills",
+     ("init", "setup", "next", "set", "stages", "journal", "style", "install-skills",
       "report-issue")),  # fmt: skip
     (
         "Checking & Audit",
@@ -7893,6 +7923,30 @@ def build_parser() -> argparse.ArgumentParser:
     next_.add_argument("--stage", choices=STAGES,
                        help="decide as at this stage; overrides `stage` in paper.yaml")
     next_.set_defaults(func=cmd_next)
+
+    setup = sub.add_parser(
+        "setup",
+        help="start a project in conversation: list the decisions still open (questions), "
+        "then write the project from the answers (apply), filling only what is blank",
+        description="The decisions a project needs at its start (how the manuscript is "
+        "written, the title, the English, the design, the reporting guideline, the journal, "
+        "the authors, the analysis language, where the data are, the registration, the "
+        "repository) are answered in design/setup.yaml, each at the place its question "
+        "names. `questions` says which are still open, each with its options and why it "
+        "matters, and writes nothing. `apply`, once none is open, runs init where there is "
+        "no project and writes each setting into paper.yaml, authors.yaml, the journal's "
+        "profile and .gitignore, each only where it is blank: it replaces no value, which is "
+        "set's to change. It then says what this machine lacks for the analysis language, "
+        "and what comes next (docs/setup.md).",
+    )
+    setup.add_argument("verb", choices=["questions", "apply"])
+    setup.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    setup.add_argument("--json", action="store_true",
+                       help="as JSON (schemas manuscript-guard/setup-questions/1 and "
+                       "manuscript-guard/setup-applied/1)")  # fmt: skip
+    setup.add_argument("--dry-run", action="store_true",
+                       help="apply: say what would be written, and write nothing")
+    setup.set_defaults(func=cmd_setup)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)

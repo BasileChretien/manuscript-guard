@@ -3304,3 +3304,86 @@ def test_a_statistical_abbreviation_a_word_legend_defines_later_was_not_used_bef
         report = json.loads(capsys.readouterr().out)
         assert [f["message"].split()[0] for f in report["findings"]
                 if f["code"] == "abbreviation-used-before-defined"] == said, later
+
+
+# ------------------------------------------------- code pasted into a Word paper (2026-11-27)
+
+
+def test_an_indented_code_block_is_hidden_and_a_list_item_s_paragraph_is_read(
+    project: Path,
+) -> None:
+    """docx-psych-2: R pasted as a block indented four spaces after a blank line is a code
+    block as pandoc reads one, and no word of it is a use or a definition. A list item's
+    indented paragraph is the item's and is read; and, a limit written down in DESIGN.md's
+    Known gaps, a block quote's own indented code, `>     SE <- 1`, is read too."""
+    code = "    SE<-as.vector(fit)\n    #SE: Posterior Standard Deviation\n"
+    report = written(project, f"# Methods\n\nWe fitted the model.\n\n{code}\nIt held.\n")
+    assert not report.findings, found(report)
+    report = written(project, "# Methods\n\n- The SE was kept.\n\n    SE: standard error\n")
+    assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
+    report = written(project, "# Methods\n\n> The SE was kept.\n>\n>     SE: standard error\n")
+    assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    "written_as",
+    [
+        # A list item of three paragraphs, as pandoc writes one (round 1 of #841).
+        "-   The SE was kept.\n\n    It held.\n\n    SE: standard error\n",
+        # A lettered, a roman and a bracketed item, as pandoc writes Word's lists.
+        "a.  The SE was kept.\n\n    SE: standard error\n",
+        "iv. The SE was kept.\n\n    SE: standard error\n",
+        "A)  The SE was kept.\n\n    SE: standard error\n",
+        "(1) The SE was kept.\n\n    SE: standard error\n",
+        # A footnote's second paragraph.
+        "The ratio was low.[^1]\n\n[^1]: The SE was kept.\n\n    SE: standard error\n",
+        # A multiline table's row whose first cell is empty.
+        "The SE was kept.\n\n-------------------------------------\n  Group       Note\n"
+        "----------- -------------------------\n  one         It held.\n\n"
+        "              The standard error (SE) of it.\n-------------------------------------\n",
+    ],
+    ids=["third paragraph", "lettered", "roman", "letter and bracket", "bracketed number",
+         "footnote", "multiline table"],
+)  # fmt: skip
+def test_an_indented_paragraph_of_an_item_a_note_or_a_table_is_read(
+    project: Path, written_as: str
+) -> None:
+    """Round 1 of #841: an indented paragraph is no code inside a list item, whatever its
+    marker and its place among the item's paragraphs, inside a footnote, or in a table's
+    row: the definition in it is read, so the use above it is used before it."""
+    report = written(project, f"# Methods\n\n{written_as}")
+    assert codes(report) == {"abbreviation-used-before-defined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    ("written_as", "code"),
+    [
+        # A capital and a stop before one space, and a word of mixed case, open no item, as
+        # pandoc 3.9 reads them: the indented paragraph under them is code.
+        ("C. elegans strains were used.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        ("Mix. The cells were kept.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        # Words of roman letters that are no numeral as pandoc's `romanNumeral` reads one
+        # open no item, so code indented as far as such an item's text would start is code
+        # (round 3 of #841).
+        ("civil. The cells grew.\n\n       SE <- 1\n       # SE: standard error\n", True),
+        ("dim. The cells grew.\n\n     SE <- 1\n     # SE: standard error\n", True),
+        ("ic. The cells grew.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        # An item whose text starts five in, which four spaces do not reach.
+        ("xii. The cells were kept.\n\n    SE <- 1\n    # SE: standard error\n", True),
+        # A capital and a stop before two spaces, and a roman numeral of capitals, open one.
+        ("Q.  The SE was kept.\n\n    SE: standard error\n", False),
+        ("IV. The SE was kept.\n\n    SE: standard error\n", False),
+    ],
+    ids=["capital and one space", "mixed case", "no numeral, civil", "no numeral, dim",
+         "no numeral, ic", "item five in", "capital and two spaces",
+         "roman capitals"],
+)  # fmt: skip
+def test_an_item_opens_as_pandoc_s_fancy_lists_open_one(
+    project: Path, written_as: str, code: bool
+) -> None:
+    """Round 2 of #841: an item's marker, and how far its paragraphs are indented, are read as
+    pandoc's fancy_lists reads them, so an indented paragraph is code where pandoc makes it a
+    `CodeBlock` and the item's where pandoc keeps it in the item."""
+    report = written(project, f"# Methods\n\n{written_as}")
+    expected = set() if code else {"abbreviation-used-before-defined"}
+    assert codes(report) == expected, found(report)

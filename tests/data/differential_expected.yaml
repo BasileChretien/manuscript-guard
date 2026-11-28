@@ -26,13 +26,10 @@
 expected:
   - reading: plan sections asked
     why: >-
-      a case report is a design of `data/study_types.yaml`: a plan whose paper.yaml names
-      it is asked for its de-identification, timeline, diagnostic assessment, patient
-      perspective and informed consent, each from its CARE item, and not for the analysis
-      or the deviations every other plan has, where main read `study_type: case-report` as
-      no design of its table and refused it; and every plan's population is found under
-      CARE's words, "Patient information" or "The patient" as a whole heading, which the
-      drawn plans now hold
+      a descriptive case series is a design of `data/study_types.yaml`: a plan whose
+      paper.yaml names it is asked for its case selection, follow-up, comparison, and
+      consent and ethics, each from its PROCESS 2023 item, beside the seven every plan has,
+      where main read `study_type: case-series` as no design of its table and refused it
   - reading: pdf headings
     why: >-
       a run-in "Keywords:" after the words under a PDF's Abstract heading ends the Abstract,
@@ -280,13 +277,14 @@ expected:
       one word; the inputs now hold Japanese, Chinese and Thai pieces (G7, quote-too-short)
   - reading: hidden
     why: >-
-      G14 read the mask with each line feed put back and each carriage return NUL; the
-      mask keeps both now in the front matter and a listing, so a file with CRLF line ends
-      keeps its carriage returns there too, which every reading of it takes for a space
+      a block indented four spaces or a tab after a blank line, not under a list item's
+      paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
+      view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix):
+      the inputs' indented lines, " reports ", are blanked where the base kept them as
+      words. The entry it replaces is spent
   - reading: own words
     why: >-
-      read from the `hidden` text, which keeps a carriage return in the front matter and a
-      listing of a file with CRLF line ends where it was NUL
+      the same view (the entry for `hidden`); the entry it replaces is spent
   - reading: spelling
     why: >-
       a paper that declares no English, whose more words are one word repeated against three
@@ -407,20 +405,19 @@ expected:
       (the bug found building #691)
   - reading: notation
     why: >-
-      `notation-space-missing` and `notation-unit` read nothing anywhere in a run of
-      characters with no blank in it that holds a word joined by underscores (Basile,
-      2026-11-22, "Skip the whole token"): the inputs now hold "UNEMP\_DURA\_6-12mth",
-      "RATE\_x-to+0.5" and "DOSE\_6-5mg", whose number, signed number and unit stand after
-      the name's hyphen, and which the base reports as a space left out or a unit closed up;
-      the entry it replaces, for a number inside a piece raised or lowered or inside the name
-      itself, is spent
+      a block indented four spaces or a tab after a blank line, not under a list item's
+      paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
+      view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix),
+      so G14's notation reads nothing in one: " *P = 0.03* " counts no sign where the base
+      counted one. The entry it replaces is spent
   - reading: notation of a PDF's text
     why: >-
-      the same, in a file the audit staged from a PDF
+      the same, in a file the audit staged from a PDF (the entry for `notation`); the entry
+      it replaces is spent
   - reading: notation edits
     why: >-
-      the same: no space is put after the hyphen in "UNEMP\_DURA\_6-12mth" nor in
-      "DOSE\_6-5mg", where the base put one; the entry it replaces is spent
+      the same: no interval in an indented code block is rewritten (the entry for
+      `notation`); the entry it replaces is spent
   - reading: word reference lists
     why: >-
       a new reading: a .docx's entry in a heading style, numbered in brackets after the entry
@@ -428,9 +425,29 @@ expected:
       where the base ends the list there and reads the entries after it as text (window C of
       the real-paper corpus); a section's title after the list, "5. Discussion" after "4.",
       ends it on both
+  - reading: vocabulary
+    why: >-
+      a block indented four spaces or a tab after a blank line, not under a list item's
+      paragraph, is an indented code block as pandoc reads one, and is hidden from G14's
+      view as a fenced block is (Basile, 2026-11-27; R pasted into docx-psych-2's appendix),
+      so G14's vocabulary counts no term in one, " *CYP2D6*4* "
   - reading: checklist quotes
     why: >-
       an answer whose `where` is "Title" or "the title" is held to the paper's title,
       paper.yaml's, which the reading now hands `read` (READUS-PV 1a and 1b on the
       bisphosphonates paper), where the base names no part for it; a quote of the title's
       words under a heading stands in "the title in paper.yaml"
+  - reading: figure script numbers
+    why: >-
+      a new reading of G3's script check, on inputs that hold the three kinds it now passes
+      (the bisphosphonates paper, 2026-11-26): a string that is, whole, one of R's colour names
+      with digits in an R script ("grey50", "steelblue4") or matplotlib's "C0" in a Python
+      one, a number that is a whole subscript (`edges[1]`, `fits[[2]]`, `edges[-1]`), and a
+      zero compared with an exit status (`if (status != 0) stop()`), each of which the base
+      reports as a number the figure draws or one bound to nothing; what only looks like each
+      is reported on both
+  - reading: figure svg text
+    why: >-
+      a new reading: the text of an SVG's `<style>` and `<script>` is not read as text the
+      figure draws, where the base read svglite's `stroke-miterlimit: 10.00` as two numbers
+      of the figure; its `<text>`, its metadata and its attributes are read as before

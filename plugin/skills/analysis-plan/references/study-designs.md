@@ -118,6 +118,29 @@ exactly: `## Case presentation {#population}`.
 - **Informed consent.** That the patient, or whoever may decide for them, agreed to the
   publication, and how that is recorded. (CARE, 13)
 
+## case-series
+
+A descriptive case series, several patients who share a condition, an exposure or a
+treatment described together with no comparison group of their own. It is not the
+self-controlled case series, which is `self-controlled`. No general guideline is written
+for case series: the paper follows PROCESS (2023), written for surgical case series, or
+Kempen (2011), for uncontrolled case series in any field, and G5 accepts either. The plan
+is asked for all seven sections, the analysis being the counts and summaries the series
+will give. The sections cite PROCESS 2023. The comparison is found under a comparator,
+a comparison with something, historical or external controls, or a heading that is
+"Comparison" whole; a comparison the analysis makes ("Multiple comparisons") is not it.
+
+- **Case selection.** How the cases are found and chosen: from which records or referrals,
+  over which period, and whether the series holds every case seen or only some. (PROCESS
+  2023, 6c and 6f)
+- **Follow-up.** How long and how often each patient is followed, by what means, and how
+  those lost to follow-up are counted and explained. (PROCESS 2023, 6l and 7c)
+- **Comparison.** What the results are set against, published studies, the current
+  standard of care or a historical group, and why it is comparable. (PROCESS 2023, 8b)
+- **Consent and ethics.** Whether an ethics committee approves the study or waives its
+  approval, and how the patients' consent is obtained, or why it is not. (PROCESS 2023, 6b
+  and 11)
+
 ## self-controlled
 
 No reporting guideline is written for self-controlled designs; the paper follows STROBE.

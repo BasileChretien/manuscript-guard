@@ -189,11 +189,12 @@ def test_a_design_none_of_the_table_s_is_offered_last_and_settles_the_choice(
     other = action.choice.options[-1]
     assert other.id == "other" and other.label.startswith("None of these (")
     # Said beside it, so that an author whose study is one of them knows to choose it.
-    assert all(study in other.label for study in ("case series", "qualitative study",
-                                                   "narrative review"))
+    assert all(study in other.label for study in ("qualitative study", "narrative review"))
     # A cross-sectional study is a design of the table since its first new one.
     assert "cross-sectional" not in other.label
     assert "case report" not in other.label
+    # A descriptive case series is one since 2026-11-28 (Basile, 2026-11-27).
+    assert "case series" not in other.label
     assert "seven sections every plan has" in other.effect
     assert of(settled(tmp_path, study_type="other", stage="design"), "choose-study-type") == []
 
@@ -855,14 +856,15 @@ def test_what_a_contract_refuses_is_not_sent_to_bind(tmp_path: Path) -> None:
 
 
 def _cited_only_in_the_sentence(root: Path) -> None:
-    """An entry the manuscript cites in words alone, which G7 does not read as a citation."""
+    """An entry the manuscript cites in words alone, which G7 does not read as a citation,
+    in a list that prints every entry (`nocite: '@*'`), where it is a warning of its own."""
     bib = root / "literature" / "references.bib"
     bib.write_text(bib.read_text(encoding="utf-8") + "\n@article{imaginary2018,\n"
                    "  author = {Imaginary, Anne}, title = {T}, journal = {J}, year = {2018},\n}\n",
                    encoding="utf-8")  # fmt: skip
     main = root / "manuscript" / "main.md"
-    main.write_text(main.read_text(encoding="utf-8") + "\nImaginary (2018) showed this.\n",
-                    encoding="utf-8")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace("---\n", "---\nnocite: '@*'\n", 1)
+    main.write_text(text + "\nImaginary (2018) showed this.\n", encoding="utf-8")
 
 
 def test_next_does_not_send_a_work_cited_in_words_to_sync_bib(

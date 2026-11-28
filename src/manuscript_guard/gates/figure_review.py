@@ -42,7 +42,8 @@ PREFERENCE = [".svg", ".pdf", ".eps", ".png", ".tif", ".tiff", ".jpg", ".jpeg", 
 REQUIRED_CHECKS = {
     "values-match-results": "every number shown matches the results file",
     "axes-labelled-and-scaled": "axes carry units, and any log or truncated scale is declared",
-    "caption-agrees": "the caption describes the figure that is actually drawn",
+    "caption-agrees": "the caption describes the figure that is actually drawn, and the "
+    "figure draws the comparison the text headlines, against the same comparator",
     "legend-and-marks-explained": "every mark, colour, line style and series is accounted "
     "for, and the legend states n, what the error bars are, any smoothing and what each "
     "significance marker means",

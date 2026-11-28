@@ -23944,13 +23944,17 @@ Open, recorded as each change landed:
   wrong transcription, which is the best that can be done about it. Accepted.
 - **A trial named like a guideline is read as a claim of having followed it.** G5 reads a
   guideline's name in capitals (`CLAIMABLE`) in a sentence with a word of claiming, and a
-  trial's acronym can be the same name: "as reported in the CARE trial" names a trial of
-  cholesterol and reads as a claim of having followed CARE, and a paper that declares no
-  CARE profile is warned. SPIRIT and ARRIVE are the names of trials too. CARE and PROCESS
-  were added on 2026-11-28 (round 1 of #851), after a measure on the real-paper corpus:
-  no paper of it names either in such a sentence, and G5's findings there were unchanged.
-  The author rewords such a sentence, or the warning stays. Pinned by
-  `tests/test_corruption.py::test_a_trial_named_like_a_guideline_is_read_as_a_claim`.
+  trial's acronym can be the same name: "as reported in the SPIRIT III trial" reads as a
+  claim of having followed SPIRIT, and a paper that declares no SPIRIT profile is warned;
+  ARRIVE is a trial's name too. CARE and PROCESS, added on 2026-11-28 (#851), are also a
+  trial's, a scale's, cohorts' and Hayes's macro's names ("the PROCESS macro", "the CARE
+  Measure"), so they are read only beside a year or a word that makes them the guideline,
+  after other names or a parenthesis if any: "PROCESS 2023", "the CARE guidelines", "the
+  CARE and STROBE statements" (round 2 of #851). A claim that names one bare, "we followed
+  CARE", is not read. The real-paper corpus holds no sentence that names either. The
+  author rewords a sentence warned of, or the warning stays. Pinned by
+  `tests/test_corruption.py::test_a_trial_named_like_a_guideline_is_read_as_a_claim` and
+  `tests/test_corruption.py::test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word`.
 - **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one
   item to a row: a recipe would drop item 7. Its statement states no open licence, so its

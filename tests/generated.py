@@ -3977,22 +3977,36 @@ _GUIDELINES_CLAIMED = ("STROBE", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIV
 CLAIMED_NAMES = ("STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD",
                  "ARRIVE", "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR",
                  "CHEERS", "ENTREQ", "CARE", "PROCESS")  # fmt: skip
-#: Sentences that claim to have followed what they name, each with a word of `_CLAIMING`.
-_CLAIM_SENTENCES = ("The report follows {}.", "It was reported according to the {} guidelines.",
-                    "We adhered to the {} statement.", "The {} checklist is in the supplement.",
-                    "Patients followed {} pathways.")  # fmt: skip
+#: The names of `CLAIMED_NAMES` that are also a macro's, a scale's, a cohort's or a trial's,
+#: read as a guideline only beside a year or a word that makes it one (round 2 of #851).
+QUALIFIED_NAMES = ("CARE", "PROCESS")
+#: Sentences that claim to have followed what they name, each with a word of `_CLAIMING`
+#: and the name beside what makes it a guideline's.
+_CLAIM_SENTENCES = ("The report follows the {} guidelines.",
+                    "It was reported according to the {} statement.",
+                    "We adhered to the {} checklist.",
+                    "The {} 2023 checklist is in the supplement.",
+                    "Patients were followed as the {} reporting guidance asks.")  # fmt: skip
+#: Sentences with a word of claiming that name a macro, a scale, a cohort or a trial.
+_NAMED_OTHERWISE = ("Mediation was tested following Hayes, with the {} macro.",
+                    "Patient-reported empathy was measured on the {} Measure.",
+                    "Participants of the {} cohort were followed for ten years.",
+                    "As reported in the {} trial, events fell.")  # fmt: skip
 
 
 @st.composite
 def named_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, list[str]]]]:
     """A Markdown paper with a claim of every name of `CLAIMED_NAMES`, once in its capitals
-    and once in lower case, each in a paragraph of its own and a sentence drawn, in an order
-    drawn; and each paragraph, with the name G5 reads a claim of in it: the name in
+    and once in lower case, and each of `QUALIFIED_NAMES` once more as the name of a macro,
+    a scale, a cohort or a trial, each in a paragraph of its own and a sentence drawn, in an
+    order drawn; and each paragraph, with the name G5 reads a claim of in it: the name in
     capitals, and none in lower case, where it is a word, "the care given" or "the
-    process" (round 1 of #851)."""
+    process" (round 1 of #851), nor where it names another thing (round 2)."""
     paragraphs = [(draw(st.sampled_from(_CLAIM_SENTENCES)).format(written),
                    [name] if written == name else [])
                   for name in CLAIMED_NAMES for written in (name, name.lower())]  # fmt: skip
+    paragraphs += [(draw(st.sampled_from(_NAMED_OTHERWISE)).format(name), [])
+                   for name in QUALIFIED_NAMES]  # fmt: skip
     order = draw(st.permutations(paragraphs))
     return "\n\n".join(text for text, _ in order) + "\n", list(order)
 

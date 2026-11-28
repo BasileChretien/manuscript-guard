@@ -4757,6 +4757,13 @@ def _process_and_care_are_not_read(patch: pytest.MonkeyPatch) -> None:
                   re.compile(r"\b(" + "|".join(sorted(names, key=len, reverse=True)) + r")\b"))
 
 
+def _care_and_process_are_read_bare(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    names = sorted(reporting_gate.CLAIMABLE, key=len, reverse=True)
+    patch.setattr(reporting_gate, "_NAMED", re.compile(r"\b(" + "|".join(names) + r")\b"))
+
+
 def _a_name_is_read_in_any_case(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import reporting as reporting_gate
 
@@ -4770,7 +4777,8 @@ def test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case
 ) -> None:
     """Every guideline G5 reads a claim of is read where its name stands in the capitals it
     is published in, and none where the name is a word in lower case, "the care given",
-    "the process" (round 1 of #851, which added CARE and PROCESS). Each paragraph is read
+    "the process" (round 1 of #851, which added CARE and PROCESS), and CARE and PROCESS
+    only as a guideline's, not a macro's or a trial's (round 2). Each paragraph is read
     alone as well as in the paper: a name claimed in lower case is the name of the paragraph
     that claims it in capitals, and only a paragraph read alone tells the two apart."""
     from manuscript_guard.gates import reporting as reporting_gate
@@ -30232,6 +30240,10 @@ BROKEN = {
     ),
     "G5 does not read a claim of PROCESS or CARE": (
         _process_and_care_are_not_read,
+        test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
+    ),
+    "G5 reads CARE or PROCESS bare, a macro's or a trial's name as a claim": (
+        _care_and_process_are_read_bare,
         test_a_guideline_is_claimed_by_its_name_in_capitals_and_a_word_in_lower_case_is_none,
     ),
     "G5 reads a guideline's name in lower case as a claim": (

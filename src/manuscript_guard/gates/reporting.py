@@ -125,8 +125,19 @@ CLAIMABLE = (
     "STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE",
     "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR", "CHEERS", "ENTREQ",
     # A case report and a case series have recipes, CARE-2013 and PROCESS-2023, and are
-    # said to follow them (round 1 of #851). Both are words too, read in capitals only.
+    # said to follow them (round 1 of #851). Both are words too, read in capitals only,
+    # and names of other things, read as a guideline only as `_AS_GUIDELINE` says.
     "CARE", "PROCESS",
+)
+#: The names of `CLAIMABLE` that are also a macro's, a scale's, a cohort's or a trial's
+#: ("the PROCESS macro", "the CARE Measure", "the CARE trial"): read as a guideline only
+#: where a year follows, or a word that makes it one, after other names or a parenthesis
+#: if any: "PROCESS 2023", "the CARE guidelines", "the CARE and STROBE statements",
+#: "the CARE (CAse REport) guidelines" (round 2 of #851).
+QUALIFIED = ("CARE", "PROCESS")
+_AS_GUIDELINE = (
+    r"(?=(?:\s*(?:,|and|or|&)\s*[A-Z][A-Z0-9+-]+)*(?:\s*\([^()]*\))?\s*"
+    r"(?:\(?(?:19|20)\d\d\b|guidelines?\b|statements?\b|checklists?\b|criteria\b|reporting\b))"
 )
 
 #: Words that turn a mention of a guideline into a claim of having followed it.
@@ -141,7 +152,9 @@ _CLAIMING = re.compile(
 #: about a guideline on the Methods section of essentially every observational paper, which
 #: teaches an author to stop reading its output. Guideline names are published in capitals
 #: and written that way; requiring the published casing costs nothing and removes the family.
-_NAMED = re.compile(r"\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) + r")\b")
+_NAMED = re.compile(r"\b(" + "|".join(name + (_AS_GUIDELINE if name in QUALIFIED else "")
+                                       for name in sorted(CLAIMABLE, key=len, reverse=True))
+                     + r")\b")  # fmt: skip
 
 #: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
 #: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the

@@ -18994,19 +18994,52 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
 
 
 def test_a_trial_named_like_a_guideline_is_read_as_a_claim(project: Path) -> None:
-    """A known gap (DESIGN.md, Known gaps, round 1 of #851): a trial whose acronym is a
+    """A known gap (DESIGN.md, Known gaps, rounds 1 and 2 of #851): a trial whose acronym is a
     guideline's name, cited in a sentence with a word of claiming, is read as a claim of
     having followed the guideline."""
     from manuscript_guard.gates import check_reporting
 
-    cited = "As reported in the CARE trial, pravastatin lowered coronary events.\n\n"
+    cited = "As reported in the SPIRIT III trial, the stent lowered restenosis.\n\n"
     main = main_md(project)
     main.write_text(main.read_text("utf-8").replace("# Results\n", f"{cited}# Results\n", 1),
                     "utf-8")  # fmt: skip
     found = [f.message.split(" followed ")[1].split(",")[0]
              for f in check_reporting(load_project(project)[0]).findings
              if f.code == "guideline-claimed-not-declared"]  # fmt: skip
-    assert found == ["CARE"], found
+    assert found == ["SPIRIT"], found
+
+
+@pytest.mark.parametrize(
+    ("sentence", "claimed"),
+    [
+        ("Mediation was tested following Hayes, with the PROCESS macro (Model 4) for SPSS.", []),
+        ("Patient-reported empathy was measured with the CARE Measure.", []),
+        ("Participants of the CARE cohort were followed for ten years.", []),
+        ("As reported in the CARE trial, pravastatin lowered coronary events.", []),
+        ("We followed CARE.", []),
+        ("The report follows the CARE (CAse REport) guidelines.", ["CARE"]),
+        ("We followed the CARE and STROBE guidelines.", ["CARE", "STROBE"]),
+        ("It was written to the PROCESS (2023) criteria.", ["PROCESS"]),
+        ("This series was reported according to PROCESS 2020.", ["PROCESS"]),
+    ],
+)
+def test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word(
+    project: Path, sentence: str, claimed: list[str]
+) -> None:
+    """Round 2 of #851: CARE and PROCESS are also a cohort's, a scale's, a trial's and Hayes's
+    macro's names, and read bare, "following Hayes, with the PROCESS macro" was a claim of
+    having followed PROCESS. Each is read as the guideline beside a year or a word that
+    makes it one, after other names or a parenthesis; a bare one is not, "We followed
+    CARE", a false pass the Known gaps name."""
+    from manuscript_guard.gates import check_reporting
+
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{sentence}\n\n# Results\n",
+                                                    1), "utf-8")  # fmt: skip
+    found = sorted(f.message.split(" followed ")[1].split(",")[0]
+                   for f in check_reporting(load_project(project)[0]).findings
+                   if f.code == "guideline-claimed-not-declared")  # fmt: skip
+    assert found == claimed, found
 
 
 @pytest.mark.parametrize("declared", [False, True], ids=["undeclared", "declared"])

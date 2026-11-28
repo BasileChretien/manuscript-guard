@@ -35,7 +35,9 @@ show; the author picks the design, and may pick one you did not show.
 
 ## The reporting guidelines (`reporting_guideline`)
 
-The options are the design's guidelines; more than one may apply (STROBE and RECORD for a
+The options are the design's guidelines, each by its recipe's name (CARE-2013, PRISMA-2020,
+TRIPOD+AI), the name paper.yaml must give for its checklist to be found; a guideline with no
+recipe keeps its own name and says so. More than one may apply (STROBE and RECORD for a
 cohort study of routinely collected data). Put it as a question several of whose options may be picked.
 Another guideline is written by its name. An empty list, `[]`, puts the choice off.
 

@@ -274,11 +274,11 @@ of the `.docx`'s text, set by `tests/proof_pdf.py` in two columns with its lines
 an author in its Info dictionary, against its results and held to that journal's rules),
 then the same command as the page runs it in Node, each archive unpacked there first by
 `web.unpack_paper` as the page unpacks it (`parity.mjs --unpack`), and requires the same
-report and the same `--json`. So it does for three comparisons: the example revision with its
-letter, a reader's comments and the start of the report, whose text must be the same too
-(`parity.mjs --read`); a PDF beside the `.docx`; and two different files of one name, the
-letter a `.docx`, with the start of the report, each version in the folder the page writes it
-in. There the command line reads the PDF with the page's own
+report and the same `--json`. So it does for three comparisons: the example revision with
+its letter, a reader's comments and the start of the report, whose text must be the same
+too (`parity.mjs --read`); a PDF beside the `.docx`; and two different files of one name,
+the letter a `.docx`, with the start of the report, each version in the folder the page
+writes it in. There the command line reads the PDF with the page's own
 `pdftotext` and `pdfinfo`, the build the site serves run in Node (`web/test/program.mjs`),
 put first on its PATH as shell scripts, so that the two are compared given the same program;
 on Windows, which starts no shell script, the command line uses the `pdftotext` on PATH. In

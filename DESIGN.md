@@ -31748,9 +31748,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   `compare` in the page, each version from a folder of its own, `v1/` and `v2/`, so that two
   versions a journal's system gives one name are both read: its report and the start of
   the report name `v1/paper.docx`, where the command line names each file from the folder
-  it is run in, or by its name alone outside it. A response letter or comments file named `v1` or `v2`, or
-  `report-draft.md` where the start of the report is asked for, is refused, to be renamed.
-  Pinned by
+  it is run in, or by its name alone outside it. A response letter or comments file named
+  `v1` or `v2`, or `report-draft.md` where the start of the report is asked for, is
+  refused, to be renamed. Pinned by
   `tests/test_web.py::test_the_worker_gives_compare_each_version_in_a_folder_of_its_own`.
   - Its report is the text alone: `compare` writes no PDF, and the page shows none (the
     author, 2026-11-28). Accepted.

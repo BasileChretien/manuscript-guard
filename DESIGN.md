@@ -24112,9 +24112,9 @@ Open, recorded as each change landed:
 - **A trial named like a guideline is read as a claim of having followed it.** G5 reads a
   guideline's name in capitals (`CLAIMABLE`) in a sentence with a word of claiming, and a
   trial's acronym can be the same name: "as reported in the SPIRIT III trial" reads as a
-  claim of having followed SPIRIT, and a paper that declares no SPIRIT profile is warned;
-  ARRIVE is a trial's name too. The author rewords a sentence warned of, or the warning
-  stays. Pinned by
+  claim of having followed SPIRIT, and a paper that declares no SPIRIT profile is warned,
+  as "as reported in the ARRIVE trial" is of ARRIVE. The author rewords a sentence warned
+  of, or the warning stays. Pinned by
   `tests/test_corruption.py::test_a_trial_named_like_a_guideline_is_read_as_a_claim`.
 - **A claim of having followed CARE or PROCESS is read only beside a year or a word of a
   guideline's.** A case report follows CARE and a case series PROCESS, whose recipes are
@@ -24122,16 +24122,23 @@ Open, recorded as each change landed:
   also the names of a trial, a scale, cohorts and Hayes's macro ("the PROCESS macro", "the
   CARE Measure"), so each is read only where a year follows it, "PROCESS 2023",
   "CARE-2013", or a word that makes it the guideline's, in any case, "the CARE
-  Guidelines". The word may come after a hyphen, words of a case report or a series ("the
-  CARE case report guidelines"), other names ("the CARE and STROBE statements") or a
-  parenthesis ("the CARE (CAse REport) guidelines"), and the name may stand in stars of
-  emphasis (rounds 2 and 3 of #851). So a claim that names one alone, "we followed CARE",
-  is not read, nor one where only a year in a parenthesis follows it, "according to
-  PROCESS (2023)", which is how Hayes's macro is cited, "with PROCESS (2022) for SPSS".
-  Nor is one in underscores of emphasis, "the _CARE_ guidelines", as "the _STROBE_
-  guidelines" is not either. No paper of the real-paper corpus names CARE or PROCESS in a
-  sentence of claiming. Pinned
-  by
+  Guidelines": guideline, guidance, statement or checklist. The word may come after a
+  hyphen, Word's or an en dash among them, words of a case report or a series ("the CARE
+  case report guidelines"), other names, "the" before them and a parenthesis or a citation
+  after each ("the CARE (2013) and the STROBE [12] statements"), or a parenthesis ("the
+  CARE (CAse REport) guidelines"), and the name may stand in stars of emphasis (rounds 2
+  and 3 of #851, round 1 of #858). So a claim that names one alone, "we followed CARE", is
+  not read, nor one where only a year in a parenthesis follows it, "according to PROCESS
+  (2023)", which is how Hayes's macro is cited, "with PROCESS (2022) for SPSS". Nor is one
+  of the guideline's criteria, "the PROCESS (2023) criteria", since "enrolled according to
+  the CARE criteria" are a trial's; nor a year a study follows, "the CARE 2019 cohort".
+  Nor one in underscores of emphasis, "the _CARE_ guidelines", as "the _STROBE_
+  guidelines" is not either; nor one joined to a single other name by a comma before "and"
+  or "or", "the CARE, or STROBE guidelines", since such a comma may end a clause, "Hayes's
+  PROCESS, and STROBE guidelines were followed". A list after the comma is still read as
+  one, so "Hayes's PROCESS, STROBE and CONSORT guidelines were followed" is a claim of
+  PROCESS, a false alarm. No paper of the real-paper corpus is read as claiming CARE or
+  PROCESS. Pinned by
   `tests/test_corruption.py::test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word`.
 - **TARGET has no recipe.** TARGET (2025) sets items 6 and 7 side by side in one
   table of its checklist file, each with sub-items a to h, and the transcriber reads one

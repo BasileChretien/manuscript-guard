@@ -4145,13 +4145,19 @@ _CLAIM_FRAMES = ("The report follows the {}.", "It was reported according to the
 #: for every name but those of `QUALIFIED_NAMES`.
 _BARE_CLAIMS = ("The report follows {}.", "We followed {}.",
                 "It was reported according to {}.")  # fmt: skip
-#: The words that make CARE or PROCESS the guideline's name, those of a case report or a
-#: series that may stand before them, and what a parenthesis after the name may hold.
+#: The words that make CARE or PROCESS the guideline's name, and those of a case report or
+#: a series that may stand before them; "criteria" is none, being as often a trial's
+#: (round 1 of #858).
 _GUIDELINE_WORDS = ("guideline", "guidelines", "guidance", "statement", "statements",
-                    "checklist", "checklists", "criteria")  # fmt: skip
+                    "checklist", "checklists")  # fmt: skip
 _BETWEEN_WORDS = ("case report", "case series", "reporting", "surgical case series",
                   "clinical case reporting", "case-report")  # fmt: skip
-_EXPANSIONS = ("CAse REport", "Preferred Reporting Of CasE Series in Surgery", "2023")
+#: What may follow a name before the word: a parenthesis, or a citation (round 1 of #858).
+_PARENTHESES = ("(CAse REport)", "(Preferred Reporting Of CasE Series in Surgery)", "(2023)")
+_CITATIONS = ("[@gagnier2013]", "[12]", "[@agha2020; @mathew2023]")
+#: The hyphens a paper types other than the hyphen itself: U+2010, Word's non-breaking
+#: U+2011 and an en dash (round 1 of #858).
+_DASHES = (chr(0x2010), chr(0x2011), chr(0x2013))
 
 
 def _guideline_word(draw: st.DrawFn, cases: tuple = (str.lower,)) -> str:
@@ -4162,15 +4168,39 @@ def _a_year(draw: st.DrawFn) -> str:
     return str(draw(st.integers(1990, 2029)))
 
 
-def _joined_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
-    """The name joined to one to three others, "CARE, STROBE and PRISMA", and the others."""
+def _others(draw: st.DrawFn, written: str, least: int = 1, most: int = 1) -> list[str]:
+    """Names to join `written` to, none of them it."""
     names = [name for name in _JOINED_TO if name != written.upper()]
-    others = draw(st.lists(st.sampled_from(names), min_size=1, max_size=3, unique=True))
-    text = written
-    for index, other in enumerate(others):
-        joins = (" and ", " or ", ", and ", " & ", "/") if index == len(others) - 1 else (", ",)
-        text += draw(st.sampled_from(joins)) + other
-    return f"{text} {_guideline_word(draw)}", others
+    return draw(st.lists(st.sampled_from(names), min_size=least, max_size=most, unique=True))
+
+
+def _joined_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
+    """The name joined to one other, "CARE and STROBE", "CARE/STROBE", and the other."""
+    others = _others(draw, written)
+    join = draw(st.sampled_from((" and ", " or ", " & ", "/")))
+    return f"{written}{join}{others[0]} {_guideline_word(draw)}", others
+
+
+def _listed_names(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
+    """The name first of a list of three or four, "CARE, STROBE, and PRISMA", and the
+    others."""
+    others = _others(draw, written, 2, 3)
+    last = draw(st.sampled_from((" and ", ", and ", " or ", ", or ")))
+    listed = ", ".join(others[:-1])
+    return f"{written}, {listed}{last}{others[-1]} {_guideline_word(draw)}", others
+
+
+def _joined_after_the(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
+    others = _others(draw, written)
+    return f"{written} and the {others[0]} {_guideline_word(draw)}", others
+
+
+def _joined_with_parentheses(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
+    """Each name with a parenthesis or a citation after it, "CARE (2013) and STROBE [12]"."""
+    others = _others(draw, written)
+    first = draw(st.sampled_from(_PARENTHESES + _CITATIONS))
+    second = draw(st.sampled_from(_PARENTHESES + _CITATIONS))
+    return f"{written} {first} and {others[0]} {second} {_guideline_word(draw)}", others
 
 
 def _emphasised(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
@@ -4178,34 +4208,54 @@ def _emphasised(draw: st.DrawFn, written: str) -> tuple[str, list[str]]:
     return f"{stars}{written}{stars} {_guideline_word(draw)}", []
 
 
-#: Each way of writing a name as the guideline's (rounds 2 and 3 of #851): the phrase, and
-#: the other names read in it.
+#: Each way of writing a name as the guideline's (rounds 2 and 3 of #851, round 1 of #858):
+#: the phrase, and the other names read in it.
 NAMED_AS_GUIDELINE = {
     "word": lambda draw, written: (f"{written} {_guideline_word(draw)}", []),
     "word in capitals": lambda draw, written: (
         f"{written} {_guideline_word(draw, (str.title, str.upper))}", []),
     "word after a hyphen": lambda draw, written: (f"{written}-{_guideline_word(draw)}", []),
+    "word after another hyphen": lambda draw, written: (
+        f"{written}{draw(st.sampled_from(_DASHES))}{_guideline_word(draw)}", []),
     "year": lambda draw, written: (f"{written} {_a_year(draw)}", []),
     "year after a hyphen": lambda draw, written: (f"{written}-{_a_year(draw)}", []),
+    "year after another hyphen": lambda draw, written: (
+        f"{written}{draw(st.sampled_from(_DASHES))}{_a_year(draw)}", []),
     "words between": lambda draw, written: (
         f"{written} {draw(st.sampled_from(_BETWEEN_WORDS))} {_guideline_word(draw)}", []),
+    "words between in capitals": lambda draw, written: (
+        f"{written} {draw(st.sampled_from(_BETWEEN_WORDS)).title()} {_guideline_word(draw)}",
+        []),
     "emphasis": _emphasised,
     "joined names": _joined_names,
+    "a list": _listed_names,
+    "joined after the": _joined_after_the,
+    "joined with parentheses": _joined_with_parentheses,
     "parenthesis": lambda draw, written: (
-        f"{written} ({draw(st.sampled_from(_EXPANSIONS))}) {_guideline_word(draw)}", []),
+        f"{written} {draw(st.sampled_from(_PARENTHESES))} {_guideline_word(draw)}", []),
+    "citation": lambda draw, written: (
+        f"{written} {draw(st.sampled_from(_CITATIONS))} {_guideline_word(draw)}", []),
 }  # fmt: skip
 #: Each way a qualified name names a macro, a scale, a cohort or a trial in a sentence with
-#: a word of claiming, read as no guideline's: a year in a parenthesis alone cites Hayes's
-#: macro, and "reporting" alone is a verb (round 3 of #851).
+#: a word of claiming, read as no guideline's, with the names that are read: a year in a
+#: parenthesis alone cites Hayes's macro, and "reporting" alone is a verb (round 3 of
+#: #851); a clause after a comma is no list, and a trial's criteria and a cohort's year are
+#: not the guideline's (round 1 of #858).
 NAMED_OTHERWISE = {
-    "macro": ("Mediation was tested following Hayes, with the {} macro.",),
-    "scale": ("Patient-reported empathy was measured on the {} Measure.",),
-    "cohort": ("Participants of the {} cohort were followed for ten years.",),
-    "trial": ("As reported in the {} trial, events fell.",),
-    "year in a parenthesis": ("Mediation was tested following Hayes, with {} ({}) for SPSS.",
-                              "As reported in the {} ({}) trial, events fell."),
+    "macro": (("Mediation was tested following Hayes, with the {} macro.",), []),
+    "scale": (("Patient-reported empathy was measured on the {} Measure.",), []),
+    "cohort": (("Participants of the {} cohort were followed for ten years.",), []),
+    "trial": (("As reported in the {} trial, events fell.",), []),
+    "year in a parenthesis": (("Mediation was tested following Hayes, with {} ({}) for SPSS.",
+                               "As reported in the {} ({}) trial, events fell."), []),
     "reporting as a verb": (
-        "Mediation was run in {} reporting 5000 bootstrap samples, following Hayes.",),
+        ("Mediation was run in {} reporting 5000 bootstrap samples, following Hayes.",), []),
+    "a clause after a comma": (
+        ("Mediation used Hayes's {}, and STROBE guidelines were followed.",
+         "Mediation used Hayes's {}, and the STROBE statement was followed."), ["STROBE"]),
+    "criteria": (("Patients were enrolled according to the {} criteria.",), []),
+    "a study's year": (("The {} {} cohort was followed for five years.",
+                        "As reported in the {} {} trial, events fell."), []),
 }  # fmt: skip
 
 
@@ -4220,7 +4270,7 @@ def named_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, list[str]]]]:
     capitals in every way of it, and named in every way of `NAMED_OTHERWISE`. A name in
     capitals is read, but none in lower case, where it is a word, "the care given" or "the
     process" (round 1 of #851); one of `QUALIFIED_NAMES` only as the guideline's, neither
-    alone nor where it names another thing (rounds 2 and 3)."""
+    alone nor where it names another thing (rounds 2 and 3, and round 1 of #858)."""
     paragraphs: list[tuple[str, list[str]]] = []
 
     def claim(phrase: str, names: list[str], frames: tuple = _CLAIM_FRAMES) -> None:
@@ -4237,9 +4287,9 @@ def named_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, list[str]]]]:
                 phrase, others = NAMED_AS_GUIDELINE[way](draw, written)
                 claim(phrase, ([name] if capitals else []) + others)
     for name in QUALIFIED_NAMES:
-        for frames in NAMED_OTHERWISE.values():
+        for frames, read in NAMED_OTHERWISE.values():
             sentence = draw(st.sampled_from(frames))
-            paragraphs.append((sentence.format(name, _a_year(draw)), []))
+            paragraphs.append((sentence.format(name, _a_year(draw)), list(read)))
     order = draw(st.permutations(paragraphs))
     return "\n\n".join(text for text, _ in order) + "\n", list(order)
 

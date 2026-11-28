@@ -138,20 +138,40 @@ CLAIMABLE = (
 #: STROBE statements", or after a parenthesis, "the CARE (CAse REport) guidelines"; the
 #: name may be emphasised, "the **CARE** guidelines" (round 3). A year in a parenthesis
 #: alone is not the guideline's, "with PROCESS (2022) for SPSS" cites Hayes's macro, and
-#: "reporting" alone is a verb, "PROCESS reporting 5000 samples" (round 3).
+#: "reporting" alone is a verb, "PROCESS reporting 5000 samples" (round 3). Round 1 of
+#: #858: each name may have "the" before it and a parenthesis or a citation after it, "the
+#: CARE (2013) and the STROBE [@strobe] statements", and a hyphen may be Word's or an en
+#: dash, "CARE–2013"; but a clause after a comma is no list, "Hayes's PROCESS, and STROBE
+#: guidelines were followed", nor are a trial's criteria or a cohort's year the guideline's,
+#: "enrolled according to the CARE criteria", "the CARE 2019 cohort".
 QUALIFIED = ("CARE", "PROCESS")
 #: The words that make one of `QUALIFIED` the guideline's name, in any case.
-_GUIDELINE_WORD = r"(?i:guidelines?|guidance|statements?|checklists?|criteria)\b"
+_GUIDELINE_WORD = r"(?i:guidelines?|guidance|statements?|checklists?)\b"
 #: The words of a case report or a series that may stand between the name and the word.
 _BETWEEN = r"(?i:case|cases|clinical|surgical|reports?|reporting|series)\b"
+#: A hyphen as a paper types it: U+2010, Word's non-breaking U+2011, an en dash, and last
+#: the hyphen itself, which ends the class it goes into.
+_DASHES = chr(0x2010) + chr(0x2011) + chr(0x2013) + "-"
 #: A space or a hyphen between two words, with the stars of Markdown's emphasis round it.
-_GAP = r"\**[\s-]+\**"
-#: Another name it is joined to, in capitals: ", STROBE", " and STROBE", "/STROBE".
-_JOINED = r"(?:\**\s*(?:,\s*(?:and|or)\b|,|/|&|\band\b|\bor\b)\s*\**[A-Z][A-Z0-9+-]+)"
-_YEAR = r"\**[\s-](?:19|20)\d\d\b"
-_PARENTHESIS = r"(?:\**\s*\([^()]*\))"
+#: Each part below opens with the stars that close an emphasis, and none but this one,
+#: which a word follows, ends with stars, so that no two runs of stars stand side by side
+#: for the engine to share out.
+_GAP = rf"\**[\s{_DASHES}]+\**"
+#: A parenthesis or a citation after a name: "CARE (CAse REport)", "CARE [@gagnier2013]".
+_PARENTHESIS = r"(?:\**\s*(?:\([^()]*\)|\[[^\[\]]*\]))"
+#: Another name, in capitals, "the" before it and a parenthesis after it if any.
+_OTHER = rf"(?:(?:the\s+)?\**[A-Z][A-Z0-9+-]+{_PARENTHESIS}?)"
+#: What joins the name to one other, "CARE and STROBE", "CARE/STROBE": not a comma.
+_JOIN = r"(?:(?:and|or)\b|&|/)"
+#: The others it is joined to: one by `_JOIN`, or a list, "CARE, STROBE, and PRISMA".
+_JOINED = (rf"(?:(?:\**\s*{_JOIN}|(?:\**\s*,\s*{_OTHER})+\**\s*,?\s*(?:and|or)\b)"
+           rf"\s*{_OTHER})")  # fmt: skip
+#: A year right after the name, unless a study follows it, "the CARE 2019 cohort".
+_NOT_A_STUDY = (r"(?!\**\s+(?i:cohorts?|trials?|study|studies|groups?|registry|registries|"
+                r"participants|patients)\b)")  # fmt: skip
+_YEAR = rf"\**[\s{_DASHES}](?:19|20)\d\d\b{_NOT_A_STUDY}"
 _AS_GUIDELINE = (
-    rf"(?={_JOINED}*(?:{_YEAR}|{_PARENTHESIS}?(?:{_GAP}{_BETWEEN})*{_GAP}{_GUIDELINE_WORD}))"
+    rf"(?={_PARENTHESIS}?{_JOINED}?(?:{_YEAR}|(?:{_GAP}{_BETWEEN})*{_GAP}{_GUIDELINE_WORD}))"
 )
 
 #: Words that turn a mention of a guideline into a claim of having followed it.

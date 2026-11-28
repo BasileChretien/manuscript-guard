@@ -19337,20 +19337,28 @@ def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
     assert found == ["CONSORT"], found
 
 
-def test_a_trial_named_like_a_guideline_is_read_as_a_claim(project: Path) -> None:
-    """A known gap (DESIGN.md, Known gaps, rounds 1 and 2 of #851): a trial whose acronym is a
-    guideline's name, cited in a sentence with a word of claiming, is read as a claim of
-    having followed the guideline."""
+@pytest.mark.parametrize(
+    ("cited", "name"),
+    [
+        ("As reported in the SPIRIT III trial, the stent lowered restenosis.", "SPIRIT"),
+        ("As reported in the ARRIVE trial, aspirin did not lower vascular events.", "ARRIVE"),
+    ],
+)
+def test_a_trial_named_like_a_guideline_is_read_as_a_claim(
+    project: Path, cited: str, name: str
+) -> None:
+    """A known gap (DESIGN.md, Known gaps, rounds 1 and 2 of #851, round 1 of #858): a trial
+    whose acronym is a guideline's name, cited in a sentence with a word of claiming, is read
+    as a claim of having followed the guideline."""
     from manuscript_guard.gates import check_reporting
 
-    cited = "As reported in the SPIRIT III trial, the stent lowered restenosis.\n\n"
     main = main_md(project)
-    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{cited}# Results\n", 1),
-                    "utf-8")  # fmt: skip
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{cited}\n\n# Results\n",
+                                                    1), "utf-8")  # fmt: skip
     found = [f.message.split(" followed ")[1].split(",")[0]
              for f in check_reporting(load_project(project)[0]).findings
              if f.code == "guideline-claimed-not-declared"]  # fmt: skip
-    assert found == ["SPIRIT"], found
+    assert found == [name], found
 
 
 @pytest.mark.parametrize(
@@ -19364,17 +19372,38 @@ def test_a_trial_named_like_a_guideline_is_read_as_a_claim(project: Path) -> Non
         ("As reported in the CARE (1996) trial, events fell.", []),
         ("Mediation was run in PROCESS reporting 5000 bootstrap samples, following Hayes.", []),
         ("Participants of the CARE case series were followed for a year.", []),
-        # False passes the Known gaps name: a name alone, a year in a parenthesis alone and
-        # an emphasis in underscores, which no name of `CLAIMABLE` is read in.
+        # Round 1 of #858: a clause after a comma is no list, and a trial's criteria and a
+        # cohort's or a trial's year are not the guideline's.
+        ("Mediation used Hayes's PROCESS, and STROBE guidelines were followed.", ["STROBE"]),
+        ("Patients were enrolled according to the CARE criteria.", []),
+        ("The CARE 2019 cohort was followed for five years.", []),
+        ("As reported in the CARE-2019 trial, events fell.", []),
+        # False passes the Known gaps name: a name alone, a year in a parenthesis alone, an
+        # emphasis in underscores, which no name of `CLAIMABLE` is read in, the guideline's
+        # criteria, and a name a comma and "or" join.
         ("We followed CARE.", []),
         ("This series was reported according to PROCESS (2023).", []),
         ("The report follows the _CARE_ guidelines.", []),
         ("The report follows the _STROBE_ guidelines.", []),
+        ("It was written to the PROCESS (2023) criteria.", []),
+        ("We followed the CARE, or STROBE guidelines.", ["STROBE"]),
+        # A false alarm the Known gaps name: a list after a comma is read as one.
+        ("Mediation used Hayes's PROCESS, STROBE and CONSORT guidelines were followed.",
+         ["CONSORT", "PROCESS", "STROBE"]),
         ("The report follows the CARE (CAse REport) guidelines.", ["CARE"]),
         ("We followed the CARE and STROBE guidelines.", ["CARE", "STROBE"]),
         ("We followed the CARE, STROBE, and PRISMA statements.", ["CARE", "PRISMA", "STROBE"]),
-        ("It was written to the PROCESS (2023) criteria.", ["PROCESS"]),
         ("This series was reported according to PROCESS 2020.", ["PROCESS"]),
+        # Round 1 of #858: "the" before a name joined, a parenthesis or a citation after
+        # each name, Word's hyphens and an en dash, and words between in capitals.
+        ("We followed the CARE and the STROBE guidelines.", ["CARE", "STROBE"]),
+        ("We followed the CARE (2013) and STROBE (2007) statements.", ["CARE", "STROBE"]),
+        ("We followed the CARE [@gagnier2013] guidelines.", ["CARE"]),
+        ("We followed the CARE [12] and STROBE [13] checklists.", ["CARE", "STROBE"]),
+        (f"It was reported according to CARE{chr(0x2013)}2013.", ["CARE"]),
+        (f"It was reported according to CARE{chr(0x2011)}2013.", ["CARE"]),
+        (f"It was reported according to the PROCESS{chr(0x2010)}guideline.", ["PROCESS"]),
+        ("We followed the CARE Case Report Guidelines.", ["CARE"]),
         ("This case report was prepared following the CARE Guidelines.", ["CARE"]),
         ("We completed the CARE Checklist.", ["CARE"]),
         ("It was reported according to the PROCESS Guideline.", ["PROCESS"]),
@@ -19395,7 +19424,9 @@ def test_care_or_process_is_read_as_a_guideline_only_beside_a_year_or_its_word(
     makes it one; a bare one is not, "We followed CARE", a false pass the Known gaps name.
     Round 3: the word in capitals, "the CARE Guidelines", after a hyphen, words of a case
     report, other names or a parenthesis, and an emphasised name are read; a year in a
-    parenthesis alone, "PROCESS (2022)", and "reporting" alone are not."""
+    parenthesis alone, "PROCESS (2022)", and "reporting" alone are not. Round 1 of #858:
+    "the" before a name joined, a citation, Word's hyphens and an en dash are read; a clause
+    after a comma, "criteria" and a study's year are not."""
     from manuscript_guard.gates import check_reporting
 
     main = main_md(project)

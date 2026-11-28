@@ -26308,12 +26308,12 @@ Open, recorded as each change landed:
   - A file's name written in a sentence and not set as code is read up to its last word:
     in "tumor-color.csv" the gate reads "tumor".
     Pinned by `tests/test_spelling.py::test_a_file_s_name_in_a_sentence_is_read_up_to_its_last_word`.
-  - Code in backticks or a fence, and a block set off by four spaces at the margin after a
-    paragraph of prose (#841), are left alone. Other indented code may be read, for
-    instance code indented inside a list item or a footnote, a block straight under a
-    heading, or a block whose first line opens with `>`, `+` or `|`. `<code>color</code>`,
-    the CSS inside a `<style>` block, and a tag whose attributes run on to a second line are
-    read.
+  - Code in backticks or a fence, and a block set off by a blank line and four spaces after
+    a paragraph at the margin, outside a list item or a footnote (#841), are left alone.
+    Other indented code may be read, for instance code indented inside a list item or a
+    footnote, a block straight under a heading, or a block whose first line opens with `>`,
+    `+` or `|`. `<code>color</code>`, the CSS inside a `<style>` block, and a tag whose
+    attributes run on to a second line are read.
     Pinned by `tests/test_spelling.py::test_code_in_backticks_a_fence_or_an_indented_block_is_left_alone`.
   - The title, the short title and the keywords come from `paper.yaml` and are not read.
     Nor is a caption written as an image's description, `![Color of each tumor](...)`;

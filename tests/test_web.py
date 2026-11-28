@@ -1272,6 +1272,77 @@ def test_check_names_node_whole_as_path_finds_it_from_the_folder_it_is_run_in(
     assert check.node_found() == "node"
 
 
+def test_check_makes_the_journal_s_files_for_each_day_a_run_may_reach() -> None:
+    """The page dates the journal's instructions the day it runs a case, so a run that crosses
+    midnight makes the next day's files: main's `web` job at #850's merge failed in Firefox,
+    whose journal cases ran after 00:00 UTC, when check.py expected the day it started on.
+    check.py makes the files for that day and the next, each dated its own day and otherwise
+    the same, the first of them the files the command line is given."""
+    from datetime import date
+
+    made = check_script().form_files(date(2026, 12, 31))
+    assert list(made) == ["2026-12-31", "2027-01-01"]
+    for day, files in made.items():
+        assert list(files) == ["journal.yaml", "authors.yaml"]
+        assert yaml.safe_load(files["journal.yaml"])["retrieved_on"] == day
+    first, second = made.values()
+    assert second == {"journal.yaml": first["journal.yaml"].replace("2026-12-31", "2027-01-01"),
+                      "authors.yaml": first["authors.yaml"]}  # fmt: skip
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_browsers_hold_the_page_s_files_to_the_day_it_ran_a_case() -> None:
+    """browser.mjs holds the files the page made of the journal's form to those check.py made
+    for the day the case began or ended on (web/test/made.mjs), the day as web/app.js writes
+    it: a case begun before midnight and ended after it may make either day's, as Firefox's
+    did in main's `web` job at #850's merge; one run within a day only that day's; a day
+    check.py made no files for is said, not passed; and an empty form makes none."""
+    from datetime import date
+
+    made = check_script().form_files(date(2026, 11, 27))
+    before, after = made["2026-11-27"], made["2026-11-28"]
+    crossing, first, second = ["2026-11-27", "2026-11-28"], ["2026-11-27"] * 2, ["2026-11-28"] * 2
+    cases = [{"made": after, "byDay": made, "days": crossing},
+             {"made": before, "byDay": made, "days": crossing},
+             {"made": after, "byDay": made, "days": second},
+             {"made": before, "byDay": made, "days": second},
+             {"made": after, "byDay": made, "days": first},
+             {"made": after, "byDay": made, "days": ["2026-11-28", "2026-11-29"]},
+             {"made": after, "byDay": made, "days": ["2026-11-29"] * 2},
+             {"made": {}, "byDay": made, "days": first},
+             {"made": {}, "days": first},
+             {"made": after, "days": crossing}]  # fmt: skip
+    module = json.dumps((WEB / "test" / "made.mjs").as_uri())
+    script = f"""import {{ dayOf, madeHeld }} from {module};
+let input = "";
+for await (const chunk of process.stdin) input += chunk;
+process.stdout.write(JSON.stringify([[dayOf([2026, 1, 5]), dayOf([2026, 11, 28])],
+  JSON.parse(input).map((one) => madeHeld(one.made, one.byDay, one.days))]));
+"""
+    done = subprocess.run([NODE, "--input-type=module", "-e", script], input=json.dumps(cases),
+                          capture_output=True, text=True, encoding="utf-8", timeout=60,
+                          check=False)  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    days, held = json.loads(done.stdout)
+    assert days == ["2026-01-05", "2026-11-28"]
+    assert held[:3] == ["", "", ""]
+    assert held[3] == f"the page made {_js(before)} of the journal's form, not {_js(after)}"
+    assert held[4] == f"the page made {_js(after)} of the journal's form, not {_js(before)}"
+    # Begun on a day check.py made files for, ended on one it did not.
+    assert held[5] == ""
+    assert held[6] == ("the case ran on 2026-11-29, a day check.py made no files of the "
+                       "journal's form for (2026-11-27, 2026-11-28), and the page made "
+                       f"{_js(after)}")  # fmt: skip
+    assert held[7] == f"the page made {{}} of the journal's form, not {_js(before)}"
+    assert held[8] == ""
+    assert held[9] == f"the page made {_js(after)} of the journal's form, not {{}}"
+
+
+def _js(value: object) -> str:
+    """`value` as JSON.stringify writes it."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
 POPPLER_PACKAGE = WEB / "node_modules" / "@ai-ecoverse" / "wasm-poppler"
 
 

@@ -17,11 +17,13 @@
 // files it names; "expect" names a file holding what the command line printed, "form" the
 // page's boxes to set, by id, for the options the command line was given, "tracked", where
 // the copy with tracked changes is asked for, how many corrections it must track, and
-// "made", where the journal's form is filled, the files the page must make of it.
+// "made", where the journal's form is filled, the files the page must make of it, by the day
+// the page dates them (made.mjs).
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import puppeteer from "puppeteer-core";
+import { dayOf, madeHeld } from "./made.mjs";
 
 const hosted = process.argv.includes("--hosted");
 const [site, casesDir, browserName, given] = process.argv.slice(2).filter((arg) => arg !== "--hosted");
@@ -149,10 +151,17 @@ try {
     while (!window.mgLast) await new Promise((wait) => setTimeout(wait, 100));
     return window.mgLast;
   }, paper, against, form);
+  // The day in the page, in this computer's own time, as it dates the journal's form.
+  const today = async () => dayOf(await page.evaluate(() => {
+    const now = new Date();
+    return [now.getFullYear(), now.getMonth() + 1, now.getDate()];
+  }));
 
   const cases = JSON.parse(readFileSync(join(casesDir, hosted ? "hosted-cases.json" : "cases.json"), "utf-8"));
   for (const one of status.startsWith("Ready") ? cases : []) {
+    const begun = await today();
     const result = await choose(one.paper, one.against || [], one.form || {});
+    const ended = await today();
     if (result.error) {
       fail(`${one.name}: the audit could not run: ${result.error}`);
       continue;
@@ -216,11 +225,9 @@ try {
       fail(`${one.name}: a copy with tracked changes was made though none was asked for`);
     }
     // The journal's profile and the authors' names the form made, as the command line was
-    // given them; none where the form is empty.
-    const made = JSON.stringify(result.made || {});
-    if (made !== JSON.stringify(one.made || {})) {
-      fail(`${one.name}: the page made ${made} of the journal's form, not ${JSON.stringify(one.made || {})}`);
-    }
+    // given them, dated the day the case began or ended on; none where the form is empty.
+    const unlike = madeHeld(result.made || {}, one.made, [begun, ended]);
+    if (unlike) fail(`${one.name}: ${unlike}`);
     console.log(`${one.name}: ${wrong.length ? "DIFFERENT" : "same report, notes and exit code"}, ` +
       `${(result.ms / 1000).toFixed(1)} s, ${result.sent.length} requests`);
   }

@@ -31,7 +31,15 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from manuscript_guard.build.document import BuildError, MisreadError
+from manuscript_guard.build.document import (
+    GATE,
+    BuildError,
+    MisreadError,
+    document_nocite,
+    document_text,
+    nocite_asks,
+)
+from manuscript_guard.findings import WARN, Finding, Report
 
 #: The longest pandoc is given to write one document.
 PANDOC_SECONDS = 300
@@ -104,20 +112,32 @@ def build_from_markdown(project, assembled, *, engine: str = "pdflatex",
     names = _Names([f"{name}.{suffix}" for name in (MAIN, SUPPLEMENT)
                     for suffix in ("tex", "pdf", "bbl", "aux", "log")]
                    + ["references.bib"])  # fmt: skip
-    written, keys = [], set()
+    written, keys, report = [], set(), Report()
     for supplementary in (False, True):
-        body_markdown = _markdown(project, assembled, supplementary=supplementary)
-        if body_markdown is None:
+        ordered = _ordered(project, assembled, supplementary=supplementary)
+        if ordered is None:
             continue
+        body_markdown = document_text(ordered)
         name = SUPPLEMENT if supplementary else MAIN
         # The header too, which prints nothing without the template: citeproc writes the
-        # reference list in the document's language, as the standalone document has it.
-        header = _header(project, supplementary)
+        # reference list in the document's language, as the standalone document has it, and
+        # the works the files' `nocite` names in it. One string under natbib and biblatex,
+        # whose `\nocite` pandoc writes from no list (`nocite_lines`).
+        nocite = document_nocite(ordered)
+        header = _header(project, supplementary, nocite, one_string=cited.kind != "citeproc")
         body = _pandoc(project, header + body_markdown, _citing(project, cited))
         reading = _checked(body, body_markdown, cited, name)
         keys |= {found.key for found in reading.cited}
         whole = _pandoc(project, header + body_markdown,
                         ["--standalone", *_template(project), *_citing(project, cited)])
+        # Under natbib and biblatex pandoc's default template writes the `\nocite`, outside
+        # the body: the `.bib` keeps the entries it names, `*` every one. A journal's own
+        # template may write none, and nothing prints them.
+        nocited = _nocited(whole)
+        keys |= nocited
+        if cited.kind != "citeproc" and not nocited:
+            report = report.with_findings(
+                *_nocite_not_in_template(project, f"{name}.tex", nocite, body_markdown))
         written_out = _pictures(project, whole, body, reading, folder, names)
         (folder / f"{name}.tex").write_text(written_out, encoding="utf-8", newline="")
         written.append(name)
@@ -137,13 +157,64 @@ def build_from_markdown(project, assembled, *, engine: str = "pdflatex",
     files = tuple(sorted(path for path in folder.iterdir() if path.name not in made))
     undefined = tuple(dict.fromkeys(left for compiled in alone for left in compiled.undefined))
     return LatexPack(folder, files, tuple(compiled.pdf for compiled in alone), undefined,
-                     tuple(alone))  # fmt: skip
+                     tuple(alone), report)  # fmt: skip
+
+
+def _nocite_not_in_template(project, name: str, nocite: tuple[str, ...],
+                            markdown: str) -> tuple[Finding, ...]:  # fmt: skip
+    """A warning where the journal's own template wrote no `\\nocite` and the document's
+    files declare a `nocite` that asks for a work nothing in the text cites: every entry, or
+    a key the text's citations, read as `document.nocite_not_live` reads them, do not name.
+    Pandoc's default template writes it from `nocite-ids`; one without that block prints none
+    of them, nor keeps them in the `.bib`. A key the text cites prints from its citation, and
+    with pandoc's default template a `\\nocite` missing is the joined string's doing (Known
+    gaps), so neither is said."""
+    from manuscript_guard.build.document import outside_code
+    from manuscript_guard.zotero import find_citations
+
+    template = _journal_template(project)
+    if template is None:
+        return ()
+    every, named = nocite_asks(nocite)
+    cited = {use.citekey for use in find_citations(outside_code(markdown), Path(name))}
+    uncited = sorted(named - cited)
+    if not (every or uncited):
+        return ()
+    what = ("every entry of references.bib" if every
+            else ", ".join(f"@{key}" for key in uncited))  # fmt: skip
+    return (Finding(
+        gate=GATE,
+        code="nocite-not-in-template",
+        severity=WARN,
+        message=f"the journal's LaTeX template prints no `\\nocite`, so {name} does not print "
+        f"what its files' `nocite` asks for and nothing cites ({what}), and the `.bib` leaves "
+        "it out",
+        path=template,
+        hint="add pandoc's `$if(nocite-ids)$\\nocite{$for(nocite-ids)$$it$$sep$, $endfor$}"
+        "$endif$` to the template, before the bibliography; or cite each work in the text",
+    ),)
 
 
 def _markdown(project, assembled, *, supplementary: bool) -> str | None:
     """The document's Markdown, assembled as the Word build's is; None for a supplement the
     manuscript does not have."""
-    from manuscript_guard.build.document import document_files, document_text
+    ordered = _ordered(project, assembled, supplementary=supplementary)
+    return None if ordered is None else document_text(ordered)
+
+
+def _nocited(whole: str) -> set[str]:
+    """The keys of each `\\nocite` in the document pandoc wrote, its template's included, as
+    the LaTeX reader reads them: `*` for every entry."""
+    from manuscript_guard.text.latex.mask import read
+
+    return {found.key for found in read(whole).cited
+            if whole.startswith("\\nocite", found.start)}  # fmt: skip
+
+
+def _ordered(project, assembled, *, supplementary: bool) -> list | None:
+    """The document's files, in the order the Word build sets them out; None for a
+    supplement the manuscript does not have, or a document of no files."""
+    from manuscript_guard.build.document import document_files
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     folder = project.path("manuscript")
@@ -152,9 +223,7 @@ def _markdown(project, assembled, *, supplementary: bool) -> str | None:
                                  for path in source_files(folder)):  # fmt: skip
         return None
     ordered = document_files(project, assembled, supplementary=supplementary)
-    if not ordered:
-        return None
-    return document_text(ordered)
+    return ordered or None
 
 
 def _pandoc(project, markdown: str, arguments: list[str]) -> str:
@@ -205,18 +274,26 @@ def _template(project) -> list[str]:
     arguments = ["--variable=header-includes:\\providecommand{\\xmpquote}[1]{#1}",
                  f"--variable=documentclass:{stated.get('class') or 'article'}"]  # fmt: skip
     arguments += [f"--variable=classoption:{option}" for option in stated.get("class_options", [])]
-    slug = project.target_journal
-    template = project.root / "profiles" / "journals" / "latex" / str(slug) / "template.latex"
-    if slug and template.is_file():
+    template = _journal_template(project)
+    if template is not None:
         arguments.append(f"--template={template.resolve()}")
     return arguments
 
 
-def _header(project, supplementary: bool) -> str:
+def _journal_template(project) -> Path | None:
+    """The journal's own pandoc template, `profiles/journals/latex/<slug>/template.latex`;
+    None where the project keeps none, and pandoc's default is used."""
+    slug = project.target_journal
+    template = project.root / "profiles" / "journals" / "latex" / str(slug) / "template.latex"
+    return template if slug and template.is_file() else None
+
+
+def _header(project, supplementary: bool, nocite: tuple[str, ...] = (), *,
+            one_string: bool = False) -> str:  # fmt: skip
     """The title, the keywords and, where the journal's review is not blind, the authors, for
-    the template to print."""
+    the template to print, and the `nocite` of the document's files (`nocite_lines`)."""
     from manuscript_guard.build.blinding import BLIND
-    from manuscript_guard.build.document import _yaml_text, document_language
+    from manuscript_guard.build.document import _yaml_text, document_language, nocite_lines
     from manuscript_guard.gates.journal import blinding
 
     paper = project.paper
@@ -234,7 +311,8 @@ def _header(project, supplementary: bool) -> str:
     if keywords:
         written = ", ".join(_yaml_text(project, "keywords", keyword) for keyword in keywords)
         lines.append(f"keywords: [{written}]")
-    lines += [f"lang: {document_language(project)}", "---", ""]
+    lines += [f"lang: {document_language(project)}",
+              *nocite_lines(nocite, one_string=one_string), "---", ""]  # fmt: skip
     return "\n".join(lines)
 
 

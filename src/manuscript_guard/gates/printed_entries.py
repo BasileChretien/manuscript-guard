@@ -41,8 +41,14 @@ def every_entry_markdown(text: str) -> bool:
     from manuscript_guard.text.masking import front_matter_said, metadata_blocks
 
     blocks = [text, *(text[start:end] for start, end in metadata_blocks(text))]
-    return any(_EVERY.search(said) for block in blocks
+    return any(asks_every(said) for block in blocks
                for said in front_matter_said(block, "nocite"))  # fmt: skip
+
+
+def asks_every(said: str) -> bool:
+    """Whether one string a `nocite` holds asks pandoc for every entry: `@*` as a citation
+    stands, after no letter, digit or `@`. The build reads it so too (`document.nocite_asks`)."""
+    return _EVERY.search(said) is not None
 
 
 def every_entry_printed(texts: Iterable[str], *, latex: bool) -> bool:

@@ -132,7 +132,14 @@ def test_a_word_paper_in_the_folder_is_offered_and_recommended(tmp_path: Path) -
 
 @pytest.mark.parametrize(("design", "options", "recommended"), [
     ("trial", ["CONSORT"], ["CONSORT"]),
-    ("cohort", ["STROBE", "RECORD", "TARGET"], None),
+    ("cohort", ["STROBE", "RECORD", "RECORD-PE", "TARGET"], None),
+    # Round 1 of #851: the design's short name finds no profile; its recipe's does.
+    ("case-report", ["CARE-2013"], ["CARE-2013"]),
+    ("diagnostic-accuracy", ["STARD-2015"], ["STARD-2015"]),
+    ("systematic-review", ["PRISMA-2020", "PRISMA-2020-abstracts"], ["PRISMA-2020"]),
+    ("disproportionality", ["READUS-PV", "READUS-PV-abstracts"], ["READUS-PV"]),
+    ("prediction-model", ["TRIPOD+AI", "TRIPOD+AI-abstracts", "TRIPOD-development",
+                          "TRIPOD-development-validation", "TRIPOD-validation"], ["TRIPOD+AI"]),
     ("other", [], None),
 ])  # fmt: skip
 def test_the_guidelines_offered_are_the_design_s(tmp_path: Path, design, options,
@@ -143,6 +150,90 @@ def test_the_guidelines_offered_are_the_design_s(tmp_path: Path, design, options
     assert [o.value for o in question.options] == options
     assert question.recommended == recommended
     assert question.other  # a guideline outside the design's is taken too
+
+
+def test_each_guideline_offered_is_one_g5_finds_once_retrieved(tmp_path: Path) -> None:
+    """Round 1 of #851: the options were the design's short names, "CARE", "STARD",
+    "PRISMA", "TRIPOD", for which no profile is ever written, so an author who took the
+    offered answer was told the checklist was not retrieved even after `transcribe`. Each
+    option is now a recipe's name, which the profile `transcribe` writes is named by, and
+    says what it covers; a guideline with no recipe keeps its name and says it has none,
+    and a recipe the project wrote is offered too."""
+    from manuscript_guard.gates.design import study_types
+    from manuscript_guard.paths import recipes
+
+    root = no_git(tmp_path / "paper")
+    own = root / "profiles" / "reporting" / "recipes"
+    own.mkdir(parents=True)
+    shipped = recipes(root)
+    (own / "TARGET-2025.recipe.yaml").write_text(
+        shipped["STROBE"].read_text(encoding="utf-8").replace("name: STROBE", "name: TARGET-2025"),
+        encoding="utf-8")  # fmt: skip
+    for design in study_types():
+        answered(root, {"schema": "manuscript-guard/setup/1", "study_type": design})
+        question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
+        named = {str(name).upper() for name in study_types()[design]["guidelines"]}
+        for option in question.options:
+            if option.value in recipes(root):
+                assert ', for "' in option.effect, (design, option)
+            else:
+                assert "has no recipe yet" in option.effect, (design, option)
+                assert option.value.upper() in named, (design, option)
+    answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "cohort"})
+    question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
+    assert [o.value for o in question.options] == ["STROBE", "RECORD", "RECORD-PE", "TARGET-2025"]
+
+
+#: A recipe of the project's own for a case report, its meta complete and all else to come.
+_CARE_META = (b"schema: manuscript-guard/recipe/1\nmeta:\n  name: CARE-2016\n"
+              b'  applies_to: "Case reports, e.g. of rare diseases"\n'
+              b'  source_url: "https://example.invalid/care"\n  retrieved_on: 2026-11-28\n'
+              b'  licence: "CC BY 4.0"\n')  # fmt: skip
+
+
+@pytest.mark.parametrize(("written", "covers"), [
+    (_CARE_META + b"format: jats-table\ntable: T1\ndocument: care.xml\n",
+     "Case reports, e.g. of rare diseases"),
+    (b"schema: manuscript-guard/recipe/1\nmeta:\n", None),
+    (b"meta:\n  name: CARE-2016\n  applies_to: Caf" + bytes([0xE9]) + b" studies\n", None),
+    (b"meta: [CARE-2016\n", None),
+], ids=["no-text-column", "empty-meta", "not-utf-8", "not-yaml"])  # fmt: skip
+def test_a_recipe_setup_cannot_read_is_offered_by_its_name(
+    tmp_path: Path, written: bytes, covers: str | None
+) -> None:
+    """Round 1 of #856: a half-written recipe of the project's, read as `transcribe` reads
+    it, raised what `setup questions` and `setup apply` stopped on. Only its meta is read
+    now, and a recipe whose meta cannot be read is offered by its file's name; `transcribe`
+    says what is wrong with it. What a recipe covers is quoted as it writes it, an "e.g."
+    and capitals and all."""
+    root = no_git(tmp_path / "paper")
+    own = root / "profiles" / "reporting" / "recipes"
+    own.mkdir(parents=True)
+    (own / "CARE-2016.recipe.yaml").write_bytes(written)
+    answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "case-report"})
+    question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
+    (offered,) = [o for o in question.options if o.value == "CARE-2016"]
+    if covers:
+        assert f', for "{covers}"' in offered.effect, offered
+    else:
+        assert ", for " not in offered.effect, offered
+
+
+def test_a_recipe_is_offered_by_the_name_its_profile_is_written_under(tmp_path: Path) -> None:
+    """Round 1 of #856: `transcribe` names a profile by its recipe's `meta.name`, and G5
+    looks it up by that name, but setup offered the recipe file's name. A copy of CARE-2013
+    saved as CARE-2016.recipe.yaml with its name left as it was is offered as CARE-2013,
+    once, the name its profile will have."""
+    from manuscript_guard.paths import recipes
+
+    root = no_git(tmp_path / "paper")
+    shipped = recipes(root)["CARE-2013"].read_text(encoding="utf-8")
+    own = root / "profiles" / "reporting" / "recipes"
+    own.mkdir(parents=True)
+    (own / "CARE-2016.recipe.yaml").write_text(shipped, encoding="utf-8")
+    answered(root, {"schema": "manuscript-guard/setup/1", "study_type": "case-report"})
+    question = next(q for q in asked(root).questions if q.id == "reporting_guideline")
+    assert [o.value for o in question.options] == ["CARE-2013"]
 
 
 def test_the_study_design_is_offered_whole_for_a_shortlist_of_three(tmp_path: Path) -> None:

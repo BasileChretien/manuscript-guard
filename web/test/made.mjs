@@ -16,6 +16,14 @@ export async function dated(today, run) {
   return { result, days: [begun, await today()] };
 }
 
+/** What `run`, a case, gives, and what is wrong with the files the page made of the
+ * journal's form in it ("" where nothing is), held to check.py's `byDay` for the days
+ * `today` gives just before the case and just after it. */
+export async function caseHeld(today, run, byDay) {
+  const { result, days } = await dated(today, run);
+  return { result, unlike: madeHeld(result.made || {}, byDay, days) };
+}
+
 /** "" where `made`, the files the page made, is what check.py's `byDay` gives for one of
  * `days`, the days the case began and ended on, or none where `byDay` is absent (the form
  * empty); else what is wrong with it. */

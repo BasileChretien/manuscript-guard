@@ -3109,12 +3109,19 @@ The build strips each file's front matter and writes its own header from `paper.
 it carries the `nocite` of the files that make up each document into that header: the main
 text's files for the paper, the supplement's for the supplement. The strings are read with
 G7's reader (`front_matter_said`), so the two agree on what a file declares, and written as
-one string, parted by spaces: pandoc 3.9's LaTeX writer writes no `\nocite` for a list,
-though citeproc reads one. The offline Word build and the LaTeX output print the works it
-names; under natbib and biblatex the template writes the `\nocite`, and the folder's `.bib`
-keeps the entries it names. A live build cannot: Better BibTeX's `zotero.lua` does not read
-`nocite`, and the bibliography field Zotero fills lists the works cited only. It warns of
-each file that declares one, `nocite-not-live`, and names `build --offline`. The plain build
+a list, each string read as pandoc reads it in its own header, which citeproc prints from.
+Pandoc 3.9's LaTeX writer writes no `\nocite` for a list, so under natbib and biblatex they
+are written as one string, parted by spaces. The offline Word build and the LaTeX output
+print the works it names. Under natbib and biblatex, pandoc's default template writes the
+`\nocite`, and the folder's `.bib` keeps the entries it names; a journal's own template
+without the `nocite-ids` block prints none of them, and the build warns of it,
+`nocite-not-in-template`. An offline document that cites nothing gets the heading over its
+reference list only where a `nocite` names a key or asks for every entry:
+`references_heading.lua` runs before citeproc and heads the list whether citeproc fills it
+or not. A live build cannot print them: Better BibTeX's `zotero.lua` does not read `nocite`,
+and the bibliography field Zotero fills lists the works cited only. It warns, `nocite-not-live`,
+of each file whose `nocite` asks for every entry or names a key the text does not cite, read
+as the build reads a citation, and names `build --offline`. The plain build
 `import` compares a live document with stands in for the live build, and leaves the works
 out as it does, with no warning: its report is no one's to read, and the build that made the
 document warned (Basile, 2026-11-28, "Offline and LaTeX; live warns").
@@ -31605,6 +31612,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   LaTeX; live warns"). Pinned by
   `tests/test_corruption.py::test_a_list_that_prints_every_entry_keeps_a_warning_for_each`
   and `tests/test_build.py::test_a_live_build_of_files_that_declare_nocite_warns_that_it_leaves_them_out`.
+  - Under natbib and biblatex the strings of a `nocite` list are written as one, parted by
+    spaces, since pandoc writes no `\nocite` for a list. Pandoc reads the citations of each
+    as it reads them alone unless one opens what the next closes: in `['[@a', '@b]']` both
+    keys are still read, while in ``['`x', '@b`']`` the code span hides `@b`, which is then
+    neither printed nor kept in the `.bib` though G7 reads it. The Word build and citeproc
+    take the list as it stands. Accepted.
+  - A key a `nocite` names is read as the build reads a citation in the text, so the live
+    build's warning and the offline heading pass over a citation pandoc reads and that
+    reader does not, an unclosed `[@a`; and a key the `.bib` lacks still names a work, so a
+    supplement that cites nothing gets a heading over a list citeproc leaves empty, beside
+    pandoc's warning of the key. Accepted.
   - A LaTeX `\nocite{*}` counts wherever it stands outside a comment in a file the document
     inputs, so one in a definition nothing uses, in an `\iffalse` block or in a listing
     keeps the warnings too, though BibTeX is never asked for every entry, and the LaTeX

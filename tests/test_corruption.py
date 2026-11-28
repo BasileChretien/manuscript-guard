@@ -22017,6 +22017,9 @@ def test_a_nocite_of_single_keys_cites_those_and_leaves_the_note(
     ("base: &every\n  nocite: '[@*]'\n<<: *every\n", {"Zeta", "Alpha"}),
     ("nocite: '@zeta2001'\n", {"Zeta"}),
     ("nocite: ['@zeta2001']\n", {"Zeta"}),
+    # Each string read as pandoc reads it on its own: joined, the code span the first opens
+    # would hide the second's citation (round 1 of #852).
+    ("nocite: ['`x', '@zeta2001`']\n", {"Zeta"}),
     ("nocite: 'email@*'\n", set()),
     ("title: 'nocite: @*'\n", set()),
     ("nocite: ''\n", set()),

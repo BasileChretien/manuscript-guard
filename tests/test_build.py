@@ -465,12 +465,15 @@ _UNCITED = (
 
 def _nocite_in(root: Path, relative: str, value: str) -> None:
     """`references.bib` with `_UNCITED` beside its own, and `nocite: <value>` in the front
-    matter of `manuscript/<relative>`, given one where it has none."""
+    matter of `manuscript/<relative>`, given one where it has none. `value` is YAML as
+    typed: a value between single quotation marks unless it is one already, or `~` or
+    `null`."""
     bib = root / "literature" / "references.bib"
     bib.write_text(bib.read_text(encoding="utf-8") + _UNCITED, encoding="utf-8")
     path = root / "manuscript" / relative
     text = path.read_text(encoding="utf-8")
-    line = f"nocite: '{value}'\n"
+    typed = value if value in ("~", "null") or value[:1] in "'\"[" else f"'{value}'"
+    line = f"nocite: {typed}\n"
     text = text.replace("---\n", f"---\n{line}", 1) if text.startswith("---\n") else (
         f"---\n{line}---\n\n{text}")  # fmt: skip
     path.write_text(text, encoding="utf-8")
@@ -538,8 +541,99 @@ def test_a_live_build_of_files_that_declare_nocite_warns_that_it_leaves_them_out
     assert finding.severity == WARN and finding.gate == "BUILD"
     assert finding.path.resolve() == (project / "manuscript" / "main.md").resolve()
     assert "live build leaves out" in finding.message, finding.message
+    assert "every entry" in finding.message, finding.message
     assert "manuscript-guard build --offline" in finding.hint, finding.hint
     assert warned(supplementary=True) == [], "the supplement's files declare none"
+    # A supplement file's own, of a key nothing cites: the supplement's build says so.
+    _nocite_in(project, "supplementary/S1_code_lists.md", "@zeta2001")
+    (finding,) = warned(supplementary=True)
+    assert finding.path.name == "S1_code_lists.md" and "@zeta2001" in finding.message
+
+
+def _live_nocite_warnings(project: Path, monkeypatch, tmp_path: Path) -> list:
+    """The `nocite-not-live` findings of a live build of the main text, a filter that makes
+    no field standing in for Better BibTeX's."""
+    from manuscript_guard.build import document
+    from manuscript_guard.zotero import READY, Readiness, client
+
+    lua = tmp_path / "zotero.lua"
+    lua.write_text("return {}", encoding="utf-8")
+    monkeypatch.setattr(document, "ensure_zotero_lua", lambda _cache: lua)
+    monkeypatch.setattr(document, "_zotero_version", lambda: None)
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: Readiness(READY))
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    built = build_document(proj, assembled, mode=LIVE)
+    return [f for f in built.report.findings if f.code == "nocite-not-live"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("value", ["~", "null", "email@*", "@fictionalHepaticCohort2021"])
+def test_a_live_build_does_not_warn_of_a_nocite_that_leaves_nothing_out(
+    project: Path, monkeypatch, tmp_path: Path, value: str
+) -> None:
+    """Round 1 of #852: the warning came of every `nocite` not blank. A null names no work,
+    nor does an address, and a key the text cites prints in a live build as well: none
+    leaves a work out, and none is warned of. The keys are read as the build reads a
+    citation (`zotero.find_citations`), `@*` as G7 reads it."""
+    _nocite_in(project, "main.md", value)
+    assert _live_nocite_warnings(project, monkeypatch, tmp_path) == []
+
+
+@needs_pandoc
+def test_a_live_build_names_the_keys_a_nocite_names_that_nothing_cites(
+    project: Path, monkeypatch, tmp_path: Path
+) -> None:
+    _nocite_in(project, "main.md", "['@fictionalHepaticCohort2021', '@zeta2001']")
+    (finding,) = _live_nocite_warnings(project, monkeypatch, tmp_path)
+    assert "@zeta2001" in finding.message, finding.message
+    assert "fictionalHepaticCohort2021" not in finding.message, finding.message
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("value", "headed"), [
+    ("null", False), ("~", False), ("email@*", False), ("@zeta2001", True),
+])  # fmt: skip
+def test_a_supplement_citing_nothing_is_given_a_reference_heading_only_for_a_work_its_nocite_names(
+    project: Path, value: str, headed: bool
+) -> None:
+    """Round 1 of #852: `references_heading.lua` runs before citeproc and puts its heading
+    over the `refs` div whether citeproc fills it or not, so a supplement that cites
+    nothing, under a `nocite` that names no work, printed a heading over an empty list. The
+    filter is run for a `nocite` only where it names a key or asks for every entry."""
+    from manuscript_guard.docxtext import BUILT_HEADING
+
+    _nocite_in(project, "supplementary/S1_code_lists.md", value)
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    built = build_document(proj, assembled, mode=OFFLINE, supplementary=True)
+    xml = zipfile.ZipFile(built.output).read("word/document.xml").decode("utf-8")
+    assert (f'w:name="{BUILT_HEADING}"' in xml) == headed, xml[-2000:]
+    assert _printed(built.output) == ({"Zeta"} if headed else set())
+
+
+@needs_pandoc
+def test_an_offline_build_does_not_take_the_supplement_s_nocite_for_a_citation(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #852: the console's word on an offline build's citations read the whole
+    of `build/supplementary.md`, header and all, so a supplement that cites nothing, with
+    `nocite: '@zeta2001'` in its header, was said to cite zeta2001, and Zotero was asked for
+    it. The text after the header is read."""
+    from types import SimpleNamespace
+
+    from manuscript_guard import cli
+    from manuscript_guard.zotero import client
+
+    _nocite_in(project, "supplementary/S1_code_lists.md", "@zeta2001")
+    proj, namespace, results, _lit = loaded(project)
+    assembled, _ = assemble(proj, namespace, results)
+    supplement = build_document(proj, assembled, mode=OFFLINE, supplementary=True)
+    assert "zeta2001" in (proj.path("build") / "supplementary.md").read_text(encoding="utf-8")
+    asked: list[tuple[str, ...]] = []
+    monkeypatch.setattr(client, "readiness", lambda keys, timeout=5: asked.append(keys))
+    cli._said_offline_citations(proj, SimpleNamespace(citations=()), supplement.output)
+    assert asked == [] and capsys.readouterr().out == ""
 
 
 @needs_pandoc

@@ -129,6 +129,8 @@ ROUTES: dict[str, Route] = {
     **_all(None, ("build",), "document-stale", "document-unstamped"),
     # A live build cannot print what a file's `nocite` names; the offline build does.
     **_all(None, ("build", "--offline"), "nocite-not-live"),
+    # The journal's own LaTeX template is the author's to give the `nocite-ids` block.
+    **_all("journal-profile", None, "nocite-not-in-template"),
     # -- the prose ------------------------------------------------------------------------
     **_all("manuscript-writing", None, "summary-claim-stronger"),
     **_all("manuscript-writing", None, "ai-", "vague-attribution", "model-artefact",

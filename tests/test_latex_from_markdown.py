@@ -282,3 +282,68 @@ def test_the_latex_carries_the_nocite_of_the_files_front_matter(
     assert "\\nocite" not in supplement, "the supplement's files declare none"
     cut = held["references.bib"].read_text(encoding="utf-8")
     assert {key for key in ("zeta2001", "alpha2002") if f"{{{key}," in cut} == kept, cut
+
+
+def _latex_with_nocite(project: Path, monkeypatch: pytest.MonkeyPatch, relative: str,
+                       value: str):  # fmt: skip
+    """`build --latex`'s folder under natbib, compiled by nothing, with `_UNCITED` in
+    `references.bib` and `nocite: '<value>'` opening `manuscript/<relative>`."""
+    from manuscript_guard.build import latex_pack
+    from manuscript_guard.build.assemble import assemble
+    from manuscript_guard.build.latex import Compiled
+    from manuscript_guard.contracts import load_namespace
+
+    _profile(project, bibliography={"kind": "bibtex", "bst": "plainnat"})
+    bib = project / "literature" / "references.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + _UNCITED, encoding="utf-8")
+    path = project / "manuscript" / relative
+    text = path.read_text(encoding="utf-8")
+    line = f"nocite: '{value}'\n"
+    text = text.replace("---\n", f"---\n{line}", 1) if text.startswith("---\n") else (
+        f"---\n{line}---\n\n{text}")  # fmt: skip
+    path.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(latex_pack, "_alone", lambda _p, folder, names, _e, headings: [
+        Compiled(folder / f"{name}.pdf") for name in names])  # fmt: skip
+    root = load_project(project)[0]
+    namespace, results = load_namespace(root)[:2]
+    return latex_out.build_from_markdown(root, assemble(root, namespace, results)[0])
+
+
+@needs_pandoc
+def test_the_supplement_s_latex_carries_its_own_files_nocite(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #852: a supplement file's own `nocite` reaches supplementary.tex, and the
+    folder's `.bib` keeps the entry; the main text's document carries none."""
+    packed = _latex_with_nocite(project, monkeypatch, "supplementary/S1_code_lists.md",
+                                "@zeta2001")  # fmt: skip
+    held = {path.name: path for path in packed.files}
+    assert "\\nocite{zeta2001}" in held["supplementary.tex"].read_text(encoding="utf-8")
+    assert "\\nocite" not in held["manuscript.tex"].read_text(encoding="utf-8")
+    cut = held["references.bib"].read_text(encoding="utf-8")
+    assert "{zeta2001," in cut and "{alpha2002," not in cut, cut
+    assert packed.report.findings == ()
+
+
+@needs_pandoc
+def test_a_journal_template_that_prints_no_nocite_is_warned_of(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #852: pandoc's default template writes `\\nocite` from `nocite-ids`, and a
+    journal's own template may not. There nothing prints the works the `nocite` names, and
+    the `.bib` keeps none of them, so the build warns."""
+    from manuscript_guard.findings import WARN
+
+    folder = project / "profiles" / "journals" / "latex" / "demo-journal"
+    folder.mkdir(parents=True)
+    (folder / "template.latex").write_text(
+        "\\documentclass{article}\n\\usepackage{natbib}\n\\begin{document}\n$body$\n"
+        "\\bibliographystyle{plainnat}\n\\bibliography{references}\n\\end{document}\n",
+        encoding="utf-8")  # fmt: skip
+    packed = _latex_with_nocite(project, monkeypatch, "main.md", "@zeta2001")
+    held = {path.name: path for path in packed.files}
+    assert "\\nocite" not in held["manuscript.tex"].read_text(encoding="utf-8")
+    (finding,) = [f for f in packed.report.findings if f.code == "nocite-not-in-template"]
+    assert finding.severity == WARN and finding.gate == "BUILD"
+    assert finding.path.name == "template.latex"
+    assert "prints no" in finding.message and "manuscript.tex" in finding.message
